@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 571 component schemas the generated surface transitively
+ * Only the 615 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -29,8 +29,23 @@ export interface ActivityAggregatesResponse {
   editedItems: number;
   feedbackDown: number;
   feedbackUp: number;
+  /** TASK-1050 — the guardrail counts, when recorded. */
+  guardrail?: ActivityGuardrailAggregatesResponse;
   tokensIn: number;
   tokensOut: number;
+}
+
+export interface ActivityGuardrailAggregatesResponse {
+  /** Evaluations decided block. */
+  block: number;
+  /** Guardrail evaluations recorded for the consultation (one per request × direction). */
+  evaluations: number;
+  /** Guardrail notices not yet acknowledged or resolved. */
+  openNotices: number;
+  /** Evaluations where a check could not run and degraded (unverified). */
+  unverified: number;
+  /** Evaluations decided warn. */
+  warn: number;
 }
 
 export interface ActivityRunRecordResponse {
@@ -1244,7 +1259,7 @@ export interface ConsultationActivityPageResponse {
   consultationId: string;
   encounters: EncounterBlockResponse[];
   hasMore: boolean;
-  /** Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`. */
+  /** Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`. An `item` carries `guardrailStatus` (`CLEAN` | `WARNED` | `BLOCKED` | `WITHHELD`, TASK-1050). */
   items: Array<Record<string, unknown>>;
   nextCursor: string | null;
   processing: 'IDLE' | 'FINALIZING_TRANSCRIPT' | 'SUMMARIZING' | 'PROCESSING_ATTACHMENT' | 'AWAITING_REVIEW' | 'FAILED';
@@ -1336,6 +1351,8 @@ export interface ConsultationLifecycleState {
 }
 
 export interface ConsultationResponse {
+  /** On `approve` (TASK-1050): every outstanding guardrail warning the approve acknowledged, in the same transaction. Approve is never refused because of warnings. */
+  acknowledgedNotices?: GuardrailNoticeAcknowledgementResponse[];
   /** Appointment date (YYYY-MM-DD) */
   appointmentDate: string;
   /** The latest approval of this consultation while it is approved, or null. */
@@ -3210,6 +3227,491 @@ export interface GoldenSetResponse {
   updatedAt: string;
 }
 
+export interface GuardrailActivityCategoryCount {
+  category: string;
+  checkId: string;
+  count: number;
+}
+
+export interface GuardrailActivityCheckCount {
+  actionTaken: string;
+  checkId: string;
+  count: number;
+  direction: 'inbound' | 'outbound';
+  verdict: string;
+}
+
+export interface GuardrailActivityModelRow {
+  avgLatencyMs: number | null;
+  calls: number;
+  checkId: string;
+  flags: number;
+  model: string;
+  undetermined: number;
+}
+
+export interface GuardrailActivityResponse {
+  bucket: '5m' | '1h' | '1d';
+  checks: GuardrailActivityCheckCount[];
+  from: string;
+  perModel: GuardrailActivityModelRow[];
+  perTenant: GuardrailActivityTenantRow[];
+  series: GuardrailActivitySeriesPoint[];
+  tenantId: string | null;
+  to: string;
+  topCategories: GuardrailActivityCategoryCount[];
+  totals: GuardrailActivityTotalsResponse;
+}
+
+export interface GuardrailActivitySeriesPoint {
+  bucketStart: string;
+  count: number;
+  decision: 'allow' | 'warn' | 'block' | 'unverified';
+  direction: 'inbound' | 'outbound';
+}
+
+export interface GuardrailActivityTenantRow {
+  block: number;
+  evaluations: number;
+  tenantId: string;
+  unverified: number;
+  warn: number;
+}
+
+export interface GuardrailActivityTotalsResponse {
+  allow: number;
+  block: number;
+  evaluations: number;
+  /** (warn + block) / evaluations; 0 when there are none. */
+  flagRate: number;
+  /** Notices resolved `acknowledged` in the window (SAFETY_OVERRIDE). */
+  overrides: number;
+  unverified: number;
+  warn: number;
+}
+
+export interface GuardrailDryRunJudgeMetaDraft {
+  /** Native category → `{ lane, category }`. */
+  categoryMap?: Record<string, unknown>;
+  /** `{ Safe, Controversial, Unsafe }` tier mapping. */
+  tiers?: Record<string, unknown>;
+}
+
+export interface GuardrailDryRunLaneModel {
+  lane: 'medical_validation' | 'injection_judge' | 'unsafe_content_judge' | 'clinical_safety_judge' | 'leakage_judge';
+  modelId: string | null;
+  modelSlug: string | null;
+}
+
+export interface GuardrailDryRunRequest {
+  /** Which side of a generation the samples stand for. */
+  direction: 'inbound' | 'outbound';
+  /** A draft native mapping (qwen3guard_native lanes). */
+  judgeMeta?: GuardrailDryRunJudgeMetaDraft;
+  /** The lanes to judge the samples on. */
+  lanes: Array<'medical_validation' | 'injection_judge' | 'unsafe_content_judge' | 'clinical_safety_judge' | 'leakage_judge'>;
+  /** Native judges only: prompt (user turn) or response moderation. Default `prompt`. */
+  mode?: 'prompt' | 'response';
+  /** DRAFT policy values keyed by policy key: any criteria key, `judgeTemperature`, `judgeMaxTokens`. Each is validated exactly as a save would be (bounds, judge template); nothing is stored. */
+  policy?: Record<string, unknown>;
+  /** The user turn, for a response-mode native judge. */
+  promptContext?: string;
+  /** 1–50 sample texts (synthetic, or a curated evaluation sample pasted in). */
+  samples: string[];
+}
+
+export interface GuardrailDryRunResponse {
+  /** Whole call, as guardrail measured it. */
+  latencyMs: number | null;
+  /** The model each lane ran on (the current selection). */
+  models: GuardrailDryRunLaneModel[];
+  /** Always false: a dry run stores nothing. */
+  persisted: boolean;
+  results: GuardrailDryRunSampleResult[];
+}
+
+export interface GuardrailDryRunSampleResult {
+  latencyMs: number | null;
+  sampleIndex: number;
+  /** One per requested lane, in request order. */
+  verdicts: GuardrailDryRunVerdict[];
+}
+
+export interface GuardrailDryRunVerdict {
+  category: string | null;
+  confidence: number | null;
+  lane: 'medical_validation' | 'injection_judge' | 'unsafe_content_judge' | 'clinical_safety_judge' | 'leakage_judge';
+  latencyMs: number | null;
+  /** The model slug that answered. */
+  model: string | null;
+  /** Native tier (`Safe` | `Controversial` | `Unsafe`) for a qwen3guard_native judge. */
+  tier: string | null;
+  /** `pass` | `flag` | `undetermined`. Anything guardrail did not state reads `undetermined`. */
+  verdict: string;
+}
+
+export interface GuardrailEvaluationCheckResponse {
+  actionTaken: 'none' | 'ignore' | 'warn' | 'block' | 'unverified';
+  category?: string;
+  checkId:
+    | 'jailbreak_detection'
+    | 'prompt_safety'
+    | 'prompt_toxicity'
+    | 'response_safety'
+    | 'response_toxicity'
+    | 'response_refusal'
+    | 'pii_leak'
+    | 'containment_echo'
+    | 'medical_validation'
+    | 'injection_judge'
+    | 'unsafe_content_judge'
+    | 'clinical_safety_judge'
+    | 'leakage_judge';
+  confidence?: number;
+  items: GuardrailEvaluationItemRefResponse[];
+  latencyMs: number;
+  model: string | null;
+  regionKeys: string[];
+  score?: number;
+  verdict: 'pass' | 'flag' | 'undetermined' | 'skipped';
+}
+
+export interface GuardrailEvaluationItemRefResponse {
+  itemId: string;
+  itemVersion: number;
+}
+
+export interface GuardrailEvaluationListItem {
+  agentSlug: string | null;
+  at: string;
+  caller: string;
+  /** Per-check results (verdict, score, category, action, model, latency, region keys) — never text. */
+  checks: string[];
+  consultationId: string | null;
+  decision: 'allow' | 'warn' | 'block' | 'unverified';
+  direction: 'inbound' | 'outbound';
+  exempt: string | null;
+  /** An outbound block withheld output (readable only via the admin review route). */
+  hasWithheldContent: boolean;
+  id: string;
+  nodeId: string | null;
+  noticeIds: string[];
+  policyVersion: string;
+  runId: string | null;
+  tenantId: string;
+}
+
+export interface GuardrailEvaluationListResponse {
+  hasMore: boolean;
+  items: GuardrailEvaluationListItem[];
+  nextCursor: string | null;
+}
+
+export interface GuardrailEvaluationPageResponse {
+  consultationId: string;
+  hasMore: boolean;
+  items: GuardrailEvaluationRowResponse[];
+  limit: number;
+  nextCursor: string | null;
+}
+
+export interface GuardrailEvaluationRowResponse {
+  agentSlug: string | null;
+  /** When guardrail decided (ISO-8601). */
+  at: string;
+  caller: string;
+  checks: GuardrailEvaluationCheckResponse[];
+  consultationId: string | null;
+  decision: 'allow' | 'warn' | 'block' | 'unverified';
+  direction: 'inbound' | 'outbound';
+  evaluationId: string;
+  exempt: string | null;
+  /** An outbound block whose output was withheld (read it through the withheld review route). */
+  hasWithheldContent: boolean;
+  nodeId: string | null;
+  noticeIds: string[];
+  policyVersion: string;
+  requestId: string;
+  runId: string | null;
+  runKey: string | null;
+}
+
+export interface GuardrailHealthModelRow {
+  lane: string | null;
+  modelId: string | null;
+  /** `loaded` | `loading` | `unloading` | `not_loaded` | `unknown`. Read-only (→ /model-residency). */
+  residency: string;
+  slug: string | null;
+  taskKey: string;
+}
+
+export interface GuardrailHealthResponse {
+  at: string;
+  lastEvaluationAt: string | null;
+  models: GuardrailHealthModelRow[];
+  secondsSinceLastEvaluation: number | null;
+  /** Share of checks `undetermined` over the last hour; `null` with no checks. */
+  undeterminedRate: number | null;
+}
+
+export interface GuardrailJudgeLaneCandidateResponse {
+  modelId: string;
+  name: string | null;
+  /** `criteria_json` | `qwen3guard_native` | `undeclared` (a legacy guardian row, medical lane only). */
+  protocol: string;
+  /** Residency as the model-residency controller reports it (`loaded` | `loading` | `unloading` | `not_loaded` | `unknown`). Read-only; load and unload live on `/model-residency`. */
+  residency: string;
+  /** Which service serves it (`servedBy`). */
+  servedBy: string | null;
+  slug: string;
+}
+
+export interface GuardrailJudgeLaneResponse {
+  /** Every SYSTEM model whose `_metadata.judge` declares this lane. */
+  candidates: GuardrailJudgeLaneCandidateResponse[];
+  lane: 'medical_validation' | 'injection_judge' | 'unsafe_content_judge' | 'clinical_safety_judge' | 'leakage_judge';
+  /** The SYSTEM `AiRoutingPolicy` row currently elected for the lane. */
+  policyId: string | null;
+  /** The selected model, `null` when none is elected. */
+  selected: GuardrailJudgeLaneCandidateResponse;
+  /** `guardrail.validate` for the medical judge. */
+  taskKey: string;
+}
+
+export interface GuardrailJudgeLaneSelection {
+  lane: 'medical_validation' | 'injection_judge' | 'unsafe_content_judge' | 'clinical_safety_judge' | 'leakage_judge';
+  /** A SYSTEM `AiModel.id` whose `_metadata.judge` declares the lane (else 400 `JUDGE_LANE_UNSUPPORTED`). For `medical_validation` a model with NO declaration (a legacy guardian row) is also accepted. */
+  modelId: string;
+}
+
+export interface GuardrailJudgeLanesResponse {
+  lanes: GuardrailJudgeLaneResponse[];
+}
+
+export interface GuardrailJudgeMetaResponse {
+  /** False for an idempotent no-op. */
+  changed?: boolean;
+  /** The current declaration differs from `judgeDefaults` AND `judgeDefaults` is not the one the last edit was made against (`_metadata.defaultAtEdit` on that `judge` revision). False for legacy revisions. */
+  defaultChangedSinceEdit: boolean;
+  /** The current declaration equals the default. */
+  isDefault: boolean;
+  /** `_metadata.judge` after the operation. */
+  judge: Record<string, unknown>;
+  /** `_metadata.judgeDefaults` (seed-owned); `null` when the seed ships none. */
+  judgeDefaults: Record<string, unknown> | null;
+  modelId: string;
+  slug: string;
+  /** The model row `_version` (the ETag). */
+  version: number;
+}
+
+export interface GuardrailMetricSample {
+  /** The series labels that identify it (task, model, gate, peer, …). */
+  labels: Record<string, unknown>;
+  value: number;
+}
+
+export interface GuardrailNoticeAcknowledgementResponse {
+  /** When (ISO-8601). */
+  acknowledgedAt: string;
+  /** The clinician the acknowledgement is attributed to (the approver). */
+  acknowledgedBy: string;
+  /** How it was acknowledged. */
+  acknowledgedVia: 'ack' | 'approve' | 'resume';
+  /** The acknowledged guardrail notice. */
+  noticeId: string;
+}
+
+export interface GuardrailPerformanceResponse {
+  /** Admission rejections per second, per gate. */
+  admissionRejectionsPerSecond: GuardrailMetricSample[];
+  at: string;
+  /** False when Prometheus answered nothing at all (every series below then empty / null). */
+  available: boolean;
+  /** 0 closed, 1 half-open, 2 open, per peer. */
+  circuitBreakers: GuardrailMetricSample[];
+  /** `guardrail_evaluation_missing_total` (the reconciler gauge). */
+  evaluationsMissing: number | null;
+  /** Medical-judge verdicts per second (5 m rate). */
+  judgeCallsPerSecond: number | null;
+  /** p50 inference latency (s) per guardrail model. */
+  modelLatencyP50: GuardrailMetricSample[];
+  /** p95 inference latency (s) per guardrail model. */
+  modelLatencyP95: GuardrailMetricSample[];
+  /** Every `guardrail_evaluation_outbox_*` series (label `__name__` names it). */
+  outbox: GuardrailMetricSample[];
+  /** Delegated peer calls per second (the judge lanes ride text / nlp), per peer and operation. */
+  peerCallsPerSecond: GuardrailMetricSample[];
+  /** Peer failures per second, per peer and reason. */
+  peerFailuresPerSecond: GuardrailMetricSample[];
+  queueDepth: GuardrailMetricSample[];
+  windowCacheHitRatio: GuardrailMetricSample[];
+  /** p50 screen-window latency (s) per task. */
+  windowLatencyP50: GuardrailMetricSample[];
+  /** p95 screen-window latency (s) per task. */
+  windowLatencyP95: GuardrailMetricSample[];
+}
+
+export interface GuardrailPolicyKeyEntryResponse {
+  /** `_metadata.policy[key]`; `null` when unset. */
+  currentValue: Record<string, unknown> | null;
+  /** README §11.3 C — "default changed since your edit": the current value differs from the default AND the default is not the one the last edit / restore was made against (`_metadata.defaultAtEdit` on that revision). False for revisions written before the capture existed. */
+  defaultChangedSinceEdit: boolean;
+  /** `seed`: the default is seed-owned (`policyDefaults` / `labelTaxonomyDefaults`). `current`: a label threshold with no seeded default yet — the current value is reported as the default. `null`: none. */
+  defaultSource?: 'seed' | 'current' | null;
+  /** `_metadata.policyDefaults[key]` (seed-owned, never written by the API); `null` when the seed ships none. */
+  defaultValue: Record<string, unknown> | null;
+  /** Writable through `PUT admin/guardrail/policy-keys/:key`. */
+  editable: boolean;
+  /** `closed` | `open-to-default`. */
+  failMode: string;
+  /** A change re-screens (busts the window-verdict cache). */
+  inPolicyVersion: boolean;
+  /** The current value equals the default (both absent counts as equal). */
+  isDefault: boolean;
+  /** A catalogue key (`_metadata.policy`), or a classifier threshold inside `_metadata.labelTaxonomy`: `labelTaxonomy.threshold` / `labelTaxonomy.tasks.<task>.cls_threshold` (single-key routes then need `?taskKey=`). */
+  key: string;
+  /** `criteria` | `hyperparameter` | `threshold` | `geometry` | `operational`. */
+  kind: string;
+  /** The safety-judge lane whose template a criteria key follows, else `null`. */
+  lane: string | null;
+  lastRevision: GuardrailPolicyRevisionSummaryResponse;
+  /** Inclusive upper bound from the catalogue; `null` when unbounded. */
+  max: number | null;
+  /** Inclusive lower bound from the catalogue; `null` when unbounded. */
+  min: number | null;
+  /** The SYSTEM model row (`AiModel.id`) the key lives on; `null` when the task key elects no model. */
+  modelId: string | null;
+  modelSlug: string | null;
+  /** The model row `_version`: send it as `If-Match` on `PUT`. */
+  modelVersion: number | null;
+  /** The `AiRoutingPolicy` task key of the SYSTEM model row the key lives on. */
+  taskKey: string;
+  /** `string` | `number` | `integer` | `boolean` | `string[]` | `object`. */
+  type: string;
+}
+
+export interface GuardrailPolicyKeyGroupResponse {
+  keys: GuardrailPolicyKeyEntryResponse[];
+  /** The judge lane this task key selects a model for, else `null`. */
+  lane: string | null;
+  modelId: string | null;
+  modelSlug: string | null;
+  modelVersion: number | null;
+  /** `_metadata.judge.protocol` of the model, when it declares one. */
+  protocol: string | null;
+  taskKey: string;
+}
+
+export interface GuardrailPolicyKeyResponse {
+  /** False for an idempotent no-op (the value already equalled the target); no revision was appended. */
+  changed?: boolean;
+  /** `_metadata.policy[key]`; `null` when unset. */
+  currentValue: Record<string, unknown> | null;
+  /** README §11.3 C — "default changed since your edit": the current value differs from the default AND the default is not the one the last edit / restore was made against (`_metadata.defaultAtEdit` on that revision). False for revisions written before the capture existed. */
+  defaultChangedSinceEdit: boolean;
+  /** `seed`: the default is seed-owned (`policyDefaults` / `labelTaxonomyDefaults`). `current`: a label threshold with no seeded default yet — the current value is reported as the default. `null`: none. */
+  defaultSource?: 'seed' | 'current' | null;
+  /** `_metadata.policyDefaults[key]` (seed-owned, never written by the API); `null` when the seed ships none. */
+  defaultValue: Record<string, unknown> | null;
+  /** Writable through `PUT admin/guardrail/policy-keys/:key`. */
+  editable: boolean;
+  /** `closed` | `open-to-default`. */
+  failMode: string;
+  /** A change re-screens (busts the window-verdict cache). */
+  inPolicyVersion: boolean;
+  /** The current value equals the default (both absent counts as equal). */
+  isDefault: boolean;
+  /** A catalogue key (`_metadata.policy`), or a classifier threshold inside `_metadata.labelTaxonomy`: `labelTaxonomy.threshold` / `labelTaxonomy.tasks.<task>.cls_threshold` (single-key routes then need `?taskKey=`). */
+  key: string;
+  /** `criteria` | `hyperparameter` | `threshold` | `geometry` | `operational`. */
+  kind: string;
+  /** The safety-judge lane whose template a criteria key follows, else `null`. */
+  lane: string | null;
+  lastRevision: GuardrailPolicyRevisionSummaryResponse;
+  /** Inclusive upper bound from the catalogue; `null` when unbounded. */
+  max: number | null;
+  /** Inclusive lower bound from the catalogue; `null` when unbounded. */
+  min: number | null;
+  /** The SYSTEM model row (`AiModel.id`) the key lives on; `null` when the task key elects no model. */
+  modelId: string | null;
+  modelSlug: string | null;
+  /** The model row `_version`: send it as `If-Match` on `PUT`. */
+  modelVersion: number | null;
+  /** The revision this write appended, when it changed something. */
+  revisionId?: string | null;
+  /** The `AiRoutingPolicy` task key of the SYSTEM model row the key lives on. */
+  taskKey: string;
+  /** `string` | `number` | `integer` | `boolean` | `string[]` | `object`. */
+  type: string;
+  /** The model row `_version` after the operation (also the strong ETag). */
+  version: number;
+}
+
+export interface GuardrailPolicyKeysResponse {
+  /** False when the catalogue artifact is unavailable (then no key is writable). */
+  catalogueAvailable: boolean;
+  groups: GuardrailPolicyKeyGroupResponse[];
+}
+
+export interface GuardrailPolicyLaneResetResponse {
+  /** Keys whose current value changed (each has a new `reset` revision). */
+  resetKeys: string[];
+  /** Keys skipped: already at default, no default shipped, or not editable. */
+  skippedKeys: string[];
+  /** The task key (model row) that was reset. */
+  taskKey: string;
+  version: number | null;
+}
+
+export interface GuardrailPolicyRevisionResponse {
+  /** The user who wrote it. */
+  actorId: string;
+  aiModelId: string;
+  /** ISO-8601 UTC. */
+  at: string;
+  /** Revision id (uuidv7). */
+  id: string;
+  policyKey: string;
+  /** `edit` | `reset` | `restore` | `seed`. */
+  reason: string;
+  restoredFromRevisionId: string | null;
+  /** The value this revision set. */
+  value: Record<string, unknown>;
+  /** sha256 (hex) of the canonical JSON of the value. */
+  valueHash: string;
+}
+
+export interface GuardrailPolicyRevisionSummaryResponse {
+  /** The user who wrote it. */
+  actorId: string;
+  /** ISO-8601 UTC. */
+  at: string;
+  /** Revision id (uuidv7). */
+  id: string;
+  /** `edit` | `reset` | `restore` | `seed`. */
+  reason: string;
+  /** sha256 (hex) of the canonical JSON of the value. */
+  valueHash: string;
+}
+
+export interface GuardrailPolicyRevisionsResponse {
+  key: string;
+  modelId: string | null;
+  /** Newest first. */
+  revisions: GuardrailPolicyRevisionResponse[];
+}
+
+export interface GuardrailWithheldContentResponse {
+  at: string;
+  consultationId: string;
+  /** The withheld generation, decrypted. */
+  content: string;
+  evaluationId: string;
+  noticeIds: string[];
+  policyVersion: string;
+}
+
 export interface HarnessAuditEventResponse {
   /** Audit action. */
   action:
@@ -4462,7 +4964,7 @@ export interface ModelResidencyLoadPreviewResponse {
   /** Resident models on the same device that are pinned (live path or policy) and are NOT offered. */
   pinned: ModelResidencyPreviewModel[];
   /** What an un-forced load would answer; `null` when it would be admitted. */
-  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | null;
+  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | 'LOAD_IN_PROGRESS' | 'IN_FLIGHT' | null;
   service: string;
   /** `max(0, needBytes − (freeBytes − headroomBytes))`; 0 when it fits. */
   shortfallBytes: number;
@@ -4916,12 +5418,22 @@ export interface ModelServiceStatusResponse {
 }
 
 export interface ModelServingFactsRequest {
+  /** LM Studio load-time context window (tokens). */
+  contextLength?: number;
   /** vLLM `enforce_eager` — disable CUDA graphs (less VRAM, slower). Omit for the engine default. */
   enforceEager?: boolean;
+  /** LM Studio flash attention. Required for a quantized V-cache. */
+  flashAttention?: boolean;
+  /** Per-model GPU placement. Replaces the stored block whole. */
+  gpuSplit?: ModelServingGpuSplitRequest;
+  /** KV-cache element types. Replaces the stored block whole. */
+  kvCacheQuant?: ModelServingKvCacheQuantRequest;
   /** vLLM `max_num_seqs` — the concurrent sequences one engine batches. Omit for the engine default. */
   maxNumSeqs?: number;
-  /** GiB of GPU memory one engine of this model claims inside its pool`s `vramBudgetGiB` (`vllm.pools`). Must be greater than 0. */
-  vramGiB: number;
+  /** LM Studio concurrent sequences for this model. */
+  parallel?: number;
+  /** GiB of GPU memory one engine of this model claims inside its pool`s `vramBudgetGiB` (`vllm.pools`). Must be greater than 0. Required unless the body names only LM Studio fields. */
+  vramGiB?: number;
 }
 
 export interface ModelServingFactsResponse {
@@ -4933,6 +5445,22 @@ export interface ModelServingFactsResponse {
   maxNumSeqs: number | null;
   /** GPU memory the engine reserves for this model, in GiB. */
   vramGiB: number;
+}
+
+export interface ModelServingGpuSplitRequest {
+  /** GPU indices the model must not touch: distinct whole indices. */
+  disabledGpus?: number[];
+  /** Device order for `priorityOrder`: distinct whole GPU indices. */
+  priority?: number[];
+  /** How the model is spread over the visible GPUs. */
+  strategy?: 'custom' | 'evenly' | 'priorityOrder' | 'tensor';
+}
+
+export interface ModelServingKvCacheQuantRequest {
+  /** K-cache element type. */
+  k?: 'f32' | 'f16' | 'q8_0' | 'q5_1' | 'q5_0' | 'q4_1' | 'q4_0' | 'iq4_nl';
+  /** V-cache element type. A quantized V-cache needs flash attention (checked when the profile is resolved). */
+  v?: 'f32' | 'f16' | 'q8_0' | 'q5_1' | 'q5_0' | 'q4_1' | 'q4_0' | 'iq4_nl';
 }
 
 export interface ModelUsageResponse {
@@ -7926,6 +8454,26 @@ export interface UpdateGlobalSettingRequest {
   tenantId?: string;
   /** Value of the global setting */
   value?: string;
+}
+
+export interface UpdateGuardrailJudgeLanesRequest {
+  selections: GuardrailJudgeLaneSelection[];
+}
+
+export interface UpdateGuardrailJudgeMetaRequest {
+  /** Native category → `{ lane, category }`. Replaces the stored map when present. Unmapped native categories are ignored by guardrail. */
+  categoryMap?: Record<string, unknown>;
+  /** The model row version the client read. The `If-Match` header overrides it. */
+  expectedVersion?: number;
+  /** `{ Safe: "pass", Controversial: "pass" | "warn" | "block", Unsafe: "flag" }`. Replaces the stored tiers when present. */
+  tiers?: Record<string, unknown>;
+}
+
+export interface UpdateGuardrailPolicyKeyRequest {
+  /** The model row version the client read. The `If-Match` header overrides it. */
+  expectedVersion?: number;
+  /** The new value. Validated against the catalogue entry (type, bounds) and, for a safety-judge criteria key, the judge template (locked sections, lane categories). */
+  value: Record<string, unknown>;
 }
 
 export interface UpdateHarnessPolicyRequest {

@@ -61,6 +61,15 @@
         ],
         "type": "object"
       },
+      "AcknowledgeGuardrailNoticeRequest": {
+        "properties": {
+          "clinicianUserId": {
+            "description": "The clinician the act is attributed to. REQUIRED for a machine credential (API key / service account) — a machine is never the clinician; a human may name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN, and omits it to act as themselves.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ActiveVoiceProfileDto": {
         "properties": {
           "createdAt": {
@@ -109,6 +118,14 @@
           "feedbackUp": {
             "type": "number"
           },
+          "guardrail": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivityGuardrailAggregatesResponse"
+              }
+            ],
+            "description": "TASK-1050 — the guardrail counts, when recorded."
+          },
           "tokensIn": {
             "type": "number"
           },
@@ -125,6 +142,38 @@
           "editedItems",
           "feedbackUp",
           "feedbackDown"
+        ],
+        "type": "object"
+      },
+      "ActivityGuardrailAggregatesResponse": {
+        "properties": {
+          "block": {
+            "description": "Evaluations decided block.",
+            "type": "number"
+          },
+          "evaluations": {
+            "description": "Guardrail evaluations recorded for the consultation (one per request × direction).",
+            "type": "number"
+          },
+          "openNotices": {
+            "description": "Guardrail notices not yet acknowledged or resolved.",
+            "type": "number"
+          },
+          "unverified": {
+            "description": "Evaluations where a check could not run and degraded (unverified).",
+            "type": "number"
+          },
+          "warn": {
+            "description": "Evaluations decided warn.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "evaluations",
+          "warn",
+          "block",
+          "unverified",
+          "openNotices"
         ],
         "type": "object"
       },
@@ -2070,6 +2119,14 @@
             "description": "Operator stop button. When true this policy serves nothing.",
             "type": "boolean"
           },
+          "managedBy": {
+            "description": "Set on LIST responses. `guardrail-control` when the selection is owned by the Guardrail control screen (every `guardrail.*` key, TASK-1050 OD-39): render it read-only and deep-link to `/guardrails/control`. `null` otherwise.",
+            "enum": [
+              "guardrail-control"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
           "match": {
             "description": "Narrowing predicate: { models, metadata, minContextTokens, maxContextTokens }",
             "nullable": true,
@@ -2404,6 +2461,10 @@
       },
       "ApproveConsultationRequest": {
         "properties": {
+          "acknowledgeGuardrailNotices": {
+            "description": "TASK-1050 — the client showed the outstanding guardrail warnings in its confirm step. Either way every open warning is acknowledged in the approve transaction (by the approver) and listed in `acknowledgedNotices`; warnings never block approve.",
+            "type": "boolean"
+          },
           "clinicianUserId": {
             "description": "The clinician who approves. REQUIRED for a machine credential (API key / service account) — a machine is never the attesting clinician; a human may name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN, and omits it to act as themselves.",
             "type": "string"
@@ -2411,6 +2472,14 @@
           "overrideSafetyFlag": {
             "description": "Approve despite an open safety flag on the note (recorded on the attestation).",
             "type": "boolean"
+          },
+          "resolveHold": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApproveResolveHoldRequest"
+              }
+            ],
+            "description": "TASK-1050 — resolve an INBOUND guardrail hold (`acknowledged` or `item_excluded`) and approve in the same transaction. An outbound hold must be resumed and the note regenerated first (409 `GUARDRAIL_HOLD`)."
           }
         },
         "type": "object"
@@ -2427,6 +2496,28 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "ApproveResolveHoldRequest": {
+        "properties": {
+          "noticeId": {
+            "description": "The inbound guardrail.blocked notice the approve resolves.",
+            "type": "string"
+          },
+          "resolution": {
+            "description": "Only `acknowledged` or `item_excluded` approve in one action (OD-24).",
+            "enum": [
+              "item_excluded",
+              "item_edited",
+              "acknowledged"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "noticeId",
+          "resolution"
+        ],
         "type": "object"
       },
       "ApproveRunGateInput": {
@@ -5287,7 +5378,7 @@
             "type": "boolean"
           },
           "items": {
-            "description": "Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`.",
+            "description": "Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`. An `item` carries `guardrailStatus` (`CLEAN` | `WARNED` | `BLOCKED` | `WITHHELD`, TASK-1050).",
             "items": {
               "type": "object"
             },
@@ -5738,6 +5829,13 @@
       },
       "ConsultationResponse": {
         "properties": {
+          "acknowledgedNotices": {
+            "description": "On `approve` (TASK-1050): every outstanding guardrail warning the approve acknowledged, in the same transaction. Approve is never refused because of warnings.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailNoticeAcknowledgementResponse"
+            },
+            "type": "array"
+          },
           "appointmentDate": {
             "description": "Appointment date (YYYY-MM-DD)",
             "type": "string"
@@ -12879,12 +12977,267 @@
         ],
         "type": "object"
       },
+      "GuardrailActivityCategoryCount": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "checkId",
+          "category",
+          "count"
+        ],
+        "type": "object"
+      },
+      "GuardrailActivityCheckCount": {
+        "properties": {
+          "actionTaken": {
+            "type": "string"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkId",
+          "direction",
+          "verdict",
+          "actionTaken",
+          "count"
+        ],
+        "type": "object"
+      },
+      "GuardrailActivityModelRow": {
+        "properties": {
+          "avgLatencyMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "calls": {
+            "type": "number"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "flags": {
+            "type": "number"
+          },
+          "model": {
+            "type": "string"
+          },
+          "undetermined": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "checkId",
+          "calls",
+          "flags",
+          "undetermined",
+          "avgLatencyMs"
+        ],
+        "type": "object"
+      },
+      "GuardrailActivityResponse": {
+        "properties": {
+          "bucket": {
+            "enum": [
+              "5m",
+              "1h",
+              "1d"
+            ],
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailActivityCheckCount"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "perModel": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailActivityModelRow"
+            },
+            "type": "array"
+          },
+          "perTenant": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailActivityTenantRow"
+            },
+            "type": "array"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailActivitySeriesPoint"
+            },
+            "type": "array"
+          },
+          "tenantId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "topCategories": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailActivityCategoryCount"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/GuardrailActivityTotalsResponse"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "bucket",
+          "tenantId",
+          "totals",
+          "series",
+          "checks",
+          "topCategories",
+          "perTenant",
+          "perModel"
+        ],
+        "type": "object"
+      },
+      "GuardrailActivitySeriesPoint": {
+        "properties": {
+          "bucketStart": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "decision": {
+            "enum": [
+              "allow",
+              "warn",
+              "block",
+              "unverified"
+            ],
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucketStart",
+          "direction",
+          "decision",
+          "count"
+        ],
+        "type": "object"
+      },
+      "GuardrailActivityTenantRow": {
+        "properties": {
+          "block": {
+            "type": "number"
+          },
+          "evaluations": {
+            "type": "number"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "unverified": {
+            "type": "number"
+          },
+          "warn": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantId",
+          "evaluations",
+          "warn",
+          "block",
+          "unverified"
+        ],
+        "type": "object"
+      },
+      "GuardrailActivityTotalsResponse": {
+        "properties": {
+          "allow": {
+            "type": "number"
+          },
+          "block": {
+            "type": "number"
+          },
+          "evaluations": {
+            "type": "number"
+          },
+          "flagRate": {
+            "description": "(warn + block) / evaluations; 0 when there are none.",
+            "type": "number"
+          },
+          "overrides": {
+            "description": "Notices resolved `acknowledged` in the window (SAFETY_OVERRIDE).",
+            "type": "number"
+          },
+          "unverified": {
+            "type": "number"
+          },
+          "warn": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "evaluations",
+          "allow",
+          "warn",
+          "block",
+          "unverified",
+          "flagRate",
+          "overrides"
+        ],
+        "type": "object"
+      },
       "GuardrailAvailabilityResponse": {
         "properties": {
           "effective": {
             "additionalProperties": true,
-            "description": "What ACTUALLY applies to this tenant after the two-tier `request tenant → SYSTEM` cascade.",
+            "description": "What ACTUALLY applies to this tenant, in the legacy flat shape `{ <checkId>: { enabled, minScore? } }` (every catalogue check). Read `effectivePolicy` for actions, locks and directions.",
             "type": "object"
+          },
+          "effectivePolicy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailEffectivePolicyResponse"
+              }
+            ],
+            "description": "the v2 policy in force, field by field (platform default → SYSTEM row → tenant row), as guardrail resolves it."
           },
           "effectiveSourceTenantId": {
             "description": "WHICH tier supplied `effective` — this tenant, or the reserved SYSTEM tenant `00000000-…`. Every screening decision records the same value so a verdict stays attributable.",
@@ -12928,8 +13281,1601 @@
         ],
         "type": "object"
       },
+      "GuardrailCheckStateResponse": {
+        "properties": {
+          "action": {
+            "description": "What a violation does. Read-only for a tenant admin (platform admin only).",
+            "enum": [
+              "ignore",
+              "warn",
+              "block"
+            ],
+            "type": "string"
+          },
+          "allowedActions": {
+            "description": "The actions a platform admin may set for this check.",
+            "items": {
+              "enum": [
+                "ignore",
+                "warn",
+                "block"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "checkId": {
+            "description": "The check id (the catalogue / `screening.py` name).",
+            "type": "string"
+          },
+          "dataRegionAction": {
+            "description": "Inbound only: what a flag on a DATA region does (platform admin only, OD-12).",
+            "enum": [
+              "ignore",
+              "warn",
+              "block"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "directions": {
+            "description": "Which screening direction(s) the check runs on.",
+            "items": {
+              "enum": [
+                "inbound",
+                "outbound"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "editable": {
+            "description": "Whether THIS caller may switch the check on/off.",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "Whether the check runs for this tenant.",
+            "type": "boolean"
+          },
+          "inherited": {
+            "description": "`true` when the tenant states no on/off for this check, so it follows the platform default.",
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "lockReason": {
+            "description": "`catalogue` = always on, editable by nobody (medical validation); `platform` = a platform admin locked it; `null` = not locked.",
+            "enum": [
+              "catalogue",
+              "platform"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "locked": {
+            "description": "Locked: `enabled` cannot be changed by a tenant admin.",
+            "type": "boolean"
+          },
+          "minScore": {
+            "description": "Span floor in [0,1] (`pii_leak`). Platform admin only.",
+            "type": "number"
+          },
+          "setBy": {
+            "description": "Who set the value that decides `enabled`.",
+            "enum": [
+              "platform_admin",
+              "tenant_admin"
+            ],
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkId",
+          "label",
+          "description",
+          "directions",
+          "enabled",
+          "action",
+          "allowedActions",
+          "locked",
+          "editable",
+          "inherited"
+        ],
+        "type": "object"
+      },
+      "GuardrailDirectionStateResponse": {
+        "properties": {
+          "enabled": {
+            "description": "`false` = monitor only: every check of the direction runs at `ignore` (still screened and recorded, OD-7).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "GuardrailDirectionsResponse": {
+        "properties": {
+          "inbound": {
+            "$ref": "#/components/schemas/GuardrailDirectionStateResponse"
+          },
+          "outbound": {
+            "$ref": "#/components/schemas/GuardrailDirectionStateResponse"
+          }
+        },
+        "required": [
+          "inbound",
+          "outbound"
+        ],
+        "type": "object"
+      },
+      "GuardrailDryRunJudgeMetaDraft": {
+        "properties": {
+          "categoryMap": {
+            "description": "Native category → `{ lane, category }`.",
+            "type": "object"
+          },
+          "tiers": {
+            "description": "`{ Safe, Controversial, Unsafe }` tier mapping.",
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "GuardrailDryRunLaneModel": {
+        "properties": {
+          "lane": {
+            "enum": [
+              "medical_validation",
+              "injection_judge",
+              "unsafe_content_judge",
+              "clinical_safety_judge",
+              "leakage_judge"
+            ],
+            "type": "string"
+          },
+          "modelId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelSlug": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "modelId",
+          "modelSlug"
+        ],
+        "type": "object"
+      },
+      "GuardrailDryRunRequest": {
+        "properties": {
+          "direction": {
+            "description": "Which side of a generation the samples stand for.",
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "judgeMeta": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailDryRunJudgeMetaDraft"
+              }
+            ],
+            "description": "A draft native mapping (qwen3guard_native lanes)."
+          },
+          "lanes": {
+            "description": "The lanes to judge the samples on.",
+            "items": {
+              "enum": [
+                "medical_validation",
+                "injection_judge",
+                "unsafe_content_judge",
+                "clinical_safety_judge",
+                "leakage_judge"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "description": "Native judges only: prompt (user turn) or response moderation. Default `prompt`.",
+            "enum": [
+              "prompt",
+              "response"
+            ],
+            "type": "string"
+          },
+          "policy": {
+            "description": "DRAFT policy values keyed by policy key: any criteria key, `judgeTemperature`, `judgeMaxTokens`. Each is validated exactly as a save would be (bounds, judge template); nothing is stored.",
+            "example": {
+              "judgeTemperature": 0
+            },
+            "type": "object"
+          },
+          "promptContext": {
+            "description": "The user turn, for a response-mode native judge.",
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "samples": {
+            "description": "1–50 sample texts (synthetic, or a curated evaluation sample pasted in).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "lanes",
+          "direction",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "GuardrailDryRunResponse": {
+        "properties": {
+          "latencyMs": {
+            "description": "Whole call, as guardrail measured it.",
+            "nullable": true,
+            "type": "number"
+          },
+          "models": {
+            "description": "The model each lane ran on (the current selection).",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailDryRunLaneModel"
+            },
+            "type": "array"
+          },
+          "persisted": {
+            "description": "Always false: a dry run stores nothing.",
+            "example": false,
+            "type": "boolean"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailDryRunSampleResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "models",
+          "results",
+          "latencyMs",
+          "persisted"
+        ],
+        "type": "object"
+      },
+      "GuardrailDryRunSampleResult": {
+        "properties": {
+          "latencyMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "sampleIndex": {
+            "type": "number"
+          },
+          "verdicts": {
+            "description": "One per requested lane, in request order.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailDryRunVerdict"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sampleIndex",
+          "latencyMs",
+          "verdicts"
+        ],
+        "type": "object"
+      },
+      "GuardrailDryRunVerdict": {
+        "properties": {
+          "category": {
+            "nullable": true,
+            "type": "string"
+          },
+          "confidence": {
+            "nullable": true,
+            "type": "number"
+          },
+          "lane": {
+            "enum": [
+              "medical_validation",
+              "injection_judge",
+              "unsafe_content_judge",
+              "clinical_safety_judge",
+              "leakage_judge"
+            ],
+            "type": "string"
+          },
+          "latencyMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "model": {
+            "description": "The model slug that answered.",
+            "nullable": true,
+            "type": "string"
+          },
+          "tier": {
+            "description": "Native tier (`Safe` | `Controversial` | `Unsafe`) for a qwen3guard_native judge.",
+            "nullable": true,
+            "type": "string"
+          },
+          "verdict": {
+            "description": "`pass` | `flag` | `undetermined`. Anything guardrail did not state reads `undetermined`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "verdict",
+          "category",
+          "confidence",
+          "model",
+          "latencyMs",
+          "tier"
+        ],
+        "type": "object"
+      },
+      "GuardrailEffectivePolicyResponse": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailCheckStateResponse"
+            },
+            "type": "array"
+          },
+          "directions": {
+            "$ref": "#/components/schemas/GuardrailDirectionsResponse"
+          }
+        },
+        "required": [
+          "directions",
+          "checks"
+        ],
+        "type": "object"
+      },
+      "GuardrailEvaluationCheckResponse": {
+        "properties": {
+          "actionTaken": {
+            "enum": [
+              "none",
+              "ignore",
+              "warn",
+              "block",
+              "unverified"
+            ],
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "checkId": {
+            "enum": [
+              "jailbreak_detection",
+              "prompt_safety",
+              "prompt_toxicity",
+              "response_safety",
+              "response_toxicity",
+              "response_refusal",
+              "pii_leak",
+              "containment_echo",
+              "medical_validation",
+              "injection_judge",
+              "unsafe_content_judge",
+              "clinical_safety_judge",
+              "leakage_judge"
+            ],
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailEvaluationItemRefResponse"
+            },
+            "type": "array"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "model": {
+            "nullable": true,
+            "type": "string"
+          },
+          "regionKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "score": {
+            "type": "number"
+          },
+          "verdict": {
+            "enum": [
+              "pass",
+              "flag",
+              "undetermined",
+              "skipped"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkId",
+          "verdict",
+          "actionTaken",
+          "model",
+          "latencyMs",
+          "regionKeys",
+          "items"
+        ],
+        "type": "object"
+      },
+      "GuardrailEvaluationItemRefResponse": {
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "itemVersion": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "itemVersion"
+        ],
+        "type": "object"
+      },
+      "GuardrailEvaluationListItem": {
+        "properties": {
+          "agentSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "caller": {
+            "type": "string"
+          },
+          "checks": {
+            "description": "Per-check results (verdict, score, category, action, model, latency, region keys) — never text.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "consultationId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "allow",
+              "warn",
+              "block",
+              "unverified"
+            ],
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "exempt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "hasWithheldContent": {
+            "description": "An outbound block withheld output (readable only via the admin review route).",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "nodeId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "noticeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "runId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "at",
+          "direction",
+          "decision",
+          "caller",
+          "consultationId",
+          "runId",
+          "nodeId",
+          "agentSlug",
+          "exempt",
+          "policyVersion",
+          "noticeIds",
+          "checks",
+          "hasWithheldContent"
+        ],
+        "type": "object"
+      },
+      "GuardrailEvaluationListResponse": {
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailEvaluationListItem"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "hasMore"
+        ],
+        "type": "object"
+      },
+      "GuardrailEvaluationPageResponse": {
+        "properties": {
+          "consultationId": {
+            "type": "string"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailEvaluationRowResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "consultationId",
+          "items",
+          "nextCursor",
+          "hasMore",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "GuardrailEvaluationRowResponse": {
+        "properties": {
+          "agentSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "at": {
+            "description": "When guardrail decided (ISO-8601).",
+            "type": "string"
+          },
+          "caller": {
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailEvaluationCheckResponse"
+            },
+            "type": "array"
+          },
+          "consultationId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "allow",
+              "warn",
+              "block",
+              "unverified"
+            ],
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "exempt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "hasWithheldContent": {
+            "description": "An outbound block whose output was withheld (read it through the withheld review route).",
+            "type": "boolean"
+          },
+          "nodeId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "noticeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "runId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "runKey": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluationId",
+          "at",
+          "requestId",
+          "consultationId",
+          "runId",
+          "runKey",
+          "nodeId",
+          "agentSlug",
+          "caller",
+          "direction",
+          "decision",
+          "exempt",
+          "policyVersion",
+          "noticeIds",
+          "checks",
+          "hasWithheldContent"
+        ],
+        "type": "object"
+      },
+      "GuardrailHealthModelRow": {
+        "properties": {
+          "lane": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "residency": {
+            "description": "`loaded` | `loading` | `unloading` | `not_loaded` | `unknown`. Read-only (→ /model-residency).",
+            "type": "string"
+          },
+          "slug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "taskKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskKey",
+          "lane",
+          "modelId",
+          "slug",
+          "residency"
+        ],
+        "type": "object"
+      },
+      "GuardrailHealthResponse": {
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "lastEvaluationAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailHealthModelRow"
+            },
+            "type": "array"
+          },
+          "secondsSinceLastEvaluation": {
+            "nullable": true,
+            "type": "number"
+          },
+          "undeterminedRate": {
+            "description": "Share of checks `undetermined` over the last hour; `null` with no checks.",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "models",
+          "undeterminedRate",
+          "lastEvaluationAt",
+          "secondsSinceLastEvaluation"
+        ],
+        "type": "object"
+      },
+      "GuardrailHoldResumeResponse": {
+        "properties": {
+          "acknowledgedNotices": {
+            "description": "On `approve` (TASK-1050): every outstanding guardrail warning the approve acknowledged, in the same transaction. Approve is never refused because of warnings.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailNoticeAcknowledgementResponse"
+            },
+            "type": "array"
+          },
+          "appointmentDate": {
+            "description": "Appointment date (YYYY-MM-DD)",
+            "type": "string"
+          },
+          "approval": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConsultationApprovalResponse"
+              }
+            ],
+            "description": "The latest approval of this consultation while it is approved, or null.",
+            "nullable": true,
+            "type": "object"
+          },
+          "autoCloseAt": {
+            "description": "When the tenant's auto-close policy will close this consultation if nothing else happens (ISO-8601), or null when it is closed or no policy resolves.",
+            "nullable": true,
+            "type": "string"
+          },
+          "closedAt": {
+            "description": "When the consultation was closed (ISO-8601), or null.",
+            "nullable": true,
+            "type": "string"
+          },
+          "closedReason": {
+            "description": "Why the consultation was closed (AUTO, MANUAL, APPROVED), or null while it is not closed.",
+            "enum": [
+              "AUTO",
+              "MANUAL",
+              "APPROVED"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "contextItems": {
+            "description": "Context items (included when fetching single consultation)",
+            "items": {
+              "$ref": "#/components/schemas/ContextItemResponse"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "description": "Creation timestamp",
+            "type": "string"
+          },
+          "currentEncounterSeq": {
+            "description": "The open encounter of this consultation (starts at 1).",
+            "example": 1,
+            "type": "number"
+          },
+          "department": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DepartmentInfo"
+              }
+            ],
+            "description": "Department information"
+          },
+          "departmentId": {
+            "description": "Department ID",
+            "type": "string"
+          },
+          "doctor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DoctorInfo"
+              }
+            ],
+            "description": "Doctor information"
+          },
+          "doctorId": {
+            "description": "Doctor identifier",
+            "type": "string"
+          },
+          "encounterAppended": {
+            "description": "On `open`: whether this call appended a new encounter to an existing consultation.",
+            "example": false,
+            "type": "boolean"
+          },
+          "encounters": {
+            "description": "Every encounter (visit) of this consultation, in order.",
+            "items": {
+              "$ref": "#/components/schemas/EncounterResponse"
+            },
+            "type": "array"
+          },
+          "externalRef": {
+            "description": "The caller's own id of the current encounter, or null. A later `open` with the same id (same patient and clinician) returns this consultation; a new id appends a new encounter to the open consultation of the same patient, clinician and department.",
+            "example": "EVT-88213",
+            "nullable": true,
+            "type": "string"
+          },
+          "governingRun": {
+            "additionalProperties": true,
+            "description": "The tenant-authored workflow run governing this consultation, or null when the default loop does. Always present. `status` is the PERSISTED vocabulary (RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT) — never the interpreter's SUCCEEDED/DEGRADED; `degraded` is a flag on a COMPLETED run.",
+            "nullable": true,
+            "type": "object"
+          },
+          "id": {
+            "description": "Consultation ID",
+            "type": "string"
+          },
+          "isNew": {
+            "description": "Whether this consultation was just created (true) or already existed (false)",
+            "example": true,
+            "type": "boolean"
+          },
+          "language": {
+            "description": "The consultation's declared SOURCE (spoken) language mode (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`), inherited by every live and batch transcription of this consultation that declares none. Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared.",
+            "example": "ml-en",
+            "type": "string"
+          },
+          "lastActivityAt": {
+            "description": "When the consultation last saw activity (ISO-8601) — the auto-close clock reads this.",
+            "type": "string"
+          },
+          "lifecycle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConsultationLifecycleState"
+              }
+            ],
+            "description": "The lifecycle status and processing value. Always the current vocabulary, even when `status` is projected for an older client."
+          },
+          "metadata": {
+            "description": "Additional metadata",
+            "type": "object"
+          },
+          "parentConsultationId": {
+            "description": "Parent consultation ID (for re-visits/referrals)",
+            "type": "string"
+          },
+          "patientId": {
+            "description": "Patient identifier",
+            "type": "string"
+          },
+          "processing": {
+            "description": "What the platform is doing in the background for this consultation.",
+            "enum": [
+              "IDLE",
+              "FINALIZING_TRANSCRIPT",
+              "SUMMARIZING",
+              "PROCESSING_ATTACHMENT",
+              "AWAITING_REVIEW",
+              "FAILED"
+            ],
+            "example": "IDLE",
+            "type": "string"
+          },
+          "processingReason": {
+            "description": "Why processing is FAILED or AWAITING_REVIEW (a note that needs a human), or NOTE_READY when a written note is waiting (processing IDLE); otherwise null.",
+            "nullable": true,
+            "type": "string"
+          },
+          "recordable": {
+            "description": "Whether audio can still be captured into this consultation: true for OPEN, RECORDING, PAUSED and STOPPED, false for APPROVED, CLOSED_COMPLETE and CLOSED_INCOMPLETE. Starting capture on a non-recordable consultation answers 409 `CONSULTATION_NOT_RECORDABLE`; reopen it, or open without the old visit id to start a new consultation.",
+            "example": true,
+            "type": "boolean"
+          },
+          "reopenAllowed": {
+            "description": "Whether `reopen` is offered: always for CLOSED_INCOMPLETE, for CLOSED_COMPLETE only when the tenant's policy allows it, never otherwise.",
+            "example": false,
+            "type": "boolean"
+          },
+          "reopenCount": {
+            "description": "How many times this consultation was reopened.",
+            "example": 0,
+            "type": "number"
+          },
+          "resolvedNoticeId": {
+            "description": "The guardrail.blocked notice this resume resolved.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Lifecycle status (OPEN, RECORDING, PAUSED, STOPPED, APPROVED, CLOSED_COMPLETE, CLOSED_INCOMPLETE). An older client is answered in the previous vocabulary; `lifecycle.status` always carries the current value.",
+            "enum": [
+              "OPEN",
+              "RECORDING",
+              "PAUSED",
+              "STOPPED",
+              "APPROVED",
+              "CLOSED_COMPLETE",
+              "CLOSED_INCOMPLETE"
+            ],
+            "example": "OPEN",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "Last update timestamp",
+            "type": "string"
+          },
+          "version": {
+            "description": "Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`\"<version>\"`) required by the lifecycle routes (POST :id/approve|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header.",
+            "type": "number"
+          },
+          "visitType": {
+            "description": "The visit type of the current encounter. Falls back to the consultation's recorded visit type, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`.",
+            "enum": [
+              "new-visit",
+              "revisit"
+            ],
+            "example": "new-visit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "patientId",
+          "doctorId",
+          "appointmentDate",
+          "recordable",
+          "processing",
+          "processingReason",
+          "lastActivityAt",
+          "autoCloseAt",
+          "reopenCount",
+          "closedReason",
+          "closedAt",
+          "reopenAllowed",
+          "currentEncounterSeq",
+          "encounters",
+          "approval",
+          "lifecycle",
+          "visitType",
+          "externalRef",
+          "createdAt",
+          "updatedAt",
+          "isNew",
+          "resolvedNoticeId"
+        ],
+        "type": "object"
+      },
+      "GuardrailJudgeLaneCandidateResponse": {
+        "properties": {
+          "modelId": {
+            "type": "string"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "protocol": {
+            "description": "`criteria_json` | `qwen3guard_native` | `undeclared` (a legacy guardian row, medical lane only).",
+            "type": "string"
+          },
+          "residency": {
+            "description": "Residency as the model-residency controller reports it (`loaded` | `loading` | `unloading` | `not_loaded` | `unknown`). Read-only; load and unload live on `/model-residency`.",
+            "type": "string"
+          },
+          "servedBy": {
+            "description": "Which service serves it (`servedBy`).",
+            "nullable": true,
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelId",
+          "slug",
+          "name",
+          "protocol",
+          "servedBy",
+          "residency"
+        ],
+        "type": "object"
+      },
+      "GuardrailJudgeLaneResponse": {
+        "properties": {
+          "candidates": {
+            "description": "Every SYSTEM model whose `_metadata.judge` declares this lane.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailJudgeLaneCandidateResponse"
+            },
+            "type": "array"
+          },
+          "lane": {
+            "enum": [
+              "medical_validation",
+              "injection_judge",
+              "unsafe_content_judge",
+              "clinical_safety_judge",
+              "leakage_judge"
+            ],
+            "type": "string"
+          },
+          "policyId": {
+            "description": "The SYSTEM `AiRoutingPolicy` row currently elected for the lane.",
+            "nullable": true,
+            "type": "string"
+          },
+          "selected": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailJudgeLaneCandidateResponse"
+              }
+            ],
+            "description": "The selected model, `null` when none is elected.",
+            "nullable": true,
+            "type": "object"
+          },
+          "taskKey": {
+            "description": "`guardrail.validate` for the medical judge.",
+            "example": "guardrail.judge.injection",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "taskKey",
+          "policyId",
+          "selected",
+          "candidates"
+        ],
+        "type": "object"
+      },
+      "GuardrailJudgeLaneSelection": {
+        "properties": {
+          "lane": {
+            "enum": [
+              "medical_validation",
+              "injection_judge",
+              "unsafe_content_judge",
+              "clinical_safety_judge",
+              "leakage_judge"
+            ],
+            "type": "string"
+          },
+          "modelId": {
+            "description": "A SYSTEM `AiModel.id` whose `_metadata.judge` declares the lane (else 400 `JUDGE_LANE_UNSUPPORTED`). For `medical_validation` a model with NO declaration (a legacy guardian row) is also accepted.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "modelId"
+        ],
+        "type": "object"
+      },
+      "GuardrailJudgeLanesResponse": {
+        "properties": {
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailJudgeLaneResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "lanes"
+        ],
+        "type": "object"
+      },
+      "GuardrailJudgeMetaResponse": {
+        "properties": {
+          "changed": {
+            "description": "False for an idempotent no-op.",
+            "type": "boolean"
+          },
+          "defaultChangedSinceEdit": {
+            "description": "The current declaration differs from `judgeDefaults` AND `judgeDefaults` is not the one the last edit was made against (`_metadata.defaultAtEdit` on that `judge` revision). False for legacy revisions.",
+            "type": "boolean"
+          },
+          "isDefault": {
+            "description": "The current declaration equals the default.",
+            "type": "boolean"
+          },
+          "judge": {
+            "description": "`_metadata.judge` after the operation.",
+            "type": "object"
+          },
+          "judgeDefaults": {
+            "description": "`_metadata.judgeDefaults` (seed-owned); `null` when the seed ships none.",
+            "nullable": true,
+            "type": "object"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "version": {
+            "description": "The model row `_version` (the ETag).",
+            "type": "number"
+          }
+        },
+        "required": [
+          "modelId",
+          "slug",
+          "version",
+          "judge",
+          "judgeDefaults",
+          "isDefault",
+          "defaultChangedSinceEdit"
+        ],
+        "type": "object"
+      },
+      "GuardrailMetricSample": {
+        "properties": {
+          "labels": {
+            "description": "The series labels that identify it (task, model, gate, peer, …).",
+            "type": "object"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "labels",
+          "value"
+        ],
+        "type": "object"
+      },
+      "GuardrailNoticeAckResponse": {
+        "properties": {
+          "acknowledgement": {
+            "$ref": "#/components/schemas/GuardrailNoticeAcknowledgementView"
+          },
+          "notice": {
+            "$ref": "#/components/schemas/GuardrailNoticeResponse"
+          }
+        },
+        "required": [
+          "notice",
+          "acknowledgement"
+        ],
+        "type": "object"
+      },
+      "GuardrailNoticeAcknowledgementResponse": {
+        "properties": {
+          "acknowledgedAt": {
+            "description": "When (ISO-8601).",
+            "type": "string"
+          },
+          "acknowledgedBy": {
+            "description": "The clinician the acknowledgement is attributed to (the approver).",
+            "type": "string"
+          },
+          "acknowledgedVia": {
+            "description": "How it was acknowledged.",
+            "enum": [
+              "ack",
+              "approve",
+              "resume"
+            ],
+            "type": "string"
+          },
+          "noticeId": {
+            "description": "The acknowledged guardrail notice.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "noticeId",
+          "acknowledgedBy",
+          "acknowledgedVia",
+          "acknowledgedAt"
+        ],
+        "type": "object"
+      },
+      "GuardrailNoticeAcknowledgementView": {
+        "properties": {
+          "acknowledgedAt": {
+            "type": "string"
+          },
+          "acknowledgedBy": {
+            "type": "string"
+          },
+          "acknowledgedVia": {
+            "enum": [
+              "ack",
+              "approve",
+              "resume"
+            ],
+            "type": "string"
+          },
+          "noticeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "noticeId",
+          "acknowledgedBy",
+          "acknowledgedVia",
+          "acknowledgedAt"
+        ],
+        "type": "object"
+      },
+      "GuardrailNoticeCheckResponse": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "checkId": {
+            "enum": [
+              "jailbreak_detection",
+              "prompt_safety",
+              "prompt_toxicity",
+              "response_safety",
+              "response_toxicity",
+              "response_refusal",
+              "pii_leak",
+              "containment_echo",
+              "medical_validation",
+              "injection_judge",
+              "unsafe_content_judge",
+              "clinical_safety_judge",
+              "leakage_judge"
+            ],
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkId",
+          "severity"
+        ],
+        "type": "object"
+      },
+      "GuardrailNoticeListResponse": {
+        "properties": {
+          "notices": {
+            "description": "Every OPEN notice plus the most recent acknowledged / resolved ones, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailNoticeResponse"
+            },
+            "type": "array"
+          },
+          "unacknowledgedNoticeIds": {
+            "description": "The notices still awaiting an acknowledgement.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "notices",
+          "unacknowledgedNoticeIds"
+        ],
+        "type": "object"
+      },
+      "GuardrailNoticeResponse": {
+        "properties": {
+          "acknowledgement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailNoticeAcknowledgementView"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "action": {
+            "enum": [
+              "warn",
+              "block"
+            ],
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailNoticeCheckResponse"
+            },
+            "type": "array"
+          },
+          "consultationId": {
+            "type": "string"
+          },
+          "defaultMessage": {
+            "description": "The fixed English label of messageKey — never content.",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "itemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "messageKey": {
+            "enum": [
+              "guardrail.warning.generic",
+              "guardrail.blocked.inbound",
+              "guardrail.blocked.outbound",
+              "guardrail.blocked.not_medical",
+              "guardrail.blocked.redaction_unavailable",
+              "guardrail.unverified.generic"
+            ],
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "noticeId": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "requiresAcknowledgement": {
+            "type": "boolean"
+          },
+          "resolution": {
+            "enum": [
+              "item_excluded",
+              "item_edited",
+              "acknowledged"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "resolvedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "resolvedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "resumable": {
+            "type": "boolean"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "enum": [
+              1
+            ],
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "acknowledged",
+              "resolved"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "guardrail.warning",
+              "guardrail.blocked",
+              "guardrail.unverified"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "noticeId",
+          "type",
+          "direction",
+          "action",
+          "checks",
+          "itemIds",
+          "messageKey",
+          "defaultMessage",
+          "requiresAcknowledgement",
+          "resumable",
+          "policyVersion",
+          "occurredAt",
+          "status",
+          "acknowledgement",
+          "resolution",
+          "resolvedBy",
+          "resolvedAt"
+        ],
+        "type": "object"
+      },
+      "GuardrailPerformanceResponse": {
+        "properties": {
+          "admissionRejectionsPerSecond": {
+            "description": "Admission rejections per second, per gate.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "at": {
+            "type": "string"
+          },
+          "available": {
+            "description": "False when Prometheus answered nothing at all (every series below then empty / null).",
+            "type": "boolean"
+          },
+          "circuitBreakers": {
+            "description": "0 closed, 1 half-open, 2 open, per peer.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "evaluationsMissing": {
+            "description": "`guardrail_evaluation_missing_total` (the reconciler gauge).",
+            "nullable": true,
+            "type": "number"
+          },
+          "judgeCallsPerSecond": {
+            "description": "Medical-judge verdicts per second (5 m rate).",
+            "nullable": true,
+            "type": "number"
+          },
+          "modelLatencyP50": {
+            "description": "p50 inference latency (s) per guardrail model.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "modelLatencyP95": {
+            "description": "p95 inference latency (s) per guardrail model.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "outbox": {
+            "description": "Every `guardrail_evaluation_outbox_*` series (label `__name__` names it).",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "peerCallsPerSecond": {
+            "description": "Delegated peer calls per second (the judge lanes ride text / nlp), per peer and operation.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "peerFailuresPerSecond": {
+            "description": "Peer failures per second, per peer and reason.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "queueDepth": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "windowCacheHitRatio": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "windowLatencyP50": {
+            "description": "p50 screen-window latency (s) per task.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          },
+          "windowLatencyP95": {
+            "description": "p95 screen-window latency (s) per task.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailMetricSample"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "at",
+          "available",
+          "windowLatencyP50",
+          "windowLatencyP95",
+          "modelLatencyP50",
+          "modelLatencyP95",
+          "judgeCallsPerSecond",
+          "peerCallsPerSecond",
+          "queueDepth",
+          "admissionRejectionsPerSecond",
+          "circuitBreakers",
+          "peerFailuresPerSecond",
+          "windowCacheHitRatio",
+          "evaluationsMissing",
+          "outbox"
+        ],
+        "type": "object"
+      },
       "GuardrailPolicyCatalogueEntryResponse": {
         "properties": {
+          "allowedActions": {
+            "description": "the actions a platform admin may set.",
+            "items": {
+              "enum": [
+                "ignore",
+                "warn",
+                "block"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "defaultEnabled": {
+            "description": "the platform default on/off.",
+            "type": "boolean"
+          },
           "description": {
             "type": "string"
           },
@@ -12947,6 +14893,24 @@
           "label": {
             "type": "string"
           },
+          "locked": {
+            "description": "catalogue lock: always on at its default action, editable by nobody.",
+            "type": "boolean"
+          },
+          "platformDefaultAction": {
+            "description": "the action when no tier sets one.",
+            "enum": [
+              "ignore",
+              "warn",
+              "block"
+            ],
+            "type": "string"
+          },
+          "platformDefaultDataRegionAction": {
+            "description": "inbound DATA-region action default (OD-12); null where it does not apply.",
+            "nullable": true,
+            "type": "string"
+          },
           "threshold": {
             "additionalProperties": true,
             "description": "The strictness field this policy accepts, and which direction TIGHTENS it. Absent ⇒ the policy is on/off only.",
@@ -12958,7 +14922,574 @@
           "id",
           "label",
           "description",
-          "directions"
+          "directions",
+          "allowedActions",
+          "platformDefaultAction",
+          "locked",
+          "defaultEnabled"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyKeyEntryResponse": {
+        "properties": {
+          "currentValue": {
+            "description": "`_metadata.policy[key]`; `null` when unset.",
+            "nullable": true,
+            "type": "object"
+          },
+          "defaultChangedSinceEdit": {
+            "description": "README §11.3 C — \"default changed since your edit\": the current value differs from the default AND the default is not the one the last edit / restore was made against (`_metadata.defaultAtEdit` on that revision). False for revisions written before the capture existed.",
+            "type": "boolean"
+          },
+          "defaultSource": {
+            "description": "`seed`: the default is seed-owned (`policyDefaults` / `labelTaxonomyDefaults`). `current`: a label threshold with no seeded default yet — the current value is reported as the default. `null`: none.",
+            "enum": [
+              "seed",
+              "current"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "defaultValue": {
+            "description": "`_metadata.policyDefaults[key]` (seed-owned, never written by the API); `null` when the seed ships none.",
+            "nullable": true,
+            "type": "object"
+          },
+          "editable": {
+            "description": "Writable through `PUT admin/guardrail/policy-keys/:key`.",
+            "type": "boolean"
+          },
+          "failMode": {
+            "description": "`closed` | `open-to-default`.",
+            "type": "string"
+          },
+          "inPolicyVersion": {
+            "description": "A change re-screens (busts the window-verdict cache).",
+            "type": "boolean"
+          },
+          "isDefault": {
+            "description": "The current value equals the default (both absent counts as equal).",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "A catalogue key (`_metadata.policy`), or a classifier threshold inside `_metadata.labelTaxonomy`: `labelTaxonomy.threshold` / `labelTaxonomy.tasks.<task>.cls_threshold` (single-key routes then need `?taskKey=`).",
+            "example": "judgeTemperature",
+            "type": "string"
+          },
+          "kind": {
+            "description": "`criteria` | `hyperparameter` | `threshold` | `geometry` | `operational`.",
+            "type": "string"
+          },
+          "lane": {
+            "description": "The safety-judge lane whose template a criteria key follows, else `null`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastRevision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailPolicyRevisionSummaryResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "max": {
+            "description": "Inclusive upper bound from the catalogue; `null` when unbounded.",
+            "nullable": true,
+            "type": "number"
+          },
+          "min": {
+            "description": "Inclusive lower bound from the catalogue; `null` when unbounded.",
+            "nullable": true,
+            "type": "number"
+          },
+          "modelId": {
+            "description": "The SYSTEM model row (`AiModel.id`) the key lives on; `null` when the task key elects no model.",
+            "nullable": true,
+            "type": "string"
+          },
+          "modelSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelVersion": {
+            "description": "The model row `_version`: send it as `If-Match` on `PUT`.",
+            "nullable": true,
+            "type": "number"
+          },
+          "taskKey": {
+            "description": "The `AiRoutingPolicy` task key of the SYSTEM model row the key lives on.",
+            "example": "guardrail.validate",
+            "type": "string"
+          },
+          "type": {
+            "description": "`string` | `number` | `integer` | `boolean` | `string[]` | `object`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "type",
+          "min",
+          "max",
+          "failMode",
+          "taskKey",
+          "inPolicyVersion",
+          "editable",
+          "lane",
+          "modelId",
+          "modelSlug",
+          "modelVersion",
+          "currentValue",
+          "defaultValue",
+          "isDefault",
+          "defaultChangedSinceEdit",
+          "lastRevision"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyKeyGroupResponse": {
+        "properties": {
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailPolicyKeyEntryResponse"
+            },
+            "type": "array"
+          },
+          "lane": {
+            "description": "The judge lane this task key selects a model for, else `null`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "modelId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelVersion": {
+            "nullable": true,
+            "type": "number"
+          },
+          "protocol": {
+            "description": "`_metadata.judge.protocol` of the model, when it declares one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "taskKey": {
+            "example": "guardrail.validate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskKey",
+          "lane",
+          "modelId",
+          "modelSlug",
+          "modelVersion",
+          "protocol",
+          "keys"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyKeyResponse": {
+        "properties": {
+          "changed": {
+            "description": "False for an idempotent no-op (the value already equalled the target); no revision was appended.",
+            "type": "boolean"
+          },
+          "currentValue": {
+            "description": "`_metadata.policy[key]`; `null` when unset.",
+            "nullable": true,
+            "type": "object"
+          },
+          "defaultChangedSinceEdit": {
+            "description": "README §11.3 C — \"default changed since your edit\": the current value differs from the default AND the default is not the one the last edit / restore was made against (`_metadata.defaultAtEdit` on that revision). False for revisions written before the capture existed.",
+            "type": "boolean"
+          },
+          "defaultSource": {
+            "description": "`seed`: the default is seed-owned (`policyDefaults` / `labelTaxonomyDefaults`). `current`: a label threshold with no seeded default yet — the current value is reported as the default. `null`: none.",
+            "enum": [
+              "seed",
+              "current"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "defaultValue": {
+            "description": "`_metadata.policyDefaults[key]` (seed-owned, never written by the API); `null` when the seed ships none.",
+            "nullable": true,
+            "type": "object"
+          },
+          "editable": {
+            "description": "Writable through `PUT admin/guardrail/policy-keys/:key`.",
+            "type": "boolean"
+          },
+          "failMode": {
+            "description": "`closed` | `open-to-default`.",
+            "type": "string"
+          },
+          "inPolicyVersion": {
+            "description": "A change re-screens (busts the window-verdict cache).",
+            "type": "boolean"
+          },
+          "isDefault": {
+            "description": "The current value equals the default (both absent counts as equal).",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "A catalogue key (`_metadata.policy`), or a classifier threshold inside `_metadata.labelTaxonomy`: `labelTaxonomy.threshold` / `labelTaxonomy.tasks.<task>.cls_threshold` (single-key routes then need `?taskKey=`).",
+            "example": "judgeTemperature",
+            "type": "string"
+          },
+          "kind": {
+            "description": "`criteria` | `hyperparameter` | `threshold` | `geometry` | `operational`.",
+            "type": "string"
+          },
+          "lane": {
+            "description": "The safety-judge lane whose template a criteria key follows, else `null`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastRevision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailPolicyRevisionSummaryResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "max": {
+            "description": "Inclusive upper bound from the catalogue; `null` when unbounded.",
+            "nullable": true,
+            "type": "number"
+          },
+          "min": {
+            "description": "Inclusive lower bound from the catalogue; `null` when unbounded.",
+            "nullable": true,
+            "type": "number"
+          },
+          "modelId": {
+            "description": "The SYSTEM model row (`AiModel.id`) the key lives on; `null` when the task key elects no model.",
+            "nullable": true,
+            "type": "string"
+          },
+          "modelSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelVersion": {
+            "description": "The model row `_version`: send it as `If-Match` on `PUT`.",
+            "nullable": true,
+            "type": "number"
+          },
+          "revisionId": {
+            "description": "The revision this write appended, when it changed something.",
+            "nullable": true,
+            "type": "string"
+          },
+          "taskKey": {
+            "description": "The `AiRoutingPolicy` task key of the SYSTEM model row the key lives on.",
+            "example": "guardrail.validate",
+            "type": "string"
+          },
+          "type": {
+            "description": "`string` | `number` | `integer` | `boolean` | `string[]` | `object`.",
+            "type": "string"
+          },
+          "version": {
+            "description": "The model row `_version` after the operation (also the strong ETag).",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "type",
+          "min",
+          "max",
+          "failMode",
+          "taskKey",
+          "inPolicyVersion",
+          "editable",
+          "lane",
+          "modelId",
+          "modelSlug",
+          "modelVersion",
+          "currentValue",
+          "defaultValue",
+          "isDefault",
+          "defaultChangedSinceEdit",
+          "lastRevision",
+          "version"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyKeysResponse": {
+        "properties": {
+          "catalogueAvailable": {
+            "description": "False when the catalogue artifact is unavailable (then no key is writable).",
+            "type": "boolean"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailPolicyKeyGroupResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "catalogueAvailable",
+          "groups"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyLaneResetResponse": {
+        "properties": {
+          "resetKeys": {
+            "description": "Keys whose current value changed (each has a new `reset` revision).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedKeys": {
+            "description": "Keys skipped: already at default, no default shipped, or not editable.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "taskKey": {
+            "description": "The task key (model row) that was reset.",
+            "type": "string"
+          },
+          "version": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "taskKey",
+          "version",
+          "resetKeys",
+          "skippedKeys"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyRevisionResponse": {
+        "properties": {
+          "actorId": {
+            "description": "The user who wrote it.",
+            "type": "string"
+          },
+          "aiModelId": {
+            "type": "string"
+          },
+          "at": {
+            "description": "ISO-8601 UTC.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Revision id (uuidv7).",
+            "type": "string"
+          },
+          "policyKey": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "`edit` | `reset` | `restore` | `seed`.",
+            "example": "edit",
+            "type": "string"
+          },
+          "restoredFromRevisionId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "value": {
+            "description": "The value this revision set.",
+            "type": "object"
+          },
+          "valueHash": {
+            "description": "sha256 (hex) of the canonical JSON of the value.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason",
+          "actorId",
+          "at",
+          "valueHash",
+          "aiModelId",
+          "policyKey",
+          "value",
+          "restoredFromRevisionId"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyRevisionSummaryResponse": {
+        "properties": {
+          "actorId": {
+            "description": "The user who wrote it.",
+            "type": "string"
+          },
+          "at": {
+            "description": "ISO-8601 UTC.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Revision id (uuidv7).",
+            "type": "string"
+          },
+          "reason": {
+            "description": "`edit` | `reset` | `restore` | `seed`.",
+            "example": "edit",
+            "type": "string"
+          },
+          "valueHash": {
+            "description": "sha256 (hex) of the canonical JSON of the value.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason",
+          "actorId",
+          "at",
+          "valueHash"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyRevisionsResponse": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "modelId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "revisions": {
+            "description": "Newest first.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailPolicyRevisionResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "modelId",
+          "revisions"
+        ],
+        "type": "object"
+      },
+      "GuardrailScreenCheckResponse": {
+        "properties": {
+          "action": {
+            "description": "The action the rules set for a violation (`ignore` | `warn` | `block`).",
+            "nullable": true,
+            "type": "string"
+          },
+          "actionTaken": {
+            "description": "What this screen actually did for this check.",
+            "nullable": true,
+            "type": "string"
+          },
+          "category": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "The check id.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "A machine reason code, when the check gives one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "score": {
+            "nullable": true,
+            "type": "number"
+          },
+          "verdict": {
+            "description": "`pass` | `flag` | `undetermined` | `skipped`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "verdict"
+        ],
+        "type": "object"
+      },
+      "GuardrailScreenRegionRequest": {
+        "properties": {
+          "key": {
+            "description": "Region key (an `EXTERNAL_DATA` section name, or `user` / `system`).",
+            "example": "transcript",
+            "type": "string"
+          },
+          "text": {
+            "description": "The region text.",
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "trust": {
+            "description": "`instruction` decides; `data` is clinical content (inbound only).",
+            "enum": [
+              "instruction",
+              "data"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "text",
+          "trust"
+        ],
+        "type": "object"
+      },
+      "GuardrailWithheldContentResponse": {
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "consultationId": {
+            "type": "string"
+          },
+          "content": {
+            "description": "The withheld generation, decrypted.",
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "noticeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "policyVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluationId",
+          "consultationId",
+          "at",
+          "policyVersion",
+          "noticeIds",
+          "content"
         ],
         "type": "object"
       },
@@ -17150,7 +19681,9 @@
             "enum": [
               "NO_SIZE",
               "OVER_BUDGET",
-              "ALREADY_LOADED"
+              "ALREADY_LOADED",
+              "LOAD_IN_PROGRESS",
+              "IN_FLIGHT"
             ],
             "nullable": true,
             "type": "string"
@@ -18508,10 +21041,38 @@
       },
       "ModelServingFactsRequest": {
         "properties": {
+          "contextLength": {
+            "description": "LM Studio load-time context window (tokens).",
+            "example": 16384,
+            "maximum": 1048576,
+            "minimum": 512,
+            "type": "number"
+          },
           "enforceEager": {
             "description": "vLLM `enforce_eager` — disable CUDA graphs (less VRAM, slower). Omit for the engine default.",
             "example": false,
             "type": "boolean"
+          },
+          "flashAttention": {
+            "description": "LM Studio flash attention. Required for a quantized V-cache.",
+            "example": true,
+            "type": "boolean"
+          },
+          "gpuSplit": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModelServingGpuSplitRequest"
+              }
+            ],
+            "description": "Per-model GPU placement. Replaces the stored block whole."
+          },
+          "kvCacheQuant": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModelServingKvCacheQuantRequest"
+              }
+            ],
+            "description": "KV-cache element types. Replaces the stored block whole."
           },
           "maxNumSeqs": {
             "description": "vLLM `max_num_seqs` — the concurrent sequences one engine batches. Omit for the engine default.",
@@ -18519,15 +21080,19 @@
             "minimum": 1,
             "type": "number"
           },
+          "parallel": {
+            "description": "LM Studio concurrent sequences for this model.",
+            "example": 10,
+            "maximum": 64,
+            "minimum": 1,
+            "type": "number"
+          },
           "vramGiB": {
-            "description": "GiB of GPU memory one engine of this model claims inside its pool`s `vramBudgetGiB` (`vllm.pools`). Must be greater than 0.",
+            "description": "GiB of GPU memory one engine of this model claims inside its pool`s `vramBudgetGiB` (`vllm.pools`). Must be greater than 0. Required unless the body names only LM Studio fields.",
             "example": 5,
             "type": "number"
           }
         },
-        "required": [
-          "vramGiB"
-        ],
         "type": "object"
       },
       "ModelServingFactsResponse": {
@@ -18557,6 +21122,74 @@
           "enforceEager",
           "derived"
         ],
+        "type": "object"
+      },
+      "ModelServingGpuSplitRequest": {
+        "properties": {
+          "disabledGpus": {
+            "description": "GPU indices the model must not touch: distinct whole indices.",
+            "example": [
+              1
+            ],
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "priority": {
+            "description": "Device order for `priorityOrder`: distinct whole GPU indices.",
+            "example": [
+              0
+            ],
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "strategy": {
+            "description": "How the model is spread over the visible GPUs.",
+            "enum": [
+              "custom",
+              "evenly",
+              "priorityOrder",
+              "tensor"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ModelServingKvCacheQuantRequest": {
+        "properties": {
+          "k": {
+            "description": "K-cache element type.",
+            "enum": [
+              "f32",
+              "f16",
+              "q8_0",
+              "q5_1",
+              "q5_0",
+              "q4_1",
+              "q4_0",
+              "iq4_nl"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "description": "V-cache element type. A quantized V-cache needs flash attention (checked when the profile is resolved).",
+            "enum": [
+              "f32",
+              "f16",
+              "q8_0",
+              "q5_1",
+              "q5_0",
+              "q4_1",
+              "q4_0",
+              "iq4_nl"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ModelUsageResponse": {
@@ -23982,6 +26615,32 @@
         ],
         "type": "object"
       },
+      "ResumeGuardrailHoldRequest": {
+        "properties": {
+          "clinicianUserId": {
+            "description": "The clinician the act is attributed to. REQUIRED for a machine credential (API key / service account) — a machine is never the clinician; a human may name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN, and omits it to act as themselves.",
+            "type": "string"
+          },
+          "noticeId": {
+            "description": "The guardrail.blocked notice that holds the consultation.",
+            "type": "string"
+          },
+          "resolution": {
+            "description": "`item_excluded` — leave the flagged items out of every later LLM context; `item_edited` — the clinician corrected them (a newer version is required); `acknowledged` — proceed once at warn weight (a SAFETY_OVERRIDE), not offered for a check whose platform floor is block.",
+            "enum": [
+              "item_excluded",
+              "item_edited",
+              "acknowledged"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "noticeId",
+          "resolution"
+        ],
+        "type": "object"
+      },
       "RevealGlobalSettingRequest": {
         "properties": {
           "password": {
@@ -24751,6 +27410,86 @@
           "nextExecution",
           "timeZone",
           "settingsKey"
+        ],
+        "type": "object"
+      },
+      "ScreenGuardrailRulesRequest": {
+        "properties": {
+          "direction": {
+            "description": "`inbound` screens a request; `outbound` screens a response.",
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "regions": {
+            "description": "Inbound: the content as regions (then `text` must be empty). Outbound: the source regions the response is checked against.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailScreenRegionRequest"
+            },
+            "type": "array"
+          },
+          "text": {
+            "description": "Inbound: the content to screen (empty when `regions` is given). Outbound: the response to screen.",
+            "maxLength": 20000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "text"
+        ],
+        "type": "object"
+      },
+      "ScreenGuardrailRulesResponse": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailScreenCheckResponse"
+            },
+            "type": "array"
+          },
+          "decision": {
+            "description": "The four-way guardrail decision.",
+            "enum": [
+              "allow",
+              "warn",
+              "block",
+              "unverified"
+            ],
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "evaluationId": {
+            "description": "The guardrail evaluation record id (recorded with caller `playground`).",
+            "nullable": true,
+            "type": "string"
+          },
+          "notices": {
+            "description": "The `GuardrailNotice` v1 objects this screen raised (PHI-free, fixed messages).",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "policyVersion": {
+            "description": "The guardrail policy version the verdict was decided under.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "decision",
+          "checks",
+          "notices"
         ],
         "type": "object"
       },
@@ -27364,6 +30103,43 @@
         ],
         "type": "object"
       },
+      "TenantGuardrailPolicyResponse": {
+        "properties": {
+          "checks": {
+            "description": "Every catalogue check, in catalogue order.",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailCheckStateResponse"
+            },
+            "type": "array"
+          },
+          "directions": {
+            "$ref": "#/components/schemas/GuardrailDirectionsResponse"
+          },
+          "tenantId": {
+            "description": "The tenant these rules govern (the caller tenant, or a super admin`s working tenant).",
+            "type": "string"
+          },
+          "updatedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "description": "Optimistic-concurrency version of the tenant row. `0` = no row yet — `If-Match: \"0\"` creates it.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantId",
+          "version",
+          "directions",
+          "checks"
+        ],
+        "type": "object"
+      },
       "TenantIdpConfigResponse": {
         "properties": {
           "config": {
@@ -29146,7 +31922,7 @@
           },
           "policies": {
             "additionalProperties": true,
-            "description": "Selected policies, keyed by policy id: `{ \"pii_leak\": { \"enabled\": true, \"minScore\": 0.2 } }`. Unknown ids are REFUSED (400). An empty object means \"no opinion\" and inherits the SYSTEM set — it is not an off switch.",
+            "description": "The tenant's whole guardrail policy row (v2): `{ \"directions\": { \"inbound\": { \"enabled\": true } }, \"checks\": { \"<id>\": { \"enabled\", \"action\", \"locked\", \"minScore\", \"dataRegionAction\" } } }` — every field optional (an absent field follows SYSTEM, then the catalogue). The legacy flat shape `{ \"pii_leak\": { \"enabled\": true, \"minScore\": 0.2 } }` is still accepted and stored as v2. Unknown ids are REFUSED (400). `{}` means \"no opinion\".",
             "type": "object"
           },
           "reason": {
@@ -29156,6 +31932,65 @@
         },
         "required": [
           "policies"
+        ],
+        "type": "object"
+      },
+      "UpdateGuardrailJudgeLanesRequest": {
+        "properties": {
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailJudgeLaneSelection"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "selections"
+        ],
+        "type": "object"
+      },
+      "UpdateGuardrailJudgeMetaRequest": {
+        "properties": {
+          "categoryMap": {
+            "description": "Native category → `{ lane, category }`. Replaces the stored map when present. Unmapped native categories are ignored by guardrail.",
+            "example": {
+              "Jailbreak": {
+                "category": "instruction_override",
+                "lane": "injection_judge"
+              }
+            },
+            "type": "object"
+          },
+          "expectedVersion": {
+            "description": "The model row version the client read. The `If-Match` header overrides it.",
+            "type": "number"
+          },
+          "tiers": {
+            "description": "`{ Safe: \"pass\", Controversial: \"pass\" | \"warn\" | \"block\", Unsafe: \"flag\" }`. Replaces the stored tiers when present.",
+            "example": {
+              "Controversial": "warn",
+              "Safe": "pass",
+              "Unsafe": "flag"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateGuardrailPolicyKeyRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "The model row version the client read. The `If-Match` header overrides it.",
+            "type": "number"
+          },
+          "value": {
+            "description": "The new value. Validated against the catalogue entry (type, bounds) and, for a safety-judge criteria key, the judge template (locked sections, lane categories).",
+            "example": 0.05,
+            "type": "object"
+          }
+        },
+        "required": [
+          "value"
         ],
         "type": "object"
       },
@@ -30260,6 +33095,25 @@
         "required": [
           "expectedVersion"
         ],
+        "type": "object"
+      },
+      "UpdateTenantGuardrailPolicyRequest": {
+        "properties": {
+          "checks": {
+            "additionalProperties": true,
+            "description": "Per check on/off: `{ \"unsafe_content_judge\": { \"enabled\": true } }`. Keyed by catalogue id.",
+            "type": "object"
+          },
+          "directions": {
+            "additionalProperties": true,
+            "description": "Per direction on/off: `{ \"inbound\": { \"enabled\": false } }`. Off = monitor only (still screened and recorded).",
+            "type": "object"
+          },
+          "expectedVersion": {
+            "description": "Version read from the prior GET. Normally supplied by `If-Match` (`\"0\"` creates the row); the header wins.",
+            "type": "number"
+          }
+        },
         "type": "object"
       },
       "UpdateTenantIdpConfigRequest": {
@@ -41551,6 +44405,198 @@
         ]
       }
     },
+    "/api/v1/admin/consultations/{id}/guardrail-evaluations": {
+      "get": {
+        "description": "One row per guardrail evaluation (request × direction), newest first, keyset-paged: decision, per-check verdicts, models, latencies, the regions and items screened, and the notices raised. No content and no judge reasoning. Filters: `action` (the decision), `direction`, `check`, `runId`, `runKey`.",
+        "operationId": "AdminGuardrailEvaluationController_list",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The `nextCursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "The evaluation`s decision.",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "enum": [
+                "allow",
+                "warn",
+                "block",
+                "unverified"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "enum": [
+                "inbound",
+                "outbound"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only evaluations that ran this check.",
+            "in": "query",
+            "name": "check",
+            "required": false,
+            "schema": {
+              "enum": [
+                "jailbreak_detection",
+                "prompt_safety",
+                "prompt_toxicity",
+                "response_safety",
+                "response_toxicity",
+                "response_refusal",
+                "pii_leak",
+                "containment_echo",
+                "medical_validation",
+                "injection_judge",
+                "unsafe_content_judge",
+                "clinical_safety_judge",
+                "leakage_judge"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only the evaluations of this workflow run.",
+            "in": "query",
+            "name": "runId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only the evaluations of this AI activity run (`AiActivityRun.runKey`).",
+            "in": "query",
+            "name": "runKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailEvaluationPageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid filter, limit or cursor."
+          },
+          "404": {
+            "description": "No such consultation in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List a consultation`s guardrail evaluations",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{id}/guardrail-evaluations/{evaluationId}/withheld": {
+      "get": {
+        "description": "The generation a guardrail block kept from the client, decrypted from Vault-Transit ciphertext, for false-positive review. Never returned on the business plane and never fed to a later run. Audited.",
+        "operationId": "AdminGuardrailEvaluationController_withheld",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Guardrail evaluation ID",
+            "in": "path",
+            "name": "evaluationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailWithheldContentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`GUARDRAIL_WITHHELD_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such consultation or evaluation in this tenant, or nothing was withheld."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read the output an outbound guardrail block withheld, decrypted",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
     "/api/v1/admin/consultations/{id}/items/{itemId}/runs": {
       "get": {
         "description": "The run that produced `version` (the current one when absent); empty when none is recorded. Audited.",
@@ -44241,7 +47287,7 @@
         ]
       },
       "put": {
-        "description": "Availability SELECTS policies; it can never disable the gate. An empty selection means \"no opinion\" and inherits the SYSTEM set, and a selection that would leave a screening direction ungated is REFUSED (400). A threshold weaker than the SYSTEM row's is REFUSED (403) rather than silently clamped. `If-Match` carries the version from the prior GET: `\"0\"` creates the row, an existing version CASes against `_version`.",
+        "description": "Writes the tenant's whole policy row in the v2 shape `{ directions, checks: { <id>: { enabled, action, locked, minScore, dataRegionAction } } }` (the legacy flat shape is still accepted and rewritten as v2). Every field is optional and an absent one follows SYSTEM, then the catalogue. `locked: true` stops the tenant changing that check on `admin/guardrail/policy`. It can never disable the gate: a policy that would leave a screening direction with no check is REFUSED (400), and the medical-domain check is editable by nobody (403 `GUARDRAIL_CHECK_LOCKED`). A threshold weaker than the SYSTEM row's is REFUSED (403) rather than silently clamped. A committed write reaches guardrail at once (cache invalidation). `If-Match` carries the version from the prior GET: `\"0\"` creates the row, an existing version CASes against `_version`.",
         "operationId": "GuardrailAvailabilityController_putForTenant",
         "parameters": [
           {
@@ -44289,7 +47335,7 @@
             "description": "Unknown policy id, malformed selection, or a selection that would leave a direction ungated."
           },
           "403": {
-            "description": "Caller is not a super administrator, or the selection would LOOSEN a policy below the platform floor."
+            "description": "Caller is not a super administrator, the selection would LOOSEN a policy below the platform floor, or it changes the locked medical check (`GUARDRAIL_CHECK_LOCKED`)."
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
@@ -44304,6 +47350,1205 @@
           }
         ],
         "summary": "Replace one tenant's guardrail availability under optimistic concurrency — SUPER_ADMIN only",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/dry-run": {
+      "post": {
+        "description": "Validates the draft values exactly as a save would, checks that each lane`s model is RESIDENT (never loads one — OD-35), then runs guardrail`s `POST /api/v1/guardrail/judge/dry-run` as SYSTEM. Answers per sample, per lane, with latency. Persists nothing.",
+        "operationId": "GuardrailPolicyController_dryRun",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailDryRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailDryRunResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_POLICY_VALUE_INVALID`, `GUARDRAIL_JUDGE_META_INVALID`, `GUARDRAIL_DRY_RUN_REJECTED`, or an invalid body."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "409": {
+            "description": "`MODEL_NOT_RESIDENT` — `{ link: \"/model-residency\", models: [{ lane, modelId, slug, state }] }`."
+          },
+          "503": {
+            "description": "`GUARDRAIL_DRY_RUN_UNAVAILABLE`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Dry-run draft judge configuration on samples against the live judge",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/judge-lanes": {
+      "get": {
+        "description": "Per lane: its routing task key (`guardrail.judge.*`), the elected SYSTEM row and model, and every SYSTEM model whose `_metadata.judge` declares the lane, with protocol, `servedBy` and read-only residency (load / unload live on `/model-residency`).",
+        "operationId": "GuardrailPolicyController_lanes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailJudgeLanesResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The judge model per safety-judge lane, with the selectable candidates",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      },
+      "put": {
+        "description": "Every selection is validated before any is written: the model must be a SYSTEM model whose `_metadata.judge` declares the lane, else 400 `JUDGE_LANE_UNSUPPORTED` (`medical_validation` also accepts a legacy guardian row with no declaration, and refuses one that declares other lanes only). A changed lane gets a new SYSTEM `AiRoutingPolicy` revision (create → activate → elect) and the invalidation publish; an unchanged one writes nothing. Lanes not named are untouched.",
+        "operationId": "GuardrailPolicyController_selectLanes",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGuardrailJudgeLanesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailJudgeLanesResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`JUDGE_LANE_UNSUPPORTED`, or an invalid body."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "Unknown or non-platform model."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Select the judge model for one or more lanes",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta": {
+      "get": {
+        "description": "`_metadata.judge` and `_metadata.judgeDefaults` of a SYSTEM judge model, `version` (the model row `_version`, also the ETag to send as `If-Match` on the PUT), `isDefault`, and `defaultChangedSinceEdit` (the seed moved the default since the last edit).",
+        "operationId": "GuardrailPolicyController_getJudgeMeta",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modelId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailJudgeMetaResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "No SYSTEM model with a judge declaration."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read a judge model`s declaration and its default",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      },
+      "put": {
+        "description": "The editable half of `_metadata.judge` on a SYSTEM judge model (README §12.2): `categoryMap` and/or `tiers`. `protocol` and `lanes` are its capability declaration and are not editable. The merged declaration is validated with `judgeMetadataProblems`; written under a compare-and-set on the model row with a `judge` revision, a sys-event and the invalidation publish for the lanes it declares.",
+        "operationId": "GuardrailPolicyController_updateJudgeMeta",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modelId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator: the model row `_version` from the prior read (the key entry `modelVersion`, or the `ETag`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGuardrailJudgeMetaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailJudgeMetaResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_JUDGE_META_INVALID` (with `problems`)."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "No SYSTEM model with a judge declaration."
+          },
+          "412": {
+            "description": "The model row changed since it was read."
+          },
+          "428": {
+            "description": "If-Match is required."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Change a native guard`s category map and tier mapping",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta/reset": {
+      "post": {
+        "description": "Copies `_metadata.judgeDefaults` (seed-owned) into `_metadata.judge`.",
+        "operationId": "GuardrailPolicyController_resetJudgeMeta",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modelId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailJudgeMetaResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "No SYSTEM model with a judge declaration."
+          },
+          "409": {
+            "description": "`GUARDRAIL_JUDGE_DEFAULT_MISSING`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Reset a native guard`s mapping to its default",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/metrics/activity": {
+      "get": {
+        "description": "From `GuardrailEvaluation` (one row per generation request × direction): decisions per bucket × direction, totals (warn / block / unverified / override counts and the flag rate), per-check verdict × action counts, top flagged categories, per-tenant and per-model breakdowns. Default window: the last 24 h in 1 h buckets; at most 31 days and 2,000 buckets. No content is read.",
+        "operationId": "GuardrailMetricsController_activity",
+        "parameters": [
+          {
+            "description": "ISO-8601 start (inclusive). Default: 24 h before `to`.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ISO-8601 end (exclusive). Default: now.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Series bucket width. Default `1h`.",
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "enum": [
+                "5m",
+                "1h",
+                "1d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Narrow to one tenant. Absent = every tenant (platform view).",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailActivityResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_METRICS_WINDOW_INVALID` or `GUARDRAIL_METRICS_TOO_MANY_BUCKETS`."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail monitoring is platform-wide and tenant-less)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Guardrail activity across tenants",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/metrics/evaluations": {
+      "get": {
+        "description": "Keyset-paged, newest first, filterable by tenant, decision, direction, check and consultation. Per-check results only — never the judged text; an outbound block reports `hasWithheldContent` and its output stays behind the admin review route.",
+        "operationId": "GuardrailMetricsController_evaluations",
+        "parameters": [
+          {
+            "description": "ISO-8601 start (inclusive). Default: 24 h before `to`.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ISO-8601 end (exclusive). Default: now.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Series bucket width. Default `1h`.",
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "enum": [
+                "5m",
+                "1h",
+                "1d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Narrow to one tenant. Absent = every tenant (platform view).",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "decision",
+            "required": false,
+            "schema": {
+              "enum": [
+                "allow",
+                "warn",
+                "block",
+                "unverified"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "enum": [
+                "inbound",
+                "outbound"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only evaluations that ran this check.",
+            "in": "query",
+            "name": "checkId",
+            "required": false,
+            "schema": {
+              "enum": [
+                "jailbreak_detection",
+                "prompt_safety",
+                "prompt_toxicity",
+                "response_safety",
+                "response_toxicity",
+                "response_refusal",
+                "pii_leak",
+                "containment_echo",
+                "medical_validation",
+                "injection_judge",
+                "unsafe_content_judge",
+                "clinical_safety_judge",
+                "leakage_judge"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "consultationId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque keyset cursor from a previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailEvaluationListResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_METRICS_WINDOW_INVALID`, `GUARDRAIL_METRICS_CURSOR_INVALID`, or an invalid filter."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail monitoring is platform-wide and tenant-less)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Guardrail evaluations (drill-down)",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/metrics/health": {
+      "get": {
+        "description": "Residency of the model each guardrail task key elects (read-only), the undetermined rate over the last hour, and the time since the last evaluation.",
+        "operationId": "GuardrailMetricsController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailHealthResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail monitoring is platform-wide and tenant-less)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Guardrail health",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/metrics/performance": {
+      "get": {
+        "description": "Screen-window and model latency p50/p95, judge and peer call rates, queue depth, admission rejections, circuit-breaker state, peer failures, window-cache hit ratio, `guardrail_evaluation_missing_total` and the evaluation outbox series. `available: false` when Prometheus answers nothing — never a 5xx.",
+        "operationId": "GuardrailMetricsController_performance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPerformanceResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail monitoring is platform-wide and tenant-less)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Guardrail performance (fixed PromQL)",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/policy": {
+      "get": {
+        "description": "Every guardrail check as it is IN FORCE for the tenant (tenant row → SYSTEM row → catalogue, field by field): on/off, the platform-set action (read-only for a tenant admin), locks with their reason, who set the value and whether it is inherited, plus the two screening directions. A tenant with no row answers `version: 0` — send `If-Match: \"0\"` to create one.",
+        "operationId": "GuardrailTenantPolicyController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantGuardrailPolicyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "No working tenant is selected (`WORKING_TENANT_REQUIRED`)."
+          },
+          "403": {
+            "description": "The caller holds no `read:TenantGuardrailPolicy`."
+          },
+          "404": {
+            "description": "The working tenant is not the caller`s own (404-over-403)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the working tenant's guardrail rules",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      },
+      "put": {
+        "description": "Only fields whose value DIFFERS from the policy in force count, so the whole view read by GET may be sent back. A tenant admin may change `directions.<dir>.enabled` (off = monitor only: still screened and recorded) and `checks.<id>.enabled` of a check no lock holds. At least one check per direction must stay on. Any other changed field is refused with 403 `GUARDRAIL_FIELD_PLATFORM_ONLY` (`fields` names them); the medical-domain check is locked for everyone (403 `GUARDRAIL_CHECK_LOCKED`). A committed change reaches guardrail at once (cache invalidation).",
+        "operationId": "GuardrailTenantPolicyController_put",
+        "parameters": [
+          {
+            "description": "RFC 7232 strong validator carrying the version the client read (`\"0\"` creates the row).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"0\"",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantGuardrailPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantGuardrailPolicyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Unknown check id, malformed field, no working tenant, or a direction left with no check (OD-8)."
+          },
+          "403": {
+            "description": "`GUARDRAIL_FIELD_PLATFORM_ONLY` / `GUARDRAIL_CHECK_LOCKED` (with `fields`), or the SYSTEM tier."
+          },
+          "404": {
+            "description": "The working tenant is not the caller`s own (404-over-403)."
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Turn the working tenant's guardrail checks and screening directions on or off",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/policy-keys": {
+      "get": {
+        "description": "Every key of the guardrail policy-key catalogue (`policy-keys.json`, generated from guardrail `_SPECS`), grouped by the routing task key whose SYSTEM model row it lives on: current value (`_metadata.policy`), default (`_metadata.policyDefaults`, seed-owned), bounds, editability, the model row and its `_version`, and the last revision. `catalogueAvailable: false` when the artifact cannot be read (then no key is writable).",
+        "operationId": "GuardrailPolicyController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyKeysResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List every governed guardrail policy key, grouped by its model row",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/policy-keys/reset": {
+      "post": {
+        "description": "Copies `_metadata.policyDefaults[key]` into `_metadata.policy[key]` for every editable key of the row that ships a default and differs from it, in ONE compare-and-set, one `reset` revision per key. `lane` is a routing task key (`guardrail.safety`) or a judge lane id (`injection_judge`).",
+        "operationId": "GuardrailPolicyController_resetLane",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lane",
+            "required": true,
+            "schema": {
+              "example": "guardrail.safety",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyLaneResetResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "No policy key lives on that lane."
+          },
+          "409": {
+            "description": "`GUARDRAIL_POLICY_MODEL_UNRESOLVED`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Reset every editable key of one lane (model row) to its default",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/policy-keys/{key}": {
+      "get": {
+        "description": "The key entry plus `version` (the model row `_version`, also the ETag).",
+        "operationId": "GuardrailPolicyController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "example": "judgeTemperature",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required for a label threshold (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`): the model row it lives on — `guardrail.safety`, `guardrail.injection`, `guardrail.pii` or `guardrail.pii.spans`. Ignored for a catalogue key.",
+            "in": "query",
+            "name": "taskKey",
+            "required": false,
+            "schema": {
+              "example": "guardrail.safety",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyKeyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED` (a label threshold without `?taskKey=`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE` (labels, the task set, benign labels)."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "Not a governed guardrail policy key (or not a threshold of that row`s label taxonomy)."
+          },
+          "409": {
+            "description": "`GUARDRAIL_POLICY_MODEL_UNRESOLVED` — the key`s task key elects no SYSTEM model."
+          },
+          "503": {
+            "description": "`GUARDRAIL_POLICY_CATALOGUE_UNAVAILABLE`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read one guardrail policy key",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      },
+      "put": {
+        "description": "Validates the value against the catalogue (type, bounds; `judgeBands` per check `low <= high` inside the bounds) and, for a safety-judge criteria key, against the judge template (five sections, the two locked sections verbatim, exactly the lane`s verdict categories — OD-34). Writes `_metadata.policy[key]` under a compare-and-set on the model row `_version`, appends a `GuardrailPolicyRevision` (reason `edit`) in the same transaction, broadcasts a sys-event and publishes `guardrail:config:invalidate`. A key in the policy version re-screens (busts the window-verdict cache). A value equal to the current one is an idempotent no-op (`changed: false`). A classifier threshold inside `_metadata.labelTaxonomy` (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`, in [0, 1]) is written the same way, named with `?taskKey=`; labels, the task set and benign labels are not editable.",
+        "operationId": "GuardrailPolicyController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "example": "judgeTemperature",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required for a label threshold (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`): the model row it lives on — `guardrail.safety`, `guardrail.injection`, `guardrail.pii` or `guardrail.pii.spans`. Ignored for a catalogue key.",
+            "in": "query",
+            "name": "taskKey",
+            "required": false,
+            "schema": {
+              "example": "guardrail.safety",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator: the model row `_version` from the prior read (the key entry `modelVersion`, or the `ETag`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGuardrailPolicyKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyKeyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_POLICY_VALUE_INVALID` (with `problems`), `GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED` (a label threshold without `?taskKey=`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE` (labels, the task set, benign labels)."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "Not a governed guardrail policy key (or not a threshold of that row`s label taxonomy)."
+          },
+          "409": {
+            "description": "`GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE` (the lane elects a native-template guard)."
+          },
+          "412": {
+            "description": "The model row changed since it was read."
+          },
+          "428": {
+            "description": "If-Match is required."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Change one guardrail policy key on its SYSTEM model row",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/policy-keys/{key}/reset": {
+      "post": {
+        "description": "Copies `_metadata.policyDefaults[key]` into current as a `reset` revision (OD-33); a label threshold copies `_metadata.labelTaxonomyDefaults` at the same path (no seeded default yet: the current value is the default, so this is a no-op). Already at default: idempotent no-op.",
+        "operationId": "GuardrailPolicyController_reset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "example": "injectionJudgeCriteria",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required for a label threshold (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`): the model row it lives on — `guardrail.safety`, `guardrail.injection`, `guardrail.pii` or `guardrail.pii.spans`. Ignored for a catalogue key.",
+            "in": "query",
+            "name": "taskKey",
+            "required": false,
+            "schema": {
+              "example": "guardrail.safety",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyKeyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED` (a label threshold without `?taskKey=`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE` (labels, the task set, benign labels)."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "Not a governed guardrail policy key."
+          },
+          "409": {
+            "description": "`GUARDRAIL_POLICY_DEFAULT_MISSING`, `GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Reset one guardrail policy key to its default",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/policy-keys/{key}/revisions": {
+      "get": {
+        "description": "Newest first, with values, on the CURRENT model row of the key.",
+        "operationId": "GuardrailPolicyController_revisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "example": "injectionJudgeCriteria",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1–200, default 50.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Required for a label threshold (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`): the model row it lives on — `guardrail.safety`, `guardrail.injection`, `guardrail.pii` or `guardrail.pii.spans`. Ignored for a catalogue key.",
+            "in": "query",
+            "name": "taskKey",
+            "required": false,
+            "schema": {
+              "example": "guardrail.safety",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyRevisionsResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED` (a label threshold without `?taskKey=`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE` (labels, the task set, benign labels)."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "Not a governed guardrail policy key."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "A guardrail policy key`s revision history",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/policy-keys/{key}/revisions/{revisionId}/restore": {
+      "post": {
+        "description": "Re-validates the revision value against TODAY`s catalogue, then writes it as a `restore` revision naming its source.",
+        "operationId": "GuardrailPolicyController_restore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "example": "judgeTemperature",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revisionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required for a label threshold (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`): the model row it lives on — `guardrail.safety`, `guardrail.injection`, `guardrail.pii` or `guardrail.pii.spans`. Ignored for a catalogue key.",
+            "in": "query",
+            "name": "taskKey",
+            "required": false,
+            "schema": {
+              "example": "guardrail.safety",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyKeyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`GUARDRAIL_POLICY_VALUE_INVALID` (the old value breaks today`s bounds), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE`."
+          },
+          "403": {
+            "description": "Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less)."
+          },
+          "404": {
+            "description": "Unknown key, or no such revision of it."
+          },
+          "409": {
+            "description": "`GUARDRAIL_POLICY_REVISION_MODEL_MISMATCH` — the revision was written on another model row."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Restore a guardrail policy key to an earlier revision",
+        "tags": [
+          "admin-guardrail-availability"
+        ]
+      }
+    },
+    "/api/v1/admin/guardrail/screen": {
+      "post": {
+        "description": "Runs guardrail`s own inbound or outbound screen for the working tenant, exactly as a generation would be screened, and returns the four-way decision, every check`s verdict / configured action / action taken / score / category, the notices raised, the evaluation id and the policy version. Inbound takes `text` OR `regions` (each with its trust); outbound takes the response as `text` and optional source `regions`. Nothing is stored by the gateway, and no content is returned.",
+        "operationId": "GuardrailRuleTestController_screen",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenGuardrailRulesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenGuardrailRulesResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed body, both or neither of `text` / `regions`, no working tenant, or guardrail refused the input shape."
+          },
+          "403": {
+            "description": "The caller holds no `read:TenantGuardrailPolicy`, or is an API key / service account."
+          },
+          "404": {
+            "description": "The working tenant is not the caller`s own (404-over-403)."
+          },
+          "429": {
+            "description": "Heavy-tier rate limit reached."
+          },
+          "503": {
+            "description": "`GUARDRAIL_UNAVAILABLE` — guardrail could not answer."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Screen text under the working tenant's guardrail rules (Test my rules)",
         "tags": [
           "admin-guardrail-availability"
         ]
@@ -51940,6 +56185,11 @@
                 "guardrail.groundedness",
                 "guardrail.pii",
                 "guardrail.pii.spans",
+                "guardrail.injection",
+                "guardrail.judge.injection",
+                "guardrail.judge.unsafe_content",
+                "guardrail.judge.clinical_safety",
+                "guardrail.judge.leakage",
                 "nlp.ner",
                 "nlp.classification",
                 "nlp.diagnosis",
@@ -52054,6 +56304,11 @@
                 "guardrail.groundedness",
                 "guardrail.pii",
                 "guardrail.pii.spans",
+                "guardrail.injection",
+                "guardrail.judge.injection",
+                "guardrail.judge.unsafe_content",
+                "guardrail.judge.clinical_safety",
+                "guardrail.judge.leakage",
                 "nlp.ner",
                 "nlp.classification",
                 "nlp.diagnosis",
@@ -65621,7 +69876,7 @@
             "description": "Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant."
           },
           "409": {
-            "description": "`CONSULTATION_PROCESSING_IN_FLIGHT` — the transcript is finalizing or the note is being written; `CONSULTATION_TRANSITION_ILLEGAL` — not yet stopped; the safety-flag stop when the note carries an open flag and `overrideSafetyFlag` is not set."
+            "description": "`CONSULTATION_PROCESSING_IN_FLIGHT` — the transcript is finalizing or the note is being written; `CONSULTATION_TRANSITION_ILLEGAL` — not yet stopped; the safety-flag stop when the note carries an open flag and `overrideSafetyFlag` is not set; `GUARDRAIL_HOLD` — a guardrail hold that `resolveHold` did not (or, for an outbound hold, cannot) resolve; `GUARDRAIL_OVERRIDE_NOT_ALLOWED` — `acknowledged` on a block-floor check. Guardrail WARNINGS never block approve."
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
@@ -67272,6 +71527,227 @@
           }
         ],
         "summary": "Record feedback: rating, reasons, comment, media or a correction",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/guardrail-hold/resume": {
+      "post": {
+        "description": "Resolve the guardrail.blocked notice that holds the consultation: `item_excluded` (the flagged items leave every later LLM context), `item_edited` (an item was corrected since the block), or `acknowledged` (proceed once at warn weight, recorded as a SAFETY_OVERRIDE — not offered for a check whose platform floor is block). On the egress-redaction hold (EGRESS_REDACTION_UNAVAILABLE) `acknowledged` is the only resolution and means RETRY — no override is recorded. Processing returns to IDLE when no other block remains; the run paused on the notice re-executes its node, or a fresh governing run is dispatched. The client then sends `start`. Answers the consultation (status / processing / processingReason / version, like the other lifecycle verbs) plus `resolvedNoticeId`. Idempotent for the same resolution. The `If-Match` header carries the consultation version.",
+        "operationId": "GuardrailNoticeController_resume",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the consultation version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeGuardrailHoldRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailHoldResumeResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid resolution, or `CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named another clinician without SUPER_ADMIN/TENANT_ADMIN, or an API key named someone other than the human it is bound to."
+          },
+          "403": {
+            "description": "Only the assigned doctor, a consultation manager or a tenant-bound service account may resume."
+          },
+          "404": {
+            "description": "Consultation or notice not found (or cross-tenant), or the named clinician is not a user of this tenant."
+          },
+          "409": {
+            "description": "`GUARDRAIL_OVERRIDE_NOT_ALLOWED` — `acknowledged` on a block-floor check; `GUARDRAIL_ITEM_NOT_EDITED` — no flagged item changed; `GUARDRAIL_NOTICE_NOT_RESUMABLE` — not a block notice; `GUARDRAIL_NOTICE_RESOLVED` — resolved with another resolution; `GUARDRAIL_RESOLUTION_NOT_APPLICABLE` — an item resolution on the egress-redaction hold (EGRESS_REDACTION_UNAVAILABLE names no item: `acknowledged` retries)."
+          },
+          "412": {
+            "description": "The consultation changed since the client read it."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Resume a guardrail hold",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/guardrail-notices": {
+      "get": {
+        "description": "Every OPEN guardrail notice (warning, unverified, blocked) and the most recent acknowledged / resolved ones, oldest first — the standard `GuardrailNotice` v1 plus its state — and `unacknowledgedNoticeIds`. No content and no judge reasoning: `defaultMessage` is the fixed label of `messageKey`. The lifecycle stream points here (`noticeId`) when a hold begins.",
+        "operationId": "GuardrailNoticeController_list",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailNoticeListResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller may not read this consultation."
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The consultation`s guardrail notices",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/guardrail-notices/{noticeId}/ack": {
+      "post": {
+        "description": "The clinician`s attestation that they saw the notice (recorded with the actor, `acknowledgedVia: ack`, audited). The `If-Match` header carries the consultation version. An acknowledged notice is idempotent; a resolved one is 409. Acknowledging a block does not release its hold — resume it.",
+        "operationId": "GuardrailNoticeController_acknowledge",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Guardrail notice ID",
+            "in": "path",
+            "name": "noticeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the consultation version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgeGuardrailNoticeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailNoticeAckResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named another clinician without SUPER_ADMIN/TENANT_ADMIN, or an API key named someone other than the human it is bound to."
+          },
+          "403": {
+            "description": "Only the assigned doctor, a consultation manager or a tenant-bound service account may acknowledge."
+          },
+          "404": {
+            "description": "Consultation or notice not found (or cross-tenant), or the named clinician is not a user of this tenant."
+          },
+          "409": {
+            "description": "`GUARDRAIL_NOTICE_RESOLVED` — the notice is already resolved."
+          },
+          "412": {
+            "description": "The consultation changed since the client read it."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Acknowledge a guardrail notice",
         "tags": [
           "consultations"
         ]

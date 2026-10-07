@@ -2855,6 +2855,52 @@
       "apiExcluded": false
     },
     {
+      "controller": "AdminGuardrailEvaluationController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/guardrail-evaluations",
+      "routePath": "/admin/consultations/:id/guardrail-evaluations",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AdminGuardrailEvaluationController",
+      "handler": "withheld",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/guardrail-evaluations/{evaluationId}/withheld",
+      "routePath": "/admin/consultations/:id/guardrail-evaluations/:evaluationId/withheld",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AdminConsultationHistoryController",
       "handler": "listRuns",
       "method": "GET",
@@ -4104,6 +4150,460 @@
         [
           "read",
           "Tenant"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "dryRun",
+      "method": "POST",
+      "path": "/api/v1/admin/guardrail/dry-run",
+      "routePath": "/admin/guardrail/dry-run",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "lanes",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/judge-lanes",
+      "routePath": "/admin/guardrail/judge-lanes",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "selectLanes",
+      "method": "PUT",
+      "path": "/api/v1/admin/guardrail/judge-lanes",
+      "routePath": "/admin/guardrail/judge-lanes",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "getJudgeMeta",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta",
+      "routePath": "/admin/guardrail/judge-models/:modelId/judge-meta",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "updateJudgeMeta",
+      "method": "PUT",
+      "path": "/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta",
+      "routePath": "/admin/guardrail/judge-models/:modelId/judge-meta",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "resetJudgeMeta",
+      "method": "POST",
+      "path": "/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta/reset",
+      "routePath": "/admin/guardrail/judge-models/:modelId/judge-meta/reset",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailMetricsController",
+      "handler": "activity",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/metrics/activity",
+      "routePath": "/admin/guardrail/metrics/activity",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailMetricsController",
+      "handler": "evaluations",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/metrics/evaluations",
+      "routePath": "/admin/guardrail/metrics/evaluations",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailMetricsController",
+      "handler": "health",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/metrics/health",
+      "routePath": "/admin/guardrail/metrics/health",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailMetricsController",
+      "handler": "performance",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/metrics/performance",
+      "routePath": "/admin/guardrail/metrics/performance",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailTenantPolicyController",
+      "handler": "get",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/policy",
+      "routePath": "/admin/guardrail/policy",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "TenantGuardrailPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailTenantPolicyController",
+      "handler": "put",
+      "method": "PUT",
+      "path": "/api/v1/admin/guardrail/policy",
+      "routePath": "/admin/guardrail/policy",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "TenantGuardrailPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/policy-keys",
+      "routePath": "/admin/guardrail/policy-keys",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "get",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/policy-keys/{key}",
+      "routePath": "/admin/guardrail/policy-keys/:key",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "update",
+      "method": "PUT",
+      "path": "/api/v1/admin/guardrail/policy-keys/{key}",
+      "routePath": "/admin/guardrail/policy-keys/:key",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "reset",
+      "method": "POST",
+      "path": "/api/v1/admin/guardrail/policy-keys/{key}/reset",
+      "routePath": "/admin/guardrail/policy-keys/:key/reset",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "revisions",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/policy-keys/{key}/revisions",
+      "routePath": "/admin/guardrail/policy-keys/:key/revisions",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "restore",
+      "method": "POST",
+      "path": "/api/v1/admin/guardrail/policy-keys/{key}/revisions/{revisionId}/restore",
+      "routePath": "/admin/guardrail/policy-keys/:key/revisions/:revisionId/restore",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailPolicyController",
+      "handler": "resetLane",
+      "method": "POST",
+      "path": "/api/v1/admin/guardrail/policy-keys/reset",
+      "routePath": "/admin/guardrail/policy-keys/reset",
+      "svcScopes": [
+        "svc:admin:guardrail:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailRuleTestController",
+      "handler": "screen",
+      "method": "POST",
+      "path": "/api/v1/admin/guardrail/screen",
+      "routePath": "/admin/guardrail/screen",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "TenantGuardrailPolicy"
         ]
       ],
       "isPublic": false,
@@ -13499,6 +13999,66 @@
       "apiExcluded": false
     },
     {
+      "controller": "GuardrailNoticeController",
+      "handler": "resume",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/guardrail-hold/resume",
+      "routePath": "/consultations/:id/guardrail-hold/resume",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailNoticeController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/guardrail-notices",
+      "routePath": "/consultations/:id/guardrail-notices",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailNoticeController",
+      "handler": "acknowledge",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/guardrail-notices/{noticeId}/ack",
+      "routePath": "/consultations/:id/guardrail-notices/:noticeId/ack",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
       "controller": "ConsultationController",
       "handler": "streamHarnessAssurance",
       "method": "GET",
@@ -14868,6 +15428,22 @@
       "method": "POST",
       "path": "/api/v1/internal/governed-prompts/verify",
       "routePath": "/internal/governed-prompts/verify",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "GuardrailEvaluationInternalController",
+      "handler": "ingest",
+      "method": "POST",
+      "path": "/api/v1/internal/guardrail/evaluations",
+      "routePath": "/internal/guardrail/evaluations",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,

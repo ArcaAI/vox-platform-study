@@ -20,6 +20,8 @@ import type {
   ConsultationResponse,
   ConsultationTelemetryResponse,
   FeedbackRollupResponse,
+  GuardrailEvaluationPageResponse,
+  GuardrailWithheldContentResponse,
   ItemVersionDetailResponse,
   ItemVersionSummaryResponse,
   PaginatedResponse,
@@ -35,8 +37,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers AdminConsultationController, AdminConsultationHistoryController, AdminFeedbackRollupController, ComposedPromptAdminController, ConsultationTelemetryController, PromptPreviewController
- * (13 routes). Several controllers sharing one scope share one
+ * Backed by controllers AdminConsultationController, AdminConsultationHistoryController, AdminFeedbackRollupController, AdminGuardrailEvaluationController, ComposedPromptAdminController, ConsultationTelemetryController, PromptPreviewController
+ * (15 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -189,6 +191,65 @@ export class AdminConsultationAdminResource extends AdminResource {
       method: 'GET',
       path: `admin/consultations/${encodePathSegment(String(id))}/activity`,
       query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List a consultation`s guardrail evaluations
+   *
+   * One row per guardrail evaluation (request × direction), newest first, keyset-paged: decision, per-check verdicts, models, latencies, the regions and items screened, and the notices raised. No content and no judge reasoning. Filters: `action` (the decision), `direction`, `check`, `runId`, `runKey`.
+   *
+   * `GET /api/v1/admin/consultations/{id}/guardrail-evaluations` — `AdminGuardrailEvaluationController.list`.
+   */
+  adminGuardrailEvaluationList(
+    id: string,
+    options: AdminRequestOptions & {
+      query?: {
+        action?: 'allow' | 'warn' | 'block' | 'unverified';
+        check?:
+          | 'jailbreak_detection'
+          | 'prompt_safety'
+          | 'prompt_toxicity'
+          | 'response_safety'
+          | 'response_toxicity'
+          | 'response_refusal'
+          | 'pii_leak'
+          | 'containment_echo'
+          | 'medical_validation'
+          | 'injection_judge'
+          | 'unsafe_content_judge'
+          | 'clinical_safety_judge'
+          | 'leakage_judge';
+        cursor?: string;
+        direction?: 'inbound' | 'outbound';
+        limit?: number;
+        runId?: string;
+        runKey?: string;
+      };
+    } = {},
+  ): Promise<GuardrailEvaluationPageResponse> {
+    return this.request<GuardrailEvaluationPageResponse>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/guardrail-evaluations`,
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read the output an outbound guardrail block withheld, decrypted
+   *
+   * The generation a guardrail block kept from the client, decrypted from Vault-Transit ciphertext, for false-positive review. Never returned on the business plane and never fed to a later run. Audited.
+   *
+   * `GET /api/v1/admin/consultations/{id}/guardrail-evaluations/{evaluationId}/withheld` — `AdminGuardrailEvaluationController.withheld`.
+   */
+  withheld(id: string, evaluationId: string, options: AdminRequestOptions = {}): Promise<GuardrailWithheldContentResponse> {
+    return this.request<GuardrailWithheldContentResponse>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/guardrail-evaluations/${encodePathSegment(String(evaluationId))}/withheld`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

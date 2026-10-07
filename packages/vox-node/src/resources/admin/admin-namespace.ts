@@ -27,6 +27,7 @@ import { AdminDepartmentResource } from './department';
 import { AdminDnaWritingStyleResource } from './dna-writing-style';
 import { AdminDocumentTemplateResource } from './document-template';
 import { AdminEntitlementResource } from './entitlement';
+import { AdminGuardrailResource } from './guardrail';
 import { AdminHarnessResource } from './harness';
 import { AdminKnowledgeResource } from './knowledge';
 import { AdminMcpServerResource } from './mcp-server';
@@ -60,7 +61,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (48 areas, 461 routes).
+ * per `svc:*` scope (49 areas, 480 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -76,6 +77,8 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
  * - `ConsentGrantController` (3 routes)
  * - `GlobalSettingController` (2 routes)
  * - `GuardrailAvailabilityController` (4 routes)
+ * - `GuardrailRuleTestController` (1 route)
+ * - `GuardrailTenantPolicyController` (2 routes)
  * - `MonitoringController` (4 routes)
  * - `ServiceAccountController` (7 routes)
  * - `TenantCheckpointController` (12 routes)
@@ -111,7 +114,7 @@ export class AdminNamespace {
   readonly billing: AdminBillingResource;
   /** `svc:admin:changelog:manage` — 4 routes. */
   readonly changelog: AdminChangelogResource;
-  /** `svc:admin:consultation-admin:manage` — 13 routes. */
+  /** `svc:admin:consultation-admin:manage` — 15 routes. */
   readonly consultationAdmin: AdminConsultationAdminResource;
   /** `svc:admin:consultation-context-schema:manage` — 9 routes. */
   readonly consultationContextSchema: AdminConsultationContextSchemaResource;
@@ -123,6 +126,8 @@ export class AdminNamespace {
   readonly documentTemplate: AdminDocumentTemplateResource;
   /** `svc:admin:entitlement:manage` — 11 routes. */
   readonly entitlement: AdminEntitlementResource;
+  /** `svc:admin:guardrail:manage` — 17 routes. */
+  readonly guardrail: AdminGuardrailResource;
   /** `svc:admin:harness:manage` — 29 routes. */
   readonly harness: AdminHarnessResource;
   /** `svc:admin:knowledge:manage` — 5 routes. */
@@ -203,6 +208,7 @@ export class AdminNamespace {
     this.dnaWritingStyle = new AdminDnaWritingStyleResource(transport);
     this.documentTemplate = new AdminDocumentTemplateResource(transport);
     this.entitlement = new AdminEntitlementResource(transport);
+    this.guardrail = new AdminGuardrailResource(transport);
     this.harness = new AdminHarnessResource(transport);
     this.knowledge = new AdminKnowledgeResource(transport);
     this.mcpServer = new AdminMcpServerResource(transport);
