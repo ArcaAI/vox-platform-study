@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from nlp.schemas.common import DeviceLabel
 from nlp.services.entailment_scorer import EntailmentCalibration
@@ -104,10 +104,31 @@ class GuardTaskSpec(BaseModel):
     labels: list[str] = Field(..., min_length=1)
     multi_label: bool = Field(default=False)
     cls_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: TASK-1049 R2 — which of `labels` mean "clean". Read ONLY by the
+    #: sequence-classification runtime, which must know them to pick a text's
+    #: worst segment and to threshold its attack classes; never part of the
+    #: gliner2 task schema (guardrail applies `benignLabels` itself there).
+    benign_labels: list[str] | None = Field(
+        default=None,
+        description=(
+            "Labels that mean 'clean' (caller policy). Required by the "
+            "sequence-classification runtime; ignored by gliner2."
+        ),
+    )
 
 
 class GuardClassifyRequest(_GuardModelSelection):
     text: str = Field(..., description="Text to moderate")
+    #: TASK-1049 R2 — the resolved row's `AiModel.libraryName`, which decides the
+    #: RUNTIME: absent or `gliner2` ⇒ GLiNER2 (unchanged), `transformers` ⇒ the
+    #: sequence-classification runtime, anything else ⇒ 503.
+    library_name: str | None = Field(
+        default=None,
+        description=(
+            "Resolved AiModel.libraryName: absent/'gliner2' => GLiNER2, "
+            "'transformers' => sequence classification, other => 503."
+        ),
+    )
     tasks: dict[str, GuardTaskSpec] = Field(
         default_factory=dict,
         description="task name → label spec (caller policy). Empty ⇒ 503.",
@@ -148,6 +169,68 @@ class GuardClassifyResponse(BaseModel):
             "never the whole pass's time."
         ),
     )
+    device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")
+
+
+# ── Generative guard judge (TASK-1050 §12, protocol `qwen3guard_native`) ──
+
+#: Executor ceiling on one judge decode. The protocol's answer is three short
+#: lines (the row's `judgeMaxTokens` is ~32); the ceiling only stops one request
+#: from pinning a long decode on a shared CPU model. Not a default: the value
+#: itself always comes from the row.
+JUDGE_MAX_NEW_TOKENS_CEILING = 256
+
+
+class GuardJudgeRequest(_GuardModelSelection):
+    """One moderation call on a generative guard, as the caller's row defines it."""
+
+    protocol: str = Field(
+        ...,
+        description="AiModel._metadata.judge.protocol. Only 'qwen3guard_native' is served; other => 503.",
+    )
+    mode: Literal["prompt", "response"] = Field(
+        ..., description="'prompt' = user turn only; 'response' = user + assistant turns."
+    )
+    prompt: str = Field(..., description="The user turn")
+    response: str | None = Field(
+        default=None, description="The assistant turn. Required when mode='response'."
+    )
+    max_new_tokens: int = Field(
+        ...,
+        ge=1,
+        le=JUDGE_MAX_NEW_TOKENS_CEILING,
+        description="The row's policy judgeMaxTokens.",
+    )
+    temperature: float = Field(
+        ..., ge=0.0, le=2.0, description="The row's policy judgeTemperature; 0 = greedy."
+    )
+
+    @model_validator(mode="after")
+    def _response_for_response_mode(self) -> GuardJudgeRequest:
+        if self.mode == "response" and self.response is None:
+            raise ValueError("mode 'response' requires the assistant response")
+        return self
+
+
+class GuardJudgeResponse(BaseModel):
+    """The model's native fields, raw. Lane mapping is the caller's config."""
+
+    tier: Literal["Safe", "Controversial", "Unsafe", "undetermined"]
+    categories: list[str] = Field(
+        default_factory=list, description="Native category names, in the model's order."
+    )
+    refusal: bool | None = Field(
+        default=None, description="Response mode only: the model's Refusal line."
+    )
+    undetermined_reason: str | None = Field(
+        default=None,
+        description="Why the generation could not be parsed; set iff tier is undetermined.",
+    )
+    latency_ms: int = Field(..., ge=0, description="Wall-clock generation time")
+    inference_ms: int = Field(
+        ..., ge=0, description="Same value as latency_ms, for TASK-959 metering parity."
+    )
+    model_version: str
     device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")
 
 

@@ -1,7 +1,8 @@
 """Server-side NER windowing for ``/classify/tokens`` (TASK-1047 OD-10, FC-8a).
 
 Five callers send whole transcripts and notes to NER. GLiNER2 memory is
-quadratic in input length, so a text above ``nlp.inference.maxInputChars`` is
+quadratic in input length, so a text longer than ``nlp.ner.windowChars`` (since
+TASK-1049 F10; before it, only a text above ``nlp.inference.maxInputChars``) is
 never one pass: it is cut into windows of at most ``windowChars +
 windowOverlapChars`` characters, each run through the SAME inference path as a
 normal request (one window at a time, each inside the inference semaphore), and
@@ -27,6 +28,7 @@ from nlp.schemas.classification import (
     Vitals,
 )
 from nlp.schemas.common import Entity, TextPosition
+from nlp.services.ner_result_cache import get_ner_result_cache, ner_cache_key
 
 logger = get_logger(__name__)
 
@@ -35,6 +37,40 @@ Window = tuple[int, int]
 
 class _TokenService(Protocol):
     async def process(self, request: TokenClassificationRequest) -> TokenClassificationResponse: ...
+
+
+def needs_windowing(text: str) -> bool:
+    """True when ``text`` is longer than ONE NER window (TASK-1049 F10).
+
+    It used to be ``len(text) > maxInputChars``, so ``nlp.ner.windowChars``
+    (2,000) only applied above 8,192 chars and every text in between was one
+    quadratic-memory pass. :func:`plan_ner_windows` yields a single window for
+    exactly the texts this returns False for.
+    """
+    window_chars, _overlap = resolve_ner_window()
+    return len(text) > window_chars
+
+
+async def run_ner_pass(
+    service: _TokenService,
+    request: TokenClassificationRequest,
+    inference_bound: ResizableSemaphore,
+    tenant_id: str | None = None,
+) -> TokenClassificationResponse:
+    """One NER pass through the tenant-keyed result cache (TASK-1049 F10).
+
+    The cache is consulted BEFORE the inference semaphore, so a hit never
+    queues behind real inference. ``tenant_id`` absent ⇒ never cached.
+    """
+    cache = get_ner_result_cache()
+    key = ner_cache_key(tenant_id, request)
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    async with inference_bound:
+        result = await service.process(request)
+    cache.put(key, result)
+    return result
 
 
 def plan_ner_windows(text: str, window_chars: int, overlap_chars: int) -> list[Window]:
@@ -135,12 +171,14 @@ async def classify_tokens_windowed(
     service: _TokenService,
     request: TokenClassificationRequest,
     inference_bound: ResizableSemaphore,
+    tenant_id: str | None = None,
 ) -> TokenClassificationResponse:
     """Run ``request`` window by window through ``service`` and merge the answers.
 
     Windows run sequentially, each inside ``inference_bound`` — never one giant
-    tensor and never every window at once. The response shape is the
-    single-pass one.
+    tensor and never every window at once. Each window is its own cache entry
+    (:func:`run_ner_pass`), so a grown transcript re-runs only the windows that
+    changed. The response shape is the single-pass one.
     """
     text = request.text
     window_chars, overlap_chars = resolve_ner_window()
@@ -148,8 +186,7 @@ async def classify_tokens_windowed(
     responses: list[TokenClassificationResponse] = []
     for start, end in windows:
         window_request = request.model_copy(update={"text": text[start:end]})
-        async with inference_bound:
-            responses.append(await service.process(window_request))
+        responses.append(await run_ner_pass(service, window_request, inference_bound, tenant_id))
         NLP_NER_WINDOWS_TOTAL.inc()
     logger.info("nlp.classify.tokens_windowed", windows=len(windows), chars=len(text))
     first = responses[0]
