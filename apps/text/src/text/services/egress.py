@@ -552,7 +552,9 @@ def prepare_egress(
     locality = resolve_locality(request.provider, request.provider_locality)
     segments = request_segments(request)
     spans = spans_by_segment or [[] for _ in segments]
-    pseudonymizer = Pseudonymizer(_known(request))
+    # P-F1: every segment is reserved up front, so no minted token equals a
+    # token-shaped literal anywhere in what the provider receives.
+    pseudonymizer = Pseudonymizer(_known(request), sources=segments)
     system: SystemTrust = "governed" if system_governed else "untrusted"
 
     if locality == LOCAL:
@@ -617,7 +619,9 @@ def prepare_text_egress(
     """The same egress for a list of plain texts (``/translate``)."""
     locality = resolve_locality(provider, provider_locality)
     spans = spans_by_segment or [[] for _ in texts]
-    pseudonymizer = Pseudonymizer([(item.label, item.value) for item in (known_phi or [])])
+    pseudonymizer = Pseudonymizer(
+        [(item.label, item.value) for item in (known_phi or [])], sources=texts
+    )
     if locality == LOCAL:
         for text, segment_spans in zip(texts, spans, strict=False):
             pseudonymizer.count(text, segment_spans)
