@@ -177,7 +177,7 @@ describe('the platform model catalogue (36 SYSTEM rows)', () => {
 
   it('keeps sourceUri = the engine-host wire id on every LM Studio row and records the Hub artifact in metaData.hubArtifact', () => {
     const lmStudio = catalog.filter((m) => m.servedBy === 'lmstudio');
-    expect(lmStudio).toHaveLength(3);
+    expect(lmStudio).toHaveLength(4);
     lmStudio.forEach((m) => {
       expect(m.provider).toBe('lm-studio');
       expect(m.libraryName).toBe('llama.cpp');

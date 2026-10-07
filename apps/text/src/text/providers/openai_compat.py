@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import structlog
 from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
@@ -66,6 +66,11 @@ class OpenAICompatProvider:
     reasoning_support: ReasoningSupport = ReasoningSupport.EFFORT_ONLY
     reasoning_parameter: str | None = "reasoning_effort"
     reasoning_effort_parameter: str | None = "reasoning_effort"
+
+    # TASK-1050 W5 — this adapter can send a judge lane's `native_chat` turns VERBATIM
+    # (`api/endpoints/judge.py`): no system prompt, no response_format, the engine applies
+    # the model's own chat template. An adapter that does not declare it is refused there.
+    SUPPORTS_NATIVE_CHAT: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -286,6 +291,10 @@ class OpenAICompatProvider:
         return request.model
 
     def _build_messages(self, request: GenerateRequest) -> list[dict[str, Any]]:
+        # Only the judge lane's private request type answers this; a public request is None.
+        native_turns = getattr(request, "native_chat_messages", None)
+        if native_turns is not None:
+            return list(native_turns)
         messages: list[dict[str, Any]] = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})

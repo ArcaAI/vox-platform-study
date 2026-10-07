@@ -47,11 +47,11 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 import structlog.contextvars
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 # The funding derivation and the stats coercion are imported, not re-implemented:
 # a second copy of `_credential_attribution` is exactly how a call site starts
@@ -109,6 +109,15 @@ logger = get_logger(__name__)
 router = APIRouter(tags=["judge"])
 
 
+class JudgeChatTurn(BaseModel):
+    """One chat turn of a `native_chat` judgement (user, or assistant for response moderation)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=MAX_PROMPT_CHARS)
+
+
 class JudgeRequest(BaseModel):
     """One judgement call, as the safety plane issues it.
 
@@ -122,7 +131,9 @@ class JudgeRequest(BaseModel):
     from ``AiRoutingPolicy``, tenant row first.
     """
 
-    prompt: str = Field(..., min_length=1, max_length=MAX_PROMPT_CHARS)
+    # Required for `json_schema` (the default); refused for `native_chat`, whose content is
+    # `messages` (enforced by `_protocol_shape`).
+    prompt: str | None = Field(default=None, min_length=1, max_length=MAX_PROMPT_CHARS)
     system_prompt: str | None = Field(default=None, max_length=MAX_PROMPT_CHARS)
     provider: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
@@ -140,6 +151,93 @@ class JudgeRequest(BaseModel):
     # only. Same stamp and same rules as `/generate` (`core/locality.py`); absent ⇒
     # only an engine-served provider is local.
     provider_locality: dict[str, ProviderLocalityStamp] | None = None
+    # TASK-1050 W5 (README §12.2, owner 2026-10-07) — `JudgeRequestProtocol` in
+    # `@arcaai/types` (`guardrail-judge-model.ts`). `json_schema` (absent) is the criteria
+    # path exactly as before. `native_chat` is a generative guard fine-tuned to its OWN chat
+    # template (Qwen3Guard-Gen): the caller's turns go to the engine verbatim, with NO system
+    # prompt and NO `response_format`, and the engine applies the model's template — for LM
+    # Studio the GGUF-embedded `tokenizer.chat_template`, so no template is built here.
+    protocol: Literal["json_schema", "native_chat"] = "json_schema"
+    messages: list[JudgeChatTurn] | None = None
+
+    @model_validator(mode="after")
+    def _protocol_shape(self) -> JudgeRequest:
+        if self.protocol == "json_schema":
+            if self.messages is not None:
+                raise ValueError("messages is only accepted with protocol 'native_chat'")
+            if self.prompt is None:
+                raise ValueError("prompt is required")
+            return self
+        if self.prompt is not None or self.system_prompt is not None:
+            raise ValueError(
+                "protocol 'native_chat' takes messages only (no prompt, no system_prompt)"
+            )
+        if self.response_format is not None:
+            raise ValueError("protocol 'native_chat' takes no response_format")
+        roles = [turn.role for turn in self.messages or []]
+        if roles not in (["user"], ["user", "assistant"]):
+            raise ValueError(
+                "protocol 'native_chat' takes [user] (prompt moderation) or "
+                "[user, assistant] (response moderation)"
+            )
+        if not (self.messages or [])[-1].content.strip():
+            raise ValueError("the moderated (last) turn must not be blank")
+        return self
+
+
+class _NativeChatGenerateRequest(GenerateRequest):
+    """The provider-adapter request for a `native_chat` judgement.
+
+    The turns ride as a PRIVATE attribute, so they can never be set from a wire body: the
+    public `/generate` contract (`GenerateRequest`) gains no field, and a public request
+    always answers `native_chat_messages` with `None`. The OpenAI-wire adapter reads it in
+    `_build_messages` (`providers/openai_compat.py`).
+    """
+
+    _native_chat_messages: list[dict[str, str]] = PrivateAttr(default_factory=list)
+
+    @property
+    def native_chat_messages(self) -> list[dict[str, str]]:
+        return [dict(turn) for turn in self._native_chat_messages]
+
+
+def native_chat_generate_request(
+    turns: list[dict[str, str]],
+    *,
+    provider: str,
+    model: str,
+    temperature: float | None,
+    max_tokens: int | None,
+    top_p: float | None = None,
+    provider_overrides: dict[str, ProviderOverride] | None = None,
+) -> GenerateRequest:
+    """The adapter request for one `native_chat` judgement (same lane pins as `json_schema`)."""
+    request = _NativeChatGenerateRequest(
+        # `prompt` is the moderated (last) turn: it is what size checks and spans see. The
+        # adapter sends `native_chat_messages`, never `prompt` on its own.
+        prompt=turns[-1]["content"],
+        system_prompt=None,
+        provider=provider,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+        frequency_penalty=PENALTY_NEUTRAL,
+        presence_penalty=PENALTY_NEUTRAL,
+        stream=False,
+        response_format=None,
+        retry_config=RetryConfig(max_retries=0, retry_on=[]),
+        provider_overrides=provider_overrides,
+    )
+    request._native_chat_messages = [
+        {"role": turn["role"], "content": turn["content"]} for turn in turns
+    ]
+    return request
+
+
+def _supports_native_chat(provider: Any) -> bool:
+    """Declared on the adapter CLASS (`SUPPORTS_NATIVE_CHAT`); absent ⇒ not supported."""
+    return getattr(type(provider), "SUPPORTS_NATIVE_CHAT", False) is True
 
 
 class JudgeResponse(BaseModel):
@@ -264,28 +362,39 @@ async def _run_judge(
     # caller's client owns the retry budget and the fail-closed verdict, and a
     # second retry layer here would multiply the worst-case latency a public
     # generation waits behind.
-    generate_request = GenerateRequest(
-        prompt=request_body.prompt,
-        system_prompt=request_body.system_prompt,
-        provider=provider_name,
-        model=model,
-        temperature=request_body.temperature,
-        max_tokens=request_body.max_tokens,
-        top_p=request_body.top_p,
-        # TASK-1001 OD-10 — a judgement NEVER takes a repetition penalty. The
-        # platform default is for long-form notes; on a short classification it
-        # biases the verdict tokens themselves (on llama.cpp-backed engines the
-        # penalty window can include recent prompt tokens, so an answer word the
-        # question contains can be pushed down). An explicit neutral value is a
-        # caller's own value, so it wins over the served default and nothing is
-        # sent (`core/defaults.resolve_request_defaults`).
-        frequency_penalty=PENALTY_NEUTRAL,
-        presence_penalty=PENALTY_NEUTRAL,
-        stream=False,
-        response_format=request_body.response_format,
-        retry_config=RetryConfig(max_retries=0, retry_on=[]),
-        provider_overrides=request_body.provider_overrides,
-    )
+    if request_body.protocol == "native_chat":
+        generate_request = native_chat_generate_request(
+            [turn.model_dump() for turn in request_body.messages or []],
+            provider=provider_name,
+            model=model,
+            temperature=request_body.temperature,
+            max_tokens=request_body.max_tokens,
+            top_p=request_body.top_p,
+            provider_overrides=request_body.provider_overrides,
+        )
+    else:
+        generate_request = GenerateRequest(
+            prompt=request_body.prompt or "",  # never None here: `_protocol_shape`
+            system_prompt=request_body.system_prompt,
+            provider=provider_name,
+            model=model,
+            temperature=request_body.temperature,
+            max_tokens=request_body.max_tokens,
+            top_p=request_body.top_p,
+            # TASK-1001 OD-10 — a judgement NEVER takes a repetition penalty. The
+            # platform default is for long-form notes; on a short classification it
+            # biases the verdict tokens themselves (on llama.cpp-backed engines the
+            # penalty window can include recent prompt tokens, so an answer word the
+            # question contains can be pushed down). An explicit neutral value is a
+            # caller's own value, so it wins over the served default and nothing is
+            # sent (`core/defaults.resolve_request_defaults`).
+            frequency_penalty=PENALTY_NEUTRAL,
+            presence_penalty=PENALTY_NEUTRAL,
+            stream=False,
+            response_format=request_body.response_format,
+            retry_config=RetryConfig(max_retries=0, retry_on=[]),
+            provider_overrides=request_body.provider_overrides,
+        )
 
     # ONE budget for this `(provider, judge)` pair — concurrency, acquire
     # timeout, call timeout and breaker thresholds together. `TEXT_JUDGE_*`
@@ -308,6 +417,17 @@ async def _run_judge(
             f"Provider '{provider_name}' not found",
             provider=provider_name,
         ) from None
+
+    if request_body.protocol == "native_chat" and not _supports_native_chat(provider):
+        # Refused BEFORE a permit or a breaker failure: an adapter that cannot send raw turns
+        # would silently flatten them onto one user prompt and judge the wrong conversation.
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "NATIVE_CHAT_UNSUPPORTED",
+                "message": f"provider '{provider_name}' cannot serve protocol 'native_chat'",
+            },
+        )
 
     semaphore = _ensure_semaphore(judge_semaphores, provider_name, budget)
     try:

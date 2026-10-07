@@ -18,8 +18,12 @@ is ONE call per window:
   COMBINED system prompt (one ``<section id="<lane>">`` per lane's criteria) and a strict
   ``json_schema`` with one verdict-only object per lane. A group that is the medical lane alone
   sends exactly today's medical request (window criterion + the medical verdict schema).
-* ``qwen3guard_native`` → apps/nlp ``/api/v1/guard/judge``; the native tier/categories are mapped
-  through the row's ``categoryMap`` / ``tiers``.
+* ``qwen3guard_native`` → by the row's ``servedBy`` (owner 2026-10-07): an LM Studio (TEXT-served)
+  row goes to TEXT ``/api/v1/generate/internal/judge`` with ``protocol: "native_chat"`` (the user
+  turn, plus the assistant turn in response mode; no system prompt, no ``response_format``) and the
+  raw completion is parsed here; an nlp-served row (or one that does not say) goes to apps/nlp
+  ``/api/v1/guard/judge``. Either way the native tier/categories are mapped through the row's
+  ``categoryMap`` / ``tiers``.
 
 Temperature and max tokens are the lane's model row's ``judgeTemperature`` / ``judgeMaxTokens``
 (the winning routing row's ``configJson`` tuning still wins where it carries one, exactly as
@@ -555,6 +559,43 @@ class JudgeRunner:
     async def _call_native(
         self, tenant_id: str, group: _Group, text: str, mode: str, context: str
     ) -> dict[str, jp.ParsedLane]:
+        lead = group.lead
+        if jp.native_judge_transport(getattr(lead.cfg, "served_by", None)) == "text":
+            return await self._call_native_text(tenant_id, group, text, mode, context)
+        return await self._call_native_nlp(tenant_id, group, text, mode, context)
+
+    async def _call_native_text(
+        self, tenant_id: str, group: _Group, text: str, mode: str, context: str
+    ) -> dict[str, jp.ParsedLane]:
+        """An LM Studio-served native guard: TEXT ``native_chat``, parsed here."""
+        from guardrail.services.external_text_client import judge_call_stats
+
+        lead = group.lead
+        client = self._text_client(tenant_id, lead, None)
+        payload = await client.judge_native_chat(
+            messages=jp.native_chat_messages(mode, context, text)
+        )
+        stats = judge_call_stats(payload, client.provider, client.model)
+        self._stats.append(stats.to_dict())
+        record_guardrail_call(
+            provider=stats.provider,
+            model=stats.model,
+            status="success",
+            prompt_tokens=stats.prompt_tokens,
+            completion_tokens=stats.predicted_tokens,
+        )
+        native = jp.parse_qwen3guard_text(str(payload.get("content") or ""), mode=mode)
+        if native["tier"] == jp.QWEN3GUARD_UNDETERMINED:
+            # PHI-safe: the reason code only, never the completion or the input.
+            logger.warning(
+                "guardrail.judge_runner.native_undetermined",
+                reason=str(native["undetermined_reason"] or ""),
+            )
+        return jp.map_qwen3guard(native, group.lanes, lead.meta or {})
+
+    async def _call_native_nlp(
+        self, tenant_id: str, group: _Group, text: str, mode: str, context: str
+    ) -> dict[str, jp.ParsedLane]:
         from guardrail.services.external_nlp_client import NlpGuardClient
 
         lead = group.lead
@@ -583,7 +624,8 @@ class JudgeRunner:
             )
         return jp.map_qwen3guard(payload, group.lanes, lead.meta or {})
 
-    def _text_client(self, tenant_id: str, lead: _Selection, criteria: str) -> Any:
+    def _text_client(self, tenant_id: str, lead: _Selection, criteria: str | None) -> Any:
+        """A TEXT judge-lane client; ``criteria=None`` builds the ``native_chat`` one."""
         from guardrail.core.effective_config import DEFAULT_JUDGE_TIMEOUT_S
         from guardrail.core.tenant_config import _judge_connection
         from guardrail.services.external_text_client import TextJudgeClient
@@ -608,6 +650,7 @@ class JudgeRunner:
             timeout_s=lead.timeout_s if lead.timeout_s is not None else DEFAULT_JUDGE_TIMEOUT_S,
             provider_overrides=overrides,
             breaker=self._breakers.get("text"),
+            native_chat=criteria is None,
         )
 
     # -- merging -------------------------------------------------------------

@@ -36,8 +36,10 @@ const GLIGUARD_POLICY: Record<string, GuardrailPolicySeedValue> = {
 
 /**
  * TASK-1050 (README §12.2, §12.2a) — Qwen3Guard-Gen-0.6B's judge declaration. The parser is code
- * (`qwen3guard_native`, apps/nlp `POST /guard/judge`); every mapping here is configuration a platform admin
- * edits on `/guardrails/control` (and resets to `judgeDefaults`).
+ * (`qwen3guard_native`: apps/guardrail parses the LM Studio completion it gets back from TEXT's judge lane
+ * with `protocol: native_chat`; apps/nlp `POST /guard/judge` stays as the alternative transport for an
+ * nlp-served row); every mapping here is configuration a platform admin edits on `/guardrails/control`
+ * (and resets to `judgeDefaults`).
  *
  * Mapped: `Jailbreak` → injection; the harmful-intent categories → unsafe content (`Non-violent Illegal
  * Acts` → `criminal_planning`, OD-43). NOT mapped, deliberately (§12.2a): `PII` (clinical text is full of
@@ -883,14 +885,16 @@ const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
       },
     },
   },
-  // ── TASK-1050 / TASK-1049: two more guardrail-plane models, both RUNNING IN `apps/nlp` ──
+  // ── TASK-1050 / TASK-1049: two more guardrail-plane models ──
   //
   // Neither is a platform-default election (`isPlatformDefaultFor` stays on GLiGuard for CONTENT_SAFETY,
   // at most one row per task), and neither is preloaded: each serves only the routing key that names it.
   //
   //   - `qwen3guard-gen-0.6b` — a generative guard JUDGE (protocol `qwen3guard_native`), selectable by a
   //     platform admin per inbound judge lane (`guardrail.judge.*`) beside granite. The seed elects granite
-  //     for every lane (behaviour-neutral); this row is the alternative.
+  //     for every lane (behaviour-neutral); this row is the alternative. Served by LM STUDIO (owner
+  //     decision 2026-10-07, overriding OD-40), so it is shaped like the LM Studio rows in `llm.ts`; it
+  //     stays in this file so its id, slug and position are unchanged.
   //   - `llama-prompt-guard-2-86m` — the injection CLASSIFIER `guardrail.injection` elects (TASK-1049 R1):
   //     guardrail sends `jailbreak_detection` there; prompt safety/toxicity stay on GLiGuard.
   {
@@ -899,30 +903,36 @@ const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
     name: 'Qwen3Guard-Gen 0.6B',
     slug: 'qwen3guard-gen-0.6b',
     description:
-      'Qwen/Qwen3Guard-Gen-0.6B — generative safety guard served by apps/nlp (transformers, CPU, pinned official safetensors). A platform-admin-selectable judge for the inbound injection and unsafe-content lanes, beside granite-guardian-4.1-8b.',
+      'Qwen/Qwen3Guard-Gen-0.6B — generative safety guard served by LM Studio (llama.cpp GGUF, community quant mradermacher/Qwen3Guard-Gen-0.6B-GGUF Q8_0). A platform-admin-selectable judge for the inbound injection and unsafe-content lanes, beside granite-guardian-4.1-8b.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.GUARDRAIL,
-    modelType: ModelType.FINETUNED_MODEL,
-    source: AiModelSource.HUGGINGFACE,
-    sourceUri: 'Qwen/Qwen3Guard-Gen-0.6B',
-    // TASK-1049 §14.2 (Track S): Apache-2.0, not gated, no remote code. Pinned — the 9 categories and the
-    // policy are embedded in this revision's chat template, so a moving `main` would move the verdict.
-    sourceRevision: 'fada3b2f655b89601929198343c94cd2f64d93cc',
-    format: AiModelFormat.SAFETENSOR,
-    libraryName: 'transformers',
-    // OD-40 → `servedBy: nlp`: there is no official GGUF (third-party only), so not LM Studio.
-    servedBy: 'nlp',
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.LOCAL,
+    // The LM Studio invariant (`llm.ts`): `sourceUri` IS the LM Studio model key the services put on the
+    // wire as `model`, and `wireModelId` mirrors it. The ORCHESTRATOR confirms this key against `lms ls`
+    // once the GGUF is downloaded (owner approval needed before any download or load).
+    sourceUri: 'qwen3guard-gen-0.6b',
+    // Owner decision 2026-10-07: the Hub revision of `metaData.hubArtifact` is pinned — the 9 categories and
+    // the policy are embedded in the chat template the GGUF carries, so a moving `main` would move the verdict.
+    sourceRevision: '2a59799e089fba3807d534a89c6b95bdf38ee76a',
+    format: AiModelFormat.GGUF,
+    libraryName: 'llama.cpp',
+    servedBy: 'lmstudio',
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    wireModelId: 'qwen3guard-gen-0.6b',
+    // Apache-2.0: the base model's licence (Qwen/Qwen3Guard-Gen-0.6B, TASK-1049 §14.2 — not gated, no remote
+    // code). The GGUF is a community conversion of it.
     license: 'apache-2.0',
-    baseModel: 'Qwen/Qwen3-0.6B',
+    baseModel: 'Qwen/Qwen3Guard-Gen-0.6B',
     languages: ['en'],
-    provider: 'built-in',
+    provider: 'lm-studio',
     architecture: 'qwen3',
-    // ~0.75B parameters loaded at float32 by `nlp.services.qwen3guard_judge` (`dtype=torch.float32`).
-    memorySizeMb: 3072,
-    computeType: 'float32',
+    // ~0.75B parameters at Q8_0 (~8.5 bits/weight) — an estimate until the publisher measures the artifact.
+    memorySizeMb: 800,
+    computeType: 'q8_0',
     tags: ['guardrail', 'safety', 'judge', 'qwen3guard'],
     metaData: {
+      hubArtifact: 'mradermacher/Qwen3Guard-Gen-0.6B-GGUF',
       languages: ['en'],
       judge: QWEN3GUARD_JUDGE,
       judgeDefaults: structuredClone(QWEN3GUARD_JUDGE),
@@ -931,6 +941,8 @@ const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
       // tier-only model, so it is not seeded.
       policy: QWEN3GUARD_POLICY,
       policyDefaults: structuredClone(QWEN3GUARD_POLICY),
+      // Deliberately NO `serving` block: not preloaded, and no load-time placement of its own (LM Studio's
+      // platform defaults apply on a JIT load). See the W5 open question on context/parallel/GPU.
     },
   },
   {
