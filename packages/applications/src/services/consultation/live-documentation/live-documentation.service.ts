@@ -1194,8 +1194,13 @@ interface LiveSession {
 
 /** TASK-1050 W2g — one flush's guardrail turn (see {@link LiveSession.guardrailTurn}). */
 interface LiveGuardrailTurn {
-  /** Region key → the context items behind it, at the version sent. */
-  regionItems: Record<string, GuardrailEvaluationItemRef[]>;
+  /**
+   * Region key → the context items behind it, at the version sent. A PROMISE, started at the claim and
+   * awaited only inside `postLiveText`: the claim-to-TEXT path must gain no await point of its own, or
+   * a superseded generation is dropped before its call and the order generations reach TEXT changes
+   * (round 4 gate fix). Never rejects.
+   */
+  regionItems: Promise<Record<string, GuardrailEvaluationItemRef[]>>;
   /** Every notice TEXT returned on this flush's calls (200 bodies and stop bodies), in arrival order. */
   notices: GuardrailNotice[];
   /** The first guardrail STOP a call of this flush met (422 block / 503 redaction hold), or null. */
@@ -3646,12 +3651,12 @@ return 0`;
     // TASK-1050 W2g — the context items behind this flush's data regions (the transcript window's
     // segments, the clinician's notes, the previous note's snapshot item), for `region_items`. The
     // window is the delta when there is one, else the whole transcript (`delta || transcript` below).
+    // Started, not awaited: nothing between the generation claim and the TEXT call may wait on it.
     const guardrailTurn: LiveGuardrailTurn = {
-      regionItems: await this.resolveRegionItems(session, delta ? deltaStart : 0, delta ? deltaEnd : flushUpTo),
+      regionItems: this.resolveRegionItems(session, delta ? deltaStart : 0, delta ? deltaEnd : flushUpTo),
       notices: [],
       stop: null,
     };
-    if (isStale()) return this.dropStale(session);
     session.guardrailTurn = guardrailTurn;
     const priorSections = session.lastPayload?.sections ?? [];
     // TASK-939 §2.2 — the prior note, WITH ITS STRUCTURE.
@@ -7383,7 +7388,7 @@ return 0`;
   ): Promise<{ data: unknown }> {
     const session = consultationId ? this.sessions.get(consultationId) : undefined;
     const turn = session?.guardrailTurn;
-    const regions = regionItemsWire(regionItems ?? turn?.regionItems);
+    const regions = regionItemsWire(regionItems ?? (turn ? await turn.regionItems : undefined));
     if (regions) payload.region_items = regions;
     if (responseItems.length > 0) payload.response_items = responseItems.map(({ itemId, itemVersion }) => ({ itemId, itemVersion }));
     const correlation = consultationId ? liveCorrelationHeaders({ consultationId, itemId: session?.snapshotId ?? null }) : {};
@@ -7431,7 +7436,8 @@ return 0`;
     if (!this.guardrailHolds) return;
     try {
       const entered = await this.guardrailHolds.enterGuardrailHold(tenantId, consultationId, notice);
-      if (entered) this.logger.log({ message: 'Live lane entered a guardrail hold', consultationId, noticeId: entered.noticeId, reason: entered.reason });
+      if (entered)
+        this.logger.log({ message: 'Live lane entered a guardrail hold', consultationId, noticeId: entered.noticeId, reason: entered.reason });
     } catch (error) {
       // swallow-ok: the service is documented never to throw; a failure must not mask the TEXT error re-thrown by the caller.
       this.logger.warn({
@@ -7451,8 +7457,9 @@ return 0`;
   }
 
   /** TASK-1050 W2g — the flush's transcript-window items, for a side call whose data region is `transcript`. */
-  private transcriptRegionItems(consultationId: string | null | undefined): LiveRegionItems {
-    const items = consultationId ? this.sessions.get(consultationId)?.guardrailTurn?.regionItems[LIVE_TRANSCRIPT_REGION_KEY] : undefined;
+  private async transcriptRegionItems(consultationId: string | null | undefined): Promise<LiveRegionItems> {
+    const turn = consultationId ? this.sessions.get(consultationId)?.guardrailTurn : undefined;
+    const items = turn ? (await turn.regionItems)[LIVE_TRANSCRIPT_REGION_KEY] : undefined;
     return items ? { [LIVE_TRANSCRIPT_REGION_KEY]: items } : {};
   }
 
@@ -7814,7 +7821,7 @@ return 0`;
     });
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
     await this.assertLlmQuota(tenantId);
-    const response = await this.postLiveText(payload, tenantId, consultationId, signal, this.transcriptRegionItems(consultationId));
+    const response = await this.postLiveText(payload, tenantId, consultationId, signal, await this.transcriptRegionItems(consultationId));
     this.recordLlmUsage(tenantId, response.data, consultationId);
 
     const { proposals, rejectedProposals } = verifyCorrectionProposals(mapTextGenerateResponse(response.data).summary, sourceText, {
@@ -7941,7 +7948,7 @@ return 0`;
     // the tenant alone (threading the consultation into the ledger is a follow-up); the id now only
     // rides the TASK-1050 correlation headers.
     await this.assertLlmQuota(tenantId);
-    const response = await this.postLiveText(payload, tenantId, consultationId, signal, this.transcriptRegionItems(consultationId));
+    const response = await this.postLiveText(payload, tenantId, consultationId, signal, await this.transcriptRegionItems(consultationId));
     this.recordLlmUsage(tenantId, response.data, null);
 
     const maxFindings = typeof config.maxFindings === 'number' && config.maxFindings > 0 ? Math.floor(config.maxFindings) : DEFAULT_MAX_FINDINGS;
