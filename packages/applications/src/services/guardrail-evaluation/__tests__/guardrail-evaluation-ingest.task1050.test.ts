@@ -15,6 +15,7 @@ vi.mock('@arcaai/domains', async (importOriginal) => ({
 
 import { ConsultationProcessing, ConsultationStatus, GuardrailItemStatus, GuardrailNoticeStatus } from '@arcaai/domains';
 import { GuardrailEvaluationIngestService } from '../guardrail-evaluation-ingest.service';
+import { GuardrailHoldService } from '../../guardrail-notice/guardrail-hold.service';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 const CONSULTATION = '01927f6e-0000-7000-8000-000000000001';
@@ -158,16 +159,16 @@ function makeHarness(
   const secrets = { encrypt: vi.fn(async () => 'vault:v3:Y2lwaGVy'), decrypt: vi.fn() };
   const eventEmitter = { emit: vi.fn() };
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)), set: vi.fn(), run: vi.fn((fn: () => unknown) => fn()) };
+  // The ONE hold-entry path, real, over the same mocks (round 3: the ingest delegates to it).
+  const holds = new GuardrailHoldService(consultations as never, notices as never, eventEmitter as never, cls as never, undefined, events as never, lifecycle as never);
   const service = new GuardrailEvaluationIngestService(
     evaluations as never,
     notices as never,
     contextItems as never,
-    consultations as never,
     eventEmitter as never,
     cls as never,
     unitOfWork as never,
-    events as never,
-    lifecycle as never,
+    holds,
     secrets as never,
   );
   return { service, evaluations, notices, contextItems, consultations, unitOfWork, events, lifecycle, secrets, eventEmitter, order };
@@ -379,6 +380,13 @@ describe('GuardrailEvaluationIngestService.ingest — guardrail hold', () => {
       expect(h.consultations.setProcessing).not.toHaveBeenCalled();
       expect(h.lifecycle.pause).not.toHaveBeenCalled();
     }
+  });
+
+  it('does not hold again for a notice id already stored (entered earlier by the run watcher)', async () => {
+    const h = makeHarness({ storedNotice: () => ({ id: blockNotice().noticeId, status: GuardrailNoticeStatus.OPEN }) });
+    await h.service.ingest(TENANT, { evaluations: [blockRecord()] });
+    expect(h.consultations.setProcessing).not.toHaveBeenCalled();
+    expect(h.lifecycle.pause).not.toHaveBeenCalled();
   });
 
   it('does not re-hold on a block whose deduped notice the clinician already resolved', async () => {

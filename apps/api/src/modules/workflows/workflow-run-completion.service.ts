@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/c
 import {
   HarnessGatewayService,
   HarnessInternalService,
+  IGuardrailHoldService,
   IWorkflowRunService,
   TenantSettingsService,
   createWorkerSession,
@@ -10,8 +11,8 @@ import {
   isDeliveredRunResult,
   terminalStatusOf,
 } from '@arcaai/applications';
-import type { DeliveredRunResult, IActiveUserContext } from '@arcaai/applications';
-import { RESUME_FROM_BEGINNING, parseStoredRunEvent } from '@arcaai/async-contract';
+import type { DeliveredRunResult, GuardrailHoldService, IActiveUserContext } from '@arcaai/applications';
+import { RESUME_FROM_BEGINNING, parseStoredRunEvent, type RunEventV2 } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import { runCompletedCountsFromPayload, runCompletedCountsFromStages } from './run-completed-counts';
 import type { RunCompletedCounts } from './run-completed-counts';
@@ -19,6 +20,9 @@ import { RunEventStreamHub } from './run-event-stream-hub';
 import { RunEventFold, terminalOutcomeOf } from './run-protocol-delivery';
 import { terminalCheckIntervalMs } from './run-stream-delivery';
 import { runEventStreamKey } from './workflow-run-event';
+
+/** The `GuardrailNotice` v1 the hold entry takes (apps/api reads the type through applications, not `@arcaai/types`). */
+type GuardrailNotice = Parameters<GuardrailHoldService['enterGuardrailHold']>[2];
 
 export { runCompletedCountsFromPayload, runCompletedCountsFromStages } from './run-completed-counts';
 export type { RunCompletedCounts } from './run-completed-counts';
@@ -101,6 +105,10 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     // here, so the exposure plane's `getRunStatus` is not the right door. Absent ⇒ no re-check.
     @Optional() private readonly harnessGateway?: HarnessGatewayService,
     @Optional() private readonly settings?: TenantSettingsService,
+    // TASK-1050 §9.8.1 — the ONE guardrail hold-entry path (a `@Global()` provider). A run that
+    // pauses on a block before its evaluation drained must still hold its consultation. Absent ⇒
+    // the drained evaluation enters the hold instead, later.
+    @Optional() @Inject(IGuardrailHoldService) private readonly guardrailHolds?: Pick<GuardrailHoldService, 'enterGuardrailHold'>,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -134,6 +142,8 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     let backoffMs = 0;
     let cursor = RESUME_FROM_BEGINNING;
     const fold = new RunEventFold();
+    // TASK-1050 — the `guardrail.notice` frames seen so far, by id: a `run.paused` names its notice.
+    const notices = new Map<string, GuardrailNotice>();
 
     while (!signal.aborted && Date.now() < deadline) {
       let entries;
@@ -163,7 +173,10 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
         // folded for the TASK-982 counts (`run.completed` does not carry them), and a pre-v2
         // `workflow.run.completed` of a run that started before the deploy still ends the watch.
         const parsed = parseStoredRunEvent(runId, entry.fields);
-        if (parsed.kind === 'event') fold.apply(parsed.event);
+        if (parsed.kind === 'event') {
+          fold.apply(parsed.event);
+          this.observeGuardrailHold(tenantId, runId, consultationId, parsed.event, notices);
+        }
         const outcome = terminalOutcomeOf(runId, entry.fields);
         if (outcome === null) continue;
         const status = terminalStatusOf(outcome.status);
@@ -187,6 +200,49 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
         lastCheck = Date.now();
         if (await this.reconcileFromHarness(hub, tenantId, runId, consultationId, fold)) return;
       }
+    }
+  }
+
+  /**
+   * TASK-1050 §9.8.1 — a run PAUSED at a guardrail-blocked node holds its consultation. The notice
+   * is the one the stream carried in its `guardrail.notice` frame (same `noticeId`); the
+   * consultation is the run's subject (the id the watcher was attached with), else the notice's
+   * own. A standalone run holds nothing (its "resume" is a re-run). Fire-and-forget: the hold entry
+   * is idempotent on the notice id, never throws, and never delays the watcher.
+   */
+  private observeGuardrailHold(
+    tenantId: string,
+    runId: string,
+    consultationId: string | null,
+    event: RunEventV2,
+    notices: Map<string, GuardrailNotice>,
+  ): void {
+    try {
+      if (event.type === 'guardrail.notice') {
+        const notice = event.data as unknown as GuardrailNotice;
+        if (notice?.noticeId) notices.set(notice.noticeId, notice);
+        return;
+      }
+      if (event.type !== 'run.paused') return;
+      const paused = event.data as { reason?: string; noticeId?: string };
+      if (paused.reason !== 'guardrail_hold' || !paused.noticeId) return;
+      const notice = notices.get(paused.noticeId);
+      if (!notice) {
+        this.logger.warn({ message: 'run paused on a guardrail notice the stream never carried — no hold entered here', runId, noticeId: paused.noticeId });
+        return;
+      }
+      const subject = consultationId ?? notice.consultationId ?? null;
+      if (!subject || !this.guardrailHolds) return;
+      void this.guardrailHolds.enterGuardrailHold(tenantId, subject, notice).catch((err: unknown) =>
+        this.logger.warn({
+          message: 'guardrail hold could not be entered from the run pause',
+          runId,
+          consultationId: subject,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    } catch (err) {
+      this.logger.warn({ message: 'guardrail hold observer failed (ignored)', runId, error: err instanceof Error ? err.message : String(err) });
     }
   }
 

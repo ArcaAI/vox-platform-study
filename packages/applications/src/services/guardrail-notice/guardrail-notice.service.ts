@@ -100,9 +100,9 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: Pick<CoreUnitOfWorkService, 'runInTransaction'>,
-    @Optional() private readonly lifecycleEvents?: Pick<ConsultationLifecycleEventPublisher, 'publish'>,
-    @Optional() private readonly harnessAudit?: Pick<HarnessAuditService, 'append'>,
-    @Optional() private readonly harnessGateway?: Pick<HarnessGatewayService, 'signalGuardrailResolution'>,
+    @Optional() @Inject(ConsultationLifecycleEventPublisher) private readonly lifecycleEvents?: Pick<ConsultationLifecycleEventPublisher, 'publish'>,
+    @Optional() @Inject(HarnessAuditService) private readonly harnessAudit?: Pick<HarnessAuditService, 'append'>,
+    @Optional() @Inject(HarnessGatewayService) private readonly harnessGateway?: Pick<HarnessGatewayService, 'signalGuardrailResolution'>,
     @Optional()
     @Inject(IConsultationWorkflowDispatchService)
     private readonly dispatch?: { supersedeGoverningRun?: IConsultationWorkflowDispatchService['supersedeGoverningRun'] },
