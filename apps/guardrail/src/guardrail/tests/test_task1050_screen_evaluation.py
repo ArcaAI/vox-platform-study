@@ -268,7 +268,7 @@ async def test_drainer_posts_per_tenant_batches_of_at_most_100_and_acks() -> Non
     assert all(len(p["body"]["evaluations"]) <= 100 for p in gateway.posts)
     assert sum(len(p["body"]["evaluations"]) for p in gateway.posts) == 151
     for post in gateway.posts:
-        assert post["url"] == f"http://gw:8868/api/v1/{GUARDRAIL_EVALUATIONS_PATH}"
+        assert post["url"] == f"http://gw:8868/api/v1/{GUARDRAIL_EVALUATIONS_PATH}?service=guardrail"
         assert post["headers"]["x-service-token"] == "svc-token"
         tenants = {r["tenantId"] for r in post["body"]["evaluations"]}
         assert tenants == {post["headers"]["x-tenant-id"]}

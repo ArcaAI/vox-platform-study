@@ -333,6 +333,9 @@ class EvaluationDrainer:
         try:
             response = await self._http.post(
                 self._url,
+                # The gateway's internal service-token guard identifies the caller by
+                # `?service=` (TASK-1050 integration: W2e ingest contract).
+                params={"service": "guardrail"},
                 json={"evaluations": records},
                 headers={
                     "X-Service-Token": self._token,
