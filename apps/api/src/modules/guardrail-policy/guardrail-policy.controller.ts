@@ -18,6 +18,14 @@ import { CanManage, CanRead, CanUpdate, ExpectedVersion, ForbidApiKey, NoOptimis
 
 const SCOPE = 'svc:admin:guardrail:manage';
 const FORBIDDEN = 'Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less).';
+const TASK_KEY_QUERY = {
+  name: 'taskKey',
+  required: false,
+  description:
+    'Required for a label threshold (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`): the model row it lives on — `guardrail.safety`, `guardrail.injection`, `guardrail.pii` or `guardrail.pii.spans`. Ignored for a catalogue key.',
+  example: 'guardrail.safety',
+};
+const LABEL_400 = '`GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED` (a label threshold without `?taskKey=`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE` (labels, the task set, benign labels).';
 const IF_MATCH = {
   name: 'If-Match',
   description: 'RFC 7232 strong validator: the model row `_version` from the prior read (the key entry `modelVersion`, or the `ETag`).',
@@ -72,13 +80,15 @@ export class GuardrailPolicyController {
   @RequiredSvcScopes(SCOPE)
   @ApiOperation({ summary: 'Read one guardrail policy key', description: 'The key entry plus `version` (the model row `_version`, also the ETag).' })
   @ApiParam({ name: 'key', example: 'judgeTemperature' })
+  @ApiQuery(TASK_KEY_QUERY)
   @ApiResponse({ status: 200, type: GuardrailPolicyKeyResponse })
+  @ApiResponse({ status: 400, description: LABEL_400 })
   @ApiResponse({ status: 403, description: FORBIDDEN })
-  @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key.' })
+  @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key (or not a threshold of that row`s label taxonomy).' })
   @ApiResponse({ status: 409, description: '`GUARDRAIL_POLICY_MODEL_UNRESOLVED` — the key`s task key elects no SYSTEM model.' })
   @ApiResponse({ status: 503, description: '`GUARDRAIL_POLICY_CATALOGUE_UNAVAILABLE`.' })
-  async get(@Param('key') key: string): Promise<GuardrailPolicyKeyResponse> {
-    return this.service.getPolicyKey(key);
+  async get(@Param('key') key: string, @Query('taskKey') taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
+    return this.service.getPolicyKey(key, taskKey);
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the class note.
@@ -93,14 +103,17 @@ export class GuardrailPolicyController {
       'criteria key, against the judge template (five sections, the two locked sections verbatim, exactly the lane`s verdict categories — OD-34). ' +
       'Writes `_metadata.policy[key]` under a compare-and-set on the model row `_version`, appends a `GuardrailPolicyRevision` (reason `edit`) in the ' +
       'same transaction, broadcasts a sys-event and publishes `guardrail:config:invalidate`. A key in the policy version re-screens (busts the ' +
-      'window-verdict cache). A value equal to the current one is an idempotent no-op (`changed: false`).',
+      'window-verdict cache). A value equal to the current one is an idempotent no-op (`changed: false`). A classifier threshold inside ' +
+      '`_metadata.labelTaxonomy` (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`, in [0, 1]) is written the same way, ' +
+      'named with `?taskKey=`; labels, the task set and benign labels are not editable.',
   })
   @ApiHeader(IF_MATCH)
   @ApiParam({ name: 'key', example: 'judgeTemperature' })
+  @ApiQuery(TASK_KEY_QUERY)
   @ApiResponse({ status: 200, type: GuardrailPolicyKeyResponse })
-  @ApiResponse({ status: 400, description: '`GUARDRAIL_POLICY_VALUE_INVALID` (with `problems`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE`.' })
+  @ApiResponse({ status: 400, description: `\`GUARDRAIL_POLICY_VALUE_INVALID\` (with \`problems\`), ${LABEL_400}` })
   @ApiResponse({ status: 403, description: FORBIDDEN })
-  @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key.' })
+  @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key (or not a threshold of that row`s label taxonomy).' })
   @ApiResponse({ status: 409, description: '`GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE` (the lane elects a native-template guard).' })
   @ApiResponse({ status: 412, description: 'The model row changed since it was read.' })
   @ApiResponse({ status: 428, description: 'If-Match is required.' })
@@ -108,8 +121,9 @@ export class GuardrailPolicyController {
     @Param('key') key: string,
     @Body() request: UpdateGuardrailPolicyKeyRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
+    @Query('taskKey') taskKey?: string,
   ): Promise<GuardrailPolicyKeyResponse> {
-    return this.service.updatePolicyKey(key, { ...request, expectedVersion: expectedFromHeader ?? request.expectedVersion });
+    return this.service.updatePolicyKey(key, { ...request, expectedVersion: expectedFromHeader ?? request.expectedVersion }, taskKey);
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the class note.
@@ -141,16 +155,19 @@ export class GuardrailPolicyController {
   @RequiredSvcScopes(SCOPE)
   @ApiOperation({
     summary: 'Reset one guardrail policy key to its default',
-    description: 'Copies `_metadata.policyDefaults[key]` into current as a `reset` revision (OD-33). Already at default: idempotent no-op.',
+    description:
+      'Copies `_metadata.policyDefaults[key]` into current as a `reset` revision (OD-33); a label threshold copies `_metadata.labelTaxonomyDefaults` ' +
+      'at the same path (no seeded default yet: the current value is the default, so this is a no-op). Already at default: idempotent no-op.',
   })
   @ApiParam({ name: 'key', example: 'injectionJudgeCriteria' })
+  @ApiQuery(TASK_KEY_QUERY)
   @ApiResponse({ status: 200, type: GuardrailPolicyKeyResponse })
-  @ApiResponse({ status: 400, description: '`GUARDRAIL_POLICY_KEY_NOT_EDITABLE`.' })
+  @ApiResponse({ status: 400, description: LABEL_400 })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key.' })
   @ApiResponse({ status: 409, description: '`GUARDRAIL_POLICY_DEFAULT_MISSING`, `GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE`.' })
-  async reset(@Param('key') key: string): Promise<GuardrailPolicyKeyResponse> {
-    return this.service.resetPolicyKey(key);
+  async reset(@Param('key') key: string, @Query('taskKey') taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
+    return this.service.resetPolicyKey(key, taskKey);
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the class note.
@@ -160,11 +177,17 @@ export class GuardrailPolicyController {
   @ApiOperation({ summary: 'A guardrail policy key`s revision history', description: 'Newest first, with values, on the CURRENT model row of the key.' })
   @ApiParam({ name: 'key', example: 'injectionJudgeCriteria' })
   @ApiQuery({ name: 'limit', required: false, description: '1–200, default 50.' })
+  @ApiQuery(TASK_KEY_QUERY)
   @ApiResponse({ status: 200, type: GuardrailPolicyRevisionsResponse })
+  @ApiResponse({ status: 400, description: LABEL_400 })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key.' })
-  async revisions(@Param('key') key: string, @Query('limit', new ParseIntPipe({ optional: true })) limit?: number): Promise<GuardrailPolicyRevisionsResponse> {
-    return this.service.listRevisions(key, limit);
+  async revisions(
+    @Param('key') key: string,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('taskKey') taskKey?: string,
+  ): Promise<GuardrailPolicyRevisionsResponse> {
+    return this.service.listRevisions(key, limit, taskKey);
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the class note.
@@ -179,13 +202,14 @@ export class GuardrailPolicyController {
   })
   @ApiParam({ name: 'key', example: 'judgeTemperature' })
   @ApiParam({ name: 'revisionId' })
+  @ApiQuery(TASK_KEY_QUERY)
   @ApiResponse({ status: 200, type: GuardrailPolicyKeyResponse })
   @ApiResponse({ status: 400, description: '`GUARDRAIL_POLICY_VALUE_INVALID` (the old value breaks today`s bounds), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE`.' })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: 'Unknown key, or no such revision of it.' })
   @ApiResponse({ status: 409, description: '`GUARDRAIL_POLICY_REVISION_MODEL_MISMATCH` — the revision was written on another model row.' })
-  async restore(@Param('key') key: string, @Param('revisionId') revisionId: string): Promise<GuardrailPolicyKeyResponse> {
-    return this.service.restoreRevision(key, revisionId);
+  async restore(@Param('key') key: string, @Param('revisionId') revisionId: string, @Query('taskKey') taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
+    return this.service.restoreRevision(key, revisionId, taskKey);
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the class note.
@@ -257,7 +281,8 @@ export class GuardrailPolicyController {
     summary: 'Select the judge model for one or more lanes',
     description:
       'Every selection is validated before any is written: the model must be a SYSTEM model whose `_metadata.judge` declares the lane, else 400 ' +
-      '`JUDGE_LANE_UNSUPPORTED`. A changed lane gets a new SYSTEM `AiRoutingPolicy` revision (create → activate → elect) and the invalidation publish; ' +
+      '`JUDGE_LANE_UNSUPPORTED` (`medical_validation` also accepts a legacy guardian row with no declaration, and refuses one that declares ' +
+      'other lanes only). A changed lane gets a new SYSTEM `AiRoutingPolicy` revision (create → activate → elect) and the invalidation publish; ' +
       'an unchanged one writes nothing. Lanes not named are untouched.',
   })
   @ApiResponse({ status: 200, type: GuardrailJudgeLanesResponse })
