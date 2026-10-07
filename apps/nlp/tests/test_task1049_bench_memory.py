@@ -147,18 +147,43 @@ def test_guard_also_stops_when_the_system_runs_low() -> None:
 
 
 def test_guard_stops_when_swap_grows_during_the_run() -> None:
+    # Swap growth counts only while the system is also short of memory: macOS reshuffles
+    # swap by > 1 GiB on its own when memory is plentiful (seen 2026-10-07 at 73 % free).
     fired: list[float] = []
     swap = iter([13_700.0, 14_000.0, 14_800.0, 15_000.0])
+    sys_free = iter([60.0, 60.0, 25.0, 25.0])
     guard = bench.RssGuard(
         ceiling_mib=100_000,
         reader=lambda: 700.0,
         on_exceed=fired.append,
+        sys_free_reader=lambda: next(sys_free),
+        min_sys_free_pct=15,
         swap_reader=lambda: next(swap),
         max_swap_growth_mib=1024,
+        swap_needs_sys_below_pct=30,
     )
     for _ in range(4):
         guard.check()
-    assert fired == [700.0]  # baseline 13,700; 14,800 is +1,100 > 1,024
+    assert fired == [700.0]  # 3rd reading: +1,100 MiB swap AND available 25 % < 30 %
+    assert "swap" in guard.reason
+
+
+def test_swap_growth_alone_with_plenty_of_memory_does_not_stop() -> None:
+    fired: list[float] = []
+    swap = iter([11_000.0, 12_500.0, 13_000.0])
+    guard = bench.RssGuard(
+        ceiling_mib=100_000,
+        reader=lambda: 700.0,
+        on_exceed=fired.append,
+        sys_free_reader=lambda: 50.0,
+        min_sys_free_pct=15,
+        swap_reader=lambda: next(swap),
+        max_swap_growth_mib=1024,
+        swap_needs_sys_below_pct=30,
+    )
+    for _ in range(3):
+        guard.check()
+    assert fired == []
 
 
 # ── line-level granularity (dilution experiment) ──────────────────────────────

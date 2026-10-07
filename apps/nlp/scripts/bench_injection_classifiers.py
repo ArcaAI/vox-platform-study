@@ -121,6 +121,7 @@ class RssGuard:
         min_sys_free_pct: float = 0.0,
         swap_reader=None,
         max_swap_growth_mib: float = float("inf"),
+        swap_needs_sys_below_pct: float = 100.0,
     ) -> None:
         self.ceiling_mib = ceiling_mib
         self.reader = reader
@@ -129,24 +130,34 @@ class RssGuard:
         self.min_sys_free_pct = min_sys_free_pct
         self.swap_reader = swap_reader
         self.max_swap_growth_mib = max_swap_growth_mib
+        # Swap growth alone is noise on macOS (it reshuffles > 1 GiB with memory plentiful);
+        # it counts only while system available memory is also below this.
+        self.swap_needs_sys_below_pct = swap_needs_sys_below_pct
         self._swap_base: float | None = None
         self.peak_mib = 0.0
+        self.reason = ""
         self._fired = False
 
     def check(self) -> None:
         rss = self.reader()
         self.peak_mib = max(self.peak_mib, rss)
-        low_system = (
-            self.sys_free_reader is not None and self.sys_free_reader() < self.min_sys_free_pct
-        )
-        swap_grew = False
+        sys_free = self.sys_free_reader() if self.sys_free_reader is not None else 100.0
+        swap_growth = 0.0
         if self.swap_reader is not None:
             swap = self.swap_reader()
             if self._swap_base is None:
                 self._swap_base = swap
-            swap_grew = swap - self._swap_base > self.max_swap_growth_mib
-        if (rss > self.ceiling_mib or low_system or swap_grew) and not self._fired:
+            swap_growth = swap - self._swap_base
+        reasons = []
+        if rss > self.ceiling_mib:
+            reasons.append(f"rss {rss:.0f} MiB > {self.ceiling_mib:.0f}")
+        if sys_free < self.min_sys_free_pct:
+            reasons.append(f"system available {sys_free:.0f} % < {self.min_sys_free_pct:.0f}")
+        if swap_growth > self.max_swap_growth_mib and sys_free < self.swap_needs_sys_below_pct:
+            reasons.append(f"swap +{swap_growth:.0f} MiB with system available {sys_free:.0f} %")
+        if reasons and not self._fired:
             self._fired = True
+            self.reason = "; ".join(reasons)
             self.on_exceed(rss)
 
     def start(self, interval_s: float = 0.2) -> threading.Thread:
@@ -174,21 +185,24 @@ def _swap_used_mib() -> float:
 
 
 def _guard(a: argparse.Namespace) -> RssGuard:
-    return RssGuard(
+    guard = RssGuard(
         ceiling_mib=a.max_rss_mib,
         reader=_current_rss_mib,
-        on_exceed=_hard_stop,
+        on_exceed=lambda rss: _hard_stop(rss, guard.reason),
         sys_free_reader=_sys_available_pct,
         min_sys_free_pct=a.min_sys_free_pct,
         swap_reader=_swap_used_mib,
         max_swap_growth_mib=a.max_swap_growth_mib,
+        swap_needs_sys_below_pct=30.0,
     )
+    return guard
 
 
-def _hard_stop(rss_mib: float) -> None:
+def _hard_stop(rss_mib: float, reason: str = "") -> None:
     # Progress is already on disk (chunked .partial files); a re-run resumes.
     print(
-        f"[ABORT] RSS {rss_mib:.0f} MiB above the ceiling; stopping to protect the host",
+        f"[ABORT] {reason or f'RSS {rss_mib:.0f} MiB above the ceiling'}; "
+        "stopping to protect the host",
         file=sys.stderr,
         flush=True,
     )
