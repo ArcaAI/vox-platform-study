@@ -25,11 +25,11 @@
  * anything, which is worse than an absent one because an admin who sets it sees
  * neither an effect nor an error.
  *
- * Two safety surfaces are therefore ABSENT and deliberately so:
- * `/api/medical/validate` and the groundedness route are separately-invoked
- * routes rather than the request/response gate, so "not selected" there would
- * have to mean "this route refuses", which is a caller-visible contract change
- * (`apps/text` is the caller). Recorded as a seam in the ticket README.
+ * TASK-1050 adds `medical_validation` (LOCKED: always on, always block, so
+ * "not selected" can never arise for it) and the four safety judges (shipped
+ * OFF). Their screening readers land in `apps/guardrail` in the same ticket
+ * (lane W2a), which is what the membership rule requires. The groundedness
+ * route stays absent: it is separately invoked, not part of the gate.
  *
  * ─── Cross-language contract ────────────────────────────────────────────────
  *
@@ -43,6 +43,16 @@ import type { SettingDescriptor } from '../settings-registry/registry.types';
 import { assertTightenOnlyFloor } from '../settings-registry/tenant-clamp';
 
 export type GuardrailScreenDirection = 'inbound' | 'outbound';
+
+/**
+ * What a violation of a check does (TASK-1050, README §9.2 / §11.1). Mirrors `@arcaai/types`
+ * `GuardrailAction`; restated here because this module is read at runtime by the gateway and the types
+ * package is pinned against the same contract JSON.
+ */
+export type GuardrailViolationAction = 'ignore' | 'warn' | 'block';
+
+/** Inbound region trust (TASK-1047 FC-5b). */
+export type GuardrailRegionTrust = 'instruction' | 'data';
 
 export interface GuardrailPolicyThresholdSpec {
   /** Field name inside the per-policy object (e.g. `minScore`). */
@@ -67,11 +77,35 @@ export interface GuardrailPolicyDescriptor {
   readonly directions: readonly GuardrailScreenDirection[];
   /** Absent ⇒ the check is on/off only; it has no strictness to tighten. */
   readonly threshold?: GuardrailPolicyThresholdSpec;
+  // ── TASK-1050: violation handling (all pinned against the contract JSON) ──
+  /** The actions a platform admin may set for this check. */
+  readonly allowedActions: readonly GuardrailViolationAction[];
+  /** The action when no tier says otherwise. `block` for the eight classifier checks = today's behaviour. */
+  readonly platformDefaultAction: GuardrailViolationAction;
+  /** Catalogue lock: always enabled at `platformDefaultAction`, editable by nobody (medical validation, OD-9). */
+  readonly locked: boolean;
+  /** The platform-default on/off (mirrors {@link PLATFORM_DEFAULT_GUARDRAIL_POLICIES}). */
+  readonly defaultEnabled: boolean;
+  /** Which inbound region trusts the check screens. Absent on an outbound-only check. */
+  readonly inboundRegions?: readonly GuardrailRegionTrust[];
+  /**
+   * For a check that screens BOTH trusts inbound: what a flag on a DATA region does. `ignore` = today's
+   * FC-5b record-only. A platform admin may raise it (OD-12 / §11.1). Absent where it does not apply.
+   */
+  readonly platformDefaultDataRegionAction?: GuardrailViolationAction;
 }
+
+const ALL_ACTIONS: readonly GuardrailViolationAction[] = Object.freeze(['ignore', 'warn', 'block']);
+/** The eight TASK-886 classifier checks: block on violation (today), record-only on inbound DATA regions (FC-5b). */
+const CLASSIFIER = { allowedActions: ALL_ACTIONS, platformDefaultAction: 'block', locked: false } as const;
+const CLASSIFIER_INBOUND = { inboundRegions: ['instruction', 'data'], platformDefaultDataRegionAction: 'ignore' } as const;
 
 export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = [
   {
     id: 'jailbreak_detection',
+    ...CLASSIFIER,
+    defaultEnabled: true,
+    ...CLASSIFIER_INBOUND,
     label: 'Jailbreak / prompt injection',
     description:
       'Detects instructions that try to override the system prompt. Runs on BOTH directions: a response that echoes — or complies with — an injected instruction is exactly what a post-receive check exists to catch.',
@@ -79,36 +113,50 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
   },
   {
     id: 'prompt_safety',
+    ...CLASSIFIER,
+    defaultEnabled: true,
+    ...CLASSIFIER_INBOUND,
     label: 'Prompt safety',
     description: 'Content-safety moderation of untrusted inbound content before it reaches a model.',
     directions: ['inbound'],
   },
   {
     id: 'prompt_toxicity',
+    ...CLASSIFIER,
+    defaultEnabled: true,
+    ...CLASSIFIER_INBOUND,
     label: 'Prompt toxicity',
     description: 'Toxicity moderation of untrusted inbound content.',
     directions: ['inbound'],
   },
   {
     id: 'response_safety',
+    ...CLASSIFIER,
+    defaultEnabled: true,
     label: 'Response safety',
     description: 'Content-safety moderation of a generated response before it reaches a clinician.',
     directions: ['outbound'],
   },
   {
     id: 'response_toxicity',
+    ...CLASSIFIER,
+    defaultEnabled: true,
     label: 'Response toxicity',
     description: 'Toxicity moderation of a generated response.',
     directions: ['outbound'],
   },
   {
     id: 'response_refusal',
+    ...CLASSIFIER,
+    defaultEnabled: false,
     label: 'Response refusal',
     description: 'Detects a model refusal surfacing to a clinician as if it were clinical content.',
     directions: ['outbound'],
   },
   {
     id: 'pii_leak',
+    ...CLASSIFIER,
+    defaultEnabled: true,
     label: 'PHI / PII leakage',
     description:
       'Flags an identifier present in the response but ABSENT from the declared source — a hallucinated identifier, or one surfaced from outside this consultation.',
@@ -124,8 +172,71 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
   },
   {
     id: 'containment_echo',
+    ...CLASSIFIER,
+    defaultEnabled: true,
     label: 'Containment echo',
     description: 'Detects a response repeating the inbound containment nonce, meaning the instruction/data boundary failed.',
+    directions: ['outbound'],
+  },
+  // ── TASK-1050: the locked medical judge and the four safety judges. Their screening readers land in
+  // apps/guardrail (W2a); the judges ship OFF (OD-6) so a deploy is behaviour-neutral.
+  {
+    id: 'medical_validation',
+    allowedActions: ['block'],
+    platformDefaultAction: 'block',
+    locked: true,
+    defaultEnabled: true,
+    inboundRegions: ['instruction', 'data'],
+    label: 'Medical-domain validation',
+    description:
+      'Keeps the platform to clinical documentation: content that directs the assistant to non-medical work is blocked. Always on, always block (the platform is for medical use only).',
+    directions: ['inbound'],
+  },
+  {
+    id: 'injection_judge',
+    allowedActions: ALL_ACTIONS,
+    platformDefaultAction: 'ignore',
+    locked: false,
+    defaultEnabled: false,
+    // README §10.2 A3: instruction text is governed at authoring time; the judge screens DATA regions only.
+    inboundRegions: ['data'],
+    label: 'Prompt-injection judge',
+    description:
+      'An LLM judge second opinion on transcripts, notes and attachments the injection classifier scores as borderline: does the content try to steer the assistant?',
+    directions: ['inbound'],
+  },
+  {
+    id: 'unsafe_content_judge',
+    allowedActions: ALL_ACTIONS,
+    platformDefaultAction: 'warn',
+    locked: false,
+    defaultEnabled: false,
+    inboundRegions: ['data'],
+    label: 'Unsafe-content judge',
+    description:
+      'An LLM judge second opinion when the safety or toxicity classifier is borderline: is the content directed at the assistant to obtain harmful output? Clinical description of harm is safe.',
+    directions: ['inbound'],
+  },
+  {
+    id: 'clinical_safety_judge',
+    allowedActions: ALL_ACTIONS,
+    platformDefaultAction: 'warn',
+    locked: false,
+    defaultEnabled: false,
+    label: 'Clinical-safety judge',
+    description:
+      'An LLM judge on generated clinical output: dangerous dosing, unsupported assertions, direct patient instructions or a missed emergency escalation.',
+    directions: ['outbound'],
+  },
+  {
+    id: 'leakage_judge',
+    allowedActions: ALL_ACTIONS,
+    platformDefaultAction: 'block',
+    locked: false,
+    defaultEnabled: false,
+    label: 'Leakage judge',
+    description:
+      "An LLM judge on generated output: the assistant's instructions, credentials, internal identifiers, or a third party's identifying details.",
     directions: ['outbound'],
   },
 ];
@@ -169,12 +280,38 @@ export const PLATFORM_DEFAULT_GUARDRAIL_POLICIES: GuardrailPolicySelectionSet = 
   response_refusal: { enabled: false },
   pii_leak: { enabled: true, minScore: 0.5 },
   containment_echo: { enabled: true },
+  // TASK-1050: medical validation is locked on; the four judges ship OFF (OD-6).
+  medical_validation: { enabled: true },
+  injection_judge: { enabled: false },
+  unsafe_content_judge: { enabled: false },
+  clinical_safety_judge: { enabled: false },
+  leakage_judge: { enabled: false },
 });
 
-/** True when at least one declared policy is switched on. */
+/**
+ * TASK-1050: the per-check platform defaults the `@arcaai/types` policy v2 functions
+ * (`normalizeTenantGuardrailPolicy`, `forbiddenGuardrailPolicyChanges`, …) take as their `defaults`
+ * argument — structurally `GuardrailCheckDefaults`. Derived from the catalogue, never restated; equal to
+ * the `defaults` of `tests/contracts/guardrail-policy.fixture.json`.
+ */
+export const GUARDRAIL_CHECK_DEFAULTS: Readonly<
+  Record<string, { readonly enabled: boolean; readonly action: GuardrailViolationAction; readonly locked: boolean; readonly allowedActions: readonly GuardrailViolationAction[] }>
+> = Object.freeze(
+  Object.fromEntries(
+    GUARDRAIL_POLICY_CATALOGUE.map((policy) => [
+      policy.id,
+      { enabled: policy.defaultEnabled, action: policy.platformDefaultAction, locked: policy.locked, allowedActions: policy.allowedActions },
+    ]),
+  ),
+);
+
+/**
+ * True when at least one declared, UNLOCKED policy is switched on. A catalogue-locked check (medical
+ * validation) runs regardless, so naming it expresses no opinion about the screens (TASK-1050).
+ */
 export function hasEnabledPolicy(policies: GuardrailPolicySelectionSet | null | undefined): boolean {
   if (!policies) return false;
-  return GUARDRAIL_POLICY_CATALOGUE.some((policy) => policies[policy.id]?.enabled === true);
+  return GUARDRAIL_POLICY_CATALOGUE.some((policy) => !policy.locked && policies[policy.id]?.enabled === true);
 }
 
 export interface ResolvedGuardrailAvailability {
@@ -232,6 +369,9 @@ export function normalizeSelection(raw: unknown): GuardrailPolicySelectionSet {
     if (typeof entry.enabled !== 'boolean') {
       throw new GuardrailPolicySelectionError(`Policy '${id}' requires a boolean 'enabled'`);
     }
+    if (descriptor.locked && entry.enabled !== descriptor.defaultEnabled) {
+      throw new GuardrailPolicySelectionError(`Policy '${id}' is locked by the platform and cannot be switched ${entry.enabled ? 'on' : 'off'}`);
+    }
     const selection: Record<string, boolean | number> = { enabled: entry.enabled };
 
     for (const field of Object.keys(entry)) {
@@ -285,6 +425,8 @@ export function assertBothDirectionsCovered(policies: GuardrailPolicySelectionSe
   if (!hasEnabledPolicy(policies)) return;
   const covered = new Set<GuardrailScreenDirection>();
   for (const descriptor of GUARDRAIL_POLICY_CATALOGUE) {
+    // A catalogue-locked check runs regardless of the selection, so it never stands in for a screen.
+    if (descriptor.locked) continue;
     if (policies[descriptor.id]?.enabled === true) for (const direction of descriptor.directions) covered.add(direction);
   }
   const missing = (['inbound', 'outbound'] as const).filter((direction) => !covered.has(direction));

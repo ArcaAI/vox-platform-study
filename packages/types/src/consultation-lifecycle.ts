@@ -47,6 +47,27 @@ export type LegacyConsultationStatus =
 /** The `processingReason` a finished, ready-to-read note carries while `processing` is IDLE. */
 export const NOTE_READY_REASON = 'NOTE_READY';
 
+/**
+ * TASK-1050 (README §9.7.5, §9.8.1): a guardrail `block` inside a consultation is a resumable HOLD —
+ * `status` PAUSED, `processing` AWAITING_REVIEW, this reason, the notice id recorded. Resolved by
+ * `POST consultations/:id/guardrail-hold/resume` or `approve` with `resolveHold`.
+ */
+export const GUARDRAIL_HOLD_REASON = 'GUARDRAIL_HOLD';
+
+/**
+ * TASK-1050 (README §9.8.1): the cloud-egress pseudonymiser was unavailable, so nothing was sent to the
+ * cloud model. A privacy hold (not a safety verdict), resumable exactly like {@link GUARDRAIL_HOLD_REASON}.
+ */
+export const EGRESS_REDACTION_UNAVAILABLE_REASON = 'EGRESS_REDACTION_UNAVAILABLE';
+
+/** The `processingReason`s of a resumable hold. `processingReason` stays an open string column otherwise. */
+export const GUARDRAIL_HOLD_PROCESSING_REASONS = [GUARDRAIL_HOLD_REASON, EGRESS_REDACTION_UNAVAILABLE_REASON] as const;
+export type GuardrailHoldProcessingReason = (typeof GUARDRAIL_HOLD_PROCESSING_REASONS)[number];
+
+export function isGuardrailHoldReason(reason: string | null | undefined): reason is GuardrailHoldProcessingReason {
+  return typeof reason === 'string' && (GUARDRAIL_HOLD_PROCESSING_REASONS as readonly string[]).includes(reason);
+}
+
 export interface NormalizedConsultationState {
   status: ConsultationStatus;
   processing: ConsultationProcessing;
@@ -55,7 +76,8 @@ export interface NormalizedConsultationState {
 
 /**
  * A note is ready to read when the consultation is STOPPED and either processing is IDLE with the
- * NOTE_READY reason, or AWAITING_REVIEW (a human must look). Never infer it from `status` alone.
+ * NOTE_READY reason, or AWAITING_REVIEW (a human must look). Never infer it from `status` alone. A guardrail
+ * hold is AWAITING_REVIEW too, but its note was blocked or withheld, so it is never "ready" (TASK-1050).
  */
 export function isNoteReady(state: {
   status: string;
@@ -65,7 +87,7 @@ export function isNoteReady(state: {
   return (
     state.status === 'STOPPED' &&
     ((state.processing === 'IDLE' && state.processingReason === NOTE_READY_REASON) ||
-      state.processing === 'AWAITING_REVIEW')
+      (state.processing === 'AWAITING_REVIEW' && !isGuardrailHoldReason(state.processingReason)))
   );
 }
 

@@ -1,0 +1,211 @@
+{
+  "$comment": [
+    "TASK-1050 W1 — tenant guardrail policy v2 (README §9.3 + §11.1) and its two pure functions.",
+    "",
+    "`defaults` is the per-check platform default the functions are parameterised with. It is DERIVED from the",
+    "catalogue (packages/applications/.../guardrail-availability/policy-catalogue.ts `GUARDRAIL_CHECK_DEFAULTS`,",
+    "and apps/guardrail/.../tests/contracts/availability-catalogue.json), and pinned against both.",
+    "",
+    "`normalize`: normalizeTenantGuardrailPolicy(input, defaults) === expected (legacy flat {check:{enabled,minScore?}}",
+    "or v2 in; v2 out; unknown ids dropped; catalogue-locked checks forced to their locked value).",
+    "`fieldGuard`: forbiddenGuardrailPolicyChanges(caller, before, after, defaults) === forbidden (dotted paths).",
+    "A tenant admin may change ONLY `directions.<dir>.enabled` and `checks.<id>.enabled` of a check that is neither",
+    "catalogue-locked nor `locked` on the stored row. A platform admin may change everything except a catalogue-locked",
+    "check. `setBy` is server-stamped and never compared. TypeScript: packages/types/src/guardrail-policy.ts."
+  ],
+  "defaults": {
+    "jailbreak_detection": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "prompt_safety": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "prompt_toxicity": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "response_safety": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "response_toxicity": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "response_refusal": { "enabled": false, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "pii_leak": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "containment_echo": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "medical_validation": { "enabled": true, "action": "block", "locked": true, "allowedActions": ["block"] },
+    "injection_judge": { "enabled": false, "action": "ignore", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "unsafe_content_judge": { "enabled": false, "action": "warn", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "clinical_safety_judge": { "enabled": false, "action": "warn", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "leakage_judge": { "enabled": false, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] }
+  },
+  "normalize": [
+    {
+      "name": "absent row: both directions on, no check opinion",
+      "input": null,
+      "expected": { "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } }, "checks": {} }
+    },
+    {
+      "name": "legacy flat shape: action = platform default, minScore kept, unknown id dropped",
+      "input": {
+        "prompt_safety": { "enabled": false },
+        "pii_leak": { "enabled": true, "minScore": 0.3 },
+        "not_a_check": { "enabled": true }
+      },
+      "expected": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
+        "checks": {
+          "prompt_safety": { "enabled": false, "action": "block" },
+          "pii_leak": { "enabled": true, "action": "block", "minScore": 0.3 }
+        }
+      }
+    },
+    {
+      "name": "legacy flat shape: a judge takes its own platform default action",
+      "input": { "injection_judge": { "enabled": true }, "leakage_judge": { "enabled": true } },
+      "expected": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
+        "checks": {
+          "injection_judge": { "enabled": true, "action": "ignore" },
+          "leakage_judge": { "enabled": true, "action": "block" }
+        }
+      }
+    },
+    {
+      "name": "legacy entry without a boolean enabled is no opinion (dropped)",
+      "input": { "prompt_safety": { "enabled": "yes" }, "prompt_toxicity": {} },
+      "expected": { "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } }, "checks": {} }
+    },
+    {
+      "name": "a stored attempt to disable the locked medical check reads as its locked value",
+      "input": { "medical_validation": { "enabled": false } },
+      "expected": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
+        "checks": { "medical_validation": { "enabled": true, "action": "block" } }
+      }
+    },
+    {
+      "name": "v2 passes through, missing direction defaults on",
+      "input": {
+        "directions": { "inbound": { "enabled": false } },
+        "checks": {
+          "unsafe_content_judge": { "enabled": true, "action": "block", "locked": true, "setBy": "platform_admin" },
+          "jailbreak_detection": { "enabled": true, "action": "warn", "dataRegionAction": "ignore" }
+        }
+      },
+      "expected": {
+        "directions": { "inbound": { "enabled": false }, "outbound": { "enabled": true } },
+        "checks": {
+          "unsafe_content_judge": { "enabled": true, "action": "block", "locked": true, "setBy": "platform_admin" },
+          "jailbreak_detection": { "enabled": true, "action": "warn", "dataRegionAction": "ignore" }
+        }
+      }
+    },
+    {
+      "name": "v2: invalid or disallowed action falls back to the platform default; missing enabled takes the default",
+      "input": {
+        "checks": {
+          "prompt_safety": { "enabled": true, "action": "explode" },
+          "medical_validation": { "enabled": true, "action": "warn" },
+          "clinical_safety_judge": { "action": "block" },
+          "bogus": { "enabled": true, "action": "block" }
+        }
+      },
+      "expected": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
+        "checks": {
+          "prompt_safety": { "enabled": true, "action": "block" },
+          "medical_validation": { "enabled": true, "action": "block" },
+          "clinical_safety_judge": { "enabled": false, "action": "block" }
+        }
+      }
+    },
+    {
+      "name": "v2: invalid optional fields are dropped, never guessed",
+      "input": {
+        "checks": {
+          "pii_leak": { "enabled": true, "action": "block", "minScore": 1.5, "locked": "yes", "setBy": "someone", "dataRegionAction": "maybe" }
+        }
+      },
+      "expected": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
+        "checks": { "pii_leak": { "enabled": true, "action": "block" } }
+      }
+    }
+  ],
+  "fieldGuard": [
+    {
+      "name": "tenant toggles a check on/off",
+      "caller": "tenant_admin",
+      "before": null,
+      "after": { "checks": { "prompt_safety": { "enabled": false, "action": "block" } } },
+      "forbidden": []
+    },
+    {
+      "name": "tenant switches a direction to monitor-only",
+      "caller": "tenant_admin",
+      "before": null,
+      "after": { "directions": { "inbound": { "enabled": false }, "outbound": { "enabled": true } } },
+      "forbidden": []
+    },
+    {
+      "name": "tenant sends the platform default action unchanged on a new entry",
+      "caller": "tenant_admin",
+      "before": { "prompt_safety": { "enabled": true } },
+      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "block" }, "injection_judge": { "enabled": true, "action": "ignore" } } },
+      "forbidden": []
+    },
+    {
+      "name": "tenant changes an action",
+      "caller": "tenant_admin",
+      "before": null,
+      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "warn" } } },
+      "forbidden": ["checks.prompt_safety.action"]
+    },
+    {
+      "name": "tenant tries to disable the catalogue-locked medical check",
+      "caller": "tenant_admin",
+      "before": null,
+      "after": { "checks": { "medical_validation": { "enabled": false, "action": "block" } } },
+      "forbidden": ["checks.medical_validation.enabled"]
+    },
+    {
+      "name": "tenant toggles a check the platform admin locked for this tenant",
+      "caller": "tenant_admin",
+      "before": { "checks": { "unsafe_content_judge": { "enabled": true, "action": "warn", "locked": true, "setBy": "platform_admin" } } },
+      "after": { "checks": { "unsafe_content_judge": { "enabled": false, "action": "warn", "locked": true, "setBy": "platform_admin" } } },
+      "forbidden": ["checks.unsafe_content_judge.enabled"]
+    },
+    {
+      "name": "tenant drops the platform lock and the threshold",
+      "caller": "tenant_admin",
+      "before": { "checks": { "pii_leak": { "enabled": true, "action": "block", "minScore": 0.3, "locked": true } } },
+      "after": { "checks": { "pii_leak": { "enabled": true, "action": "block" } } },
+      "forbidden": ["checks.pii_leak.locked", "checks.pii_leak.minScore"]
+    },
+    {
+      "name": "tenant sets a data-region action",
+      "caller": "tenant_admin",
+      "before": null,
+      "after": { "checks": { "jailbreak_detection": { "enabled": true, "action": "block", "dataRegionAction": "block" } } },
+      "forbidden": ["checks.jailbreak_detection.dataRegionAction"]
+    },
+    {
+      "name": "setBy is server-stamped and never compared",
+      "caller": "tenant_admin",
+      "before": { "checks": { "prompt_safety": { "enabled": true, "action": "block", "setBy": "platform_admin" } } },
+      "after": { "checks": { "prompt_safety": { "enabled": false, "action": "block", "setBy": "tenant_admin" } } },
+      "forbidden": []
+    },
+    {
+      "name": "platform admin sets action, lock, threshold and data-region action",
+      "caller": "platform_admin",
+      "before": null,
+      "after": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": false } },
+        "checks": {
+          "prompt_safety": { "enabled": true, "action": "warn", "locked": true },
+          "pii_leak": { "enabled": true, "action": "block", "minScore": 0.2 },
+          "jailbreak_detection": { "enabled": true, "action": "block", "dataRegionAction": "warn" }
+        }
+      },
+      "forbidden": []
+    },
+    {
+      "name": "platform admin cannot move the catalogue-locked medical check either",
+      "caller": "platform_admin",
+      "before": null,
+      "after": { "checks": { "medical_validation": { "enabled": true, "action": "warn" } } },
+      "forbidden": ["checks.medical_validation.action"]
+    }
+  ]
+}

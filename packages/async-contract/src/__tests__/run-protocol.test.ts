@@ -85,7 +85,24 @@ function optionsOf(entry: { runKind?: 'agent' | 'workflow'; plane?: 'public' | '
 }
 
 // __dirname, not import.meta.url: this package's tests compile to CommonJS (see envelope.test.ts).
-const fixture = JSON.parse(readFileSync(join(__dirname, '../../../../tests/contracts/run-protocol.fixture.json'), 'utf-8')) as Fixture;
+const baseFixture = JSON.parse(readFileSync(join(__dirname, '../../../../tests/contracts/run-protocol.fixture.json'), 'utf-8')) as Fixture;
+
+/**
+ * TASK-1050: the guardrail additions ship as an OVERLAY (`guardrail-run-events.fixture.json`) so the
+ * mirrors of this protocol adopt them in their own lanes. Its maps merge into the base maps and its
+ * lists append to the base lists; every assertion below therefore covers the whole catalogue.
+ */
+const overlay = JSON.parse(readFileSync(join(__dirname, '../../../../tests/contracts/guardrail-run-events.fixture.json'), 'utf-8')) as Pick<
+  Fixture,
+  'visibility' | 'nodeScope' | 'examples' | 'invalid'
+>;
+const fixture: Fixture = {
+  ...baseFixture,
+  visibility: { ...baseFixture.visibility, ...overlay.visibility },
+  nodeScope: { ...baseFixture.nodeScope, ...overlay.nodeScope },
+  examples: [...baseFixture.examples, ...overlay.examples],
+  invalid: [...baseFixture.invalid, ...overlay.invalid],
+};
 
 describe('run protocol v2 — constants agree with the fixture', () => {
   it('version, header and the inline-result cap', () => {
@@ -110,6 +127,8 @@ describe('run protocol v2 — constants agree with the fixture', () => {
       'output.audio.delta',
       'output.data',
       'ping',
+      'run.paused',
+      'guardrail.notice',
     ]);
   });
 
@@ -425,7 +444,8 @@ describe('node scoping — agent runs and session-sourced transcripts (F2 fix 4)
     const optional = Object.entries(RUN_EVENT_NODE_SCOPE)
       .filter(([, scope]) => scope === 'optional')
       .map(([type]) => type);
-    expect(optional).toEqual(['transcript.partial', 'transcript.final']);
+    // TASK-1050: a guardrail notice may be consultation-level (no node), so it is optional too.
+    expect(optional).toEqual(['guardrail.notice', 'transcript.partial', 'transcript.final']);
   });
 });
 

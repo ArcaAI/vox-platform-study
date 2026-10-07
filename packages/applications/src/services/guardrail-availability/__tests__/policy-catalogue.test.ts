@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import {
+  GUARDRAIL_CHECK_DEFAULTS,
   GUARDRAIL_POLICY_CATALOGUE,
   GuardrailPolicySelectionError,
   PLATFORM_DEFAULT_GUARDRAIL_POLICIES,
@@ -25,7 +26,24 @@ const CONTRACT = JSON.parse(
     fileURLToPath(new URL('../../../../../../apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json', import.meta.url)),
     'utf8',
   ),
-) as { policies: { id: string; directions: string[]; threshold?: { field: string; floorDirection: string; minimum: number; maximum: number } }[] };
+) as {
+  policies: {
+    id: string;
+    directions: string[];
+    threshold?: { field: string; floorDirection: string; minimum: number; maximum: number };
+    allowedActions: string[];
+    platformDefaultAction: string;
+    locked: boolean;
+    defaultEnabled: boolean;
+    inboundRegions?: string[];
+    platformDefaultDataRegionAction?: string;
+  }[];
+};
+
+/** TASK-1050: the per-check defaults the `@arcaai/types` policy normalizer and field guard are parameterised with. */
+const POLICY_FIXTURE = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../../../../../../tests/contracts/guardrail-policy.fixture.json', import.meta.url)), 'utf8'),
+) as { defaults: Record<string, unknown> };
 
 describe('guardrail policy catalogue — the cross-language contract', () => {
   it('declares exactly the ids the contract fixture names, in order', () => {
@@ -40,15 +58,52 @@ describe('guardrail policy catalogue — the cross-language contract', () => {
     }
   });
 
-  // Guardrails check the request AND the response (owner decisions OD-1..OD-5): every declared
-  // check ships ON except `response_refusal` — a refusal is not unsafe content. The seed mirrors this.
-  const CALIBRATED_OFF: readonly string[] = ['response_refusal'];
+  // Guardrails check the request AND the response (owner decisions OD-1..OD-5): every classifier
+  // check ships ON except `response_refusal` — a refusal is not unsafe content. TASK-1050: the locked
+  // medical check ships ON, the four judges ship OFF (OD-6). The seed mirrors this.
+  const CALIBRATED_OFF: readonly string[] = ['response_refusal', 'injection_judge', 'unsafe_content_judge', 'clinical_safety_judge', 'leakage_judge'];
 
-  it('seeds the platform default with every declared policy switched ON, except response_refusal', () => {
+  it('seeds the platform default as the contract declares: classifiers and medical ON, response_refusal and the judges OFF', () => {
     for (const policy of GUARDRAIL_POLICY_CATALOGUE) {
       expect(PLATFORM_DEFAULT_GUARDRAIL_POLICIES[policy.id]?.enabled, policy.id).toBe(!CALIBRATED_OFF.includes(policy.id));
+      expect(policy.defaultEnabled, policy.id).toBe(!CALIBRATED_OFF.includes(policy.id));
     }
     expect(Object.keys(PLATFORM_DEFAULT_GUARDRAIL_POLICIES).sort()).toEqual(GUARDRAIL_POLICY_CATALOGUE.map((p) => p.id).sort());
+  });
+
+  it('agrees with the contract on violation handling (TASK-1050)', () => {
+    for (const expected of CONTRACT.policies) {
+      const actual = GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === expected.id)!;
+      expect(actual.allowedActions, expected.id).toEqual(expected.allowedActions);
+      expect(actual.platformDefaultAction, expected.id).toBe(expected.platformDefaultAction);
+      expect(actual.locked, expected.id).toBe(expected.locked);
+      expect(actual.defaultEnabled, expected.id).toBe(expected.defaultEnabled);
+      expect(actual.inboundRegions ?? null, expected.id).toEqual(expected.inboundRegions ?? null);
+      expect(actual.platformDefaultDataRegionAction ?? null, expected.id).toEqual(expected.platformDefaultDataRegionAction ?? null);
+      expect(actual.allowedActions, expected.id).toContain(actual.platformDefaultAction);
+    }
+  });
+
+  it('keeps today\'s behaviour for the eight classifier checks: platform action block', () => {
+    const classifiers = ['jailbreak_detection', 'prompt_safety', 'prompt_toxicity', 'response_safety', 'response_toxicity', 'response_refusal', 'pii_leak', 'containment_echo'];
+    for (const id of classifiers) expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)?.platformDefaultAction, id).toBe('block');
+  });
+
+  it('locks medical validation at block, and the judges default to the README actions', () => {
+    const byId = (id: string) => GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)!;
+    expect(byId('medical_validation')).toMatchObject({ locked: true, platformDefaultAction: 'block', allowedActions: ['block'], defaultEnabled: true });
+    expect(byId('injection_judge').platformDefaultAction).toBe('ignore');
+    expect(byId('unsafe_content_judge').platformDefaultAction).toBe('warn');
+    expect(byId('clinical_safety_judge').platformDefaultAction).toBe('warn');
+    expect(byId('leakage_judge').platformDefaultAction).toBe('block');
+    // README §10.2 A3: the inbound judges screen DATA regions only.
+    expect(byId('injection_judge').inboundRegions).toEqual(['data']);
+    expect(byId('unsafe_content_judge').inboundRegions).toEqual(['data']);
+  });
+
+  it('exports the per-check defaults the @arcaai/types policy functions take, equal to the policy fixture', () => {
+    expect(GUARDRAIL_CHECK_DEFAULTS).toEqual(POLICY_FIXTURE.defaults);
+    expect(Object.keys(GUARDRAIL_CHECK_DEFAULTS)).toEqual(GUARDRAIL_POLICY_CATALOGUE.map((p) => p.id));
   });
 
   it('carries the pii_leak floor verbatim from core/policy.py::_SPECS', () => {
@@ -84,6 +139,13 @@ describe('resolveAvailability — tenant → SYSTEM, widening on ABSENCE ONLY', 
     const resolved = resolveAvailability(allOff, SYSTEM_SET, 'tenant-a');
     expect(resolved.policies).toEqual(SYSTEM_SET);
     expect(resolved.sourceTenantId).toBe(SYSTEM_TENANT_ID);
+  });
+
+  it('a selection that enables ONLY the locked medical check is no opinion (TASK-1050)', () => {
+    // Medical validation is always on; a row naming only it expressed nothing about the screens.
+    const resolved = resolveAvailability({ medical_validation: { enabled: true } }, SYSTEM_SET, 'tenant-a');
+    expect(resolved.sourceTenantId).toBe(SYSTEM_TENANT_ID);
+    expect(hasEnabledPolicy({ medical_validation: { enabled: true } })).toBe(false);
   });
 
   it('falls back to the built-in platform default when even SYSTEM has no set', () => {
@@ -124,6 +186,15 @@ describe('normalizeSelection — the catalogue is the only legal vocabulary', ()
 
   it('refuses a non-object payload', () => {
     expect(() => normalizeSelection([])).toThrow(GuardrailPolicySelectionError);
+  });
+
+  it('refuses switching off a catalogue-locked check (TASK-1050, OD-9)', () => {
+    expect(() => normalizeSelection({ medical_validation: { enabled: false } })).toThrow(/locked/);
+    expect(normalizeSelection({ medical_validation: { enabled: true } })).toEqual({ medical_validation: { enabled: true } });
+  });
+
+  it('accepts the new judge ids', () => {
+    expect(normalizeSelection({ leakage_judge: { enabled: true } })).toEqual({ leakage_judge: { enabled: true } });
   });
 });
 
@@ -173,6 +244,12 @@ describe('assertBothDirectionsCovered — a direction may never be switched off'
 
   it('refuses an inbound-only selection', () => {
     expect(() => assertBothDirectionsCovered({ prompt_safety: { enabled: true } })).toThrow(/outbound would have no check/);
+  });
+
+  it('a catalogue-locked check never counts as covering a direction (it runs regardless)', () => {
+    expect(() => assertBothDirectionsCovered({ medical_validation: { enabled: true }, response_safety: { enabled: true } })).toThrow(
+      /inbound would have no check/,
+    );
   });
 
   it('accepts one policy per direction', () => {

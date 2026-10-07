@@ -56,3 +56,15 @@ export * from './llm-egress.js';
 // capture/stop results, feedback, attachments and the activity (history) read model.
 export * from './consultation-lifecycle.js';
 export * from './citation-labels.js';
+
+// TASK-1050 — the guardrail contract: check/decision vocabulary and correlation headers, the
+// `GuardrailNotice` v1 client message, the `internal/guardrail/evaluations` record, hold / resume /
+// one-action approve, tenant policy v2 (normalizer + field guard), the judge-prompt template, and the
+// judge-model capability declaration (`AiModel._metadata.judge`).
+export * from './guardrail-vocabulary.js';
+export * from './guardrail-notice.js';
+export * from './guardrail-evaluation.js';
+export * from './guardrail-hold.js';
+export * from './guardrail-policy.js';
+export * from './guardrail-judge-template.js';
+export * from './guardrail-judge-model.js';

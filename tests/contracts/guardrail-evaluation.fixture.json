@@ -1,0 +1,143 @@
+{
+  "$comment": [
+    "TASK-1050 W1 — the wire body of POST internal/guardrail/evaluations (README §9.8.2).",
+    "",
+    "Producer: apps/guardrail's Redis-outbox drainer (W2a). Consumer: the gateway (W2e), idempotent on evaluationId.",
+    "One record per request x direction. No judged text and no judge reasoning anywhere in a record:",
+    "`withheldContent` is the ONLY content field, present only on an outbound block, plaintext on this",
+    "internal wire, and encrypted by the gateway before it is stored.",
+    "`batch` is a VALID request body (<= batchMax records). TypeScript: packages/types/src/guardrail-evaluation.ts."
+  ],
+  "batchMax": 100,
+  "batch": {
+    "evaluations": [
+      {
+        "evaluationId": "01927f6e-8b1a-7c3e-9d2f-1a2b3c4d5e60",
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "requestId": "req-0b6f2c1e",
+        "consultationId": "01927f6e-0000-7000-8000-000000000001",
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "runKey": "consultation-scribe:01927f6e-0000-7000-8000-000000000001:3",
+        "nodeId": "n_note",
+        "agentSlug": "soap-note-writer",
+        "caller": "harness.guardrail_check",
+        "direction": "inbound",
+        "decision": "warn",
+        "checks": [
+          {
+            "checkId": "jailbreak_detection",
+            "verdict": "pass",
+            "score": 0.04,
+            "actionTaken": "none",
+            "model": "llama-prompt-guard-2-86m",
+            "latencyMs": 38,
+            "regionKeys": ["transcript:w0", "transcript:w1"],
+            "items": [
+              { "itemId": "01927f6e-1111-7000-8000-000000000010", "itemVersion": 2 }
+            ]
+          },
+          {
+            "checkId": "unsafe_content_judge",
+            "verdict": "flag",
+            "score": 0.61,
+            "category": "violence",
+            "confidence": 0.82,
+            "actionTaken": "warn",
+            "model": "granite-guardian-4.1-8b",
+            "latencyMs": 1210,
+            "regionKeys": ["transcript:w1"],
+            "items": [
+              { "itemId": "01927f6e-1111-7000-8000-000000000010", "itemVersion": 2 }
+            ]
+          },
+          {
+            "checkId": "medical_validation",
+            "verdict": "pass",
+            "confidence": 0.97,
+            "actionTaken": "none",
+            "model": "granite-guardian-4.1-8b",
+            "latencyMs": 980,
+            "regionKeys": ["transcript:w0", "transcript:w1"],
+            "items": []
+          },
+          {
+            "checkId": "injection_judge",
+            "verdict": "skipped",
+            "actionTaken": "none",
+            "model": null,
+            "latencyMs": 0,
+            "regionKeys": [],
+            "items": []
+          }
+        ],
+        "policyVersion": "pv-3f9a1c",
+        "noticeIds": ["01927f6e-9999-7000-8000-0000000000aa"],
+        "occurredAt": "2026-10-07T09:15:00.000Z"
+      },
+      {
+        "evaluationId": "01927f6e-8b1a-7c3e-9d2f-1a2b3c4d5e61",
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "requestId": "req-0b6f2c1e",
+        "consultationId": "01927f6e-0000-7000-8000-000000000001",
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "runKey": "consultation-scribe:01927f6e-0000-7000-8000-000000000001:3",
+        "nodeId": "n_note",
+        "itemId": "01927f6e-2222-7000-8000-000000000020",
+        "caller": "harness.guardrail_check",
+        "direction": "outbound",
+        "decision": "block",
+        "checks": [
+          {
+            "checkId": "leakage_judge",
+            "verdict": "flag",
+            "category": "credential",
+            "confidence": 0.91,
+            "actionTaken": "block",
+            "model": "granite-guardian-4.1-8b",
+            "latencyMs": 1430,
+            "regionKeys": ["response"],
+            "items": [
+              { "itemId": "01927f6e-2222-7000-8000-000000000020", "itemVersion": 1 }
+            ]
+          },
+          {
+            "checkId": "response_safety",
+            "verdict": "undetermined",
+            "actionTaken": "unverified",
+            "model": "gliguard-base",
+            "latencyMs": 5002,
+            "regionKeys": ["response"],
+            "items": []
+          }
+        ],
+        "policyVersion": "pv-3f9a1c",
+        "noticeIds": ["01927f6e-9999-7000-8000-0000000000ab"],
+        "withheldContent": "Assessment: … (the generated note, withheld)",
+        "occurredAt": "2026-10-07T09:15:04.000Z"
+      },
+      {
+        "evaluationId": "01927f6e-8b1a-7c3e-9d2f-1a2b3c4d5e62",
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "requestId": "req-71aa09d3",
+        "caller": "text.generate",
+        "direction": "inbound",
+        "decision": "allow",
+        "exempt": "medical_internal",
+        "checks": [
+          {
+            "checkId": "prompt_safety",
+            "verdict": "pass",
+            "actionTaken": "none",
+            "model": "gliguard-base",
+            "latencyMs": 41,
+            "regionKeys": ["prompt"],
+            "items": []
+          }
+        ],
+        "policyVersion": "pv-3f9a1c",
+        "noticeIds": [],
+        "occurredAt": "2026-10-07T09:16:00.000Z"
+      }
+    ]
+  }
+}
