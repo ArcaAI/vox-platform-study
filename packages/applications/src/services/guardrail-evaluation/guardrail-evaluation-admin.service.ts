@@ -36,6 +36,10 @@ export interface GuardrailEvaluationListQueryInput {
   direction?: string;
   /** A check id the evaluation ran (`checks[].checkId`). */
   check?: string;
+  /** Only the evaluations of one workflow run (run-detail). */
+  runId?: string;
+  /** Only the evaluations of one `AiActivityRun` (`runKey`). */
+  runKey?: string;
 }
 
 /** One evaluation row as the admin grid reads it. No content and no judge reasoning. */
@@ -138,6 +142,8 @@ export class GuardrailEvaluationAdminService extends BaseService {
       if (!(GUARDRAIL_CHECK_IDS as readonly string[]).includes(query.check)) throw new BadRequestException(`Unknown check: ${query.check}`);
       where.checks = { array_contains: [{ checkId: query.check }] };
     }
+    if (query.runId !== undefined) where.runId = query.runId;
+    if (query.runKey !== undefined) where.runKey = query.runKey;
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
     if (query.cursor && !cursor) throw new BadRequestException('Invalid cursor');
     const limit = clampCursorLimit(query.limit ?? DEFAULT_LIMIT);

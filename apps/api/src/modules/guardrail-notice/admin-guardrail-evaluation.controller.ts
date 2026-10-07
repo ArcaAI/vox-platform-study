@@ -27,7 +27,7 @@ export class AdminGuardrailEvaluationController {
     summary: 'List a consultation`s guardrail evaluations',
     description:
       'One row per guardrail evaluation (request × direction), newest first, keyset-paged: decision, per-check verdicts, models, latencies, the regions and items screened, ' +
-      'and the notices raised. No content and no judge reasoning. Filters: `action` (the decision), `direction`, `check`.',
+      'and the notices raised. No content and no judge reasoning. Filters: `action` (the decision), `direction`, `check`, `runId`, `runKey`.',
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiOkResponse({ type: GuardrailEvaluationPageResponse })

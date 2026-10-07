@@ -31,7 +31,7 @@ import { IConsultationEncounterService, IConsultationEncounterServiceToken } fro
 import { LifecycleConflictCode, applyLifecycleTransition, lifecycleConflict } from './lifecycle-errors';
 import { ConsultationLifecycleEventPublisher } from './lifecycle-event.publisher';
 import { SESSION_NOTE_SIGNER, type PreparedSessionSignature, type SessionNoteSigner, type SessionSignerCaller } from './session-note-signer';
-import { GUARDRAIL_CONFLICT_CODES, assertResolutionAllowed, guardrailConflict } from '../../guardrail-notice/guardrail-hold.rules';
+import { GUARDRAIL_CONFLICT_CODES, assertResolutionAllowed, guardrailConflict, isRedactionHoldNotice } from '../../guardrail-notice/guardrail-hold.rules';
 import { acknowledgementOf, isBlockNotice } from '../../guardrail-notice/guardrail-wire';
 
 /** One approved item, by reference only — never content. */
@@ -349,7 +349,7 @@ export class ConsultationApprovalService extends BaseService {
     const { notice, resolution } = plan.resolve;
     notice.resolve({ by: context.approvedBy, resolution, at: context.approvedAt });
     await this.guardrailNotices.updateWithVersion(notice.id, notice, notice.version, tx);
-    if (resolution === 'acknowledged') {
+    if (resolution === 'acknowledged' && !isRedactionHoldNotice(notice)) {
       await this.harnessAuditService.append({
         tenantId: context.tenantId,
         consultationId: context.consultationId,

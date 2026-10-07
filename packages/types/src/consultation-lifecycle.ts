@@ -396,6 +396,8 @@ export interface ActivityItemEntry {
   feedback?: { up: number; down: number };
   segment?: { seq: number; speaker: string | null; t0Ms: number; t1Ms: number };
   media?: { mediaId: string; url?: string; durationMs?: number };
+  /** TASK-1050 — the item's guardrail marker (`ContextItem.guardrailStatus`); absent on an older gateway. */
+  guardrailStatus?: 'CLEAN' | 'WARNED' | 'BLOCKED' | 'WITHHELD';
 }
 
 export interface ActivitySegmentRunEntry {

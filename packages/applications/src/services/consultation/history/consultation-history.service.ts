@@ -59,6 +59,7 @@ export const HISTORY_SEGMENT_RUN_CAP = 200;
 /** Most item bodies one page decrypts (latest versions + run previews); the rest are listed without content. */
 export const HISTORY_DECRYPT_CAP_PER_PAGE = 50;
 const DECRYPT_BATCH = 20;
+type GuardrailItemMarker = NonNullable<ActivityItemEntry['guardrailStatus']>;
 const DECRYPT_CONCURRENCY = 2;
 const RUN_LOOKUP_CONCURRENCY = 4;
 const PREVIEW_SEGMENTS = 3;
@@ -327,14 +328,41 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
       ratings.set(record.target.contextItemId, counts);
     }
 
+    const markers = await this.guardrailMarkers(itemRows);
     const entries = pending.map((entry): ActivityEntry => {
       if (entry.type === 'synthetic') return entry.entry;
       if (entry.type === 'run') return this.toRunEntry(entry.rows, contents);
-      return this.toItemEntry(entry.row, metaByItem.get(entry.row.id) ?? [], contents, ratings, context.includeVersions);
+      const item = this.toItemEntry(entry.row, metaByItem.get(entry.row.id) ?? [], contents, ratings, context.includeVersions);
+      if (markers) item.guardrailStatus = markers.get(entry.row.id) ?? 'CLEAN';
+      return item;
     });
 
     if (context.admin && this.runReader) await this.attachRuns(entries, context);
     return entries;
+  }
+
+  /**
+   * TASK-1050 — the page items' guardrail markers. A row that already carries the column is read as
+   * is; otherwise ONE read fetches just the marked (non-CLEAN) items of the page. `null` (no field
+   * is set) when the marker cannot be read — the feed never fails on it.
+   */
+  private async guardrailMarkers(rows: HistoryItemRow[]): Promise<Map<string, GuardrailItemMarker> | null> {
+    if (rows.length === 0) return new Map();
+    const carried = rows as Array<HistoryItemRow & { guardrailStatus?: string | null }>;
+    if (carried.every((row) => typeof row.guardrailStatus === 'string')) {
+      return new Map(carried.map((row) => [row.id, row.guardrailStatus as GuardrailItemMarker]));
+    }
+    const reader = this.contextItemRepository as Partial<Pick<ContextItemRepository, 'findAll'>>;
+    if (typeof reader.findAll !== 'function') return null;
+    try {
+      const marked = (await reader.findAll({
+        where: { id: { in: rows.map((row) => row.id) }, guardrailStatus: { not: 'CLEAN' } } as never,
+      })) as Array<{ id: string; guardrailStatus?: string | null }>;
+      return new Map(marked.map((item) => [item.id, (item.guardrailStatus ?? 'CLEAN') as GuardrailItemMarker]));
+    } catch (error) {
+      this.logger.warn(`Guardrail markers unreadable for an activity page: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
   }
 
   private toItemEntry(
