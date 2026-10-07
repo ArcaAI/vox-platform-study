@@ -1,0 +1,878 @@
+{
+  "$comment": [
+    "TASK-1050 W1 — the run-protocol v2 additions for guardrail (README §9.7.3, §9.8.1), an OVERLAY on",
+    "tests/contracts/run-protocol.fixture.json: a reader merges `visibility` and `nodeScope` into the base maps and",
+    "appends `examples` / `invalid` to the base lists, with the same semantics (an example passes runEventProblems",
+    "with its `runKind` / `plane`; an invalid entry yields a problem containing `problem`).",
+    "",
+    "New PUBLIC types: `guardrail.notice` (data = a GuardrailNotice v1; envelope nodeId OPTIONAL — a consultation-",
+    "level notice has no node) and `run.paused` (data {reason:'guardrail_hold', noticeId, nodeId}; a run-level event,",
+    "so the node rides in data). `guardrail.inbound|outbound` (admin) gain action WARN|IGNORE and checks[] (no content).",
+    "`run.completed` gains guardrailNotices?: GuardrailNotice[]. GUARDRAIL_BLOCKED stays as the run error code.",
+    "Notice cross-field rules: action === typeAction[type]; messageKey starts with `<type>.`; defaultMessage is EXACTLY",
+    "the fixed label of messageKey (from guardrail-vocabulary.fixture.json) — never free text, so a notice can never",
+    "echo PHI or the injection itself.",
+    "Readers: packages/async-contract (TS, this lane), packages/agentic-sdk-v2 + packages/vox-node (W2d),",
+    "apps/harness run_protocol.py (W2f), apps/admin-console shared/sandbox/api/run-protocol.ts (W3b)."
+  ],
+  "visibility": {
+    "run.paused": "public",
+    "guardrail.notice": "public"
+  },
+  "nodeScope": {
+    "run.paused": "forbidden",
+    "guardrail.notice": "optional"
+  },
+  "runPausedReasons": [
+    "guardrail_hold"
+  ],
+  "guardrailEventActions": [
+    "ALLOW",
+    "REDACT",
+    "BLOCK",
+    "WARN",
+    "IGNORE"
+  ],
+  "notices": [
+    {
+      "schemaVersion": 1,
+      "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+      "type": "guardrail.warning",
+      "direction": "inbound",
+      "action": "warn",
+      "checks": [
+        {
+          "checkId": "unsafe_content_judge",
+          "category": "violence",
+          "severity": "medium"
+        }
+      ],
+      "consultationId": "01927f6e-0000-7000-8000-000000000001",
+      "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+      "nodeId": "n_note",
+      "itemIds": [
+        "01927f6e-1111-7000-8000-000000000010"
+      ],
+      "messageKey": "guardrail.warning.generic",
+      "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+      "requiresAcknowledgement": true,
+      "resumable": false,
+      "policyVersion": "pv-3f9a1c",
+      "occurredAt": "2026-10-07T09:15:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "noticeId": "01927f6e-9999-7000-8000-0000000000ab",
+      "type": "guardrail.blocked",
+      "direction": "outbound",
+      "action": "block",
+      "checks": [
+        {
+          "checkId": "leakage_judge",
+          "category": "credential",
+          "severity": "high"
+        }
+      ],
+      "consultationId": "01927f6e-0000-7000-8000-000000000001",
+      "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+      "nodeId": "n_note",
+      "itemIds": [
+        "01927f6e-2222-7000-8000-000000000020"
+      ],
+      "messageKey": "guardrail.blocked.outbound",
+      "defaultMessage": "A safety check withheld the generated content. Review it to continue.",
+      "requiresAcknowledgement": true,
+      "resumable": true,
+      "policyVersion": "pv-3f9a1c",
+      "occurredAt": "2026-10-07T09:15:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "noticeId": "01927f6e-9999-7000-8000-0000000000ac",
+      "type": "guardrail.unverified",
+      "direction": "outbound",
+      "action": "warn",
+      "checks": [
+        {
+          "checkId": "response_safety",
+          "severity": "low"
+        }
+      ],
+      "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+      "itemIds": [],
+      "messageKey": "guardrail.unverified.generic",
+      "defaultMessage": "A safety check could not run, so this content was not verified. Review it before you rely on it.",
+      "requiresAcknowledgement": false,
+      "resumable": false,
+      "policyVersion": "pv-3f9a1c",
+      "occurredAt": "2026-10-07T09:15:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "noticeId": "01927f6e-9999-7000-8000-0000000000ad",
+      "type": "guardrail.blocked",
+      "direction": "inbound",
+      "action": "block",
+      "checks": [],
+      "consultationId": "01927f6e-0000-7000-8000-000000000001",
+      "itemIds": [],
+      "messageKey": "guardrail.blocked.redaction_unavailable",
+      "defaultMessage": "Patient details could not be protected before sending to an external model, so processing is paused. Retry to continue.",
+      "requiresAcknowledgement": false,
+      "resumable": true,
+      "policyVersion": "pv-3f9a1c",
+      "occurredAt": "2026-10-07T09:15:00.000Z"
+    }
+  ],
+  "examples": [
+    {
+      "name": "guardrail.notice (warning, public)",
+      "plane": "public",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "guardrail.notice (blocked, resumable)",
+      "plane": "public",
+      "event": {
+        "seq": 24,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000ab",
+          "type": "guardrail.blocked",
+          "direction": "outbound",
+          "action": "block",
+          "checks": [
+            {
+              "checkId": "leakage_judge",
+              "category": "credential",
+              "severity": "high"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-2222-7000-8000-000000000020"
+          ],
+          "messageKey": "guardrail.blocked.outbound",
+          "defaultMessage": "A safety check withheld the generated content. Review it to continue.",
+          "requiresAcknowledgement": true,
+          "resumable": true,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "guardrail.notice (unverified, no node)",
+      "event": {
+        "seq": 25,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000ac",
+          "type": "guardrail.unverified",
+          "direction": "outbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "response_safety",
+              "severity": "low"
+            }
+          ],
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "itemIds": [],
+          "messageKey": "guardrail.unverified.generic",
+          "defaultMessage": "A safety check could not run, so this content was not verified. Review it before you rely on it.",
+          "requiresAcknowledgement": false,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "guardrail.notice (agent run step)",
+      "runKind": "agent",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "agent",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "agent",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "run.paused (guardrail hold)",
+      "plane": "public",
+      "event": {
+        "seq": 26,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.paused",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "data": {
+          "reason": "guardrail_hold",
+          "noticeId": "01927f6e-9999-7000-8000-0000000000ab",
+          "nodeId": "n_note"
+        }
+      }
+    },
+    {
+      "name": "run.completed with guardrailNotices",
+      "plane": "public",
+      "event": {
+        "seq": 40,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 18234,
+          "tokens": {
+            "in": 3120,
+            "out": 812
+          },
+          "result": {
+            "kind": "inline",
+            "value": {
+              "note": "…"
+            }
+          },
+          "guardrailNotices": [
+            {
+              "schemaVersion": 1,
+              "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+              "type": "guardrail.warning",
+              "direction": "inbound",
+              "action": "warn",
+              "checks": [
+                {
+                  "checkId": "unsafe_content_judge",
+                  "category": "violence",
+                  "severity": "medium"
+                }
+              ],
+              "consultationId": "01927f6e-0000-7000-8000-000000000001",
+              "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+              "nodeId": "n_note",
+              "itemIds": [
+                "01927f6e-1111-7000-8000-000000000010"
+              ],
+              "messageKey": "guardrail.warning.generic",
+              "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+              "requiresAcknowledgement": true,
+              "resumable": false,
+              "policyVersion": "pv-3f9a1c",
+              "occurredAt": "2026-10-07T09:15:00.000Z"
+            },
+            {
+              "schemaVersion": 1,
+              "noticeId": "01927f6e-9999-7000-8000-0000000000ac",
+              "type": "guardrail.unverified",
+              "direction": "outbound",
+              "action": "warn",
+              "checks": [
+                {
+                  "checkId": "response_safety",
+                  "severity": "low"
+                }
+              ],
+              "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+              "itemIds": [],
+              "messageKey": "guardrail.unverified.generic",
+              "defaultMessage": "A safety check could not run, so this content was not verified. Review it before you rely on it.",
+              "requiresAcknowledgement": false,
+              "resumable": false,
+              "policyVersion": "pv-3f9a1c",
+              "occurredAt": "2026-10-07T09:15:00.000Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "guardrail.inbound (WARN with checks)",
+      "event": {
+        "seq": 21,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "WARN",
+          "detected": 1,
+          "categories": [
+            "violence"
+          ],
+          "latencyMs": 1250,
+          "checks": [
+            {
+              "checkId": "jailbreak_detection",
+              "verdict": "pass",
+              "actionTaken": "none",
+              "score": 0.04,
+              "model": "llama-prompt-guard-2-86m",
+              "latencyMs": 38
+            },
+            {
+              "checkId": "unsafe_content_judge",
+              "verdict": "flag",
+              "actionTaken": "warn",
+              "category": "violence",
+              "score": 0.61,
+              "confidence": 0.82,
+              "model": "granite-guardian-4.1-8b",
+              "latencyMs": 1210
+            },
+            {
+              "checkId": "injection_judge",
+              "verdict": "skipped",
+              "actionTaken": "none"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "guardrail.outbound (IGNORE with checks)",
+      "event": {
+        "seq": 23,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.outbound",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "IGNORE",
+          "detected": 1,
+          "categories": [
+            "dangerous_dosing"
+          ],
+          "checks": [
+            {
+              "checkId": "clinical_safety_judge",
+              "verdict": "flag",
+              "actionTaken": "ignore",
+              "category": "dangerous_dosing",
+              "confidence": 0.7,
+              "model": "granite-guardian-4.1-8b",
+              "latencyMs": 1302
+            },
+            {
+              "checkId": "response_safety",
+              "verdict": "undetermined",
+              "actionTaken": "unverified",
+              "model": "gliguard-base",
+              "latencyMs": 5002
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "guardrail.outbound (legacy shape, no checks)",
+      "event": {
+        "seq": 22,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.outbound",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "REDACT",
+          "detected": 2,
+          "mode": "redact"
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "notice defaultMessage is not the fixed label of its messageKey",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "Patient said they want to hurt someone.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      },
+      "problem": "defaultMessage"
+    },
+    {
+      "name": "notice action disagrees with its type",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "block",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      },
+      "problem": "data.action"
+    },
+    {
+      "name": "notice messageKey belongs to another type",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.blocked.inbound",
+          "defaultMessage": "A safety check stopped this request. Review the flagged input to continue.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      },
+      "problem": "data.messageKey"
+    },
+    {
+      "name": "notice carries judge reasoning",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z",
+          "reasoning": "the text says…"
+        }
+      },
+      "problem": "unexpected property 'reasoning'"
+    },
+    {
+      "name": "notice names an unknown check",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "vibes",
+              "severity": "low"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      },
+      "problem": "checkId"
+    },
+    {
+      "name": "notice wrong schemaVersion",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 2,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "policyVersion": "pv-3f9a1c",
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      },
+      "problem": "schemaVersion"
+    },
+    {
+      "name": "notice missing policyVersion",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.notice",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "schemaVersion": 1,
+          "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+          "type": "guardrail.warning",
+          "direction": "inbound",
+          "action": "warn",
+          "checks": [
+            {
+              "checkId": "unsafe_content_judge",
+              "category": "violence",
+              "severity": "medium"
+            }
+          ],
+          "consultationId": "01927f6e-0000-7000-8000-000000000001",
+          "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+          "nodeId": "n_note",
+          "itemIds": [
+            "01927f6e-1111-7000-8000-000000000010"
+          ],
+          "messageKey": "guardrail.warning.generic",
+          "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+          "requiresAcknowledgement": true,
+          "resumable": false,
+          "occurredAt": "2026-10-07T09:15:00.000Z"
+        }
+      },
+      "problem": "policyVersion is required"
+    },
+    {
+      "name": "run.paused carries an envelope nodeId",
+      "event": {
+        "seq": 26,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.paused",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "reason": "guardrail_hold",
+          "noticeId": "x",
+          "nodeId": "n_note"
+        }
+      },
+      "problem": "nodeId must be absent"
+    },
+    {
+      "name": "run.paused unknown reason",
+      "event": {
+        "seq": 26,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.paused",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "data": {
+          "reason": "coffee_break",
+          "noticeId": "x",
+          "nodeId": "n_note"
+        }
+      },
+      "problem": "data.reason"
+    },
+    {
+      "name": "run.paused without nodeId",
+      "event": {
+        "seq": 26,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.paused",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "data": {
+          "reason": "guardrail_hold",
+          "noticeId": "x"
+        }
+      },
+      "problem": "data.nodeId is required"
+    },
+    {
+      "name": "guardrail.inbound unknown action",
+      "event": {
+        "seq": 21,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "REVIEW",
+          "detected": 0
+        }
+      },
+      "problem": "data.action"
+    },
+    {
+      "name": "guardrail.inbound check with unknown verdict",
+      "event": {
+        "seq": 21,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "ALLOW",
+          "detected": 0,
+          "checks": [
+            {
+              "checkId": "prompt_safety",
+              "verdict": "maybe",
+              "actionTaken": "none"
+            }
+          ]
+        }
+      },
+      "problem": "verdict"
+    },
+    {
+      "name": "guardrail.inbound check carrying content",
+      "event": {
+        "seq": 21,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "ALLOW",
+          "detected": 0,
+          "checks": [
+            {
+              "checkId": "prompt_safety",
+              "verdict": "pass",
+              "actionTaken": "none",
+              "text": "…"
+            }
+          ]
+        }
+      },
+      "problem": "unexpected property 'text'"
+    },
+    {
+      "name": "guardrail.inbound on the public plane",
+      "event": {
+        "seq": 21,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "ALLOW",
+          "detected": 0
+        }
+      },
+      "problem": "admin-trace only",
+      "plane": "public"
+    },
+    {
+      "name": "run.completed guardrailNotices entry invalid",
+      "event": {
+        "seq": 40,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-07T09:15:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 1,
+          "tokens": {
+            "in": 0,
+            "out": 0
+          },
+          "guardrailNotices": [
+            {
+              "schemaVersion": 1,
+              "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+              "type": "guardrail.maybe",
+              "direction": "inbound",
+              "action": "warn",
+              "checks": [
+                {
+                  "checkId": "unsafe_content_judge",
+                  "category": "violence",
+                  "severity": "medium"
+                }
+              ],
+              "consultationId": "01927f6e-0000-7000-8000-000000000001",
+              "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+              "nodeId": "n_note",
+              "itemIds": [
+                "01927f6e-1111-7000-8000-000000000010"
+              ],
+              "messageKey": "guardrail.warning.generic",
+              "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+              "requiresAcknowledgement": true,
+              "resumable": false,
+              "policyVersion": "pv-3f9a1c",
+              "occurredAt": "2026-10-07T09:15:00.000Z"
+            }
+          ]
+        }
+      },
+      "problem": "data.guardrailNotices[0].type"
+    }
+  ]
+}

@@ -1,0 +1,596 @@
+{
+  "$comment": [
+    "TASK-1050 W1 (README §12) — the judge-model capability declaration `AiModel._metadata.judge`, the per-lane",
+    "routing task keys and the TEXT judge-route request protocol.",
+    "`valid` entries pass judgeMetadataProblems with no problem; each `invalid` entry yields a problem containing `problem`.",
+    "`supports`: assertModelSupportsLane(meta, lane) passes for every lane in `supported`, and throws",
+    "JUDGE_LANE_UNSUPPORTED for every lane in `unsupported`. Qwen3Guard native category names are PROPOSED and",
+    "verified by Track S (S-2) before W4 seeds the row; the parser (W2a) treats them as config.",
+    "TypeScript: packages/types/src/guardrail-judge-model.ts. Python mirror: apps/guardrail (W2a)."
+  ],
+  "protocols": [
+    "criteria_json",
+    "qwen3guard_native"
+  ],
+  "judgeLanes": [
+    "medical_validation",
+    "injection_judge",
+    "unsafe_content_judge",
+    "clinical_safety_judge",
+    "leakage_judge"
+  ],
+  "tierNames": [
+    "Safe",
+    "Controversial",
+    "Unsafe"
+  ],
+  "controversialTierValues": [
+    "pass",
+    "warn",
+    "block"
+  ],
+  "taskKeys": {
+    "medical_validation": "guardrail.validate",
+    "injection_judge": "guardrail.judge.injection",
+    "unsafe_content_judge": "guardrail.judge.unsafe_content",
+    "clinical_safety_judge": "guardrail.judge.clinical_safety",
+    "leakage_judge": "guardrail.judge.leakage"
+  },
+  "requestProtocols": [
+    "json_schema",
+    "native_chat"
+  ],
+  "protocolRequestProtocol": {
+    "criteria_json": "json_schema",
+    "qwen3guard_native": "native_chat"
+  },
+  "errorCode": "JUDGE_LANE_UNSUPPORTED",
+  "valid": [
+    {
+      "name": "granite-guardian 4.1 8B (every lane, criteria_json)",
+      "meta": {
+        "protocol": "criteria_json",
+        "lanes": [
+          "medical_validation",
+          "injection_judge",
+          "unsafe_content_judge",
+          "clinical_safety_judge",
+          "leakage_judge"
+        ]
+      }
+    },
+    {
+      "name": "Qwen3Guard-Gen-0.6B (proposed defaults)",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "not an object",
+      "meta": null,
+      "problem": "must be a JSON object"
+    },
+    {
+      "name": "unknown protocol",
+      "meta": {
+        "protocol": "llama_guard",
+        "lanes": [
+          "injection_judge"
+        ]
+      },
+      "problem": "protocol"
+    },
+    {
+      "name": "no lanes",
+      "meta": {
+        "protocol": "criteria_json",
+        "lanes": []
+      },
+      "problem": "lanes must declare at least one lane"
+    },
+    {
+      "name": "a classifier check is not a judge lane",
+      "meta": {
+        "protocol": "criteria_json",
+        "lanes": [
+          "prompt_safety"
+        ]
+      },
+      "problem": "lanes[0]"
+    },
+    {
+      "name": "duplicate lane",
+      "meta": {
+        "protocol": "criteria_json",
+        "lanes": [
+          "leakage_judge",
+          "leakage_judge"
+        ]
+      },
+      "problem": "more than once"
+    },
+    {
+      "name": "criteria_json carries a native mapping",
+      "meta": {
+        "protocol": "criteria_json",
+        "lanes": [
+          "leakage_judge"
+        ],
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "tiers is only for qwen3guard_native"
+    },
+    {
+      "name": "native without categoryMap",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge"
+        ],
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "categoryMap is required"
+    },
+    {
+      "name": "native without tiers",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        }
+      },
+      "problem": "tiers is required"
+    },
+    {
+      "name": "native tier Controversial flag",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "flag",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "tiers.Controversial"
+    },
+    {
+      "name": "native tier Safe not pass",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "warn",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "tiers.Safe"
+    },
+    {
+      "name": "native tier missing",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "tiers.Controversial is required"
+    },
+    {
+      "name": "native mapping to an undeclared lane",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          },
+          "PII": {
+            "lane": "leakage_judge",
+            "category": "third_party_pii"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "categoryMap.PII.lane"
+    },
+    {
+      "name": "native mapping to a category the lane does not have",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "jailbreak"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "categoryMap.Jailbreak.category"
+    },
+    {
+      "name": "native mapping to none",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "none"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "categoryMap.Jailbreak.category"
+    },
+    {
+      "name": "native declares a lane nothing maps to",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge",
+          "medical_validation"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "problem": "medical_validation"
+    }
+  ],
+  "supports": [
+    {
+      "name": "granite",
+      "meta": {
+        "protocol": "criteria_json",
+        "lanes": [
+          "medical_validation",
+          "injection_judge",
+          "unsafe_content_judge",
+          "clinical_safety_judge",
+          "leakage_judge"
+        ]
+      },
+      "supported": [
+        "medical_validation",
+        "injection_judge",
+        "unsafe_content_judge",
+        "clinical_safety_judge",
+        "leakage_judge"
+      ],
+      "unsupported": []
+    },
+    {
+      "name": "qwen3guard",
+      "meta": {
+        "protocol": "qwen3guard_native",
+        "lanes": [
+          "injection_judge",
+          "unsafe_content_judge"
+        ],
+        "categoryMap": {
+          "Jailbreak": {
+            "lane": "injection_judge",
+            "category": "instruction_override"
+          },
+          "Violent": {
+            "lane": "unsafe_content_judge",
+            "category": "violence"
+          },
+          "Non-violent Illegal Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "illicit_synthesis"
+          },
+          "Sexual Content or Sexual Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "abuse"
+          },
+          "Suicide & Self-Harm": {
+            "lane": "unsafe_content_judge",
+            "category": "self_harm_instructions"
+          },
+          "Unethical Acts": {
+            "lane": "unsafe_content_judge",
+            "category": "hate_harassment"
+          }
+        },
+        "tiers": {
+          "Safe": "pass",
+          "Controversial": "warn",
+          "Unsafe": "flag"
+        }
+      },
+      "supported": [
+        "injection_judge",
+        "unsafe_content_judge"
+      ],
+      "unsupported": [
+        "medical_validation",
+        "clinical_safety_judge",
+        "leakage_judge"
+      ]
+    },
+    {
+      "name": "no judge metadata",
+      "meta": null,
+      "supported": [],
+      "unsupported": [
+        "injection_judge"
+      ]
+    }
+  ]
+}

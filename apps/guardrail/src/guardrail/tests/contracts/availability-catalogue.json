@@ -16,25 +16,230 @@
     "_DECLARED_FAIL_MODES. That is the whole membership rule: a policy is",
     "selectable if, and only if, a screening check reads the selection. Adding an",
     "id with no reader would repeat the injectionScreeningCriteria defect this",
-    "same ticket removed — a declared knob that cannot move anything."
+    "same ticket removed — a declared knob that cannot move anything.",
+    "",
+    "TASK-1050 W1 — each policy also declares its violation handling (README §9.3, §11.1):",
+    "  allowedActions          the actions a platform admin may set (ignore | warn | block)",
+    "  platformDefaultAction   the action when no tier says otherwise ('block' for the 8 classifier checks = today's behaviour)",
+    "  locked                  catalogue lock: always enabled at platformDefaultAction, editable by NOBODY (medical_validation, OD-9)",
+    "  defaultEnabled          the platform default on/off (the four judges ship OFF, OD-6; response_refusal stays off)",
+    "  inboundRegions          which inbound region trusts the check screens; the two inbound judges screen DATA regions only (§10.2 A3)",
+    "  platformDefaultDataRegionAction  for a check that screens both trusts inbound: what a flag on a DATA region does",
+    "                          ('ignore' = today's FC-5b record-only; a platform admin may raise it, OD-12 / §11.1)",
+    "medical_validation and the four judges join the catalogue in TASK-1050; their screening readers land in W2a."
   ],
   "policies": [
-    { "id": "jailbreak_detection", "directions": ["inbound", "outbound"] },
-    { "id": "prompt_safety", "directions": ["inbound"] },
-    { "id": "prompt_toxicity", "directions": ["inbound"] },
-    { "id": "response_safety", "directions": ["outbound"] },
-    { "id": "response_toxicity", "directions": ["outbound"] },
-    { "id": "response_refusal", "directions": ["outbound"] },
+    {
+      "id": "jailbreak_detection",
+      "directions": [
+        "inbound",
+        "outbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": true,
+      "inboundRegions": [
+        "instruction",
+        "data"
+      ],
+      "platformDefaultDataRegionAction": "ignore"
+    },
+    {
+      "id": "prompt_safety",
+      "directions": [
+        "inbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": true,
+      "inboundRegions": [
+        "instruction",
+        "data"
+      ],
+      "platformDefaultDataRegionAction": "ignore"
+    },
+    {
+      "id": "prompt_toxicity",
+      "directions": [
+        "inbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": true,
+      "inboundRegions": [
+        "instruction",
+        "data"
+      ],
+      "platformDefaultDataRegionAction": "ignore"
+    },
+    {
+      "id": "response_safety",
+      "directions": [
+        "outbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": true
+    },
+    {
+      "id": "response_toxicity",
+      "directions": [
+        "outbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": true
+    },
+    {
+      "id": "response_refusal",
+      "directions": [
+        "outbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": false
+    },
     {
       "id": "pii_leak",
-      "directions": ["outbound"],
+      "directions": [
+        "outbound"
+      ],
       "threshold": {
         "field": "minScore",
         "floorDirection": "lower-is-stricter",
         "minimum": 0,
         "maximum": 1
-      }
+      },
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": true
     },
-    { "id": "containment_echo", "directions": ["outbound"] }
+    {
+      "id": "containment_echo",
+      "directions": [
+        "outbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": true
+    },
+    {
+      "id": "medical_validation",
+      "directions": [
+        "inbound"
+      ],
+      "allowedActions": [
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": true,
+      "defaultEnabled": true,
+      "inboundRegions": [
+        "instruction",
+        "data"
+      ]
+    },
+    {
+      "id": "injection_judge",
+      "directions": [
+        "inbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "ignore",
+      "locked": false,
+      "defaultEnabled": false,
+      "inboundRegions": [
+        "data"
+      ]
+    },
+    {
+      "id": "unsafe_content_judge",
+      "directions": [
+        "inbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "warn",
+      "locked": false,
+      "defaultEnabled": false,
+      "inboundRegions": [
+        "data"
+      ]
+    },
+    {
+      "id": "clinical_safety_judge",
+      "directions": [
+        "outbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "warn",
+      "locked": false,
+      "defaultEnabled": false
+    },
+    {
+      "id": "leakage_judge",
+      "directions": [
+        "outbound"
+      ],
+      "allowedActions": [
+        "ignore",
+        "warn",
+        "block"
+      ],
+      "platformDefaultAction": "block",
+      "locked": false,
+      "defaultEnabled": false
+    }
   ]
 }

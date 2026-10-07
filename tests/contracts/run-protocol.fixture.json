@@ -777,7 +777,7 @@
       "event": {
         "seq": 1,
         "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
-        "type": "run.paused",
+        "type": "run.suspended",
         "ts": "2026-10-04T10:00:00.000Z",
         "data": {}
       },

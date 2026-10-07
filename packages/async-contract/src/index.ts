@@ -61,8 +61,18 @@ export {
   buildRunAppend,
   parseStoredRunEvent,
   planRunResume,
+  // TASK-1050: guardrail notice / hold additions.
+  RUN_GUARDRAIL_EVENT_ACTIONS,
+  RUN_GUARDRAIL_CHECK_IDS,
+  RUN_GUARDRAIL_NOTICE_TYPE_ACTION,
+  RUN_GUARDRAIL_NOTICE_MESSAGES,
+  RUN_PAUSED_REASONS,
 } from './run-protocol';
 export type {
+  RunGuardrailNotice,
+  RunGuardrailCheck,
+  RunGuardrailEventAction,
+  RunPausedReason,
   RunEventV2,
   RunEventType,
   PublicRunEventType,
