@@ -25,9 +25,18 @@ function harness() {
   };
   const aiModels = {
     findAll: vi.fn(async () => [
-      { id: 'm1', tenantId: SYSTEM_TENANT_ID, slug: 'whisper', sourceUri: 's3://w', servedBy: 'stt' },
-      { id: 'm2', tenantId: SYSTEM_TENANT_ID, slug: 'ner', sourceUri: 'hub/ner', servedBy: 'nlp' },
-      { id: 'cloud', tenantId: SYSTEM_TENANT_ID, slug: 'gpt', sourceUri: 'x', servedBy: 'text', provider: 'azure', wireModelId: 'gpt' },
+      { id: 'm1', tenantId: SYSTEM_TENANT_ID, deploymentKind: 'SELF_HOSTED', slug: 'whisper', sourceUri: 's3://w', servedBy: 'stt' },
+      { id: 'm2', tenantId: SYSTEM_TENANT_ID, deploymentKind: 'SELF_HOSTED', slug: 'ner', sourceUri: 'hub/ner', servedBy: 'nlp' },
+      {
+        id: 'cloud',
+        tenantId: SYSTEM_TENANT_ID,
+        deploymentKind: 'CLOUD',
+        slug: 'gpt',
+        sourceUri: 'x',
+        servedBy: 'text',
+        provider: 'azure',
+        wireModelId: 'gpt',
+      },
     ]),
   };
   const fallbacks = { findAll: vi.fn(async () => [{ agentId: 'a2', modelId: 'm1' }]) };
@@ -179,8 +188,26 @@ describe('ImplicitLivePathReader.readLiveAgents (TASK-1005 §13)', () => {
     };
     const aiModels = {
       findAll: vi.fn(async () => [
-        { id: 'asr', tenantId: SYSTEM_TENANT_ID, slug: 'whisper', sourceUri: 's3://w', servedBy: 'stt', provider: 'built-in', wireModelId: null },
-        { id: 'gpt', tenantId: SYSTEM_TENANT_ID, slug: 'gpt-4o', sourceUri: 'x', servedBy: 'text', provider: 'azure', wireModelId: 'gpt-4o' },
+        {
+          id: 'asr',
+          tenantId: SYSTEM_TENANT_ID,
+          deploymentKind: 'SELF_HOSTED',
+          slug: 'whisper',
+          sourceUri: 's3://w',
+          servedBy: 'stt',
+          provider: 'built-in',
+          wireModelId: null,
+        },
+        {
+          id: 'gpt',
+          tenantId: SYSTEM_TENANT_ID,
+          deploymentKind: 'CLOUD',
+          slug: 'gpt-4o',
+          sourceUri: 'x',
+          servedBy: 'text',
+          provider: 'azure',
+          wireModelId: 'gpt-4o',
+        },
       ]),
     };
     const none = { findAll: vi.fn(async () => []) };

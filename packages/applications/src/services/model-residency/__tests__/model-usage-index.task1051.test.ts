@@ -40,7 +40,14 @@ function agent(over: Row): Row {
 }
 
 function model(over: Row): Row {
-  return { tenantId: SYSTEM_TENANT_ID, provider: null, wireModelId: null, sourceUri: `s3://hope-models/${String(over.slug)}`, ...over };
+  return {
+    tenantId: SYSTEM_TENANT_ID,
+    deploymentKind: 'SELF_HOSTED',
+    provider: null,
+    wireModelId: null,
+    sourceUri: `s3://hope-models/${String(over.slug)}`,
+    ...over,
+  };
 }
 
 function scenario() {
@@ -57,7 +64,7 @@ function scenario() {
       model({ id: 'm-gemma', slug: 'gemma', servedBy: 'lmstudio', provider: 'lm-studio', wireModelId: 'gemma-4' }),
       model({ id: 'm-qwen', slug: 'qwen', servedBy: 'lmstudio', provider: 'lm-studio', wireModelId: 'qwen-3' }),
       model({ id: 'm-sarvam', slug: 'sarvam', servedBy: 'stt' }),
-      model({ id: 'm-cloud', slug: 'gpt-4o', servedBy: 'text', provider: 'azure', wireModelId: 'gpt-4o' }),
+      model({ id: 'm-cloud', slug: 'gpt-4o', servedBy: 'text', deploymentKind: 'CLOUD', provider: 'azure', wireModelId: 'gpt-4o' }),
     ] as Row[],
     agents: [
       agent({

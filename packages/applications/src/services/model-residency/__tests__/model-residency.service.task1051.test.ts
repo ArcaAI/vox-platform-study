@@ -114,6 +114,12 @@ function build(opts: { enforce?: boolean } = {}) {
       state.catalogue[index] = { ...entity };
       return state.catalogue[index];
     }),
+    // TASK-1051 review finding 9 — a runtime-key link is a versioned write.
+    updateWithVersion: vi.fn(async (id: string, entity: Record<string, unknown>) => {
+      const index = state.catalogue.findIndex((m) => m.id === id);
+      state.catalogue[index] = { ...entity };
+      return state.catalogue[index];
+    }),
   };
   const agents = {
     report: vi.fn(async (service: 'stt' | 'nlp') => ({
@@ -161,7 +167,10 @@ function build(opts: { enforce?: boolean } = {}) {
   const effectiveSettings = {
     resolveEffective: vi.fn(async (key: string) => (key in state.settings ? { key, value: state.settings[key], sourceScope: 'system' } : null)),
   };
-  const livePath = { read: vi.fn(async () => state.livePath) };
+  const livePath = {
+    read: vi.fn(async () => state.livePath),
+    status: vi.fn(() => ({ at: Date.now(), error: null, liveAssignments: 0, consumers: 0 })),
+  };
   const specs = { build: vi.fn(async () => ({ resolved_spec: {} })) };
 
   const service = new ModelResidencyService(
@@ -460,7 +469,10 @@ describe('ModelResidencyService — TASK-1051 lane B1', () => {
       expect((await h.service.getView()).recommendations).toEqual([]);
     });
 
-    it('never recommends pinning a model already classified PINNED', async () => {
+    // TASK-1051 review finding 4 changed this on purpose: classifying a model PINNED is the REASON for the pin, not
+    // proof of it — a pin is satisfied (and not recommended) only once the runtime itself holds the model pinned.
+    it('never recommends pinning a model the runtime already holds pinned', async () => {
+      h.state.sttModels = [agentModel({ pinned: true })];
       h.state.livePath = [{ service: 'stt', modelRef: LIVE_ASR, aiModelId: 'model-asr', tenantId: SYSTEM_TENANT_ID, agentSlug: 'realtime' }];
       await h.service.tick();
       expect((await h.service.getView()).recommendations.filter((r) => r.action === 'pin')).toEqual([]);

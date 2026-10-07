@@ -26,7 +26,7 @@ import {
   SysEventType,
   generateId,
 } from '@arcaai/domains';
-import { ArgumentInvalidException, BusinessException, DataNotFoundException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, BusinessException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
 import { fallbackOnNotFound, warnAndFallback } from '../../common/swallow-policy';
 import { BaseService } from '../../common/base.service';
@@ -105,7 +105,7 @@ import {
   planTick,
   usableBytes,
 } from './residency-policy-engine';
-import { matchesRuntimeKey, rankRuntimeKeyCandidates, runtimeKeysFor } from './runtime-key';
+import { rankRuntimeKeyCandidates, resolveRuntimeKey, runtimeKeysFor } from './runtime-key';
 
 /**
  * TASK-1005 — the gateway ModelResidencyController: the ONE control plane that
@@ -184,6 +184,29 @@ const RECOMMENDATION_VIEW_LIMIT = 100;
 const SHADOW_REVIEWED_AT_KEY = RESIDENCY_SHADOW_REVIEWED_AT_KEY;
 /** TASK-1051 — days of shadow observation the readiness checklist asks for (owner OD-1 of TASK-1005). */
 const SHADOW_DAYS_REQUIRED = 7;
+/**
+ * TASK-1051 review — every `action` a residency command records as a `ResourceUpdated` sys-event on
+ * `ResourceType.ModelResidencyPolicy` (the audit trail; the administrator is the event's actor).
+ * Every broadcast goes through `audit()`, which only takes these, and the readiness checklist's
+ * `actions_audited` lists them — so the check states what the code does, not what it hopes.
+ */
+export const RESIDENCY_AUDIT_ACTIONS = [
+  'model-residency.load',
+  'model-residency.replace',
+  'model-residency.load.succeeded',
+  'model-residency.load.failed',
+  'model-residency.replace.succeeded',
+  'model-residency.replace.failed',
+  'model-residency.unload',
+  'model-residency.pin',
+  'model-residency.unpin',
+  'model-residency.link',
+  'model-residency.suggestion.dismiss',
+  'model-residency.policy.unload',
+  'model-residency.policy.pin',
+  'model-residency.policy.unpin',
+] as const;
+type ResidencyAuditAction = (typeof RESIDENCY_AUDIT_ACTIONS)[number];
 /** LM Studio spellings of `AiModel.servedBy` / `provider` (the catalogue read widens to every LM Studio row). */
 const LM_STUDIO_SPELLINGS = ['lm-studio', 'lmstudio'];
 
@@ -238,7 +261,7 @@ interface LedgerEntry {
 
 interface CatalogueIndex {
   byId: Map<string, AiModelEntity>;
-  /** TASK-1051 F1 — the SYSTEM row a service-REPORTED key names (exact catalogue ref first, then `matchesRuntimeKey`). */
+  /** TASK-1051 F1 — the SYSTEM row a service-REPORTED key names (`resolveRuntimeKey`: exact ref → confirmed key → unambiguous normalised). */
   modelFor(service: string, modelRef: string): AiModelEntity | undefined;
   /** The SYSTEM rows read for this ledger (candidates for an unmatched key). */
   rows: AiModelEntity[];
@@ -276,12 +299,20 @@ interface LoadJob {
   options: LmStudioLoadOptions;
   aiModelId: string | null;
   /** The catalogue row (F1: an unload/replace matches the instances the engine reports for it). */
-  row?: CatalogueRefFields;
-  /** F9 — whether the instance a replace unloads was pinned, so a restore puts it back as it was. */
-  restorePin?: boolean;
+  row?: AiModelEntity;
+  /** The SYSTEM rows a reported key is resolved against (review finding 1: never a sibling variant's instance). */
+  rows?: readonly AiModelEntity[];
   /** `operator` = a console action (its pin is the operator's); `policy` = the enforce-mode loop (its pin is the controller's). */
   origin: 'operator' | 'policy';
   recommendation?: ModelResidencyRecommendation;
+}
+
+/** An instance a replace unloaded, as it was — so a rollback (F9 / OD-5) puts it back with its pin and TTL. */
+interface RestorableInstance {
+  /** The key to load it under (LM Studio: the reported key without its `:<n>` instance suffix). */
+  modelRef: string;
+  pinned: boolean;
+  ttlSeconds: number | null;
 }
 
 /** A reported model that holds memory (anything but `failed`). */
@@ -490,7 +521,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private async policyUnload(service: string, modelRef: string): Promise<boolean> {
     if (!isControlled(service)) return false;
     try {
-      await this.unloadInternal(service, modelRef, false, 'policy');
+      const outcome = await this.unloadInternal(service, modelRef, false, 'policy');
+      this.audit('model-residency.policy.unload', { service, modelRef, outcome });
       return true;
     } catch (error) {
       this.logger.warn({ message: 'residency.enforce.unload_failed', service, modelRef, error: String(error) });
@@ -511,6 +543,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       if (pinned) this.controllerPinned.add(key);
       else this.controllerPinned.delete(key);
       this.ledger = null;
+      this.audit(pinned ? 'model-residency.policy.pin' : 'model-residency.policy.unpin', { service, modelRef });
       return true;
     } catch (error) {
       this.logger.warn({ message: 'residency.enforce.pin_failed', service, modelRef, error: String(error) });
@@ -540,16 +573,23 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     } else {
       recommendation = this.suggestions.recordEnforce(decision, generateId(), applied, now);
     }
-    if (decision.reason === 'admission_rejected') residencyAdmissionRejectionsTotal.inc({ reason: 'insufficient_memory' });
+    if (decision.reason === 'admission_rejected')
+      residencyAdmissionRejectionsTotal.inc({ reason: decision.bytes === null ? 'no_size' : 'insufficient_memory' });
     else residencyDecisionsTotal.inc({ action: decision.action, mode });
     if (ledger && decision.action === 'load' && this.isDuplicateLoad(decision, ledger)) this.suggestions.counts.duplicateLoads += 1;
     return recommendation;
   }
 
-  /** "Already satisfied" (F4): a pin of a model the controller already classifies PINNED, or a load of a model with a MATCHED resident instance. */
+  /**
+   * "Already satisfied" (F4): a pin of a model the RUNTIME already holds pinned (review finding 4 — the
+   * controller classifying it PINNED is the reason for the pin, not proof of it), or a load of a model
+   * with a MATCHED resident instance.
+   */
   private alreadySatisfied(decision: EngineDecision, ledger: Ledger): boolean {
     const modelId = ledger.catalogue.modelFor(decision.service, decision.modelRef)?.id ?? null;
-    if (decision.action === 'pin') return this.classify(decision.service, decision.modelRef, modelId, ledger).class === 'PINNED';
+    if (decision.action === 'pin') {
+      return ledger.entries.some((e) => e.service === decision.service && e.modelRef === decision.modelRef && (e.adminPinned || e.reportedPinned));
+    }
     if (decision.action === 'load') {
       return ledger.entries.some(
         (e) => e.service === decision.service && (e.modelRef === decision.modelRef || (modelId !== null && e.aiModelId === modelId)),
@@ -779,25 +819,22 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       options: lmStudioOptions(request.options),
       aiModelId: row?.id ?? resident[0]?.aiModelId ?? null,
       row,
-      restorePin: resident.some((e) => e.adminPinned || e.reportedPinned),
+      rows: catalogueRows(ledger, row),
       origin: 'operator',
     });
 
     // A platform-disruptive action on shared, time-sliced cards stays attributable to the administrator who took it.
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      data: {
-        action: `model-residency.${action}`,
-        operationId: opId,
-        service,
-        modelRef,
-        pin: request.pin === true,
-        force,
-        reason,
-        overBudget,
-        noSize,
-        needBytes: need.bytes,
-        needSource: need.source,
-      },
+    this.audit(`model-residency.${action}`, {
+      operationId: opId,
+      service,
+      modelRef,
+      pin: request.pin === true,
+      force,
+      reason,
+      overBudget,
+      noSize,
+      needBytes: need.bytes,
+      needSource: need.source,
     });
 
     return {
@@ -820,6 +857,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const ledger = await this.currentLedger();
     const row = await this.catalogueModel(service, modelRef, ledger);
     const admission = this.assessAdmission(service, modelRef, request.replace === true, row, ledger, settings);
+    const inFlight = admission.resident.reduce((sum, e) => sum + (e.inFlight ?? 0), 0);
+    const blocked: 'LOAD_IN_PROGRESS' | 'IN_FLIGHT' | null =
+      this.operations.runningFor(service, modelRef) || admission.devices.some((d) => this.gate.holderOf(d) !== undefined)
+        ? 'LOAD_IN_PROGRESS'
+        : request.replace === true && inFlight > 0
+          ? 'IN_FLIGHT'
+          : null;
 
     const now = Date.now();
     const targets = new Set(admission.resident);
@@ -851,7 +895,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       headroomBytes: admission.headroomBytes,
       unattributedBytes: admission.unattributedBytes,
       shortfallBytes: admission.shortfallBytes,
-      fits: admission.refusal === null,
+      // Review finding 5 — `fits` is what an un-forced load() would answer: besides the budget, a running load of the
+      // same model and a card another load holds are LOAD_IN_PROGRESS, and a replace of a serving model is IN_FLIGHT.
+      // `refusal` stays the budget answer — its enum (the DTO) has no value for those three.
+      fits: admission.refusal === null && blocked === null,
       refusal: admission.refusal,
       evictable: evictable.sort((a, b) => b.sortBytes - a.sortBytes).map(({ sortBytes: _sortBytes, ...model }) => model),
       pinned,
@@ -898,7 +945,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       .reduce((total, e) => total + ((e.bytes ?? 0) / e.devices.length) * e.devices.filter((d) => ids.includes(d)).length, 0);
     const unattributedBytes = scope.length > 0 ? Math.max(0, Math.round(sum((d) => d.usedBytes) - attributed)) : null;
 
-    const shortfallBytes = need.bytes === null ? 0 : Math.max(0, Math.round(need.bytes - ((freeBytes ?? 0) - (headroomBytes ?? 0) + credit)));
+    // Review finding 5 — the SAME per-card clamped availability `refusal` is decided on (a card below its headroom offers 0, never a negative).
+    const shortfallBytes = need.bytes === null ? 0 : Math.max(0, Math.round(need.bytes - availableBytes));
     let refusal: Admission['refusal'] = null;
     if (resident.length > 0 && !replace) refusal = 'ALREADY_LOADED';
     else if (need.bytes === null) refusal = 'NO_SIZE';
@@ -920,13 +968,16 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       : undefined;
   }
 
-  /** The resident instances of a (service, model): the exact key, or (F1) any instance tied to the same catalogue row. */
+  /**
+   * The resident instances of a (service, model): the exact key when the service holds it; otherwise (F1) the
+   * instances RESOLVED to the same catalogue row (`aiModelId`, set through `resolveRuntimeKey`). Never a sibling
+   * variant's instance (review finding 6): `foo@q8_0` resolves to its own row, and an ambiguous key to none.
+   */
   private residentFor(service: string, modelRef: string, row: (CatalogueRefFields & { id: string }) | undefined, ledger: Ledger): LedgerEntry[] {
-    return ledger.entries.filter(
-      (e) =>
-        e.service === service &&
-        (e.modelRef === modelRef || (row !== undefined && (e.aiModelId === row.id || matchesRuntimeKey(service, row, e.modelRef)))),
-    );
+    const mine = ledger.entries.filter((e) => e.service === service);
+    const exact = mine.filter((e) => e.modelRef === modelRef);
+    if (exact.length > 0 || !row) return exact;
+    return mine.filter((e) => e.aiModelId === row.id);
   }
 
   async unload(request: UnloadModelResidencyRequest): Promise<ModelResidencyUnloadResponse> {
@@ -955,12 +1006,12 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       }
     }
 
-    const outcome = await this.unloadInternal(service, modelRef, force, 'admin', row).catch((error: unknown) => {
+    const outcome = await this.unloadInternal(service, modelRef, force, 'admin', row, catalogueRows(ledger, row)).catch((error: unknown) => {
       throw toHttpException(error);
     });
 
     // F10 — the operator's reason is on the audit event whether or not the unload was forced (the agent wire keeps its `admin` verb).
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, { data: { action: 'model-residency.unload', service, modelRef, force, reason, outcome } });
+    this.audit('model-residency.unload', { service, modelRef, force, reason, outcome });
     return { outcome, service, modelRef };
   }
 
@@ -994,9 +1045,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     // An operator's pin is the operator's; the controller must never later "unpin its own" over it.
     this.controllerPinned.delete(key);
 
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      data: { action: pinned ? 'model-residency.pin' : 'model-residency.unpin', service, modelRef, ttlSeconds: request.ttlSeconds ?? null },
-    });
+    this.audit(pinned ? 'model-residency.pin' : 'model-residency.unpin', { service, modelRef, ttlSeconds: request.ttlSeconds ?? null });
 
     this.ledger = null;
     const ledger = await this.currentLedger();
@@ -1008,7 +1057,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   /**
    * TASK-1051 F1 / D-1 — the operator confirms that a key the service REPORTS is
    * this catalogue row. Stored as `AiModel._metadata.residency.runtimeKeys` (no
-   * schema change), matched exactly by `matchesRuntimeKey` from the next read on.
+   * schema change), matched exactly (ahead of any normalised match) by `resolveRuntimeKey` from the next read on.
    */
   async linkRuntimeKey(request: LinkModelResidencyRuntimeKeyRequest): Promise<LinkModelResidencyRuntimeKeyResponse> {
     this.assertPlatformAdmin('link a runtime key to a model');
@@ -1028,32 +1077,62 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       });
     }
 
-    const metaData: Record<string, unknown> = { ...((entity.metaData as Record<string, unknown> | null | undefined) ?? {}) };
-    const residency: Record<string, unknown> = { ...((metaData.residency as Record<string, unknown> | null | undefined) ?? {}) };
-    const existing = Array.isArray(residency.runtimeKeys) ? residency.runtimeKeys.filter((k): k is string => typeof k === 'string') : [];
-    let updated = entity;
-    if (!existing.includes(runtimeKey)) {
-      // The setter tracks the change; `update` persists exactly the tracked fields (the `writeObserved` pattern).
-      entity.metaData = { ...metaData, residency: { ...residency, runtimeKeys: [...existing, runtimeKey] } };
-      if (this.requestUserId) entity.updatedBy = this.requestUserId;
-      updated = await this.aiModels.update(entity.id, entity);
-      // The next read must see the key: drop the ledger (its catalogue index is rebuilt with it).
-      this.ledger = null;
+    // Review finding 1 — a key another row already answers to (its own catalogue ref, or a key confirmed on it) resolves
+    // there first, so linking it here would never take effect; refuse rather than store a dead link.
+    const siblings = (await this.aiModels.findAll({ filters: serviceRowsFilter(service) as never })).filter(
+      (row) => row.id !== entity.id && row.tenantId === SYSTEM_TENANT_ID && residencyServiceOf(row) === service,
+    );
+    const owner = resolveRuntimeKey(service, runtimeKey, siblings);
+    if (owner && owner.via !== 'normalised') {
+      throw new ConflictException({
+        code: 'RUNTIME_KEY_TAKEN',
+        message: `'${runtimeKey}' already names catalogue model '${owner.row.slug}' on ${service} (${owner.via === 'exact' ? 'its catalogue key' : 'a confirmed link'}); unlink it there first.`,
+        aiModelId: owner.row.id,
+      });
     }
 
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      data: { aiModelId: entity.id, service, runtimeKey, surface: 'model-residency.link', alreadyLinked: existing.includes(runtimeKey) },
+    // Review finding 9 — a versioned write (`_version` bumps, a concurrent edit is detected) merged into the row's
+    // LATEST `_metadata`; one drift re-reads and retries, a second propagates.
+    const write = async (current: AiModelEntity): Promise<{ updated: AiModelEntity; alreadyLinked: boolean }> => {
+      const metaData: Record<string, unknown> = { ...((current.metaData as Record<string, unknown> | null | undefined) ?? {}) };
+      const residency: Record<string, unknown> = { ...((metaData.residency as Record<string, unknown> | null | undefined) ?? {}) };
+      const existing = Array.isArray(residency.runtimeKeys) ? residency.runtimeKeys.filter((k): k is string => typeof k === 'string') : [];
+      if (existing.includes(runtimeKey)) return { updated: current, alreadyLinked: true };
+      // The setter tracks the change; the versioned update persists exactly the tracked fields.
+      current.metaData = { ...metaData, residency: { ...residency, runtimeKeys: [...existing, runtimeKey] } };
+      if (this.requestUserId) current.updatedBy = this.requestUserId;
+      return { updated: await this.aiModels.updateWithVersion(current.id, current, current.version), alreadyLinked: false };
+    };
+    let result: { updated: AiModelEntity; alreadyLinked: boolean };
+    try {
+      result = await write(entity);
+    } catch (error) {
+      if (!(error instanceof OptimisticConcurrencyException)) throw error;
+      result = await write(await this.aiModels.findById(aiModelId));
+    }
+    // The next read must see the key: drop the ledger (its catalogue index is rebuilt with it).
+    if (!result.alreadyLinked) this.ledger = null;
+
+    this.audit('model-residency.link', {
+      aiModelId: entity.id,
+      service,
+      runtimeKey,
+      surface: 'model-residency.link',
+      alreadyLinked: result.alreadyLinked,
     });
-    return { aiModelId: entity.id, service, runtimeKeys: runtimeKeysFor(service, updated) };
+    return { aiModelId: entity.id, service, runtimeKeys: runtimeKeysFor(service, result.updated) };
   }
 
   /** TASK-1051 F4 — hide a standing recommendation until the controller reaches a different conclusion for that model. */
   async dismissSuggestion(id: string): Promise<DismissModelResidencySuggestionResponse> {
     this.assertPlatformAdmin('dismiss a residency recommendation');
     if (!this.suggestions.dismiss(id, Date.now())) {
-      throw new NotFoundException(`No standing residency recommendation '${id}' (recommendations are kept in memory, per gateway process).`);
+      throw new NotFoundException({
+        code: 'SUGGESTION_UNKNOWN',
+        message: `No standing residency recommendation '${id}' (recommendations are kept in memory, per gateway process; enforce-mode events are history and cannot be dismissed).`,
+      });
     }
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, { data: { action: 'model-residency.suggestion.dismiss', suggestionId: id } });
+    this.audit('model-residency.suggestion.dismiss', { suggestionId: id });
     return { id, dismissed: true };
   }
 
@@ -1076,8 +1155,23 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         (d) =>
           `${d.id} has ${formatBytes(d.freeBytes)} free, below the ${settings.headroomPercent}% headroom (${formatBytes(d.totalBytes * (settings.headroomPercent / 100))})`,
       );
-    const earliest = this.suggestions.earliestShadowAt;
-    const shadowDays = earliest === null ? 0 : (now - earliest) / 86_400_000;
+    // Review finding 8 — observation days run from process start (the log is in memory): a quiet fleet still accrues them.
+    const shadowDays = Math.max(0, (now - this.startedAt) / 86_400_000);
+    const consumers = this.livePath.status();
+    const usageProblem =
+      consumers.error !== null
+        ? `The consumer snapshot failed to refresh (${consumers.error}); usage and the live path may be stale or empty.`
+        : consumers.at === null
+          ? 'No consumer snapshot has been read yet.'
+          : consumers.liveAssignments > 0 && consumers.consumers === 0
+            ? `The snapshot saw ${consumers.liveAssignments} live assignment(s) but counted no consumer of any model.`
+            : null;
+    const unbudgeted = ledger.livePath
+      .filter((l) => {
+        const model = ledger.catalogue.byId.get(l.aiModelId);
+        return budgetFor(this.observedBytes(l.service, l.modelRef, model), model?.memorySizeMb).bytes === null;
+      })
+      .map((l) => `${l.service}: ${ledger.catalogue.byId.get(l.aiModelId)?.name ?? l.modelRef}`);
 
     const checks: Record<ReadinessCheckId, Omit<ModelResidencyReadinessCheck, 'id'>> = {
       shadow_review_recorded: {
@@ -1105,26 +1199,29 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       shadow_days: {
         title: `At least ${SHADOW_DAYS_REQUIRED} days of shadow observation`,
         passed: shadowDays >= SHADOW_DAYS_REQUIRED,
-        detail:
-          earliest === null
-            ? `No shadow recommendation recorded since this gateway started (${since}); the log is in memory, so a restart resets the count.`
-            : `${shadowDays.toFixed(1)} day(s) since the first shadow recommendation this gateway process recorded (${iso(earliest)}); the log is in memory, so a restart resets the count.`,
+        detail: `${shadowDays.toFixed(1)} day(s) of observation since this gateway process started (${since}); the log is in memory, so a restart resets the count.`,
       },
       usage_complete: {
         title: 'Usage counts every live-path consumer',
-        passed: true,
-        detail: 'Agents, fallbacks, routing policies, ASR pipeline stages and workflow agent nodes are all counted as consumers.',
+        passed: usageProblem === null,
+        detail:
+          usageProblem ??
+          `Snapshot of ${iso(consumers.at ?? now)}: agents, fallbacks, routing policies, ASR pipeline stages and workflow agent nodes counted for ${consumers.consumers} model(s) across ${consumers.liveAssignments} live assignment(s).`,
       },
       unmeasured_budgeted: {
         title: 'Never-measured models are budgeted',
-        passed: true,
+        passed: unbudgeted.length === 0,
         detail:
-          'A never-measured model is budgeted at its catalogue size × 1.2, and a load with no size at all is refused (NO_SIZE) unless forced with a reason.',
+          unbudgeted.length === 0
+            ? 'Every live-path model has a budget: its measured footprint, else its catalogue size × 1.2.'
+            : `No measurement and no catalogue size (a load is refused NO_SIZE, and the controller never places it): ${unbudgeted.join('; ')}.`,
       },
       actions_audited: {
         title: 'Every residency action is audited',
         passed: true,
-        detail: 'Load, replace, unload (with its reason), pin, link and dismiss are recorded as audit events naming the administrator.',
+        detail:
+          `Every residency command records a ResourceUpdated event on ${ResourceType.ModelResidencyPolicy} naming the administrator: ${RESIDENCY_AUDIT_ACTIONS.join(', ')}. ` +
+          'Policy create / update / delete record ResourceCreated / ResourceUpdated / ResourceDeleted on the policy row.',
       },
     };
     const list = READINESS_CHECK_IDS.map((id) => ({ id, ...checks[id] }));
@@ -1231,6 +1328,11 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     return toPolicyResponse(deleted);
   }
 
+  /** One audited residency command (`RESIDENCY_AUDIT_ACTIONS`). */
+  private audit(action: ResidencyAuditAction, data: Record<string, unknown>): void {
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, { data: { action, ...data } });
+  }
+
   // ── gate ──────────────────────────────────────────────────────────────────
 
   /**
@@ -1275,11 +1377,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
   private async runLoad(job: LoadJob): Promise<void> {
     const { service, modelRef } = job;
-    let unloadedForReplace = false;
+    // Every instance the replace has unloaded so far — filled as it goes, so a part-way failure knows what to restore.
+    const unloaded: RestorableInstance[] = [];
+    let unloadFinished = false;
     try {
       if (job.action === 'replace') {
-        await this.unloadInternal(service, modelRef, job.force, 'admin', job.row);
-        unloadedForReplace = true;
+        await this.unloadInternal(service, modelRef, job.force, 'admin', job.row, job.rows, unloaded);
+        unloadFinished = true;
       }
 
       const measured = await this.loadOnce(service, modelRef, job.options, job.loadSpec, job.pin);
@@ -1290,53 +1394,49 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       if (job.recommendation) job.recommendation.applied = true;
       if (job.pin && job.origin === 'policy') this.controllerPinned.add(residencyKey(service, modelRef));
       else if (job.pin) this.controllerPinned.delete(residencyKey(service, modelRef));
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-        data: {
-          action: `model-residency.${job.action}.succeeded`,
-          operationId: job.opId,
-          service,
-          modelRef,
-          bytes: measured.bytes,
-          loadSeconds: measured.loadSeconds,
-        },
+      this.audit(`model-residency.${job.action}.succeeded`, {
+        operationId: job.opId,
+        service,
+        modelRef,
+        bytes: measured.bytes,
+        loadSeconds: measured.loadSeconds,
       });
     } catch (error) {
       let failure = describeError(error);
-      // F9 (owner default OD-5) — a replace that unloaded the old instance and then failed to load the new one
-      // puts the old one back (same model, default settings), so "Apply & reload" never leaves the model gone.
+      // F9 (owner default OD-5) — a replace that unloaded the old instance(s) and then failed — to load the new one,
+      // or part-way through unloading several — puts back what it unloaded (same model, default load settings, its
+      // previous pin and TTL), so "Apply & reload" never leaves the model gone.
       let restored: boolean | null = null;
-      if (unloadedForReplace) {
-        restored = await this.loadOnce(service, modelRef, {}, job.loadSpec, job.restorePin === true).then(
-          () => true,
-          (restoreError: unknown) => {
+      const toRestore = [...new Map(unloaded.map((instance) => [instance.modelRef, instance])).values()];
+      if (toRestore.length > 0) {
+        const errors: string[] = [];
+        for (const instance of toRestore) {
+          await this.loadOnce(service, instance.modelRef, {}, job.loadSpec, instance.pinned, instance.ttlSeconds).catch((restoreError: unknown) => {
             this.logger.warn({
               message: 'residency.replace.restore_failed',
               operationId: job.opId,
               service,
-              modelRef,
+              modelRef: instance.modelRef,
               ...describeError(restoreError),
             });
-            failure = {
-              ...failure,
-              message: `${failure.message} — the replacement failed to load and the previous instance was NOT restored (${describeError(restoreError).message}); load it again.`,
-            };
-            return false;
-          },
-        );
-        if (restored)
-          failure = {
-            ...failure,
-            message: `${failure.message} — the replacement failed to load; the previous instance was restored with its default settings.`,
-          };
+            errors.push(describeError(restoreError).message);
+          });
+        }
+        restored = errors.length === 0;
+        const what = unloadFinished ? 'the replacement failed to load' : 'the replace failed part-way through unloading';
+        failure = {
+          ...failure,
+          message: restored
+            ? `${failure.message} — ${what}; the previous instance was restored with its default settings.`
+            : `${failure.message} — ${what} and the previous instance was NOT restored (${errors.join('; ')}); load it again.`,
+        };
       }
       if (service === 'lm-studio' && !restored) {
         this.lmsFailures.set(modelRef, { ...failure, message: failure.message.slice(0, 500), at: iso(Date.now()) });
       }
       this.operations.fail(job.opId, failure);
       this.logger.warn({ message: 'residency.load.failed', operationId: job.opId, service, modelRef, ...failure });
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-        data: { action: `model-residency.${job.action}.failed`, operationId: job.opId, service, modelRef, error: failure, restored },
-      });
+      this.audit(`model-residency.${job.action}.failed`, { operationId: job.opId, service, modelRef, error: failure, restored });
     }
   }
 
@@ -1347,8 +1447,11 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     options: LmStudioLoadOptions,
     loadSpec: Record<string, unknown> | null,
     pin: boolean,
+    ttlSeconds: number | null = null,
   ): Promise<{ bytes: number | null; loadSeconds: number | null }> {
-    return service === 'lm-studio' ? this.loadLmStudio(modelRef, options, pin) : this.loadViaAgent(service, modelRef, loadSpec ?? {}, pin);
+    return service === 'lm-studio'
+      ? this.loadLmStudio(modelRef, options, pin, ttlSeconds)
+      : this.loadViaAgent(service, modelRef, loadSpec ?? {}, pin, ttlSeconds);
   }
 
   private async loadViaAgent(
@@ -1356,8 +1459,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     modelRef: string,
     loadSpec: Record<string, unknown>,
     pin: boolean,
+    ttlSeconds: number | null = null,
   ): Promise<{ bytes: number | null; loadSeconds: number | null }> {
-    const result = await this.agents.load(service, { modelRef, loadSpec, pin, ttlSeconds: null });
+    const result = await this.agents.load(service, { modelRef, loadSpec, pin, ttlSeconds });
     const model = result.model;
     return { bytes: model.bytesSource === 'measured' ? model.bytes : null, loadSeconds: model.loadSeconds };
   }
@@ -1372,12 +1476,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     modelRef: string,
     options: LmStudioLoadOptions,
     pin: boolean,
+    ttlSeconds: number | null = null,
   ): Promise<{ bytes: number | null; loadSeconds: number | null }> {
     const before = await this.readGpuUsed();
     const started = Date.now();
     const result = await this.lmStudio.load(modelRef, options);
     const finished = Date.now();
-    if (pin) this.lmsPins.set(modelRef, { ttlSeconds: this.lmsPins.get(modelRef)?.ttlSeconds ?? null });
+    if (pin) this.lmsPins.set(modelRef, { ttlSeconds: ttlSeconds ?? this.lmsPins.get(modelRef)?.ttlSeconds ?? null });
     if (result.outcome === 'already_loaded') return { bytes: null, loadSeconds: null };
 
     this.lmsLoadedAt.set(result.model.instanceId, finished);
@@ -1437,18 +1542,25 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     modelRef: string,
     force: boolean,
     reason: 'admin' | 'policy',
-    row?: CatalogueRefFields,
+    row?: AiModelEntity,
+    rows: readonly AiModelEntity[] = [],
+    /** Filled with each instance as it is unloaded (pin + TTL as they were), so a failed replace can restore them. */
+    unloaded?: RestorableInstance[],
   ): Promise<'unloaded' | 'not_loaded'> {
     let outcome: 'unloaded' | 'not_loaded' = 'not_loaded';
     const keys = new Set<string>([modelRef]);
     if (service === 'lm-studio') {
       // A fresh listing, not the ledger: every instance of the key must go, including a `:2` created since the last tick.
       const report = await this.lmStudio.report();
-      const instances = reportedInstances(service, report.models, modelRef, row);
+      const instances = reportedInstances(service, report.models, modelRef, row, rows);
       for (const instance of instances) {
         keys.add(instance.modelRef);
         const instanceId = instance.instanceId;
-        if ((await this.lmStudio.unload(instanceId)).outcome === 'unloaded') outcome = 'unloaded';
+        const pin = this.lmsPins.get(instance.modelRef) ?? this.lmsPins.get(modelRef);
+        if ((await this.lmStudio.unload(instanceId)).outcome === 'unloaded') {
+          outcome = 'unloaded';
+          unloaded?.push({ modelRef: instance.modelRef.replace(/:\d+$/, ''), pinned: pin !== undefined, ttlSeconds: pin?.ttlSeconds ?? null });
+        }
         this.lmsLoadedAt.delete(instanceId);
       }
       for (const key of keys) {
@@ -1457,10 +1569,15 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       }
     } else {
       const reported = this.lastReports.get(service)?.report.models.filter(isResident) ?? [];
-      const refs = [...new Set(reportedInstances(service, reported, modelRef, row).map((m) => m.modelRef))];
+      const instances = reportedInstances(service, reported, modelRef, row, rows);
+      const refs = [...new Set(instances.map((m) => m.modelRef))];
       for (const ref of refs.length > 0 ? refs : [modelRef]) {
         keys.add(ref);
-        if ((await this.agents.unload(service, { modelRef: ref, force, reason })).outcome === 'unloaded') outcome = 'unloaded';
+        if ((await this.agents.unload(service, { modelRef: ref, force, reason })).outcome === 'unloaded') {
+          outcome = 'unloaded';
+          const was = instances.find((m) => m.modelRef === ref);
+          unloaded?.push({ modelRef: ref, pinned: was?.adminPinned ?? false, ttlSeconds: was?.ttlSeconds ?? null });
+        }
       }
     }
     for (const key of keys) {
@@ -1860,7 +1977,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     livePath: LivePathModel[],
   ): Promise<CatalogueIndex> {
     const refs = { slug: new Set<string>(workerRefs), sourceUri: new Set<string>(), wireModelId: new Set<string>() };
-    const ids = new Set<string>([...policies.map((p) => p.aiModelId), ...livePath.map((l) => l.aiModelId)]);
+    const ids = new Set<string>([...policies.map((p) => p.aiModelId), ...livePath.flatMap((l) => [l.aiModelId, ...(l.aiModelIds ?? [])])]);
     for (const report of reports) {
       for (const model of report.models) {
         if (model.aiModelId) ids.add(model.aiModelId);
@@ -1942,8 +2059,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     // Desired but not resident: explicit PINNED/WARM rows and the implicit live path.
     // A model pinned ONLY as an ASR pipeline stage (VAD, denoise, …) loads with its ASR agent, never on its own (lane B3):
     // it stays PINNED (never idle-unloaded) but is not a load candidate.
-    const stageOnly = (aiModelId: string) =>
-      ledger.livePath.filter((l) => l.aiModelId === aiModelId).every((l) => l.role === 'pipeline_stage');
+    const stageOnly = (aiModelId: string) => ledger.livePath.filter((l) => onLivePathEntry(l, aiModelId)).every((l) => l.role === 'pipeline_stage');
     const candidates: Array<{ service: string; modelRef: string | null; aiModelId: string; loadable: boolean }> = [
       ...ledger.policies
         .filter((p) => p.class !== ModelResidencyClass.ON_DEMAND)
@@ -1992,9 +2108,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const policy = modelId ? (ledger.policies.find((p) => p.aiModelId === modelId && p.service === service) ?? null) : null;
     if (policy) return { class: policy.class as ResidencyClassName, classSource: 'policy', policy };
     // F1 / lane B3 — the live path names catalogue ROWS: match on the row when it is known, on the (service, key) pair only when it is not.
+    // Review finding 2 — every id the pin entry holds (the SAME membership `usage.liveConsultation` is computed from).
     const onLivePath =
       modelId !== null
-        ? ledger.livePath.some((l) => l.aiModelId === modelId)
+        ? ledger.livePath.some((l) => onLivePathEntry(l, modelId))
         : ledger.livePath.some((l) => l.service === service && l.modelRef === modelRef);
     if (onLivePath) {
       return { class: 'PINNED', classSource: 'implicit-live-path', policy: null };
@@ -2215,23 +2332,46 @@ function serviceRowsFilter(service: string): Record<string, unknown> {
 
 /**
  * TASK-1051 F1 — the SYSTEM row a key names on a service: the row whose catalogue
- * ref IS the key first, then any row `matchesRuntimeKey` accepts (LM Studio's
+ * ref IS the key first, then a confirmed key, then an UNAMBIGUOUS normalised match (LM Studio's
  * `@<quant>` / `:<n>` suffixes, operator-confirmed keys). LM Studio considers only
  * LM Studio rows (a CLOUD or Ollama row may carry the same wire id); stt prefers
  * an stt row, as before.
  */
 function catalogueRowFor<T extends AiModelEntity>(service: string, rows: readonly T[], key: string): T | undefined {
-  const match = (pool: readonly T[]) => pool.find((r) => refFor(service, r) === key) ?? pool.find((r) => matchesRuntimeKey(service, r, key));
+  // Review finding 1 — exact catalogue ref → operator-confirmed key → an UNAMBIGUOUS normalised match (`resolveRuntimeKey`).
+  const match = (pool: readonly T[]) => resolveRuntimeKey(service, key, pool)?.row;
   if (service === 'lm-studio') return match(rows.filter((r) => residencyServiceOf(r) === 'lm-studio'));
   if (service === 'nlp') return match(rows.filter((r) => r.servedBy === 'nlp'));
   return match(rows.filter((r) => r.servedBy === 'stt')) ?? match(rows);
 }
 
-/** The reported instances an unload of `modelRef` targets: the exact key if the service holds it, else every instance of `row`. */
-function reportedInstances<M extends { modelRef: string }>(service: string, models: readonly M[], modelRef: string, row?: CatalogueRefFields): M[] {
+/**
+ * The reported instances an unload of `modelRef` targets: the exact key if the service holds it, else every
+ * instance whose key RESOLVES to `row` (review finding 6 — never a sibling variant's instance, never an ambiguous one).
+ */
+function reportedInstances<M extends { modelRef: string; aiModelId?: string | null }>(
+  service: string,
+  models: readonly M[],
+  modelRef: string,
+  row: AiModelEntity | undefined,
+  rows: readonly AiModelEntity[],
+): M[] {
   const exact = models.filter((m) => m.modelRef === modelRef);
   if (exact.length > 0 || !row) return exact;
-  return models.filter((m) => matchesRuntimeKey(service, row, m.modelRef));
+  const pool = rows.some((r) => r.id === row.id) ? rows : [...rows, row];
+  return models.filter((m) => (m.aiModelId ?? catalogueRowFor(service, pool, m.modelRef)?.id) === row.id);
+}
+
+/** The SYSTEM rows a reported key is resolved against: the ledger's, plus the row an operator named (it may have been read directly). */
+function catalogueRows(ledger: Ledger, row: AiModelEntity | undefined): AiModelEntity[] {
+  const rows = [...ledger.catalogue.rows];
+  if (row && !rows.some((r) => r.id === row.id)) rows.push(row);
+  return rows;
+}
+
+/** Does this pin entry hold `aiModelId` (its first id, or any id sharing its key)? */
+function onLivePathEntry(entry: LivePathModel, aiModelId: string): boolean {
+  return entry.aiModelId === aiModelId || (entry.aiModelIds?.includes(aiModelId) ?? false);
 }
 
 /** Why a resident model is not offered for eviction, in the catalogue's words. */
