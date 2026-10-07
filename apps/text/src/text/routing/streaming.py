@@ -167,6 +167,7 @@ async def run_generation_producer(
             app_state=app_state,
             where="streaming.run_generation_producer",
             locality=active_egress.locality,
+            outcome=active_egress.guardrail,
         )
 
     gate: StreamGate | None = (
@@ -197,6 +198,21 @@ async def run_generation_producer(
         )
         producer.publish(event)
         flusher.offer(event)
+
+    #: TASK-1050: notices already published as `guardrail.notice` events.
+    emitted_notices: set[str] = set()
+
+    def emit_notices() -> None:
+        """Publish every notice not yet sent, one `guardrail.notice` event each, as known.
+
+        The inbound ones before the first delta; each outbound one right after the
+        window that raised it was screened — and a block's notice before its terminal
+        ``error`` frame. PHI-free by construction (`services/guardrail_notices`).
+        """
+        for notice in active_egress.guardrail.notices:
+            if notice["noticeId"] not in emitted_notices:
+                emitted_notices.add(notice["noticeId"])
+                emit(StreamChunk(type="guardrail.notice", data=notice))
 
     async def emit_terminal(chunk: StreamChunk) -> None:
         """Publish the terminal frame and make it durable **immediately**.
@@ -243,6 +259,7 @@ async def run_generation_producer(
     stream_finish_reason: str | None = None
     stopped_reason: str | None = None
     next_control_poll = start + _CONTROL_POLL_INTERVAL_S
+    emit_notices()  # the inbound gate's, known before the provider was called
     # The provider's own ``done`` frame, held back so the usage block can be
     # folded into it. The SSE reader STOPS at the first ``done``/``error``, so a
     # usage frame appended after one would never be delivered.
@@ -304,6 +321,9 @@ async def run_generation_producer(
         if guardrail_usage is not None:
             data["guardrail_usage"] = guardrail_usage
         data["egress"] = active_egress.summary.model_dump(mode="json")
+        # TASK-1050: both lists, whatever the outcome (the reconciler keys on the ids).
+        data["guardrail_notices"] = list(active_egress.guardrail.notices)
+        data["guardrail_evaluation_ids"] = list(active_egress.guardrail.evaluation_ids)
         return data
 
     def _record(chunk: StreamChunk) -> None:
@@ -414,6 +434,8 @@ async def run_generation_producer(
                     except OutputRejectedError as exc:
                         rejection = exc
                         break
+                    finally:
+                        emit_notices()
                     for piece in released:
                         _record(piece)
                         emit(piece)
@@ -470,7 +492,11 @@ async def run_generation_producer(
             if rejection is not None:
                 raise rejection
             if gate is not None:
-                for piece in await gate.flush():
+                try:
+                    flushed = await gate.flush()
+                finally:
+                    emit_notices()
+                for piece in flushed:
                     _record(piece)
                     emit(piece)
         except OutputRejectedError as rejected:

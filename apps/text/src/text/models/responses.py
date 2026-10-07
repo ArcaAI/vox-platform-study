@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -99,6 +100,12 @@ class GenerateResponse(BaseModel):
     guardrail_usage: UsageDetail | None = None
     # TASK-1035 — the egress summary; counts only, never values.
     egress: EgressSummary | None = None
+    # TASK-1050 — the `GuardrailNotice` v1 objects (`warn` / `unverified`; a block is a
+    # 422 instead) raised on this generation, inbound then outbound, and the
+    # guardrail evaluation id of every screen call (the reconciler's gap key).
+    # PHI-free by construction: fixed labels and check ids, never content.
+    guardrail_notices: list[dict[str, Any]] = Field(default_factory=list)
+    guardrail_evaluation_ids: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

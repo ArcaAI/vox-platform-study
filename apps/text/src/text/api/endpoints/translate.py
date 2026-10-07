@@ -10,14 +10,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from text.core.dependencies import get_app_state, get_guardrail_client, get_translate_registry
+from text.core.locality import resolve_locality
 from text.core.logging import get_logger
+from text.models.requests import region_items_wire
 from text.models.responses import ErrorResponse
 from text.models.translate import TranslateRequest, TranslateResponse
-from text.services.egress import prepare_text_egress, run_inbound_gate
+from text.services.egress import TRUST_DATA, prepare_text_egress, run_inbound_gate
 from text.services.external_guardrail import ExternalGuardrailClient
+from text.services.guardrail_notices import bind_guardrail_correlation
 from text.services.output_gate import OutputRejectedError, gate_completion
 from text.translation.base import TranslateProviderNotFoundError, TranslateProviderRegistry
 from text.translation.sarvam import (
@@ -44,11 +47,18 @@ router = APIRouter(tags=["translate"])
 )
 async def translate(
     request_body: TranslateRequest,
+    fastapi_request: Request,
     registry: TranslateProviderRegistry = Depends(get_translate_registry),
     guardrail_client: ExternalGuardrailClient | None = Depends(get_guardrail_client),
     app_state: Any = Depends(get_app_state),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> TranslateResponse:
+    # TASK-1050: correlation, locality (spans only off LOCAL, the redaction hold) and
+    # region items, as on `/generate`. The texts are clinical input THIS service
+    # turns into regions, so they are screened as DATA, never as an instruction (F3).
+    bind_guardrail_correlation(fastapi_request.headers)
+    locality = resolve_locality(request_body.provider, request_body.provider_locality)
+    region_items = region_items_wire(request_body.region_items)
     inbound = await run_inbound_gate(
         guardrail_client,
         segments=list(request_body.texts),
@@ -56,6 +66,9 @@ async def translate(
         system="absent",
         tenant_id=x_tenant_id,
         medical_exempt=request_body.medical_exempt,
+        locality=locality,
+        region_items=region_items,
+        outside_trust=TRUST_DATA,
     )
     egress, outgoing = prepare_text_egress(
         list(request_body.texts),
@@ -63,6 +76,8 @@ async def translate(
         provider_locality=request_body.provider_locality,
         known_phi=request_body.known_phi,
         spans_by_segment=inbound.spans_by_segment,
+        outcome=inbound.outcome,
+        region_items=region_items,
     )
 
     try:
@@ -109,6 +124,7 @@ async def translate(
             app_state=app_state,
             where="translate.post_receive_gate",
             locality=egress.locality,
+            outcome=egress.guardrail,
         )
     except OutputRejectedError as rejected:
         egress.pii_leak_blocked = rejected.pii_leak
@@ -128,4 +144,6 @@ async def translate(
         model=resolved_model,
         chars=sum(len(t) for t in request_body.texts),
         egress=egress.summary,
+        guardrail_notices=list(egress.guardrail.notices),
+        guardrail_evaluation_ids=list(egress.guardrail.evaluation_ids),
     )
