@@ -29,6 +29,7 @@
  * (`unsupported_node_type`, `branch_not_taken`, `superseded_after_completion`, …) are codes by
  * construction, and re-classifying them would throw away the more specific answer.
  */
+import { GUARDRAIL_BLOCKED_PROBLEM_TYPE } from '@arcaai/types';
 
 /** The terminal fallback for the LIVE FLUSH: generation was attempted and produced no note. */
 export const LIVE_DEGRADE_FALLBACK = 'generation_failed';
@@ -65,6 +66,20 @@ export const LIVE_DEGRADE_OUTPUT_TRUNCATED = 'output_truncated';
  */
 export const LIVE_DEGRADE_REPETITION_PRESSURE = 'repetition_pressure';
 
+/**
+ * TASK-1050 W2g — a guardrail check BLOCKED this generation (TEXT's 422 guardrail-blocked problem).
+ * Not a fault and not `generation_failed`: the flush kept the last good note, the block notice went
+ * out on the channel, and the consultation enters a resumable hold (README §9.8.1).
+ */
+export const LIVE_DEGRADE_GUARDRAIL_BLOCKED = 'guardrail_blocked';
+
+/**
+ * TASK-1050 W2g — the cloud pseudonymiser could not run, so TEXT refused to send the prompt
+ * (`EGRESS_REDACTION_UNAVAILABLE`, a retryable 503). A privacy hold, not `text_unavailable`: the
+ * TEXT service answered, it declined on purpose.
+ */
+export const LIVE_DEGRADE_REDACTION_UNAVAILABLE = 'redaction_unavailable';
+
 export const LIVE_DEGRADE_CODES = Object.freeze([
   'no_case_notes',
   'context_overflow',
@@ -72,6 +87,8 @@ export const LIVE_DEGRADE_CODES = Object.freeze([
   'timeout',
   LIVE_DEGRADE_OUTPUT_TRUNCATED,
   LIVE_DEGRADE_REPETITION_PRESSURE,
+  LIVE_DEGRADE_GUARDRAIL_BLOCKED,
+  LIVE_DEGRADE_REDACTION_UNAVAILABLE,
   LIVE_DEGRADE_FALLBACK,
   PRE_SUMMARY_DEGRADE_FALLBACK,
 ] as const);
@@ -162,6 +179,10 @@ export function degradeCode(error: unknown, fallback: string): string {
   // coupling to the module that raises it. First, so no wording regex can claim it: a truncated
   // note's own text may say anything at all.
   if (codes.split(/\s+/).includes(LIVE_DEGRADE_OUTPUT_TRUNCATED)) return LIVE_DEGRADE_OUTPUT_TRUNCATED;
+  // TASK-1050 W2g — the two guardrail stops, structurally (the problem `type`, the code), before the
+  // status rule below would call a deliberate 503 refusal an outage.
+  if (status === 422 && responseBody(error)?.type === GUARDRAIL_BLOCKED_PROBLEM_TYPE) return LIVE_DEGRADE_GUARDRAIL_BLOCKED;
+  if (/\bEGRESS_REDACTION_UNAVAILABLE\b/.test(codes)) return LIVE_DEGRADE_REDACTION_UNAVAILABLE;
   if (/CONTEXT_WINDOW_EXCEEDED/i.test(codes)) return 'context_overflow';
   if (NO_CASE_NOTES.test(message)) return 'no_case_notes';
   if (CONTEXT_OVERFLOW.test(haystack)) return 'context_overflow';
