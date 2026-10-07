@@ -110,7 +110,7 @@ describe('ContextItemEntityMapper — guardrailStatus is outside OCC (OD-21)', (
     const item = ContextItemFactory.CreateContextItem({
       tenantId: 't-1',
       consultationId: 'c-1',
-      type: ContextItemType.SUMMARY,
+      type: ContextItemType.RAW_SUMMARY,
       guardrailStatus: GuardrailItemStatus.WITHHELD,
     });
     expect((mapper.toPersistence(item) as any).guardrailStatus).toBe(GuardrailItemStatus.WITHHELD);
@@ -119,7 +119,7 @@ describe('ContextItemEntityMapper — guardrailStatus is outside OCC (OD-21)', (
   it('an entity update never writes the marker, even when the read row carries one', () => {
     const read = mapper.toDomainEntity({
       ...(mapper.toPersistence(
-        ContextItemFactory.CreateContextItem({ tenantId: 't-1', consultationId: 'c-1', type: ContextItemType.SUMMARY }),
+        ContextItemFactory.CreateContextItem({ tenantId: 't-1', consultationId: 'c-1', type: ContextItemType.RAW_SUMMARY }),
       ) as any),
       version: 3,
       guardrailStatus: GuardrailItemStatus.WARNED,

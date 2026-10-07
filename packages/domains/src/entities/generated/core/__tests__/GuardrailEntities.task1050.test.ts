@@ -173,7 +173,7 @@ describe('GuardrailPolicyRevisionFactory', () => {
 });
 
 describe('ContextItem.guardrailStatus', () => {
-  const props = { tenantId: 't-1', consultationId: 'c-1', type: ContextItemType.SUMMARY };
+  const props = { tenantId: 't-1', consultationId: 'c-1', type: ContextItemType.RAW_SUMMARY };
 
   it('reads CLEAN when not supplied, and carries a supplied WITHHELD on create', () => {
     expect(ContextItemFactory.CreateContextItem(props).guardrailStatus).toBe(GuardrailItemStatus.CLEAN);
