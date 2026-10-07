@@ -46,7 +46,7 @@ from injection_eval.core import iter_windows, select_threshold  # noqa: E402
 WINDOW, OVERLAP = 2000, 256
 BENIGN_GATE_SETS = {"a", "b1", "b2"}  # the < 1 % bar is judged on these (clinical data)
 DEV_BENIGN_SETS = {"b1", "b2"}
-SET_ORDER = ("a", "b1", "b2", "b3", "c1", "c2", "i")  # i: governed instruction texts
+SET_ORDER = ("a", "b1", "b2", "b3", "c1", "c2", "i", "s", "o")  # i: instructions; s: Aegis; o: off-scope
 
 
 def load_sets(sets_dir: Path) -> list[dict]:
