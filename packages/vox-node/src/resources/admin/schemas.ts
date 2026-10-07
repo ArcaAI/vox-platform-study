@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 560 component schemas the generated surface transitively
+ * Only the 571 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2420,6 +2420,12 @@ export interface DiscoveryResponse {
   probes: DiscoveryProbe[];
 }
 
+export interface DismissModelResidencySuggestionResponse {
+  /** Hidden until the controller reaches a DIFFERENT conclusion for this model, or the gateway restarts (in-memory, shadow mode). */
+  dismissed: boolean;
+  id: string;
+}
+
 export interface DnaDashboardDailyCount {
   /** Usage records created on this day */
   count: number;
@@ -3713,6 +3719,21 @@ export interface LanguageResolutionResponse {
   source: 'request' | 'consultation' | 'agent' | 'default';
 }
 
+export interface LinkModelResidencyRuntimeKeyRequest {
+  /** The SYSTEM catalogue row it is. */
+  aiModelId: string;
+  /** The key EXACTLY as the service reports it. */
+  runtimeKey: string;
+  service: 'stt' | 'nlp' | 'lm-studio';
+}
+
+export interface LinkModelResidencyRuntimeKeyResponse {
+  aiModelId: string;
+  /** Every key the row is now recognised under (catalogue ref first). */
+  runtimeKeys: string[];
+  service: string;
+}
+
 export interface LiveDocEngineConfigResponse {
   /** Effective agentic.context.* knobs the live-documentation loop reads. */
   contextSettings?: Record<string, unknown>;
@@ -4274,7 +4295,11 @@ export interface ModelRegistryAccessResponse {
 }
 
 export interface ModelResidencyCatalogueDevice {
+  /** TASK-1051 — the sum of `models[].bytes` (measured + estimated). */
+  attributedBytes: number;
   freeBytes: number;
+  /** TASK-1051 — bytes the controller keeps free on this device (`totalBytes × headroomPercent / 100`). */
+  headroomBytes: number;
   /** The `residency.headroomPercent` in force. */
   headroomPercent: number;
   /** `gpu<N>` = DCGM device N; `cpu:<service>` = that service`s host memory pool. */
@@ -4283,7 +4308,11 @@ export interface ModelResidencyCatalogueDevice {
   label: string;
   /** The models resident on this device right now. */
   models: ModelResidencyDeviceModel[];
+  /** TASK-1051 — `freeBytes < headroomBytes`: a cold load here would breach the budget. */
+  overHeadroom: boolean;
   totalBytes: number;
+  /** TASK-1051 — `usedBytes − attributedBytes`, floored at 0: CUDA contexts and other processes on a time-sliced card. */
+  unattributedBytes: number;
   usedBytes: number;
   utilisationPercent: number | null;
 }
@@ -4293,10 +4322,15 @@ export interface ModelResidencyCatalogueModel {
   actions: Array<'load' | 'unload' | 'reload' | 'edit_policy'>;
   /** `null` only for a resident model the catalogue does not know. */
   aiModelId: string | null;
+  /** TASK-1051 — what admission reserves for a load: the measured footprint, else the catalogue size × 1.2; `null` = no size (a load is refused unless forced). */
+  budgetBytes: number | null;
   /** Set only while `status` is `failed`. */
   error: ModelResidencyLoadError;
   format: string | null;
+  identity: ModelResidencyIdentity;
   keepPolicy: ModelResidencyKeepPolicy;
+  /** TASK-1051 — `remote` (a cloud API) and `builtin` (compiled into a library) hold no memory and offer no load/unload. */
+  kind: 'resident' | 'remote' | 'builtin';
   /** Seconds the last load took (measured). */
   loadSeconds: number | null;
   /** The key the service holds it under (stt = slug, nlp = hub id, LM Studio = wire id) — what load / unload take. */
@@ -4318,7 +4352,7 @@ export interface ModelResidencyCatalogueResponse {
   reportedAt: string;
   /** Always four groups, in this order: stt, stt-worker, lm-studio, nlp. */
   services: ModelResidencyCatalogueService[];
-  /** The controller`s recommendations, newest first, one plain sentence each. */
+  /** TASK-1051 — STANDING recommendations: one per (action, service, model), most recently confirmed first, never one the current policy already satisfies, dismissed ones omitted; at most 20. */
   suggestions: ModelResidencySuggestion[];
 }
 
@@ -4332,6 +4366,19 @@ export interface ModelResidencyCatalogueService {
   reachable: boolean;
   runsOn: 'gpu' | 'cpu';
   service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
+}
+
+export interface ModelResidencyConsumerCounts {
+  /** Agents whose PRIMARY model this is. */
+  agents: number;
+  /** Agents holding it in a fallback chain. */
+  fallbacks: number;
+  /** ASR agents whose resolved spec uses it as a stage (VAD, denoise, diarization, embedding). */
+  pipelineStages: number;
+  /** Active routing policies (guardrail, NLP, judge) naming it. */
+  routingPolicies: number;
+  /** Published workflow `core.agent` nodes whose agent runs on it. */
+  workflowNodes: number;
 }
 
 export interface ModelResidencyDevice {
@@ -4349,8 +4396,10 @@ export interface ModelResidencyDevice {
 }
 
 export interface ModelResidencyDeviceModel {
-  /** Bytes this model holds on THIS device; `null` when unknown — always for LM Studio, which splits one model over every card. */
+  /** Bytes this model holds on THIS device. A split LM Studio model carries its per-card SHARE (estimated); `null` only when nothing is known. */
   bytes: number | null;
+  /** TASK-1051 — `measured` = the service`s own load delta; `estimated` = the catalogue size or a split model`s per-card share. */
+  bytesSource: 'measured' | 'estimated' | 'unknown';
   modelRef: string;
   /** Catalogue name, or the modelRef when the catalogue does not know the model. */
   name: string;
@@ -4360,8 +4409,21 @@ export interface ModelResidencyDeviceModel {
 export interface ModelResidencyFreshness {
   /** Age in seconds of the OLDEST service report the view is built from (target ≤ 15 s). */
   maxAgeSeconds: number;
+  /** TASK-1051 — when the OLDEST service report was produced (the agent`s own clock, not the gateway`s fetch); `maxAgeSeconds` is measured from it. */
+  oldestReportAt: string | null;
   /** Services whose last successful report is older than 30 s (their rows are the last known state). */
   staleServices: string[];
+}
+
+export interface ModelResidencyIdentity {
+  /** Only on an UNMATCHED resident row: catalogue rows it could be, best first. */
+  candidates: ModelResidencyRuntimeKeyCandidate[];
+  /** The reported instance is tied to this catalogue row (by normalised key or an operator-confirmed key). */
+  matched: boolean;
+  /** The key the service actually reported for the resident instance; `null` when not resident. */
+  reportedKey: string | null;
+  /** Every key this row is recognised under: its catalogue ref, then the confirmed keys. */
+  runtimeKeys: string[];
 }
 
 export interface ModelResidencyKeepPolicy {
@@ -4382,6 +4444,29 @@ export interface ModelResidencyLoadError {
   code: string;
   /** What the load said, truncated to 500 characters. */
   message: string;
+}
+
+export interface ModelResidencyLoadPreviewResponse {
+  /** Where the load would land (`gpu0`, `multi`, `cpu:<service>`); `null` when the service`s device is unknown. */
+  device: string | null;
+  /** ON_DEMAND resident models on the same device that could be unloaded to make room, largest first. */
+  evictable: ModelResidencyPreviewModel[];
+  /** Admission would accept it without force. */
+  fits: boolean;
+  freeBytes: number | null;
+  headroomBytes: number | null;
+  modelRef: string;
+  /** Bytes admission reserves (measured, else catalogue × 1.2); `null` = no size known. */
+  needBytes: number | null;
+  needSource: 'measured' | 'catalogue' | 'unknown';
+  /** Resident models on the same device that are pinned (live path or policy) and are NOT offered. */
+  pinned: ModelResidencyPreviewModel[];
+  /** What an un-forced load would answer; `null` when it would be admitted. */
+  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | null;
+  service: string;
+  /** `max(0, needBytes − (freeBytes − headroomBytes))`; 0 when it fits. */
+  shortfallBytes: number;
+  unattributedBytes: number | null;
 }
 
 export interface ModelResidencyLoadResponse {
@@ -4473,16 +4558,72 @@ export interface ModelResidencyPolicyResponse {
   version: number;
 }
 
+export interface ModelResidencyPreviewModel {
+  bytes: number | null;
+  modelRef: string;
+  name: string;
+  /** Why it is (or is not) offered, in plain words. */
+  reason: string;
+  service: string;
+}
+
+export interface ModelResidencyReadinessCheck {
+  /** The evidence, in plain words. */
+  detail: string;
+  id:
+    | 'shadow_review_recorded'
+    | 'instances_matched'
+    | 'gpus_inside_headroom'
+    | 'shared_decision_state'
+    | 'shadow_days'
+    | 'usage_complete'
+    | 'unmeasured_budgeted'
+    | 'actions_audited';
+  passed: boolean;
+  title: string;
+}
+
+export interface ModelResidencyReadinessResponse {
+  /** In `READINESS_CHECK_IDS` order. */
+  checks: ModelResidencyReadinessCheck[];
+  mode: 'shadow' | 'enforce';
+  passed: number;
+  shadow: ModelResidencyShadowSummary;
+  total: number;
+}
+
 export interface ModelResidencyRecommendation {
   action: 'load' | 'unload' | 'pin' | 'unpin';
   /** Whether the command was sent AND succeeded. Always `false` in shadow mode. */
   applied: boolean;
   at: string;
+  /** TASK-1051 — first time this standing recommendation was reached (`at` is the latest). */
+  firstSeenAt: string;
   id: string;
   mode: 'shadow' | 'enforce';
   modelRef: string;
   reason: 'idle_ttl_expired' | 'promotion_rate' | 'live_path_pin' | 'make_room' | 'admission_rejected';
+  /** TASK-1051 — ticks that reached it (1 = once). */
+  repeats: number;
   service: string;
+}
+
+export interface ModelResidencyRuntimeKeyCandidate {
+  aiModelId: string;
+  name: string;
+  reason: string;
+  slug: string;
+  strength: 'strong' | 'weak';
+}
+
+export interface ModelResidencyShadowSummary {
+  /** Loads of a model that was already resident under an unmatched key. */
+  duplicateLoads: number;
+  loads: number;
+  refusedOverBudget: number;
+  /** Start of the window the counts cover (gateway start — the log is in memory). */
+  since: string;
+  unloads: number;
 }
 
 export interface ModelResidencySize {
@@ -4495,9 +4636,16 @@ export interface ModelResidencySuggestion {
   action: 'load' | 'unload' | 'pin' | 'unpin';
   /** The command was sent AND succeeded. Always `false` in shadow mode. */
   applied: boolean;
+  /** Last confirmed (the controller reached the same conclusion again). */
   at: string;
+  /** TASK-1051 — when the controller first reached this conclusion. */
+  firstSeenAt: string;
+  /** Stable for the life of this standing recommendation — the id `POST suggestions/:id/dismiss` takes. */
   id: string;
   modelRef: string;
+  reason: 'idle_ttl_expired' | 'promotion_rate' | 'live_path_pin' | 'make_room' | 'admission_rejected';
+  /** TASK-1051 — how many ticks have re-confirmed it (1 = once). */
+  repeats: number;
   service: string;
   text: string;
 }
@@ -4511,6 +4659,8 @@ export interface ModelResidencyUnloadResponse {
 export interface ModelResidencyUsage {
   /** Distinct agents among the primary and fallback uses. */
   agentCount: number;
+  /** TASK-1051 — every kind of consumer, counted; any of them on a live path makes `liveConsultation` true. */
+  consumers: ModelResidencyConsumerCounts;
   /** Any use is on the live consultation path. */
   liveConsultation: boolean;
   tenantCount: number;
@@ -4525,7 +4675,7 @@ export interface ModelResidencyUse {
   agentSlug: string | null;
   /** This agent is assigned on the live consultation path and this model is its primary. */
   liveConsultation: boolean;
-  role: 'primary' | 'fallback' | 'routing';
+  role: 'primary' | 'fallback' | 'routing' | 'pipeline_stage' | 'workflow_node';
   /** The agent task (`SPEECH_TO_TEXT`, …) or, for a routing use, the policy`s task key (`nlp.ner`, …). */
   task: string;
   tenantId: string;

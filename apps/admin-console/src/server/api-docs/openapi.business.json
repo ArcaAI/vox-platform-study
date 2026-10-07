@@ -9513,6 +9513,22 @@
         ],
         "type": "object"
       },
+      "DismissModelResidencySuggestionResponse": {
+        "properties": {
+          "dismissed": {
+            "description": "Hidden until the controller reaches a DIFFERENT conclusion for this model, or the gateway restarts (in-memory, shadow mode).",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dismissed"
+        ],
+        "type": "object"
+      },
       "DnaDashboardDailyCount": {
         "properties": {
           "count": {
@@ -14740,6 +14756,56 @@
         ],
         "type": "object"
       },
+      "LinkModelResidencyRuntimeKeyRequest": {
+        "properties": {
+          "aiModelId": {
+            "description": "The SYSTEM catalogue row it is.",
+            "type": "string"
+          },
+          "runtimeKey": {
+            "description": "The key EXACTLY as the service reports it.",
+            "example": "gemma-4-e2b-it-qat@q4_0",
+            "type": "string"
+          },
+          "service": {
+            "enum": [
+              "stt",
+              "nlp",
+              "lm-studio"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "runtimeKey",
+          "aiModelId"
+        ],
+        "type": "object"
+      },
+      "LinkModelResidencyRuntimeKeyResponse": {
+        "properties": {
+          "aiModelId": {
+            "type": "string"
+          },
+          "runtimeKeys": {
+            "description": "Every key the row is now recognised under (catalogue ref first).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "aiModelId",
+          "service",
+          "runtimeKeys"
+        ],
+        "type": "object"
+      },
       "LiveDocEngineConfigResponse": {
         "properties": {
           "contextSettings": {
@@ -16481,7 +16547,15 @@
       },
       "ModelResidencyCatalogueDevice": {
         "properties": {
+          "attributedBytes": {
+            "description": "TASK-1051 — the sum of `models[].bytes` (measured + estimated).",
+            "type": "number"
+          },
           "freeBytes": {
+            "type": "number"
+          },
+          "headroomBytes": {
+            "description": "TASK-1051 — bytes the controller keeps free on this device (`totalBytes × headroomPercent / 100`).",
             "type": "number"
           },
           "headroomPercent": {
@@ -16511,7 +16585,15 @@
             },
             "type": "array"
           },
+          "overHeadroom": {
+            "description": "TASK-1051 — `freeBytes < headroomBytes`: a cold load here would breach the budget.",
+            "type": "boolean"
+          },
           "totalBytes": {
+            "type": "number"
+          },
+          "unattributedBytes": {
+            "description": "TASK-1051 — `usedBytes − attributedBytes`, floored at 0: CUDA contexts and other processes on a time-sliced card.",
             "type": "number"
           },
           "usedBytes": {
@@ -16531,6 +16613,10 @@
           "freeBytes",
           "utilisationPercent",
           "headroomPercent",
+          "headroomBytes",
+          "overHeadroom",
+          "attributedBytes",
+          "unattributedBytes",
           "models"
         ],
         "type": "object"
@@ -16555,6 +16641,11 @@
             "nullable": true,
             "type": "string"
           },
+          "budgetBytes": {
+            "description": "TASK-1051 — what admission reserves for a load: the measured footprint, else the catalogue size × 1.2; `null` = no size (a load is refused unless forced).",
+            "nullable": true,
+            "type": "number"
+          },
           "error": {
             "allOf": [
               {
@@ -16569,8 +16660,20 @@
             "nullable": true,
             "type": "string"
           },
+          "identity": {
+            "$ref": "#/components/schemas/ModelResidencyIdentity"
+          },
           "keepPolicy": {
             "$ref": "#/components/schemas/ModelResidencyKeepPolicy"
+          },
+          "kind": {
+            "description": "TASK-1051 — `remote` (a cloud API) and `builtin` (compiled into a library) hold no memory and offer no load/unload.",
+            "enum": [
+              "resident",
+              "remote",
+              "builtin"
+            ],
+            "type": "string"
           },
           "loadSeconds": {
             "description": "Seconds the last load took (measured).",
@@ -16620,12 +16723,15 @@
         "required": [
           "aiModelId",
           "name",
+          "kind",
           "slug",
           "modelRef",
           "format",
           "status",
           "error",
           "size",
+          "budgetBytes",
+          "identity",
           "loadSeconds",
           "residency",
           "usage",
@@ -16663,7 +16769,7 @@
             "type": "array"
           },
           "suggestions": {
-            "description": "The controller`s recommendations, newest first, one plain sentence each.",
+            "description": "TASK-1051 — STANDING recommendations: one per (action, service, model), most recently confirmed first, never one the current policy already satisfies, dismissed ones omitted; at most 20.",
             "items": {
               "$ref": "#/components/schemas/ModelResidencySuggestion"
             },
@@ -16731,6 +16837,38 @@
         ],
         "type": "object"
       },
+      "ModelResidencyConsumerCounts": {
+        "properties": {
+          "agents": {
+            "description": "Agents whose PRIMARY model this is.",
+            "type": "number"
+          },
+          "fallbacks": {
+            "description": "Agents holding it in a fallback chain.",
+            "type": "number"
+          },
+          "pipelineStages": {
+            "description": "ASR agents whose resolved spec uses it as a stage (VAD, denoise, diarization, embedding).",
+            "type": "number"
+          },
+          "routingPolicies": {
+            "description": "Active routing policies (guardrail, NLP, judge) naming it.",
+            "type": "number"
+          },
+          "workflowNodes": {
+            "description": "Published workflow `core.agent` nodes whose agent runs on it.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "agents",
+          "fallbacks",
+          "routingPolicies",
+          "pipelineStages",
+          "workflowNodes"
+        ],
+        "type": "object"
+      },
       "ModelResidencyDevice": {
         "properties": {
           "freeBytes": {
@@ -16783,9 +16921,18 @@
       "ModelResidencyDeviceModel": {
         "properties": {
           "bytes": {
-            "description": "Bytes this model holds on THIS device; `null` when unknown — always for LM Studio, which splits one model over every card.",
+            "description": "Bytes this model holds on THIS device. A split LM Studio model carries its per-card SHARE (estimated); `null` only when nothing is known.",
             "nullable": true,
             "type": "number"
+          },
+          "bytesSource": {
+            "description": "TASK-1051 — `measured` = the service`s own load delta; `estimated` = the catalogue size or a split model`s per-card share.",
+            "enum": [
+              "measured",
+              "estimated",
+              "unknown"
+            ],
+            "type": "string"
           },
           "modelRef": {
             "type": "string"
@@ -16808,7 +16955,8 @@
           "service",
           "modelRef",
           "name",
-          "bytes"
+          "bytes",
+          "bytesSource"
         ],
         "type": "object"
       },
@@ -16818,6 +16966,11 @@
             "description": "Age in seconds of the OLDEST service report the view is built from (target ≤ 15 s).",
             "example": 12,
             "type": "number"
+          },
+          "oldestReportAt": {
+            "description": "TASK-1051 — when the OLDEST service report was produced (the agent`s own clock, not the gateway`s fetch); `maxAgeSeconds` is measured from it.",
+            "nullable": true,
+            "type": "string"
           },
           "staleServices": {
             "description": "Services whose last successful report is older than 30 s (their rows are the last known state).",
@@ -16829,7 +16982,42 @@
         },
         "required": [
           "maxAgeSeconds",
-          "staleServices"
+          "staleServices",
+          "oldestReportAt"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyIdentity": {
+        "properties": {
+          "candidates": {
+            "description": "Only on an UNMATCHED resident row: catalogue rows it could be, best first.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyRuntimeKeyCandidate"
+            },
+            "type": "array"
+          },
+          "matched": {
+            "description": "The reported instance is tied to this catalogue row (by normalised key or an operator-confirmed key).",
+            "type": "boolean"
+          },
+          "reportedKey": {
+            "description": "The key the service actually reported for the resident instance; `null` when not resident.",
+            "nullable": true,
+            "type": "string"
+          },
+          "runtimeKeys": {
+            "description": "Every key this row is recognised under: its catalogue ref, then the confirmed keys.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "matched",
+          "runtimeKeys",
+          "reportedKey",
+          "candidates"
         ],
         "type": "object"
       },
@@ -16905,6 +17093,94 @@
           "code",
           "message",
           "at"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyLoadPreviewResponse": {
+        "properties": {
+          "device": {
+            "description": "Where the load would land (`gpu0`, `multi`, `cpu:<service>`); `null` when the service`s device is unknown.",
+            "nullable": true,
+            "type": "string"
+          },
+          "evictable": {
+            "description": "ON_DEMAND resident models on the same device that could be unloaded to make room, largest first.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyPreviewModel"
+            },
+            "type": "array"
+          },
+          "fits": {
+            "description": "Admission would accept it without force.",
+            "type": "boolean"
+          },
+          "freeBytes": {
+            "nullable": true,
+            "type": "number"
+          },
+          "headroomBytes": {
+            "nullable": true,
+            "type": "number"
+          },
+          "modelRef": {
+            "type": "string"
+          },
+          "needBytes": {
+            "description": "Bytes admission reserves (measured, else catalogue × 1.2); `null` = no size known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "needSource": {
+            "enum": [
+              "measured",
+              "catalogue",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "pinned": {
+            "description": "Resident models on the same device that are pinned (live path or policy) and are NOT offered.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyPreviewModel"
+            },
+            "type": "array"
+          },
+          "refusal": {
+            "description": "What an un-forced load would answer; `null` when it would be admitted.",
+            "enum": [
+              "NO_SIZE",
+              "OVER_BUDGET",
+              "ALREADY_LOADED"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "shortfallBytes": {
+            "description": "`max(0, needBytes − (freeBytes − headroomBytes))`; 0 when it fits.",
+            "type": "number"
+          },
+          "unattributedBytes": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "service",
+          "modelRef",
+          "device",
+          "needBytes",
+          "needSource",
+          "freeBytes",
+          "headroomBytes",
+          "unattributedBytes",
+          "shortfallBytes",
+          "fits",
+          "refusal",
+          "evictable",
+          "pinned"
         ],
         "type": "object"
       },
@@ -17270,6 +17546,105 @@
         ],
         "type": "object"
       },
+      "ModelResidencyPreviewModel": {
+        "properties": {
+          "bytes": {
+            "nullable": true,
+            "type": "number"
+          },
+          "modelRef": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why it is (or is not) offered, in plain words.",
+            "example": "On demand · idle 5 h",
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "modelRef",
+          "name",
+          "bytes",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyReadinessCheck": {
+        "properties": {
+          "detail": {
+            "description": "The evidence, in plain words.",
+            "type": "string"
+          },
+          "id": {
+            "enum": [
+              "shadow_review_recorded",
+              "instances_matched",
+              "gpus_inside_headroom",
+              "shared_decision_state",
+              "shadow_days",
+              "usage_complete",
+              "unmeasured_budgeted",
+              "actions_audited"
+            ],
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "passed",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyReadinessResponse": {
+        "properties": {
+          "checks": {
+            "description": "In `READINESS_CHECK_IDS` order.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyReadinessCheck"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "shadow",
+              "enforce"
+            ],
+            "type": "string"
+          },
+          "passed": {
+            "type": "number"
+          },
+          "shadow": {
+            "$ref": "#/components/schemas/ModelResidencyShadowSummary"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "mode",
+          "passed",
+          "total",
+          "checks",
+          "shadow"
+        ],
+        "type": "object"
+      },
       "ModelResidencyRecommendation": {
         "properties": {
           "action": {
@@ -17286,6 +17661,10 @@
             "type": "boolean"
           },
           "at": {
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "description": "TASK-1051 — first time this standing recommendation was reached (`at` is the latest).",
             "type": "string"
           },
           "id": {
@@ -17311,6 +17690,10 @@
             ],
             "type": "string"
           },
+          "repeats": {
+            "description": "TASK-1051 — ticks that reached it (1 = once).",
+            "type": "number"
+          },
           "service": {
             "type": "string"
           }
@@ -17323,7 +17706,70 @@
           "modelRef",
           "reason",
           "mode",
-          "applied"
+          "applied",
+          "firstSeenAt",
+          "repeats"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyRuntimeKeyCandidate": {
+        "properties": {
+          "aiModelId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "example": "Same key once the quantisation/instance suffix is removed",
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "strength": {
+            "enum": [
+              "strong",
+              "weak"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "aiModelId",
+          "name",
+          "slug",
+          "strength",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyShadowSummary": {
+        "properties": {
+          "duplicateLoads": {
+            "description": "Loads of a model that was already resident under an unmatched key.",
+            "type": "number"
+          },
+          "loads": {
+            "type": "number"
+          },
+          "refusedOverBudget": {
+            "type": "number"
+          },
+          "since": {
+            "description": "Start of the window the counts cover (gateway start — the log is in memory).",
+            "type": "string"
+          },
+          "unloads": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "since",
+          "loads",
+          "unloads",
+          "refusedOverBudget",
+          "duplicateLoads"
         ],
         "type": "object"
       },
@@ -17365,13 +17811,33 @@
             "type": "boolean"
           },
           "at": {
+            "description": "Last confirmed (the controller reached the same conclusion again).",
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "description": "TASK-1051 — when the controller first reached this conclusion.",
             "type": "string"
           },
           "id": {
+            "description": "Stable for the life of this standing recommendation — the id `POST suggestions/:id/dismiss` takes.",
             "type": "string"
           },
           "modelRef": {
             "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "idle_ttl_expired",
+              "promotion_rate",
+              "live_path_pin",
+              "make_room",
+              "admission_rejected"
+            ],
+            "type": "string"
+          },
+          "repeats": {
+            "description": "TASK-1051 — how many ticks have re-confirmed it (1 = once).",
+            "type": "number"
           },
           "service": {
             "type": "string"
@@ -17384,6 +17850,9 @@
         "required": [
           "id",
           "at",
+          "firstSeenAt",
+          "repeats",
+          "reason",
           "text",
           "action",
           "service",
@@ -17421,6 +17890,14 @@
             "description": "Distinct agents among the primary and fallback uses.",
             "type": "number"
           },
+          "consumers": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModelResidencyConsumerCounts"
+              }
+            ],
+            "description": "TASK-1051 — every kind of consumer, counted; any of them on a live path makes `liveConsultation` true."
+          },
           "liveConsultation": {
             "description": "Any use is on the live consultation path.",
             "type": "boolean"
@@ -17440,7 +17917,8 @@
           "agentCount",
           "tenantCount",
           "liveConsultation",
-          "uses"
+          "uses",
+          "consumers"
         ],
         "type": "object"
       },
@@ -17463,7 +17941,9 @@
             "enum": [
               "primary",
               "fallback",
-              "routing"
+              "routing",
+              "pipeline_stage",
+              "workflow_node"
             ],
             "type": "string"
           },
