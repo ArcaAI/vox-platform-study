@@ -105,6 +105,8 @@ def run_notices(
                 problems=len(problems),
             )
             continue
+        # A conforming notice always carries a non-empty string id (the schema requires it).
+        notice_id = str(notice_id)
         if notice_id in seen:
             continue
         seen.add(notice_id)

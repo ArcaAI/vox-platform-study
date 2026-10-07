@@ -97,6 +97,10 @@ EVENT_NODE_STARTED = "workflow.node.started"
 EVENT_NODE_COMPLETED = "workflow.node.completed"
 EVENT_NODE_FAILED = "workflow.node.failed"
 EVENT_RUN_COMPLETED = "workflow.run.completed"
+#: TASK-1050 W2f — a node's generation was refused by guardrail (`guardrail.notice`, public), and
+#: the run now waits at it for a resolution (`run.paused`, public; README §9.8.1).
+EVENT_GUARDRAIL_NOTICE = "workflow.guardrail.notice"
+EVENT_RUN_PAUSED = "workflow.run.paused"
 
 
 # ---------------------------------------------------------------------------

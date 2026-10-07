@@ -1935,6 +1935,9 @@ async def _run_note_plan_finalizer(
         if trace is not None:
             await trace.model_request(attempt.provider, attempt.model, index, False, generation)
 
+    #: TASK-1050 — the warn / unverified notices the plan's calls raised, once each.
+    plan_notices: list[dict[str, Any]] = []
+
     # TASK-1047 V7 — the claim must describe the system this finalizer sends (the agent's own
     # composition), verified exactly as every other core.agent call is (FC-6); never the plan's.
     own_governance = await _system_governance(
@@ -1991,6 +1994,16 @@ async def _run_note_plan_finalizer(
             system=request.system,
             user=request.user,
         )
+        known = {notice["noticeId"] for notice in plan_notices}
+        fresh = [
+            notice
+            for notice in getattr(result, "guardrail_notices", None) or []
+            if isinstance(notice, dict) and notice.get("noticeId") not in known
+        ]
+        for notice in await _emit_guardrail_notices(payload, fresh):
+            # Re-checked after the await: the plan's calls run concurrently.
+            if notice["noticeId"] not in {n["noticeId"] for n in plan_notices}:
+                plan_notices.append(notice)
         return NoteCallResult(
             content=result.content,
             stats=_generation_stats(
@@ -2121,8 +2134,15 @@ async def _run_note_plan_finalizer(
     )
     await batch.flush()
     if failure is not None:
-        return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {failure}", output=output)
-    return NodeActivityResult(status="SUCCEEDED", output=output)
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=f"core.agent: {failure}",
+            output=output,
+            guardrail_notices=plan_notices or None,
+        )
+    return NodeActivityResult(
+        status="SUCCEEDED", output=output, guardrail_notices=plan_notices or None
+    )
 
 
 async def _run_text_generation(

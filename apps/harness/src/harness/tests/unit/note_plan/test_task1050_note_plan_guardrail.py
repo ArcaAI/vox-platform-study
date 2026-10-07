@@ -289,3 +289,102 @@ def test_a_plan_calls_billed_stats_carry_its_evaluation_ids() -> None:
     assert "guardrail_evaluation_ids" not in activities.note_call_llm_stats(
         TextGenerationResult(content="x")
     )
+
+
+_WARN_NOTICE: dict[str, Any] = {
+    **_BLOCK_NOTICE,
+    "noticeId": "01927f6e-9999-7000-8000-0000000000aa",
+    "type": "guardrail.warning",
+    "action": "warn",
+    "messageKey": "guardrail.warning.generic",
+    "defaultMessage": "A safety check flagged this content. Review it before you rely on it.",
+    "resumable": False,
+}
+
+
+@pytest.mark.asyncio
+async def test_the_note_plan_finalizer_publishes_its_calls_warn_notices(monkeypatch) -> None:
+    from harness.services.api_client import DraftResponse
+    from harness.temporal.interpreter import activities as interpreter_activities
+    from harness.temporal.interpreter.nodes import core
+    from harness.tests.unit.note_plan.test_executor_task1045 import _Text as _ScriptedText
+    from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
+
+    raw = _raw(GROUPS)
+    raw["tenantId"] = _GOV_TENANT
+    raw["consultationId"] = _GOV_CONSULTATION
+    plan = NotePlanV1.model_validate(raw)
+    scripted = _ScriptedText(
+        script={
+            plan.calls[0].directive: [_answer(["subjective", "objective"])],
+            plan.calls[1].directive: [_answer(["assessment", "plan"])],
+        }
+    )
+
+    class _WarningText:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        async def generate(self, **kwargs: Any) -> TextGenerationResult:
+            self.calls.append(kwargs)
+            result = await scripted.generate(**kwargs)
+            return result.model_copy(
+                update={"guardrail_notices": [_WARN_NOTICE], "guardrail_evaluation_ids": ["e"]}
+            )
+
+    async def _persist_draft(payload: Any) -> Any:
+        return DraftResponse(context_item_id="ctx-1", version_number=1)
+
+    stream = FakeRunStreamRedis()
+    monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS", stream, raising=False)
+    monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS_BUILT", True, raising=False)
+    monkeypatch.setattr(core, "_api_client", lambda _s: _GovApi(raw))
+    monkeypatch.setattr(core, "_text_client", lambda _s: _WarningText())
+    monkeypatch.setattr(activities, "_trajectory_api_client", lambda _s: _CapTraj())
+    monkeypatch.setattr(activities, "persist_draft", _persist_draft)
+
+    ref = {"consultationId": _GOV_CONSULTATION, "mode": "final", "planId": raw["planId"]}
+    seeded = {"text": "", "note_plan_ref": ref}
+    payload = _input(bound={"in": ""}, nodes={"n_summary_new": seeded, "n_summary_revisit": seeded})
+    result = await _env().run(
+        core.interpreter_core_agent, payload.model_copy(update={"protocol": 2})
+    )
+    assert result.status == "SUCCEEDED", result.reason
+    # The same notice from both calls is published, and carried, once.
+    assert [n["noticeId"] for n in result.guardrail_notices or []] == [_WARN_NOTICE["noticeId"]]
+    notices = [e for e in stream.events("run-1") if e["type"] == "guardrail.notice"]
+    assert len(notices) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_doc_workflow_generate_step_carries_the_evaluation_ids(monkeypatch) -> None:
+    import dataclasses
+    import datetime
+
+    from temporalio.testing import ActivityEnvironment
+
+    from harness.temporal.models import GenerateInput, TrajectoryContext
+
+    class _IdText:
+        async def generate(self, **kwargs: Any) -> TextGenerationResult:
+            return TextGenerationResult(
+                content="DRAFT", provider="lm-studio", model="m", guardrail_evaluation_ids=["ev-7"]
+            )
+
+    traj = _CapTraj()
+    monkeypatch.setattr(activities, "_text_client", lambda _s: _IdText())
+    monkeypatch.setattr(activities, "_trajectory_api_client", lambda _s: traj)
+    env = ActivityEnvironment()
+    env.info = dataclasses.replace(env.info, start_to_close_timeout=datetime.timedelta(minutes=30))
+    await env.run(
+        activities.generate,
+        GenerateInput(
+            tenant_id=_GOV_TENANT,
+            prompt="p",
+            provider="lm-studio",
+            model="m",
+            trajectory=TrajectoryContext(tenant_id=_GOV_TENANT, consultation_id="c-1"),
+        ),
+    )
+    (step,) = [s for s in traj.steps if getattr(s, "step_type", None) == "LLM_CALL"]
+    assert step.stats["guardrail_evaluation_ids"] == ["ev-7"]

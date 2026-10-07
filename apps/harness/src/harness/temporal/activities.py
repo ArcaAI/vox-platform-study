@@ -1999,6 +1999,9 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     egress = egress_counts(result.egress)
     if egress is not None:
         llm_stats["egress"] = egress
+    # TASK-1050 (README §9.8.2) — the guardrail evaluations of this call, for gap detection.
+    if result.guardrail_evaluation_ids:
+        llm_stats["guardrail_evaluation_ids"] = list(result.guardrail_evaluation_ids)
     llm_stats.update(call_record)
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
