@@ -145,6 +145,12 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   private readonly policyVersionInFlight = new Map<string, Promise<string | null>>();
   /** `${policyVersion}|${digest}` of platform pieces already handled in this process. */
   private readonly platformHandled = new Set<string>();
+  /**
+   * TASK-1050 (owner rule R1: authored prompts are validated at authoring time, never at call time) —
+   * `${policyVersion}|${digest}` of platform pieces whose authoring screen is still RUNNING in this
+   * process. They count as governed for a call that cannot wait for the verdict; a FAIL ends that.
+   */
+  private readonly platformInFlight = new Set<string>();
   private readonly background = new Set<Promise<unknown>>();
   /** Backfill retry state: one pass at a time, one pending timer, backoff attempt counter. */
   private passInFlight: Promise<void> | null = null;
@@ -232,7 +238,10 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     if (policyVersion === null || pieces.length === 0) return;
     const fresh = this.distinct(pieces).filter((one) => !this.platformHandled.has(`${policyVersion}|${one.digest}`));
     if (fresh.length === 0) return;
-    for (const one of fresh) this.platformHandled.add(`${policyVersion}|${one.digest}`);
+    for (const one of fresh) {
+      this.platformHandled.add(`${policyVersion}|${one.digest}`);
+      this.platformInFlight.add(`${policyVersion}|${one.digest}`);
+    }
     // Resolves once screened (TASK-1047 V7): the note composer awaits it before verifying; the egress
     // enrichment still calls it fire-and-forget.
     const work = this.screenAs(
@@ -255,6 +264,9 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
       .catch((error: unknown) => {
         for (const one of fresh) this.platformHandled.delete(`${policyVersion}|${one.digest}`);
         this.logger.warn({ message: 'governed-prompt.platform.failed', error: error instanceof Error ? error.name : 'unknown' });
+      })
+      .finally(() => {
+        for (const one of fresh) this.platformInFlight.delete(`${policyVersion}|${one.digest}`);
       });
     this.track(work);
     await work;
@@ -349,7 +361,8 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
 
     const passing = new Set((await this.repository.findPassing(tenantId, misses, policyVersion)).map((row) => row.digest));
     for (const digest of misses) if (passing.has(digest)) this.verdicts.set(this.verdictKey(tenantId, digest, policyVersion), true);
-    return misses.every((digest) => passing.has(digest));
+    // A platform piece still being screened is governed pending its verdict (R1) — never cached.
+    return misses.every((digest) => passing.has(digest) || this.platformInFlight.has(`${policyVersion}|${digest}`));
   }
 
   async currentPolicyVersion(tenantId: string = SYSTEM_TENANT_ID): Promise<string | null> {

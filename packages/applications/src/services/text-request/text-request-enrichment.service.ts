@@ -279,7 +279,8 @@ export class TextRequestEnrichmentService {
     governedPromptPlatformRegistrationTotal.inc({ outcome });
     if (outcome === 'timeout') {
       this.logger.warn({
-        message: 'Platform prompt-piece registration exceeded its wait; this call is screened as untrusted',
+        // TASK-1050 R1: pieces still being screened count as governed; only a finished FAIL is screened at call time.
+        message: 'Platform prompt-piece registration exceeded its wait; its authoring screen continues in the background',
         pieces: pieces.length,
         waitMs,
       });

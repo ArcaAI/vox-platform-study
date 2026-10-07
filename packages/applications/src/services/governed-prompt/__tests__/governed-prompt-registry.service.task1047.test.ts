@@ -335,6 +335,25 @@ describe('per-tenant policy versions (guardrail resolves the version per tenant 
 });
 
 describe('registerPlatformPieces', () => {
+  it('TASK-1050 R1: a platform piece whose authoring screen is still running is governed for the call; a FAIL verdict ends that', async () => {
+    const { service, client } = makeHarness();
+    let finish: (value: unknown) => void = () => undefined;
+    client.screenRegions.mockImplementation((() => new Promise((resolve) => (finish = resolve))) as never);
+    const rules = piece('Platform rules.', { kind: 'PLATFORM', sourceType: 'PLATFORM', sourceId: null, sourceKey: 'platform-rules@1' });
+    const digest = pieceDigest('Platform rules.');
+
+    void service.registerPlatformPieces([rules], TENANT);
+    await vi.waitFor(() => expect(client.screenRegions).toHaveBeenCalled());
+    // Authored prompts are validated at authoring time, never at call time (owner rule R1).
+    expect(await service.areGoverned(TENANT, [digest])).toBe(true);
+    // A piece nobody started screening is still not governed.
+    expect(await service.areGoverned(TENANT, [digest, 'never-seen'])).toBe(false);
+
+    finish({ decision: 'allow', reasons: [], undetermined: false, piiRegions: new Set<string>(['r0']) });
+    await service.drainBackground();
+    expect(await service.areGoverned(TENANT, [digest])).toBe(false);
+  });
+
   it('screens new platform pieces under SYSTEM in the background, once', async () => {
     const { service, client, repository } = makeHarness();
     const rules = piece('Platform rules.', { kind: 'PLATFORM', sourceType: 'PLATFORM', sourceId: null, sourceKey: 'platform-rules@1' });
