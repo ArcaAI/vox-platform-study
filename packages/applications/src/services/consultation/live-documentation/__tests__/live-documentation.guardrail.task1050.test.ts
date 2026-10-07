@@ -59,6 +59,8 @@ interface Harness {
   snapshotWrites: Array<Record<string, unknown>>;
   setReply: (reply: (body: Record<string, unknown>) => unknown) => void;
   setProcessingReason: (reason: string | null) => void;
+  /** W2e's `enterGuardrailHold`, when the harness wires the hold service (index 35). */
+  enterGuardrailHold?: ReturnType<typeof vi.fn>;
 }
 
 function harness(
@@ -68,6 +70,8 @@ function harness(
     segmentRows?: Array<{ id: string; version: number; segmentKey: string }>;
     noteRows?: Array<{ id: string; version: number }>;
     promptTemplate?: { status: string; content: string };
+    /** Wire W2e's `GuardrailHoldService` (constructor index 35). Absent ⇒ the lane runs without it. */
+    holdService?: boolean;
   } = {},
 ): Harness {
   const sent: Sent[] = [];
@@ -120,7 +124,7 @@ function harness(
     applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined),
     applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined),
   };
-  const args: unknown[] = new Array(35).fill(undefined);
+  const args: unknown[] = new Array(36).fill(undefined);
   args[0] = { axiosRef: { post } };
   // Only the explicit `flush()` calls generate: no segment-threshold or idle-debounce flush may race them.
   const env: Record<string, string> = {
@@ -148,8 +152,11 @@ function harness(
         : [],
     ),
   };
+  const enterGuardrailHold = opts.holdService ? vi.fn().mockResolvedValue(null) : undefined;
+  if (enterGuardrailHold) args[35] = { enterGuardrailHold };
   const service = new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
   return {
+    enterGuardrailHold,
     service,
     sent,
     generates: () => sent.filter((s) => s.url.includes('/generate')),
@@ -500,5 +507,70 @@ describe('composer exclusion — WITHHELD always, BLOCKED once resolved item_exc
     expect(prompt).not.toContain('WITHHELD NOTE TEXT');
     expect(prompt).not.toContain('BLOCKED EXCLUDED NOTE');
     expect(prompt).not.toContain('these words were excluded');
+  });
+});
+
+describe("hold entry — the live lane hands a BLOCKED notice to W2e's GuardrailHoldService", () => {
+  async function blockedFlush(reply: () => unknown, holdService = true) {
+    const h = harness({ holdService });
+    const service = begin(h);
+    say(service, 'patient reports a cough for three days');
+    await service.flush(CID);
+    h.setReply(reply);
+    say(service, 'the next utterance');
+    const payload = await service.flush(CID);
+    return { h, payload };
+  }
+
+  it('503 EGRESS_REDACTION_UNAVAILABLE: enters the hold with the response notice', async () => {
+    const hold = notice({ type: 'guardrail.blocked', action: 'block', messageKey: 'guardrail.blocked.redaction_unavailable', checks: [], itemIds: [] });
+    const { h } = await blockedFlush(() => axiosError(503, { error_code: 'EGRESS_REDACTION_UNAVAILABLE', guardrailNotice: hold }));
+    expect(h.enterGuardrailHold).toHaveBeenCalledTimes(1);
+    expect(h.enterGuardrailHold).toHaveBeenCalledWith(TENANT, CID, hold);
+  });
+
+  it('503 with no notice: builds one with the redaction key, per the frozen type, holds and relays it', async () => {
+    const { h } = await blockedFlush(() => axiosError(503, { error_code: 'EGRESS_REDACTION_UNAVAILABLE', retryable: true }));
+    expect(h.enterGuardrailHold).toHaveBeenCalledTimes(1);
+    const [tenantId, consultationId, built] = h.enterGuardrailHold!.mock.calls[0]! as [string, string, GuardrailNotice];
+    expect([tenantId, consultationId]).toEqual([TENANT, CID]);
+    expect(built).toMatchObject({
+      schemaVersion: 1,
+      type: 'guardrail.blocked',
+      direction: 'inbound',
+      action: 'block',
+      checks: [],
+      consultationId: CID,
+      messageKey: 'guardrail.blocked.redaction_unavailable',
+      defaultMessage: guardrailNoticeDefaultMessage('guardrail.blocked.redaction_unavailable'),
+      resumable: true,
+    });
+    expect(built.noticeId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(noticeFrames(h).map((f) => (f.notice as GuardrailNotice).noticeId)).toContain(built.noticeId);
+  });
+
+  it('422 block carrying a notice: enters the hold too (idempotent beside the evaluation path)', async () => {
+    const blocked = notice({ type: 'guardrail.blocked', action: 'block', messageKey: 'guardrail.blocked.inbound', resumable: true });
+    const { h } = await blockedFlush(() => axiosError(422, { error_code: 'CONTENT_BLOCKED', type: GUARDRAIL_BLOCKED_PROBLEM_TYPE, guardrailNotice: blocked }));
+    expect(h.enterGuardrailHold).toHaveBeenCalledWith(TENANT, CID, blocked);
+  });
+
+  it('422 block with no notice: nothing to hold on', async () => {
+    const { h } = await blockedFlush(() => axiosError(422, { error_code: 'CONTENT_BLOCKED', type: GUARDRAIL_BLOCKED_PROBLEM_TYPE }));
+    expect(h.enterGuardrailHold).not.toHaveBeenCalled();
+  });
+
+  it('a 200 warn never holds', async () => {
+    const { h } = await blockedFlush(() => ({ ...NOTE_REPLY, guardrail_notices: [notice()] }));
+    expect(h.enterGuardrailHold).not.toHaveBeenCalled();
+    expect(noticeFrames(h)).toHaveLength(1);
+  });
+
+  it('no hold service wired: the block is still survived (last good note, notice relayed)', async () => {
+    const { h, payload } = await blockedFlush(() => axiosError(503, { error_code: 'EGRESS_REDACTION_UNAVAILABLE' }), false);
+    expect(h.enterGuardrailHold).toBeUndefined();
+    expect(payload!.degradeReason).toBe('redaction_unavailable');
+    expect(JSON.stringify(payload!.sections)).toContain('cough for three days');
+    expect(noticeFrames(h)).toHaveLength(1);
   });
 });
