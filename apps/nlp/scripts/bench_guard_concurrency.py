@@ -151,6 +151,22 @@ def abort_reason(*, level: int | None, swap_growth_mib: float, llama_rss_mib: fl
     return None
 
 
+def system_sample(*, swap0: float, t: float, in_flight: int, done: int) -> tuple[dict, str | None]:
+    """One per-second system sample and the stop decision taken on it (owner rule)."""
+    level = _sysctl_int("kern.memorystatus_vm_pressure_level")
+    swap = _swap_used_mib() or 0.0
+    rss = _llama_server_rss_mib()
+    sample = {
+        "t": round(t, 2),
+        "in_flight": in_flight,
+        "done": done,
+        "llama_rss_mib": round(rss, 1),
+        "pressure_level": level,
+        "swap_used_mib": swap,
+    }
+    return sample, abort_reason(level=level, swap_growth_mib=swap - swap0, llama_rss_mib=rss)
+
+
 def summarize(rows: list[dict], unfinished: int = 0) -> dict:
     def block(rs: list[dict]) -> dict:
         ok = [r for r in rs if r["ok"]]
@@ -311,22 +327,19 @@ async def run(args: argparse.Namespace) -> int:
         )
 
     async def sampler(stop: asyncio.Event) -> None:
+        swap0 = _swap_used_mib() or 0.0
         with (out / "system.jsonl").open("w") as fh:
             while not stop.is_set():
-                level = _sysctl_int("kern.memorystatus_vm_pressure_level")
-                done = len(rows)
-                sample = {
-                    "t": round(time.perf_counter() - t0, 2),
-                    "in_flight": in_flight["n"],
-                    "done": done,
-                    "llama_rss_mib": round(_llama_server_rss_mib(), 1),
-                    "pressure_level": level,
-                    "swap_used_mib": _swap_used_mib(),
-                }
+                sample, reason = system_sample(
+                    swap0=swap0,
+                    t=time.perf_counter() - t0,
+                    in_flight=in_flight["n"],
+                    done=len(rows),
+                )
                 fh.write(json.dumps(sample) + "\n")
                 fh.flush()
-                if level is not None and level > 1 and aborted["reason"] is None:
-                    aborted["reason"] = f"kernel memory pressure level {level}"
+                if reason and aborted["reason"] is None:
+                    aborted["reason"] = reason
                     stop.set()
                 await asyncio.sleep(1.0)
 

@@ -120,3 +120,21 @@ def test_summary_counts_unfinished_requests_as_backlog() -> None:
     ]
     s = gc.summarize(rows, unfinished=7)
     assert s["unfinished"] == 7
+
+
+def test_system_sample_is_what_the_loop_decides_with(monkeypatch) -> None:
+    # Regression 2026-10-07: abort_reason existed but the sampler still stopped on warn.
+    monkeypatch.setattr(gc, "_llama_server_rss_mib", lambda: 6_200.0)
+    monkeypatch.setattr(gc, "_swap_used_mib", lambda: 11_600.0)
+    monkeypatch.setattr(gc, "_sysctl_int", lambda name: 2)
+    sample, reason = gc.system_sample(swap0=11_576.0, t=3.2, in_flight=12, done=0)
+    assert reason is None and sample["pressure_level"] == 2
+    monkeypatch.setattr(gc, "_sysctl_int", lambda name: 4)
+    _, reason = gc.system_sample(swap0=11_576.0, t=4.2, in_flight=12, done=0)
+    assert reason and "critical" in reason
+
+
+def test_the_sampler_loop_has_no_private_stop_rule() -> None:
+    src = Path(gc.__file__).read_text()
+    assert "level > 1" not in src
+    assert src.count("system_sample(") >= 2  # definition + the loop's call

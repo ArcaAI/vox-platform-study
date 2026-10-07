@@ -1,0 +1,210 @@
+<title>Guardrail Judge Load Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; summary first (verdict strip + table), then per-config detail behind tabs, then the cross-config CDF.
+   Palette and faces are HOPE's own @arcaai/ui tokens (packages/ui/src/styles/globals.css). */
+:root {
+  --bg: #fafafa; --surface: #ffffff; --fg: #141414; --muted: #525252; --line: #e6e6e6; --soft: #f0f0f0;
+  --ok: #385418; --warn: #8a5f12; --bad: #b81514;
+  --c1: #3333cc; --c2: #9d2055; --c3: #8a5f12; --c4: #385418; --c5: #525252;
+  --steady: #3333cc; --burst: #9d2055;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #242424; --surface: #1e1e1e; --fg: #e4e4e4; --muted: #aaaaaa; --line: #343434; --soft: #2c2c2c;
+  --ok: #9ccc6f; --warn: #e2b05a; --bad: #f08a86;
+  --c1: #96a7f2; --c2: #e08aa8; --c3: #e2b05a; --c4: #9ccc6f; --c5: #949494;
+  --steady: #96a7f2; --burst: #e08aa8; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #242424; --surface: #1e1e1e; --fg: #e4e4e4; --muted: #aaaaaa; --line: #343434; --soft: #2c2c2c;
+  --ok: #9ccc6f; --warn: #e2b05a; --bad: #f08a86;
+  --c1: #96a7f2; --c2: #e08aa8; --c3: #e2b05a; --c4: #9ccc6f; --c5: #949494;
+  --steady: #96a7f2; --burst: #e08aa8; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 28px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0; font-weight: 700; text-wrap: balance; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 0; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { color: var(--muted); }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 18px; font: 12.5px/1.4 var(--mono); color: var(--muted); }
+.facts b { color: var(--fg); font-weight: 500; }
+section { display: grid; gap: 12px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+td.cfg { font-family: var(--mono); font-size: 13px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; vertical-align: 0; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; }
+.chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button { font: 500 13px var(--mono); background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-color: var(--fg); }
+.tabs button:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 16px; }
+.chart { width: 100%; height: auto; display: block; }
+.chart text { fill: var(--muted); font: 11px var(--mono); }
+.chart .axis { stroke: var(--line); }
+.chart .grid { stroke: var(--soft); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
+.note { font-size: 13px; color: var(--muted); }
+.cap { font-size: 12.5px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <h1>Guardrail judge under 25 concurrent consultations</h1>
+    <p class="lede" id="lede"></p>
+    <div class="facts" id="facts"></div>
+  </header>
+
+  <section>
+    <h2>Results by configuration</h2>
+    <div class="panel tablewrap"><table id="summary"></table></div>
+    <p class="note" id="slo"></p>
+  </section>
+
+  <section>
+    <h2>Per-configuration detail</h2>
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="panel" style="display:grid;gap:14px">
+      <div><h2 style="font-size:15px" id="laneTitle">Consultation sessions</h2>
+        <p class="cap">Each row is one consultation. Each bar is one screening flush: from the moment its three checks were sent until the last one answered. Steady flushes every 20 s; the stop burst at the end screens four windows per session.</p></div>
+      <svg class="chart" id="lanes" viewBox="0 0 1000 430" role="img" aria-label="Session lane chart"></svg>
+      <div class="legend"><span><span class="sw" style="background:var(--steady)"></span>Steady flush</span><span><span class="sw" style="background:var(--burst)"></span>Stop burst</span><span><span class="sw" style="background:var(--bad)"></span>Failed check</span></div>
+      <div class="grid2">
+        <div><h2 style="font-size:15px">Checks in flight</h2><p class="cap">Requests sent and not yet answered, sampled every second. Rising means a growing queue.</p>
+          <svg class="chart" id="inflight" viewBox="0 0 500 240" role="img" aria-label="Checks in flight over time"></svg></div>
+        <div><h2 style="font-size:15px">Latency of every check</h2><p class="cap">Each dot is one check, by send time. A rising band means backlog.</p>
+          <svg class="chart" id="scatter" viewBox="0 0 500 240" role="img" aria-label="Latency by send time"></svg></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Latency distribution, all configurations</h2>
+    <div class="panel"><svg class="chart" id="cdf" viewBox="0 0 1000 300" role="img" aria-label="Latency CDF"></svg>
+      <div class="legend" id="cdfLegend"></div></div>
+    <p class="cap">Share of completed checks answered within a given time. Unanswered checks at the 240 s cap are not in this chart; the table counts them as backlog.</p>
+  </section>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const META = /*__META__*/null;
+const ORDER = ["p4-c8192","p10-c8192","p10-c16384","p10-c32768","p32-c8192"];
+const COLORS = ["var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)"];
+const cfgs = ORDER.filter(k => DATA && DATA[k]);
+const NEED = 25 * 3 / 20; // checks per second the steady load needs
+const fmt = (v, d=2) => v == null ? "—" : Number(v).toFixed(d);
+const label = k => { const [p,c] = k.split("-"); return `${p.slice(1)} parallel · ${Number(c.slice(1))/1024}k ctx`; };
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; parent && parent.appendChild(e); return e; }
+function niceMax(v) { if (!v || v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1,2,2.5,5,10]) if (m*p >= v) return m*p; return 10*p; }
+function ticks(max, n=5) { const s = niceMax(max) / n; return Array.from({length:n+1}, (_,i) => +(i*s).toFixed(6)); }
+
+function verdict(s) {
+  if (!s || s.requests == null) return ["bad","no data"];
+  const p95 = s.flush_latency_p95_s, bl = s.unfinished || 0;
+  if (s.aborted && !s.requests) return ["bad","stopped"];
+  if (p95 != null && p95 <= 1 && bl === 0) return ["ok","real-time"];
+  if (p95 != null && p95 <= 20 && bl === 0) return ["warn","near-real-time"];
+  return ["bad","falls behind"];
+}
+
+// header
+document.getElementById("lede").textContent =
+  "25 simulated consultations flush every 20 s; each flush screens one new 2,000-character transcript window with three checks (harm, jailbreak, medical scope) in parallel, then all sessions stop within 5 s and screen four windows each. Measured against one granite-guardian-4.1-8b instance in LM Studio, per configuration of parallel slots and context.";
+const facts = document.getElementById("facts");
+for (const [k,v] of Object.entries(Object.assign({"steady load needs": NEED.toFixed(2)+" checks/s"}, META || {}))) {
+  const s = document.createElement("span"); s.innerHTML = `${k}: <b></b>`; s.querySelector("b").textContent = v; facts.appendChild(s);
+}
+
+// summary table
+const T = document.getElementById("summary");
+T.innerHTML = `<thead><tr><th>Configuration</th><th>Verdict</th><th>Answered</th><th>Backlog</th><th>Errors</th><th>Throughput</th><th>Check p50</th><th>Check p95</th><th>Flush p95</th><th>Burst flush p95</th><th>Peak in flight</th><th>LM Studio RSS</th><th>Stopped by</th></tr></thead><tbody></tbody>`;
+const tb = T.querySelector("tbody");
+cfgs.forEach((k,i) => {
+  const d = DATA[k], s = d.summary, [cls, txt] = verdict(s);
+  const peak = Math.max(0, ...d.sys.map(x => x[1])), rss = Math.max(0, ...d.sys.map(x => x[2]));
+  const tr = document.createElement("tr");
+  const burst = (s.by_phase && s.by_phase.burst) || {};
+  tr.innerHTML = `<td class="cfg"><span class="sw" style="background:${COLORS[ORDER.indexOf(k)]}"></span>${label(k)}</td>
+    <td><span class="chip ${cls}">${txt}</span></td><td>${s.requests ?? 0} / ${s.scheduled_requests ?? "—"}</td><td>${s.unfinished ?? 0}</td><td>${s.errors ?? 0}</td>
+    <td>${fmt(s.throughput_req_s)} /s</td><td>${fmt(s.latency_p50_s,1)} s</td><td>${fmt(s.latency_p95_s,1)} s</td><td>${fmt(s.flush_latency_p95_s,1)} s</td><td>${fmt(burst.flush_latency_p95_s,1)} s</td>
+    <td>${peak}</td><td>${(rss/1024).toFixed(1)} GB</td><td>${s.aborted ? s.aborted : "—"}</td>`;
+  tb.appendChild(tr);
+});
+document.getElementById("slo").textContent =
+  `Real-time: a flush's three checks answered within 1 s (p95) with no backlog. Near-real-time: within one 20 s flush interval (p95) with no backlog. Falls behind: anything slower, or checks still queued at the 240 s cap. The steady phase alone needs ${NEED.toFixed(2)} checks per second.`;
+
+// tabs
+const tabs = document.getElementById("tabs");
+let current = cfgs[0];
+cfgs.forEach(k => { const b = document.createElement("button"); b.role = "tab"; b.textContent = label(k); b.id = "tab-"+k;
+  b.onclick = () => { current = k; render(); }; tabs.appendChild(b); });
+
+function axes(svg, W, H, m, xmax, ymax, xlab, ylab, ystep) {
+  for (const t of ticks(ymax, 4)) { const y = H - m.b - (t/niceMax(ymax))*(H-m.t-m.b);
+    el("line", {x1:m.l, x2:W-m.r, y1:y, y2:y, class:"grid"}, svg); el("text", {x:m.l-6, y:y+4, "text-anchor":"end"}, svg, ystep ? t.toFixed(ystep) : t); }
+  for (const t of ticks(xmax, 6)) { const x = m.l + (t/niceMax(xmax))*(W-m.l-m.r);
+    el("line", {x1:x, x2:x, y1:m.t, y2:H-m.b, class:"grid"}, svg); el("text", {x:x, y:H-m.b+15, "text-anchor":"middle"}, svg, t); }
+  el("line", {x1:m.l, x2:W-m.r, y1:H-m.b, y2:H-m.b, class:"axis"}, svg);
+  el("text", {x:(m.l+W-m.r)/2, y:H-4, "text-anchor":"middle"}, svg, xlab);
+  el("text", {x:12, y:(m.t+H-m.b)/2, transform:`rotate(-90 12 ${(m.t+H-m.b)/2})`, "text-anchor":"middle"}, svg, ylab);
+}
+
+function render() {
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.id === "tab-"+current));
+  const d = DATA[current]; if (!d) return;
+  document.getElementById("laneTitle").textContent = `Consultation sessions · ${label(current)}`;
+  const XMAX = 240;
+  // lanes
+  const L = document.getElementById("lanes"); L.innerHTML = "";
+  const W=1000, H=430, m={l:56,r:12,t:8,b:34}, rows=25, rh=(H-m.t-m.b)/rows;
+  axes(L, W, H, m, XMAX, 25, "seconds since start", "session", 0);
+  L.querySelectorAll("text").forEach(t => { if (t.getAttribute("text-anchor")==="end") t.remove(); });
+  for (let s=0; s<rows; s+=4) el("text", {x:m.l-6, y:m.t+(s+0.7)*rh, "text-anchor":"end"}, L, s+1);
+  const flushes = {};
+  d.req.forEach(r => { const f = flushes[r[6]] || (flushes[r[6]] = {s:r[0], ph:r[1], a:Infinity, b:0, ok:1}); f.a=Math.min(f.a,r[3]); f.b=Math.max(f.b,r[4]); f.ok &= r[5]; });
+  const sx = t => m.l + (Math.min(t,XMAX)/niceMax(XMAX))*(W-m.l-m.r);
+  Object.values(flushes).forEach(f => {
+    const y = m.t + f.s*rh + 2, w = Math.max(1.5, sx(f.b)-sx(f.a));
+    el("rect", {x:sx(f.a), y, width:w, height:rh-4, rx:2, fill: f.ok ? (f.ph ? "var(--burst)" : "var(--steady)") : "var(--bad)", "fill-opacity":0.85}, L);
+  });
+  // in flight
+  const I = document.getElementById("inflight"); I.innerHTML = "";
+  const m2={l:44,r:10,t:8,b:34}, W2=500, H2=240, ymax=Math.max(4, ...d.sys.map(x=>x[1]));
+  axes(I, W2, H2, m2, XMAX, ymax, "seconds", "checks in flight");
+  const sx2 = t => m2.l + (t/niceMax(XMAX))*(W2-m2.l-m2.r), sy2 = v => H2-m2.b-(v/niceMax(ymax))*(H2-m2.t-m2.b);
+  const pts = d.sys.map(x => `${sx2(x[0]).toFixed(1)},${sy2(x[1]).toFixed(1)}`).join(" ");
+  if (d.sys.length) { el("polygon", {points:`${sx2(d.sys[0][0])},${sy2(0)} ${pts} ${sx2(d.sys.at(-1)[0])},${sy2(0)}`, fill:"var(--c1)", "fill-opacity":0.12}, I);
+    el("polyline", {points:pts, fill:"none", stroke:"var(--c1)", "stroke-width":1.6}, I); }
+  // scatter
+  const S = document.getElementById("scatter"); S.innerHTML = "";
+  const lmax = Math.max(1, ...d.req.map(r => r[4]-r[3]));
+  axes(S, W2, H2, m2, XMAX, lmax, "sent at (s)", "latency (s)");
+  const sy3 = v => H2-m2.b-(v/niceMax(lmax))*(H2-m2.t-m2.b);
+  d.req.forEach(r => el("circle", {cx:sx2(r[3]), cy:sy3(r[4]-r[3]), r:1.8, fill: r[5] ? (r[1] ? "var(--burst)" : "var(--steady)") : "var(--bad)", "fill-opacity":0.6}, S));
+}
+
+// CDF across configs
+(function cdf() {
+  const C = document.getElementById("cdf"), W=1000, H=300, m={l:48,r:12,t:8,b:34};
+  const all = cfgs.map(k => DATA[k].req.filter(r => r[5]).map(r => r[4]-r[3]).sort((a,b)=>a-b));
+  const xmax = Math.max(1, ...all.map(a => a.length ? a[Math.floor(a.length*0.99)] : 0));
+  axes(C, W, H, m, xmax, 1, "seconds per check", "share answered", 1);
+  const sx = v => m.l + (Math.min(v, niceMax(xmax))/niceMax(xmax))*(W-m.l-m.r), sy = v => H-m.b-v*(H-m.t-m.b);
+  const leg = document.getElementById("cdfLegend");
+  cfgs.forEach((k,i) => { const a = all[i]; if (!a.length) return;
+    const pts = a.map((v,j) => `${sx(v).toFixed(1)},${sy((j+1)/a.length).toFixed(1)}`).join(" ");
+    const col = COLORS[ORDER.indexOf(k)];
+    el("polyline", {points:pts, fill:"none", stroke:col, "stroke-width":2}, C);
+    const s = document.createElement("span"); s.innerHTML = `<span class="sw" style="background:${col}"></span>`; s.append(label(k)); leg.appendChild(s); });
+})();
+render();
+</script>
