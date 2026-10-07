@@ -464,10 +464,74 @@ Method: three read-only opus reviewers (call path, guardrail service, NER and au
 
 Conforms: the composer boundary (governed static system, runtime values in EXTERNAL_DATA); apps/text skips a digest-verified system prompt entirely; data regions are record-only inbound (FC-5b); outbound screens the response only; HMAC window cache; NLP memory bounds; live NER is delta-only and cannot see the note.
 
+## 14. Track S, milestone 1 (TASK-1050 joint plan §10, 2026-10-07): eval sets, guard-LLM candidates, band calibration
+
+Worktree `hope-v2-task-1049-s`, branch `task-1049/s-safety`; the orchestrator merges it. No model was loaded; L-1 and L-6 are pending owner approval.
+
+### 14.1 S-4: judge eval sets (commit `e7fd0d5b9`)
+
+`apps/nlp/scripts/injection_eval/build_judge_sets.py` + `judge_templates.json`. The test is `scripts/injection_eval/tests/test_build_judge_sets.py` (22 pass). It lives outside `apps/nlp/tests`, which belongs to Track R. The sets are rule-built, seed 1049 and byte-reproducible, and are written to `/Volumes/aillusion/task-1049-data/sets-judge/`.
+
+| Set | For lane | Records (0/1) | Content |
+|---|---|---|---|
+| `oc` | `clinical_safety_judge` | 256 / 256 | Each category has a twin: the same passage with only the unsafe element swapped. 64 per category: dangerous_dosing (31-drug slot table, e.g. methotrexate daily vs weekly, KCl IV push, insulin ×10, infant-weight dosing, NSAID at eGFR 18), unsupported_assertion, direct_patient_instruction, missed_escalation (STEMI, anaphylaxis, sepsis, stroke, cauda equina, suicidal intent with plan) |
+| `ol` | `leakage_judge` | 176 / 176 | 44 per category: system_prompt, credential, internal_identifier, third_party_pii. Values are synthetic (`example`, `test`, RFC 1918). The twin carries encounter patient/clinician details, as a hard negative. |
+| `on` | both outbound lanes (negatives) | 357 / 0 | 207 real ACI-Bench clinician notes + 150 MTS-Dialog section groups (CC BY 4.0). Report the FP rate per source, because MTS groups mix patients. |
+| `iu` | `unsafe_content_judge` | 245 / 461 | Positives are Aegis 2.0 requests aimed at the assistant, embedded in transcripts: 235 match the §6 criterion, 226 are adjacent (criminal planning, fraud, malware). Negatives are 35 clinical hard-negative scenarios: patient-reported self-harm, abuse, overdose and substance use, violence suffered, and clinician risk assessment. |
+
+Open points for the owner:
+- Criminal planning (190 Aegis items) is not named in the §6 unsafe-content criterion.
+- `self_harm_instructions` (11) and `abuse` (4) positives are few, so their per-category recall will have wide intervals.
+
+### 14.2 S-2 prep: guard-LLM candidates (model cards, config and API only; no weights)
+
+| Candidate | Licence / gate | Remote code | Output (verdict-only?) | Custom clinical criteria | GGUF | Published (prompt F1) |
+|---|---|---|---|---|---|---|
+| granite-guardian-4.1-8b (incumbent) | Apache-2.0 | no | `<score>yes/no</score>` no-think (~5 tok) | **yes** (BYOC) | official IBM | Aegis 0.83, ToxicChat 0.78, XSTest RR 0.44 |
+| **Qwen3Guard-Gen-0.6B** (owner, §12) | Apache-2.0, not gated | **no** (Qwen3ForCausalLM; pin `fada3b2f655b89601929198343c94cd2f64d93cc`) | `Safety: Safe/Unsafe/Controversial` + `Categories:` (~8–12 tok; 3–4 for the label only) | **no**: the policy is fixed in the chat template | **no official GGUF**; third-party only (mradermacher, QuantFactory, DevQuasar, …) | Aegis 2.0 85.0/83.3, ToxicChat 65.1/77.7 (strict/loose) |
+| Qwen3Guard-Gen-4B | Apache-2.0 | no | same | no | third-party | Aegis 2.0 85.8, avg 89.3 |
+| ShieldGemma-2B | Gemma ToU + prohibited use, gated | no | 1 token (P(Yes)) | yes (guideline) | third-party | OpenAI mod 0.812, ToxicChat 0.704 |
+| Llama Guard 3 1B | Llama 3.2 community, gated | no | `safe` / `unsafe\nS<n>` | categories only | community | English F1 0.899 / FPR 0.090 |
+
+Rejected: Llama Guard 4 12B (heavy, FPR 11 %), gpt-oss-safeguard-20b (reasoning output only), Nemotron 3.5 (no official GGUF, stacked licence), Granite HAP (toxicity only).
+
+**L-1 shortlist:** Qwen3Guard-Gen-0.6B (must evaluate), Qwen3Guard-Gen-4B, granite-guardian-4.1-8b no-think, ShieldGemma-2B (or Llama Guard 3 1B if the Llama licence is preferred).
+
+**Qwen3Guard-Gen-0.6B, specifics for TASK-1050 §12 / OD-40:**
+- **Categories.** The 9 fixed categories are Violent, Non-violent Illegal Acts, Sexual, **PII**, Suicide & Self-Harm, Unethical Acts, Politically Sensitive, Copyright, and **Jailbreak** (input only). The model judges "THE LAST USER's query", so a window goes in as the user message, and one call answers both inbound lanes.
+- **Lane mapping (recommended for `_metadata.judge.lanes`: `[injection_judge, unsafe_content_judge]`):**
+  - `Jailbreak` → injection.
+  - Violent / Non-violent Illegal / Sexual / Suicide & Self-Harm / Unethical → unsafe content.
+  - **PII → no lane.** Clinical text is full of PII by design, so mapping it would flag nearly every window.
+  - Politically Sensitive / Copyright → no lane.
+- **Excluded lanes:**
+  - Medical scope: no criterion and no BYOC.
+  - Clinical safety: not in its taxonomy.
+  - Leakage: its PII category cannot separate encounter details from a third party, and it has no system-prompt or credential category.
+- **OD-40 recommendation: nlp/transformers on CPU with the pinned official safetensors.**
+  - No unverifiable third-party binary is involved, and it matches the model-registry and offline-cluster path (`register-from-hub`).
+  - At 0.8B parameters, CPU latency is plausible (to be measured in L-6).
+  - LM Studio would need either a third-party GGUF or our own reproducible conversion from the pinned safetensors with llama.cpp `convert_hf_to_gguf.py`. Prefer the conversion over a third-party file if LM Studio is chosen.
+- **Two scorings planned:** Controversial → warn and Controversial → block. S-3 gets its 25-consultation throughput.
+
+### 14.3 Band calibration from existing scores (no load)
+
+1050 band semantics: below `low` passes, `[low, high)` goes to the judge, at or above `high` takes the classifier verdict. The band is chosen on dev (b1 + b2), reported on test (a + b1 + b2 = 1,358 windows).
+
+| Classifier | high (dev FP ≤ 0.5 %) | low for dev recall 95 / 90 / 80 % | Clinical windows sent to the judge | Recall ceiling (≥ low) | Direct recall (≥ high) |
+|---|---|---|---|---|---|
+| GLiGuard safety+toxicity vs Aegis-unsafe | ≈ 0.9999 (scores saturate near 1) | 0.001 / 0.004 / 0.864 | 67.7 / 40.5 / 16.0 % | 97.0 / 93.4 / 86.0 % | 38.9 % |
+| PG2-86M injection vs c2 | 0.994 | 0.003 / 0.004 / 0.006 | 63.0 / 46.8 / 24.5 % | 92.1 / 84.7 / 72.1 % | 25.8 % |
+
+GLiGuard alone at the OD-28 bar: threshold 0.999 gives clinical FP 1.55 % but recall only 65.7 %; 0.99 gives 6.3 % / 78.3 %. **No classifier-only setting meets OD-28.** A band that reaches 80 %+ recall sends 16–68 % of clinical windows to the judge.
+
+**Consequence for OD-26 (combined call).** The medical-scope judge already reads every data window once. Adding the inbound safety and injection criteria to that same call costs prompt tokens, not calls. With the combined call, classifier-gated bands buy no load reduction, so the classifiers become an optional pre-filter or a fallback when the judge is unavailable. That also removes them from the critical path (F6). The band keys stay meaningful only for deployments that run the judge without medical scope.
+
 ## 10. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | Track S milestone 1 (§14): S-4 judge eval sets (`e7fd0d5b9`), S-2 guard-LLM candidate review incl. Qwen3Guard-Gen-0.6B (owner must-evaluate), band calibration from existing scores. No model loaded. |
 | 2026-10-07 | Implementation review against the owner's four rules (R1 prompts validated at authoring only, R2/R3 guardrail and NER on medical context only, R4 25 consultations): findings F1–F11 (§13). |
 | 2026-10-07 | Single-judge load test (granite-guardian 4.1 8B, 25 consultations, 5 parallel/context configs) and interactive report (§12). Loads owner-requested; stop rule continued through macOS warn (owner decision). |
 | 2026-10-07 | Laya comparison (T1 injection, T2 safety vs GLiGuard, T3 medical scope vs granite) and production sizing for 25 concurrent consultations (§11). Owner-approved: laya package (isolated venv), laya/typed-decisions/multilingual loads, Aegis 2.0 + Dolly-15k, granite load/unload. Memory guard now stops on macOS kernel pressure (warn+). |
