@@ -32,6 +32,8 @@ import {
   ContextItemType,
   DnaWritingStyleReportRepository,
   DocumentSectionRepository,
+  GuardrailItemStatus,
+  GuardrailNoticeRepository,
   NamedEntityRepository,
   PromptTemplateRepository,
   WorkflowDefinitionRepository,
@@ -82,7 +84,34 @@ import {
 // TASK-1001 (owner decision 2026-09-23) — the platform-reserved key of a tenant's output-language
 // policy fragment. Declared in `@arcaai/types` so the seed that attaches it and this lane that asks
 // whether it was selected read ONE spelling.
-import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
+import {
+  EGRESS_REDACTION_UNAVAILABLE_REASON,
+  OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+  isGuardrailHoldReason,
+  type GuardrailEvaluationItemRef,
+  type GuardrailNotice,
+} from '@arcaai/types';
+// TASK-1050 W2g — the live lane's guardrail rules (correlation, notices, stops, exclusion), pure.
+import {
+  EMPTY_LIVE_EXCLUSION,
+  LIVE_CLINICIAN_NOTES_REGION_KEY,
+  LIVE_GUARDRAIL_NOTICE_EVENT,
+  LIVE_SECTION_TEXT_REGION_KEY,
+  LIVE_SELF_NOTE_REGION_KEY,
+  LIVE_TRANSCRIPT_REGION_KEY,
+  liveCorrelationHeaders,
+  liveExclusionSet,
+  liveNoticeRecord,
+  noticeDedupeKeys,
+  regionItemsWire,
+  textGuardrailStop,
+  textResponseNotices,
+  type LiveExclusionSet,
+  type LiveGuardrailNoticeFrame,
+  type LiveGuardrailStop,
+  type LiveNoticeRecord,
+  type LiveRegionItems,
+} from './live-guardrail';
 import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
@@ -194,7 +223,13 @@ import { LiveToolRegistry } from './live-tool-registry';
 // sequence; it walks a LANE, and which lane it walks is data.
 import { GUARDRAIL_GROUNDEDNESS_TOOL } from './live-tool-registry';
 // TASK-946 D6 — the CLOSED vocabulary of PHI-safe degrade codes, shared with the warm start.
-import { LIVE_DEGRADE_FALLBACK, degradeCode, repetitionPressureCode } from './degrade-codes';
+import {
+  LIVE_DEGRADE_FALLBACK,
+  LIVE_DEGRADE_GUARDRAIL_BLOCKED,
+  LIVE_DEGRADE_REDACTION_UNAVAILABLE,
+  degradeCode,
+  repetitionPressureCode,
+} from './degrade-codes';
 import {
   DocumentSectionStore,
   GuardMemo,
@@ -570,6 +605,55 @@ function composeLivePromptParts(
     // TASK-1036 OD-10 — a whitespace-only block is dropped, not sent as an empty section.
     dropEmptyBlocks: true,
   });
+}
+
+/**
+ * TASK-1049 F3 (TASK-1050 W2g) — ONE composition for the live lane's side calls (grammar, findings,
+ * translate-only retry): platform rules → the governed instruction (a node's approved template body,
+ * or static CONTRACT parts) in the SYSTEM message, the clinical text as EXTERNAL_DATA blocks in the
+ * USER message. These calls used to send the clinical text as the raw prompt, which TEXT screens as a
+ * blocking INSTRUCTION region on every call; a data block is screened as DATA.
+ *
+ * The instruction body renders through the one grammar in pointer mode. A node prompt that carries a
+ * placeholder this call cannot bind degrades the node by name (`<label>_prompt_unrenderable`), never a
+ * prompt sent with a literal `{{…}}` — the same refusal the main flush makes.
+ */
+function composeLiveDataCall(input: {
+  tenantId: string;
+  templateRef: string;
+  blocks: readonly ComposeDataBlock[];
+  /** A node's governed prompt body (TEMPLATE_BODY piece). */
+  instruction?: string;
+  instructionLabel?: string;
+  /** Static platform-authored instruction parts (CONTRACT pieces), registered in the background. */
+  contractParts?: readonly OutputContractPart[];
+}): { prompt: string; system: string; systemGovernance: SystemGovernanceHint } {
+  let composed: ComposedMessages;
+  try {
+    composed = composeMessages({
+      platformRules: platformRules(),
+      resolvedPrompt: input.instruction ? { source: 'inline', content: input.instruction } : null,
+      scope: buildPromptScope({}),
+      ...(input.contractParts && input.contractParts.length > 0 ? { outputContractParts: input.contractParts } : {}),
+      dataBlocks: input.blocks,
+      templateRef: input.templateRef,
+      dropEmptyBlocks: true,
+    });
+  } catch (error) {
+    if (error instanceof PromptVariableUnresolvedError || error instanceof PromptTemplateSyntaxError) {
+      throw new Error(`${input.instructionLabel ?? 'live'}_prompt_unrenderable`);
+    }
+    throw error;
+  }
+  return {
+    prompt: composed.user,
+    system: composed.system,
+    systemGovernance: {
+      governance: composed.governance ?? null,
+      platformPieces: platformPiecesOf({ platformRules: platformRules(), contractParts: input.contractParts ?? [] }),
+      tenantId: input.tenantId,
+    },
+  };
 }
 
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
@@ -1091,7 +1175,33 @@ interface LiveSession {
    * database (`resolveWarmStartPreSummary`) and from the live feed, not from here.
    */
   onStartPromise?: Promise<void>;
+  /**
+   * TASK-1050 W2g — the guardrail half of the flush in flight: the `region_items` its TEXT calls carry
+   * and what TEXT said about them (the notices, and a stop). Built per generation, after the
+   * staleness check, so a superseded flush can never write into the newer one's turn.
+   */
+  guardrailTurn?: LiveGuardrailTurn;
+  /** TASK-1050 W2g — dedupe keys of the notices this process already relayed (Redis holds the cross-instance half). */
+  relayedNoticeKeys?: Set<string>;
+  /** TASK-1050 W2g — PHI-free records of the notices relayed this session, for the snapshot's `_metadata.guardrailNotices`. */
+  guardrailNoticeLog?: LiveNoticeRecord[];
 }
+
+/** TASK-1050 W2g — one flush's guardrail turn (see {@link LiveSession.guardrailTurn}). */
+interface LiveGuardrailTurn {
+  /** Region key → the context items behind it, at the version sent. */
+  regionItems: Record<string, GuardrailEvaluationItemRef[]>;
+  /** Every notice TEXT returned on this flush's calls (200 bodies and stop bodies), in arrival order. */
+  notices: GuardrailNotice[];
+  /** The first guardrail STOP a call of this flush met (422 block / 503 redaction hold), or null. */
+  stop: LiveGuardrailStop | null;
+}
+
+/** TASK-1050 W2g — the bounded per-session record of relayed notices kept on the snapshot. */
+const LIVE_NOTICE_LOG_MAX = 100;
+
+/** TASK-1050 W2g — how long the cross-instance notice dedupe set outlives its last write (a long visit). */
+const LIVE_NOTICE_DEDUPE_TTL_SEC = 86_400;
 
 /**
  * LiveDocumentationService — net-new realtime watcher (Clinical Workflow Playground).
@@ -1735,6 +1845,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     private readonly notePlanComposer?: Pick<HarnessInternalService, 'composeNotePlan'>,
     // TASK-1045 — a plan that cannot be composed fails the consultation's processing by name.
     @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
+    // TASK-1050 W2g — the notices a clinician resolved `item_excluded`, read by the composer exclusion
+    // (a BLOCKED item is left out once its notice says so). Optional + trailing like every dependency
+    // above it; ABSENT ⇒ only WITHHELD items are excluded, BLOCKED ones stay composed (and re-block).
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNoticeRepository?: GuardrailNoticeRepository,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -3295,8 +3409,9 @@ return 0`;
     if (!session) return null;
     this.clearTimer(session);
 
-    const transcript = session.transcriptParts.join(' ').trim();
-    const notes = session.contextNotes
+    // `let`: TASK-1050 W2g's composer exclusion (below) may leave items out after this first read.
+    let transcript = session.transcriptParts.join(' ').trim();
+    let notes = session.contextNotes
       .map((n) => n.text)
       .join('\n')
       .trim();
@@ -3392,6 +3507,27 @@ return 0`;
     // which model call, and a background read has no business causing it. Awaiting the same settled
     // promise on every flush costs one microtask for all of them and changes no ordering at all.
     await (session.resumePromise ??= this.resumePersistedNote(session, template));
+
+    // TASK-1050 W2g (README §9.8.1) — a guardrail HOLD pauses this lane. The hold is the gateway
+    // ingest's to enter and the clinician's to resolve; this lane keeps no state of its own about it
+    // and reads the consultation's `processingReason` on every tick instead. While held: no TEXT call,
+    // the last good note stands, and the transcript keeps accumulating for the flush after the resume.
+    if (await this.isGuardrailHeld(session)) {
+      this.logger.log({ message: 'Live summary paused — the consultation is in a guardrail hold', consultationId });
+      return session.lastPayload ?? null;
+    }
+    // TASK-1050 W2g (README §9.7.5/§9.7.6) — what the record says must not reach a model again is left
+    // out of this and every later prompt: a WITHHELD item always, a BLOCKED one once resolved
+    // `item_excluded`. Without it a resume after an inbound block would re-send the blocked text and
+    // re-block on the very next flush.
+    if (this.applyLiveExclusion(session, await this.resolveLiveExclusion(session))) {
+      transcript = session.transcriptParts.join(' ').trim();
+      notes = session.contextNotes
+        .map((n) => n.text)
+        .join('\n')
+        .trim();
+      if (!transcript && !notes) return session.lastPayload ?? null;
+    }
 
     // Supersede any in-flight generation: abort its HTTP calls and claim a new id.
     const myGeneration = ++session.generation;
@@ -3498,6 +3634,16 @@ return 0`;
         elidedParts,
       });
     }
+    // TASK-1050 W2g — the context items behind this flush's data regions (the transcript window's
+    // segments, the clinician's notes, the previous note's snapshot item), for `region_items`. The
+    // window is the delta when there is one, else the whole transcript (`delta || transcript` below).
+    const guardrailTurn: LiveGuardrailTurn = {
+      regionItems: await this.resolveRegionItems(session, delta ? deltaStart : 0, delta ? deltaEnd : flushUpTo),
+      notices: [],
+      stop: null,
+    };
+    if (isStale()) return this.dropStale(session);
+    session.guardrailTurn = guardrailTurn;
     const priorSections = session.lastPayload?.sections ?? [];
     // TASK-939 §2.2 — the prior note, WITH ITS STRUCTURE.
     //
@@ -3980,7 +4126,14 @@ return 0`;
      */
     const laneDegradeReason = graph ? realtimeDegradeReason(graph.run, lane) : legacyDegradeReason;
     const flushFailed = textFailed || graph?.run.failed === true;
-    const flushDegradeReason = flushFailed ? (laneDegradeReason ?? LIVE_DEGRADE_FALLBACK) : undefined;
+    // TASK-1050 W2g — a guardrail STOP names itself, whichever engine met it: the graph executor turns
+    // the 422 into a degraded node whose reason is the transport's message, so only the turn knows.
+    const guardrailStopCode = guardrailTurn.stop
+      ? guardrailTurn.stop.reason === EGRESS_REDACTION_UNAVAILABLE_REASON
+        ? LIVE_DEGRADE_REDACTION_UNAVAILABLE
+        : LIVE_DEGRADE_GUARDRAIL_BLOCKED
+      : undefined;
+    const flushDegradeReason = flushFailed ? (guardrailStopCode ?? laneDegradeReason ?? LIVE_DEGRADE_FALLBACK) : undefined;
 
     /**
      * TASK-1001 (OD-6) — the flush's REPETITION verdict, which nothing computed before.
@@ -4065,7 +4218,11 @@ return 0`;
     }
     session.lastPayload = payload;
     await this.safePublish(consultationId, payload);
-    await this.persistDurableSnapshot(session, payload, { force: false });
+    // TASK-1050 W2g — relay what TEXT said about this flush (warn / unverified / block), once per
+    // (consultation, checkId, itemId, policyVersion). A flush that relayed a NEW notice writes the
+    // snapshot now rather than at the next throttle tick, so the record carries it.
+    const relayedNotices = await this.relayGuardrailNotices(session, guardrailTurn);
+    await this.persistDurableSnapshot(session, payload, { force: relayedNotices > 0 });
     // TASK-999 (D-2(c)) — persist what this flush detected, under the snapshot row the line
     // above just wrote. AFTER it, because that is what mints `session.snapshotId`; on a tick the
     // snapshot throttle skipped there is no row yet, and the entities simply wait — they are
@@ -4435,7 +4592,7 @@ return 0`;
       // Lane N — IMPORTANT FINDINGS, by the TENANT'S OWN instruction. Same shape as the grammar
       // pass and for the same reason: the instruction is bound to the node, so what counts as
       // important is a per-tenant, per-node decision and never a constant in this service.
-      extractFindings: async (input, signal) => this.extractImportantFindings(input, signal),
+      extractFindings: async (input, signal) => this.extractImportantFindings(input, signal, session.consultationId),
 
       extractEntities: async (input, signal) => {
         // ONE executor, ONE HTTP call — `vitals` is a projection of the same
@@ -5953,6 +6110,10 @@ return 0`;
       lastSegmentId: session.lastSegmentId,
       updatedAt: payload.updatedAt,
       ...(session.agentSnapshot ? { agent: this.agentLineage(session.agentSnapshot) } : {}),
+      // TASK-1050 W2g — the guardrail notices relayed on this lane, PHI-free (ids, keys, checks, policy
+      // version). Additive. The item's `guardrailStatus` marker is NOT written here: it is the gateway
+      // ingest's, from the evaluation.
+      ...(session.guardrailNoticeLog && session.guardrailNoticeLog.length > 0 ? { guardrailNotices: [...session.guardrailNoticeLog] } : {}),
     };
 
     try {
@@ -6987,6 +7148,8 @@ return 0`;
       stream: false as const,
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
       ...(candidate.providerOverride ? { provider_overrides: { [candidate.provider]: overrideEntry } } : {}),
+      // TASK-1050 W2g — the agent that serves this call, for the guardrail evaluation record.
+      agent_slug: candidate.agent.slug,
     };
     // TASK-891 C2 — `generation` already carries the node's `overrides.generation` layered
     // over the agent's own, so the reasoning posture follows the same precedence every other
@@ -7177,17 +7340,278 @@ return 0`;
     // `funding`/`cost_basis` from whichever tier supplied that credential, so a
     // dropped header mis-bills silently as well as mis-configuring the call. This is
     // the highest-volume internal hop in the platform (every live-doc flush).
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — the ceiling is checked BEFORE the upstream call, the units are recorded
     // from the upstream's own `usage_detail` AFTER it.
     await this.assertLlmQuota(tenantId);
-    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
-      timeout: this.textTimeoutMs,
-      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
-      signal,
-    });
+    // The running note IS the PRE_SUMMARY snapshot's content, so this call's output updates that item
+    // (`response_items`); its data regions are the flush's own (`region_items`, from the turn).
+    const session = consultationId ? this.sessions.get(consultationId) : undefined;
+    const response = await this.postLiveText(payload, tenantId, consultationId, signal, undefined, session ? this.snapshotItemRefs(session) : []);
     this.recordLlmUsage(tenantId, response.data, consultationId, egress?.agentNode === true);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
+  }
+
+  /**
+   * TASK-1050 W2g — the ONE gateway→TEXT `/generate` POST every live call makes.
+   *
+   * It adds what guardrail needs to attribute its decision (README §9.6 "Correlation", §9.7.4): the
+   * `X-Hope-*` headers (consultation, the PRE_SUMMARY snapshot item once it exists, a run key when one
+   * is known — the live lane has none before its trajectory step is written, so none is sent),
+   * `region_items` (the context items behind each data region; the flush's own turn unless the caller
+   * names its regions) and `response_items` (the item the output updates, when it updates one).
+   *
+   * It READS what TEXT answered: the notices of a 200, and the notice of a guardrail STOP (422 block /
+   * 503 redaction hold), into the flush's turn — then re-throws, so every caller's existing failure
+   * handling (keep the last good note, degrade the node) is unchanged.
+   */
+  private async postLiveText(
+    payload: Record<string, unknown>,
+    tenantId: string,
+    consultationId: string | null | undefined,
+    signal?: AbortSignal,
+    regionItems?: LiveRegionItems,
+    responseItems: readonly GuardrailEvaluationItemRef[] = [],
+  ): Promise<{ data: unknown }> {
+    const session = consultationId ? this.sessions.get(consultationId) : undefined;
+    const turn = session?.guardrailTurn;
+    const regions = regionItemsWire(regionItems ?? turn?.regionItems);
+    if (regions) payload.region_items = regions;
+    if (responseItems.length > 0) payload.response_items = responseItems.map(({ itemId, itemVersion }) => ({ itemId, itemVersion }));
+    const correlation = consultationId ? liveCorrelationHeaders({ consultationId, itemId: session?.snapshotId ?? null }) : {};
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    try {
+      const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
+        timeout: this.textTimeoutMs,
+        headers: internalServiceHeaders({
+          serviceToken,
+          tenantId,
+          tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+          ...(Object.keys(correlation).length > 0 ? { extra: correlation } : {}),
+        }),
+        signal,
+      });
+      if (turn) turn.notices.push(...textResponseNotices(response.data));
+      return response;
+    } catch (error) {
+      const stop = textGuardrailStop(error);
+      if (stop && turn) {
+        turn.stop ??= stop;
+        if (stop.notice) turn.notices.push(stop.notice);
+      }
+      throw error;
+    }
+  }
+
+  /** TASK-1050 W2g — the PRE_SUMMARY snapshot item at its current version, when the session has one. */
+  private snapshotItemRefs(session: LiveSession): GuardrailEvaluationItemRef[] {
+    if (!session.snapshotId) return [];
+    const version = session.snapshotEntity?.version;
+    return [{ itemId: session.snapshotId, itemVersion: typeof version === 'number' ? version : 1 }];
+  }
+
+  /** TASK-1050 W2g — the flush's transcript-window items, for a side call whose data region is `transcript`. */
+  private transcriptRegionItems(consultationId: string | null | undefined): LiveRegionItems {
+    const items = consultationId ? this.sessions.get(consultationId)?.guardrailTurn?.regionItems[LIVE_TRANSCRIPT_REGION_KEY] : undefined;
+    return items ? { [LIVE_TRANSCRIPT_REGION_KEY]: items } : {};
+  }
+
+  /**
+   * TASK-1050 W2g — is the consultation in a guardrail hold (`processingReason` GUARDRAIL_HOLD or
+   * EGRESS_REDACTION_UNAVAILABLE)? Read fresh on every tick: the hold is entered by the gateway ingest
+   * and resolved by the clinician, and this lane keeps no copy of it.
+   *
+   * Fails OPEN on a read error: a held consultation then meets TEXT again, which re-blocks (and the
+   * notice is deduped) — a missed pause costs one call, a false pause would freeze the note.
+   */
+  private async isGuardrailHeld(session: LiveSession): Promise<boolean> {
+    const repository = this.consultationRepository as unknown as { findFirst?: (props: unknown) => Promise<ConsultationEntity | null> } | undefined;
+    if (typeof repository?.findFirst !== 'function') return false;
+    try {
+      const row = await repository.findFirst({ where: { id: session.consultationId, tenantId: session.tenantId } });
+      return isGuardrailHoldReason(row?.processingReason ?? null);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * TASK-1050 W2g — the consultation's items the composer must leave out: WITHHELD always, BLOCKED once
+   * its notice was resolved `item_excluded` (`liveContextExcluded`). One read of the flagged items
+   * (usually none), and a notice read only when one of them is BLOCKED.
+   *
+   * TODO(TASK-1050 W2e seam): when W2e's enforcement module exposes the exclusion read (its predicate +
+   * the resolved-notice lookup), call it here instead of these two repository reads.
+   *
+   * Fails OPEN to "nothing excluded" on a read error: the blocked text then meets the guardrail again
+   * and re-blocks; it never reaches a model unscreened.
+   */
+  private async resolveLiveExclusion(session: LiveSession): Promise<LiveExclusionSet> {
+    const items = this.contextItemRepository;
+    if (typeof items?.findAll !== 'function') return EMPTY_LIVE_EXCLUSION;
+    try {
+      const flagged = await items.findAll({
+        filters: {
+          tenantId: session.tenantId,
+          consultationId: session.consultationId,
+          guardrailStatus: { in: [GuardrailItemStatus.WITHHELD, GuardrailItemStatus.BLOCKED] },
+        } as never,
+      });
+      if (!Array.isArray(flagged) || flagged.length === 0) return EMPTY_LIVE_EXCLUSION;
+      const resolved = new Set<string>();
+      const anyBlocked = flagged.some((item) => String(item.guardrailStatus).toUpperCase() === GuardrailItemStatus.BLOCKED);
+      if (anyBlocked && typeof this.guardrailNoticeRepository?.findAll === 'function') {
+        const notices = await this.guardrailNoticeRepository.findAll({
+          filters: { tenantId: session.tenantId, consultationId: session.consultationId, resolution: 'item_excluded' } as never,
+        });
+        for (const notice of notices ?? []) for (const id of notice.itemIds ?? []) resolved.add(id);
+      }
+      return liveExclusionSet(
+        flagged.map((item) => ({ id: item.id, guardrailStatus: item.guardrailStatus, segmentKey: item.segmentKey ?? null })),
+        resolved,
+      );
+    } catch (error) {
+      this.logger.warn({
+        message: 'Live guardrail exclusion unavailable — composing without it',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return EMPTY_LIVE_EXCLUSION;
+    }
+  }
+
+  /**
+   * TASK-1050 W2g — leave the excluded items out of this session's composer inputs: drop the notes,
+   * blank the transcript parts of the excluded segments IN PLACE (index alignment with
+   * `transcriptSegments` and the flush cursor is kept; an empty part contributes nothing). Only the
+   * current STT session's segments can be matched — `segmentKey` is `<sttSessionId>:<utteranceIndex>`.
+   * Returns whether anything changed.
+   */
+  private applyLiveExclusion(session: LiveSession, exclusion: LiveExclusionSet): boolean {
+    let changed = false;
+    if (exclusion.itemIds.size > 0) {
+      const before = session.contextNotes.length;
+      session.contextNotes = session.contextNotes.filter((note) => !exclusion.itemIds.has(note.contextItemId));
+      changed = session.contextNotes.length !== before;
+    }
+    if (exclusion.segmentKeys.size > 0 && session.sessionId) {
+      for (let i = 0; i < session.transcriptParts.length; i++) {
+        const utteranceIndex = session.transcriptSegments[i]?.utteranceIndex;
+        if (utteranceIndex === undefined || session.transcriptParts[i] === '') continue;
+        if (!exclusion.segmentKeys.has(`${session.sessionId}:${utteranceIndex}`)) continue;
+        session.transcriptParts[i] = '';
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * TASK-1050 W2g — `region_items` for one flush: the transcript window's TRANSCRIPT_SEGMENT items (by
+   * `segmentKey`, for the utterances in `[from, to)`), the clinician notes' items, and the previous
+   * note's snapshot item (F7: `current_note` is the lane's own PRE_SUMMARY item). Versions as read.
+   * A segment the STT outbox has not persisted yet is simply not named. Never throws.
+   */
+  private async resolveRegionItems(session: LiveSession, from: number, to: number): Promise<Record<string, GuardrailEvaluationItemRef[]>> {
+    const regions: Record<string, GuardrailEvaluationItemRef[]> = {};
+    const snapshot = this.snapshotItemRefs(session);
+    if (snapshot.length > 0) regions[LIVE_SELF_NOTE_REGION_KEY] = snapshot;
+    const repository = this.contextItemRepository;
+    if (typeof repository?.findAll !== 'function') return regions;
+
+    const keys: string[] = [];
+    if (session.sessionId) {
+      for (let i = from; i < to; i++) {
+        const utteranceIndex = session.transcriptSegments[i]?.utteranceIndex;
+        if (utteranceIndex !== undefined && session.transcriptParts[i] !== '') keys.push(`${session.sessionId}:${utteranceIndex}`);
+      }
+    }
+    const noteIds = session.contextNotes.map((note) => note.contextItemId);
+    if (keys.length === 0 && noteIds.length === 0) return regions;
+    try {
+      const rows = await repository.findAll({
+        filters: {
+          tenantId: session.tenantId,
+          consultationId: session.consultationId,
+          OR: [...(keys.length > 0 ? [{ segmentKey: { in: keys } }] : []), ...(noteIds.length > 0 ? [{ id: { in: noteIds } }] : [])],
+        } as never,
+      });
+      const ref = (row: ContextItemEntity): GuardrailEvaluationItemRef => ({
+        itemId: row.id,
+        itemVersion: typeof row.version === 'number' ? row.version : 1,
+      });
+      const bySegmentKey = new Map<string, ContextItemEntity>();
+      const byId = new Map<string, ContextItemEntity>();
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (row.segmentKey) bySegmentKey.set(row.segmentKey, row);
+        byId.set(row.id, row);
+      }
+      const transcript = keys.map((key) => bySegmentKey.get(key)).filter((row): row is ContextItemEntity => row !== undefined);
+      if (transcript.length > 0) regions[LIVE_TRANSCRIPT_REGION_KEY] = transcript.map(ref);
+      const notes = noteIds.map((id) => byId.get(id)).filter((row): row is ContextItemEntity => row !== undefined);
+      if (notes.length > 0) regions[LIVE_CLINICIAN_NOTES_REGION_KEY] = notes.map(ref);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Live guardrail region items unavailable — the flush is screened without them',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return regions;
+  }
+
+  /**
+   * TASK-1050 W2g — relay this flush's notices on the live-summary channel as `guardrail.notice` frames,
+   * ONCE per `(consultation, checkId, itemId, policyVersion)` (README §9.7.3, OD-15): a repeat on a
+   * later flush — the same window re-screened 20 s later — is not a new popup. The in-process set is
+   * the fast path; a Redis set makes the dedupe survive a restart or an ownership handoff.
+   * Records each relayed notice (PHI-free) for the snapshot's metadata. Returns how many were relayed.
+   * Never throws.
+   */
+  private async relayGuardrailNotices(session: LiveSession, turn: LiveGuardrailTurn): Promise<number> {
+    if (turn.notices.length === 0) return 0;
+    const consultationId = session.consultationId;
+    const seen = (session.relayedNoticeKeys ??= new Set<string>());
+    const relayedIds = new Set<string>();
+    let relayed = 0;
+    for (const notice of turn.notices) {
+      if (relayedIds.has(notice.noticeId)) continue;
+      const fresh = noticeDedupeKeys(notice, consultationId).filter((key) => !seen.has(key));
+      if (fresh.length === 0) continue;
+      let isNew = false;
+      for (const key of fresh) {
+        seen.add(key);
+        if (await this.claimNoticeKey(consultationId, key)) isNew = true;
+      }
+      if (!isNew) continue;
+      relayedIds.add(notice.noticeId);
+      const frame: LiveGuardrailNoticeFrame = { event: LIVE_GUARDRAIL_NOTICE_EVENT, consultationId, notice, updatedAt: new Date().toISOString() };
+      await this.safeChannelPublish(this.channel(consultationId), JSON.stringify(frame));
+      const log = (session.guardrailNoticeLog ??= []);
+      log.push(liveNoticeRecord(notice));
+      if (log.length > LIVE_NOTICE_LOG_MAX) log.splice(0, log.length - LIVE_NOTICE_LOG_MAX);
+      relayed += 1;
+      // PHI-safe: the notice's ids and keys only.
+      this.logger.log({
+        message: 'Live guardrail notice relayed',
+        consultationId,
+        noticeId: notice.noticeId,
+        type: notice.type,
+        messageKey: notice.messageKey,
+      });
+    }
+    return relayed;
+  }
+
+  /** TASK-1050 W2g — claim one dedupe key across instances; a Redis failure falls back to the in-process set alone. */
+  private async claimNoticeKey(consultationId: string, key: string): Promise<boolean> {
+    const setKey = `live-doc:guardrail-notices:${consultationId}`;
+    try {
+      const added = await this.cacheService.sadd(setKey, key);
+      await this.cacheService.expire(setKey, LIVE_NOTICE_DEDUPE_TTL_SEC);
+      return added > 0;
+    } catch {
+      return true;
+    }
   }
 
   /**
@@ -7233,9 +7657,18 @@ return 0`;
     let deploymentKind: string | undefined;
     if (this.harnessPolicyService)
       ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    // TASK-1049 F3 (TASK-1050 W2g) — the section text is DATA: one EXTERNAL_DATA block, never the raw
+    // prompt, which TEXT screens as an INSTRUCTION. The translate-only rule is a static CONTRACT part
+    // beside the platform rules, so the system is governed once its pieces are registered.
+    const composed = composeLiveDataCall({
+      tenantId,
+      templateRef: 'live:translate-only',
+      contractParts: [{ key: `live-translate-only:${languageName}`, text: translateOnlyInstruction(languageName) }],
+      blocks: [{ key: LIVE_SECTION_TEXT_REGION_KEY, label: 'Clinical note text', content: text }],
+    });
     const payload = {
-      prompt: text,
-      system_prompt: translateOnlyInstruction(languageName),
+      prompt: composed.prompt,
+      system_prompt: composed.system,
       provider,
       model,
       max_tokens: this.realtimeBudgets.textMaxTokens,
@@ -7246,14 +7679,20 @@ return 0`;
       deploymentKind: deploymentKind ?? null,
       consultationId,
       phase: 'live',
+      systemGovernance: composed.systemGovernance,
     });
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     await this.assertLlmQuota(tenantId);
-    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
-      timeout: this.textTimeoutMs,
-      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
+    // The section text is the snapshot's own content, and the translation is spliced back into it:
+    // the region and the response both name that item.
+    const snapshotRefs = this.snapshotItemRefs(session);
+    const response = await this.postLiveText(
+      payload,
+      tenantId,
+      consultationId,
       signal,
-    });
+      { [LIVE_SECTION_TEXT_REGION_KEY]: snapshotRefs },
+      snapshotRefs,
+    );
     this.recordLlmUsage(tenantId, response.data, consultationId);
     return mapTextGenerateResponse(response.data).summary;
   }
@@ -7305,11 +7744,28 @@ return 0`;
     if (this.harnessPolicyService)
       ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
+    // TASK-1049 F3 (TASK-1050 W2g) — the transcript is DATA. It used to BE the prompt (a bare JSON
+    // string), which TEXT screens as a blocking INSTRUCTION region on every call; it now travels as
+    // the `transcript` EXTERNAL_DATA block, carrying the SAME JSON the node's prompt was written
+    // against, and the node's governed prompt is the TEMPLATE body of a composed, governed system.
+    const composed = composeLiveDataCall({
+      tenantId,
+      templateRef: `live:correction:${String(input.config.promptTemplateId ?? '')}`,
+      instruction: systemPrompt,
+      instructionLabel: 'correction',
+      blocks: [
+        {
+          key: LIVE_TRANSCRIPT_REGION_KEY,
+          label: 'Transcript and detected entities (JSON)',
+          // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
+          // so it proposes over those spans rather than over ordinary prose.
+          content: JSON.stringify({ text: sourceText, entities: entities.map((e) => ({ start: e.start, end: e.end, text: e.text, type: e.type })) }),
+        },
+      ],
+    });
     const payload = {
-      // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
-      // so it proposes over those spans rather than over ordinary prose.
-      prompt: JSON.stringify({ text: sourceText, entities: entities.map((e) => ({ start: e.start, end: e.end, text: e.text, type: e.type })) }),
-      system_prompt: systemPrompt,
+      prompt: composed.prompt,
+      system_prompt: composed.system,
       provider,
       model,
       max_tokens: this.realtimeBudgets.textMaxTokens,
@@ -7322,15 +7778,11 @@ return 0`;
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, {
       deploymentKind: deploymentKind ?? null,
       phase: 'live',
+      systemGovernance: composed.systemGovernance,
     });
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
     await this.assertLlmQuota(tenantId);
-    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
-      timeout: this.textTimeoutMs,
-      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
-      signal,
-    });
+    const response = await this.postLiveText(payload, tenantId, consultationId, signal, this.transcriptRegionItems(consultationId));
     this.recordLlmUsage(tenantId, response.data, consultationId);
 
     const { proposals, rejectedProposals } = verifyCorrectionProposals(mapTextGenerateResponse(response.data).summary, sourceText, {
@@ -7397,6 +7849,9 @@ return 0`;
   private async extractImportantFindings(
     input: { sourceText: string; context: unknown[]; entities: LiveSummaryEntityDto[]; tenantId: string; config: Readonly<Record<string, unknown>> },
     signal?: AbortSignal,
+    // TASK-1050 W2g — for the correlation headers and region items only; trailing + optional so every
+    // positional caller keeps its arity. The usage row stays tenant-attributed, as before.
+    consultationId?: string | null,
   ): Promise<{ findings: LiveSummaryEntityDto[] }> {
     const { sourceText, context, entities, tenantId, config } = input;
     const systemPrompt = await this.resolveGovernedNodePrompt(config, 'findings');
@@ -7411,15 +7866,31 @@ return 0`;
     if (this.harnessPolicyService)
       ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
+    // TASK-1049 F3 (TASK-1050 W2g) — the transcript and context are DATA: the SAME JSON the node's
+    // instruction was written against, now carried in the `transcript` EXTERNAL_DATA block instead of
+    // being the raw prompt (screened as an INSTRUCTION), under a composed, governed system.
+    const composed = composeLiveDataCall({
+      tenantId,
+      templateRef: `live:findings:${String(input.config.promptTemplateId ?? '')}`,
+      instruction: systemPrompt,
+      instructionLabel: 'findings',
+      blocks: [
+        {
+          key: LIVE_TRANSCRIPT_REGION_KEY,
+          label: 'Transcript, context and detected entities (JSON)',
+          // The context the owner's sentence names, handed over as authored. Entity spans ride along
+          // as DETECTOR HINTS, the same "one call, two uses" the grammar pass makes.
+          content: JSON.stringify({
+            transcript: sourceText,
+            ...(context.length > 0 ? { context } : {}),
+            ...(entities.length > 0 ? { entities: entities.map((e) => ({ start: e.start, end: e.end, text: e.text, type: e.type })) } : {}),
+          }),
+        },
+      ],
+    });
     const payload = {
-      // The context the owner's sentence names, handed over as authored. Entity spans ride along
-      // as DETECTOR HINTS, the same "one call, two uses" the grammar pass makes.
-      prompt: JSON.stringify({
-        transcript: sourceText,
-        ...(context.length > 0 ? { context } : {}),
-        ...(entities.length > 0 ? { entities: entities.map((e) => ({ start: e.start, end: e.end, text: e.text, type: e.type })) } : {}),
-      }),
-      system_prompt: systemPrompt,
+      prompt: composed.prompt,
+      system_prompt: composed.system,
       provider,
       model,
       max_tokens: this.realtimeBudgets.textMaxTokens,
@@ -7432,17 +7903,13 @@ return 0`;
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, {
       deploymentKind: deploymentKind ?? null,
       phase: 'live',
+      systemGovernance: composed.systemGovernance,
     });
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
-    // TASK-890 §3.13 — Lane N's mining call is a generation too. It carries no consultation id
-    // (this method is not given one), so the row is attributed to the tenant alone; threading
-    // the id here is a follow-up, not a reason to leave the call uncounted.
+    // TASK-890 §3.13 — Lane N's mining call is a generation too. Its usage row stays attributed to
+    // the tenant alone (threading the consultation into the ledger is a follow-up); the id now only
+    // rides the TASK-1050 correlation headers.
     await this.assertLlmQuota(tenantId);
-    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
-      timeout: this.textTimeoutMs,
-      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
-      signal,
-    });
+    const response = await this.postLiveText(payload, tenantId, consultationId, signal, this.transcriptRegionItems(consultationId));
     this.recordLlmUsage(tenantId, response.data, null);
 
     const maxFindings = typeof config.maxFindings === 'number' && config.maxFindings > 0 ? Math.floor(config.maxFindings) : DEFAULT_MAX_FINDINGS;
