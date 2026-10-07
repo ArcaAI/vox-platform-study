@@ -339,10 +339,84 @@ Do NOT flip FC-5b data regions back to blocking — not for `jailbreak_detection
 | R4 | **Close the classes no classifier catches with deterministic and outbound controls** (separate tickets): strip or neutralise URLs / markdown images in generated notes (data exfiltration); keep the outbound groundedness / medical judge blocking (TASK-1035) — an ungrounded clinical claim is the falsification signal; validate the output contract (output hijack). | These are the 0 % classes. The structural boundary (FC-1 fencing, data by pointer) plus outbound checks is the primary defence (OWASP LLM01), as OD-13 already stated. |
 | R5 | **Criteria to re-open data blocking for `jailbreak_detection`** (unchanged bar, made operational): on a FRESH held-out set — ≥ 1,000 clinical windows incl. ≥ 300 hard negatives with quoted third-party messages, and ≥ 300 embedded injections across all 10 classes — FP ub95 ≤ 1 % AND recall lb95 ≥ 95 % at ONE threshold, then a live TASK-1047 V6 golden run with 0 refusals. Mechanism: `guardrail.inbound.dataBlockingTasks` global-kv descriptor (tenant → SYSTEM, default `[]`, OD-9), not a code constant. Candidates to try next: a clinical fine-tune of PG2-86M on b2/c2-style data, or an LLM judge on the outbound side. | Makes any future flip evidence-based and reversible without code. |
 
+## 11. Laya comparison and production sizing (owner request, 2026-10-07)
+
+**Laya** (convaiinnovations, Apache-2.0) is a zero-shot typed-decision encoder. It answers yes/no, choice and score
+questions with calibrated probabilities, and it **does no NER** (classification only). Three checkpoints were tested:
+
+| Checkpoint | Backbone |
+|---|---|
+| base `laya` | ModernBERT-large |
+| `laya-typed-decisions` | ModernBERT-large, fine-tuned on 4 non-clinical workflows |
+| `laya-multilingual` | mmBERT-base |
+
+Test conditions:
+- `laya` 0.3.28 in an isolated venv (`~/.cache/task-1049/laya-venv`), not `arcaenv`; source reviewed first: no telemetry, no subprocess or `exec`, safetensors only, digest-verified.
+- CPU only, because Laya auto-selects Apple MPS, whose memory the RSS guard cannot see.
+
+Tasks: T1 injection uses the vendor `guard_questions` wording; T2 safety uses vendor `harm_severity` and `toxic`; T3 medical
+scope uses the guardrail's own off-scope definition. All other conditions match §8.
+
+| Task | Data |
+|---|---|
+| T2 | Aegis 2.0: 600 unsafe + 600 safe prompts, CC-BY-4.0 |
+| T3 | Dolly-15k: 300 off-scope requests standalone + 300 embedded in ACI dialogue, CC-BY-SA-3.0 |
+| Clinical benign for both | a + b1 + b2, test split: 1,358 windows |
+
+| Task | Model | Clinical FP / window (default thr) | Recall (default thr) | AUC | At ≤ 1 % clinical FP: recall | CPU p95 / window (4 thr) |
+|---|---|---|---|---|---|---|
+| T1 injection | **Prompt Guard 2 86M** | **0.88 %** | 33.2 % | **0.81** | 23.2 % | 316 ms |
+| T1 | laya-typed-decisions | 13.1 % | 36.3 % | 0.71 | 3.2 % | 1,200 ms |
+| T1 | laya-multilingual | 11.9 % | 35.3 % | 0.74 | 0.0 % | 606 ms |
+| T1 | laya (base) | 15.4 % | 30.5 % | 0.66 | 0.0 % | 759 ms |
+| T2 safety/toxicity | **GLiGuard 300M** (production schema) | 22.7 % | **87.9 %** (Aegis-unsafe) | **0.92** | 48.3 % | 436 ms |
+| T2 | laya (base) | 27.3 % | 48.0 % | 0.62 | 12.6 % | 759 ms |
+| T2 | laya-typed-decisions | 39.0 % | 54.9 % | 0.61 | 7.3 % | 1,200 ms |
+| T2 | laya-multilingual | 88.2 % | 79.9 % | 0.56 | 10.8 % | 606 ms |
+| T3 medical scope | granite-guardian-4.1-8b (incumbent, Q4_K_S) | 0.55 % (1/182, partial sample) | not measured (host memory) | — | — | 1.0–2.6 s / call (M3 Max Metal) |
+| T3 | laya (base) | 11.0 % | 23.8 % | 0.59 | 2.8 % | 759 ms |
+| T3 | laya-typed-decisions | 0.37 % | 8.5 % | 0.64 | 12.9 % | 1,200 ms |
+| T3 | laya-multilingual | 5.5 % | 6.3 % | 0.61 | 1.9 % | 606 ms |
+
+Notes on the table:
+- Every Laya variant also flags most governed templates: base 55/62, multilingual 46/62, typed-decisions 41/62.
+- **Verdict: Laya is not competitive on any HOPE guardrail task zero-shot**, and it does not apply to NER.
+- The granite T3 recall run could not complete on the dev Mac. Loaded alongside the dev stack and the admin-console dev server, it drove the kernel memory-pressure level to warn, and the guard stopped it (§8.3). Measure it on dev-cluster hardware.
+
+### 11.1 Production sizing: 25 concurrent consultations, near-realtime
+
+**Load model** (assumptions stated):
+- One flush every 20 s per consultation; the window cache (TASK-1047 D5) re-screens only the growing tail window. That gives about **3 windows / min per consultation per check**, so **25 consultations ≈ 1.25 windows / s per check**.
+- Stop-time note bursts are mostly cache hits.
+- Target: screening adds < 1 s p95 per flush.
+
+**CPU** (measured on M3 Max, 4 threads; cluster vCPUs are slower per core, assume ÷1.5–2):
+- PG2-86M: 3.3 windows/s, p95 316 ms. GLiGuard: 3.0 windows/s, p95 436 ms.
+- Each check alone fits 25 users on a dedicated 4-vCPU pod with thin headroom; the two checks cannot share one 4-vCPU pod at that load.
+
+**GPU** (A6000, estimates from published throughput, to be confirmed on hardware):
+
+| Component | VRAM | Throughput at 25 users |
+|---|---|---|
+| Encoder guards (PG2-86M, GLiGuard, GLiNER2 PII, medical-ner), fp16 | ~1–2 GB each, ~5 GB together | ≥ 50 windows/s each — 25 users use < 5 % |
+| granite-guardian 8B judge | ~6 GB (Q4/AWQ) or ~17 GB (fp16) + KV | ~1.25 req/s fits A6000 batched decode |
+
+The judge's latency is dominated by output tokens: the verdict's free-text `reasoning` field (up to 300 tokens) puts it at
+~2–5 s per call. Capping it (verdict-only) brings it to ~0.5–1 s.
+
+**Recommendation:**
+- **Baseline: one A6000.**
+  - Put the encoder guards and the judge (quantised, verdict-only output) on the A6000, ≈ 11–12 GB of its 48 GB. It then still carries ASR + the summarisation LLM.
+  - Feasible for 25 users, but the single GPU stays the single point of failure and the contention point for every model.
+- **Recommended for a realtime SLO: request one additional 24 GB-class GPU** (L4 / A10, or a second A6000) dedicated to the guard plane + judge.
+  - It isolates screening latency from summarisation/ASR bursts and removes the single point of failure for safety checks.
+- **Dev (2× RTX 2000 Ada 16 GB, time-sliced, 6/8 slices allocated):** run the guard encoders on CPU (dev load is a few users) and keep the judge on LM Studio. Dev is not a capacity proxy (sm_89 vs sm_86, shared cards).
+
 ## 10. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | Laya comparison (T1 injection, T2 safety vs GLiGuard, T3 medical scope vs granite) and production sizing for 25 concurrent consultations (§11). Owner-approved: laya package (isolated venv), laya/typed-decisions/multilingual loads, Aegis 2.0 + Dolly-15k, granite load/unload. Memory guard now stops on macOS kernel pressure (warn+). |
 | 2026-10-06 | **Evaluation complete → Review.** All five candidates scored on a+b1+b2+b3+c1+c2 (window and, for PG2-86M, line granularity), governed instruction texts (62) and CPU latency. Verdict: no candidate meets OD-13; FC-5b stays record-only. Recommendations R1–R5 (§9). b2 generated with `gemma-4-e2b-it-qat` (owner-approved; unloaded afterwards). Memory guard: swap-growth stop added; every run stayed under the ceilings (peak 3.9 GB). |
 | 2026-10-06 | Lanes L1/L2/L3 merged. GLiGuard production parity, production region rendering and short-window FP finding (§8.2). Host force-restarted mid-run (§8.4) → memory guard + persistent data dir (§8.3). Scoring paused until a peer session's tests finish (owner). |
 | 2026-10-06 | **Owner rule: no model is loaded or changed without approval.** Lanes L2 and L3 were stopped. L2 had attempted an LM Studio load of `google/gemma-4-26b-a4b-qat`, which failed to start; nothing was generated. L3 had fetched config and tokenizer files only (13–21 MB each, no weights). Approvals: (1) load the 5 classifiers in-process on CPU in standalone scripts, one at a time, downloading to `/Volumes/aillusion/huggingface`, after a PIGuard remote-code review; (2) generate b2 ONLY with `gemma-4-e2b-it-qat`, already loaded in LM Studio — no load, unload or other model id; (3) measure latency as-is, with background load recorded. |
