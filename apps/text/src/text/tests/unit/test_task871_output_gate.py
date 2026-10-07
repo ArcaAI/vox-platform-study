@@ -285,7 +285,7 @@ class TestScreenOutputClient:
 
 class TestGateHelper:
     @pytest.mark.asyncio
-    async def test_rejection_is_422_equivalent_and_outage_is_retryable(self) -> None:
+    async def test_rejection_is_422_equivalent_and_outage_degrades_to_unverified(self) -> None:
         from text.services.output_gate import OutputRejectedError, gate_completion
 
         with pytest.raises(OutputRejectedError) as rejected:
@@ -303,19 +303,22 @@ class TestGateHelper:
         assert rejected.value.code == "GUARDRAIL_REJECTED"
         assert rejected.value.reason == "response_safety"
 
-        with pytest.raises(OutputRejectedError) as outage:
-            await gate_completion(
-                _guardrail(screen=_unavailable()),
-                completion="x",
-                source_regions=[{"key": "user", "text": "p"}],
-                tenant_id="t",
-                tenant_policy=None,
-                app_state=None,
-                where="test",
-            )
-        assert outage.value.status_code == 503
-        assert outage.value.retryable is True
-        assert outage.value.code == "GUARDRAIL_UNAVAILABLE"
+        # TASK-1050 §9.8.1: an outage is no longer a rejection — the completion is
+        # released and a `guardrail.unverified` notice is recorded instead.
+        from text.services.guardrail_notices import GuardrailOutcome
+
+        outcome = GuardrailOutcome()
+        await gate_completion(
+            _guardrail(screen=_unavailable()),
+            completion="x",
+            source_regions=[{"key": "user", "text": "p"}],
+            tenant_id="t",
+            tenant_policy=None,
+            app_state=None,
+            where="test",
+            outcome=outcome,
+        )
+        assert [n["type"] for n in outcome.notices] == ["guardrail.unverified"]
 
     @pytest.mark.asyncio
     async def test_missing_allowed_key_fails_closed(self) -> None:
@@ -431,17 +434,22 @@ class TestNonStreamingPath:
         breaker.record_failure.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_outage_after_receive_is_a_retryable_503(
+    async def test_outage_after_receive_releases_with_an_unverified_notice(
         self, client_factory, mock_provider
     ) -> None:
+        # TASK-1050 §9.8.1: the outbound screen is a safety verdict, so its outage
+        # releases the completion with a `guardrail.unverified` notice (never a 503).
         client = await client_factory(_guardrail(screen=_unavailable()))
 
         resp = await client.post(
             "/api/v1/generate", json={"provider": "lm-studio", "prompt": "note", "model": "m"}
         )
 
-        assert resp.status_code == 503
-        assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["content"]
+        (notice,) = body["guardrail_notices"]
+        assert notice["type"] == "guardrail.unverified" and notice["direction"] == "outbound"
         mock_provider.generate.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -557,7 +565,11 @@ class TestNonStreamingPath:
     @pytest.mark.asyncio
     async def test_byo_provider_overrides_are_gated_identically(self, client_factory) -> None:
         """A BYO request (provider_overrides present) reaches the same gate with the
-        same arguments as a built-in one — nothing branches on provider or funding."""
+        same arguments as a built-in one — nothing branches on provider or funding.
+
+        TASK-1050: two arguments legitimately differ and are asserted on their own: the
+        ``locality`` of the provider actually called, and the injected connection,
+        forwarded so a cloud judge has one (as the medical judge always had)."""
         guardrail_builtin = _guardrail()
         client = await client_factory(guardrail_builtin)
         await client.post(
@@ -581,10 +593,12 @@ class TestNonStreamingPath:
         assert resp.status_code == 200, resp.text
         guardrail_byo.validate.assert_awaited_once()
         guardrail_byo.screen_output.assert_awaited_once()
-        assert (
-            guardrail_byo.screen_output.await_args.kwargs
-            == guardrail_builtin.screen_output.await_args.kwargs
-        )
+        byo = dict(guardrail_byo.screen_output.await_args.kwargs)
+        builtin = dict(guardrail_builtin.screen_output.await_args.kwargs)
+        assert (byo.pop("locality"), builtin.pop("locality")) == ("cloud", "local")
+        assert byo.pop("provider_overrides")["azure"]["api_key"] == "k"
+        assert builtin.pop("provider_overrides") is None
+        assert byo == builtin
 
         # And a BYO rejection is a rejection.
         client = await client_factory(_guardrail(screen=_block()))
@@ -674,9 +688,11 @@ class TestStreamingProducer:
         breaker.record_failure.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_outage_after_receive_is_a_retryable_rejection_frame(
+    async def test_outage_after_receive_releases_the_stream_with_an_unverified_notice(
         self, mock_task_manager, mock_provider
     ) -> None:
+        # TASK-1050 §9.8.1: the stream ends `done` (not a retryable `error` frame) and
+        # carries the `guardrail.unverified` notice.
         from text.api.endpoints.generate import _run_streaming_generation
 
         await _run_streaming_generation(
@@ -691,10 +707,12 @@ class TestStreamingProducer:
         )
 
         chunks = _appended_chunks(mock_task_manager)
-        assert [c.type for c in chunks] == ["error"]
+        assert [c.type for c in chunks] == ["done"]
         data = chunks[0].data or {}
-        assert data["code"] == "GUARDRAIL_UNAVAILABLE"
-        assert data["retryable"] is True
+        assert [n["type"] for n in data["guardrail_notices"]] == ["guardrail.unverified"]
+        assert mock_task_manager.update_task.await_args_list[-1].kwargs["status"] == (
+            TaskStatus.COMPLETED
+        )
 
     @pytest.mark.asyncio
     async def test_allowed_stream_ends_with_done_exactly_as_before(

@@ -1,9 +1,10 @@
 """The /generate gate invokes the external guardrail.
 
 Verifies the guardrail is called per generate, the consultation X-Tenant-Id is
-forwarded, and the degrade-safe → fail-CLOSED posture: a content
-rejection is a 422, a sustained outage is a retryable 503 and a missing
-``allowed`` key fails closed, while allowed content proceeds. These tests drive
+forwarded, and the posture: a content rejection is a 422 and a missing
+``allowed`` key fails closed, while allowed content proceeds. A sustained judge
+OUTAGE no longer fails the call (TASK-1050 §9.8.1, OD-23): it continues with a
+``guardrail.unverified`` notice. These tests drive
 the MEDICAL JUDGE half of the inbound gate; the inbound screen and the output
 screen are stubbed to allow (TASK-1035 covers them in `test_task1035_*`). The
 guardrail client is mocked — no network.
@@ -144,13 +145,16 @@ async def test_no_guardrail_client_skips_validation(_client_factory, mock_provid
     mock_provider.generate.assert_called_once()
 
 
-# --- Degrade-safe → fail-CLOSED gate -----------------------------------
+# --- Degrade on an outage, fail closed on a judged rejection -----------
 
 
 @pytest.mark.asyncio
-async def test_sustained_outage_returns_503_and_never_generates(_client_factory, mock_provider):
-    # A sustained guardrail outage (unavailable verdict) is a RETRYABLE 503
-    # (distinct from a 422 content rejection) and generation never runs.
+async def test_sustained_judge_outage_degrades_to_unverified_and_generates(
+    _client_factory, mock_provider
+):
+    # TASK-1050 §9.8.1 / OD-23: a sustained medical-judge outage (unavailable verdict)
+    # is no longer a 503 — nothing was judged, so the call continues and the response
+    # carries a `guardrail.unverified` notice naming the check that could not run.
     guardrail = AsyncMock()
     guardrail.validate = AsyncMock(
         return_value={"allowed": False, "reason": "external_guardrail_unavailable"}
@@ -161,9 +165,11 @@ async def test_sustained_outage_returns_503_and_never_generates(_client_factory,
         "/api/v1/generate", json={"provider": "lm-studio", "prompt": "patient note", "model": "m"}
     )
 
-    assert resp.status_code == 503
-    assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
-    mock_provider.generate.assert_not_called()
+    assert resp.status_code == 200, resp.text
+    mock_provider.generate.assert_called_once()
+    (notice,) = resp.json()["guardrail_notices"]
+    assert notice["type"] == "guardrail.unverified"
+    assert notice["checks"] == [{"checkId": "medical_validation", "severity": "low"}]
 
 
 @pytest.mark.asyncio
