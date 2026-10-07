@@ -93,3 +93,30 @@ def test_percentiles_and_summary() -> None:
     assert s["latency_p50_s"] == pytest.approx(5.0)
     assert s["flush_latency_p50_s"] == pytest.approx(6.0)  # flush = max of its 3 checks
     assert s["by_phase"]["burst"]["errors"] == 1
+
+
+def test_abort_rule_continues_through_warn_but_stops_on_critical_swap_or_rss() -> None:
+    # owner decision 2026-10-07: run through macOS "warn"; stop on critical, swap growth
+    # > 1 GiB, or LM Studio RSS > 10 GiB
+    assert gc.abort_reason(level=2, swap_growth_mib=0, llama_rss_mib=6_200) is None
+    assert "critical" in gc.abort_reason(level=4, swap_growth_mib=0, llama_rss_mib=6_200)
+    assert "swap" in gc.abort_reason(level=2, swap_growth_mib=1_100, llama_rss_mib=6_200)
+    assert "rss" in gc.abort_reason(level=1, swap_growth_mib=0, llama_rss_mib=10_300)
+
+
+def test_summary_counts_unfinished_requests_as_backlog() -> None:
+    rows = [
+        {
+            "phase": "steady",
+            "flush": "f0",
+            "ok": True,
+            "latency_s": 1.0,
+            "ttft_s": 0.5,
+            "submit_s": 0.0,
+            "end_s": 1.0,
+            "prompt_tokens": 700,
+            "completion_tokens": 10,
+        }
+    ]
+    s = gc.summarize(rows, unfinished=7)
+    assert s["unfinished"] == 7

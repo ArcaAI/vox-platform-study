@@ -135,7 +135,23 @@ def _pct(values: list[float], q: float) -> float | None:
     return ordered[min(len(ordered) - 1, max(0, round(q * (len(ordered) - 1))))]
 
 
-def summarize(rows: list[dict]) -> dict:
+#: Owner decision 2026-10-07: run through macOS "warn" (level 2); stop on these.
+CRITICAL_PRESSURE_LEVEL = 4
+MAX_SWAP_GROWTH_MIB = 1024
+MAX_LLAMA_RSS_MIB = 10 * 1024
+
+
+def abort_reason(*, level: int | None, swap_growth_mib: float, llama_rss_mib: float) -> str | None:
+    if level is not None and level >= CRITICAL_PRESSURE_LEVEL:
+        return f"kernel memory pressure critical (level {level})"
+    if swap_growth_mib > MAX_SWAP_GROWTH_MIB:
+        return f"swap grew {swap_growth_mib:.0f} MiB"
+    if llama_rss_mib > MAX_LLAMA_RSS_MIB:
+        return f"LM Studio rss {llama_rss_mib:.0f} MiB"
+    return None
+
+
+def summarize(rows: list[dict], unfinished: int = 0) -> dict:
     def block(rs: list[dict]) -> dict:
         ok = [r for r in rs if r["ok"]]
         lat = [r["latency_s"] for r in ok]
@@ -168,6 +184,7 @@ def summarize(rows: list[dict]) -> dict:
         }
 
     out = block(rows)
+    out["unfinished"] = unfinished
     out["by_phase"] = {
         p: block([r for r in rows if r["phase"] == p]) for p in sorted({r["phase"] for r in rows})
     }
@@ -339,17 +356,24 @@ async def run(args: argparse.Namespace) -> int:
             )
             for check in CHECKS:
                 tasks.append(asyncio.create_task(one(client, ev, window, check)))
+        unfinished = 0
         if tasks:
-            done, pending = await asyncio.wait(tasks, timeout=args.drain_timeout_s)
+            remaining = max(1.0, args.max_run_s - (time.perf_counter() - t0))
+            if aborted["reason"]:
+                remaining = 1.0
+            done, pending = await asyncio.wait(tasks, timeout=remaining)
+            unfinished = len(pending)
             for p in pending:
                 p.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
         stop.set()
         await sampler_task
 
     with (out / "requests.jsonl").open("w") as fh:
         for r in sorted(rows, key=lambda r: r["submit_s"]):
             fh.write(json.dumps(r) + "\n")
-    summary = summarize(rows) if rows else {}
+    finished = [r for r in rows if not (r.get("error") or "").startswith("CancelledError")]
+    summary = summarize(finished, unfinished=unfinished) if finished else {"unfinished": unfinished}
     summary.update(
         {
             "config": args.label,
@@ -393,7 +417,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--attack-rate", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=1049)
     p.add_argument("--request-timeout-s", type=float, default=600)
-    p.add_argument("--drain-timeout-s", type=float, default=900)
+    p.add_argument("--max-run-s", type=float, default=240, help="hard cap; unfinished = backlog")
     return p
 
 
