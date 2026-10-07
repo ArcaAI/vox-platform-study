@@ -444,6 +444,11 @@ enum ResourceType {
   ConsultationFeedbackRollup
   // TASK-1047 — governed-prompt registry rows (authoring-time screening verdicts)
   GovernedPromptPiece
+  // TASK-1050 — guardrail evaluation per request × direction, the standard client
+  // notice (acknowledge / resolve are audited), and platform policy revisions.
+  GuardrailEvaluation
+  GuardrailNotice
+  GuardrailPolicyRevision
 
   @@schema("core")
 }

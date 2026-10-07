@@ -233,6 +233,13 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // TASK-863 — the agent-assignment WORM log: identity-only, no
   // `resourceStatus`; append-only enforced by a DB trigger.
   'AgentAssignmentChange',
+  // TASK-1050 — guardrail-evaluation.prisma. `GuardrailEvaluation` and
+  // `GuardrailPolicyRevision` are append-only audit facts (retention follows
+  // AuditLog); `GuardrailNotice` is acknowledged/resolved through its own
+  // `status`, never deleted. None carries a `resourceStatus` column.
+  'GuardrailEvaluation',
+  'GuardrailNotice',
+  'GuardrailPolicyRevision',
 ]);
 
 /**

@@ -180,7 +180,15 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +6 (96): TASK-1045 ConsultationEncounter, ConsultationApproval, ConsultationAttachment, ConsultationFeedback,
     // ConsultationFeedbackDailyRollup, AiActivityRun.
     // +1 (97): TASK-1047 adds `GovernedPromptPiece` — tenant-owned governed-prompt registry row (also SYSTEM-shared-read).
-    expect(TENANT_SCOPED_MODELS.size).toBe(97);
+    // +3 (100): TASK-1050 adds `GuardrailEvaluation`, `GuardrailNotice`, `GuardrailPolicyRevision` (never shared-read).
+    expect(TENANT_SCOPED_MODELS.size).toBe(100);
+  });
+
+  it('TASK-1050 — scopes the three guardrail models and never widens them to SYSTEM', () => {
+    for (const model of ['GuardrailEvaluation', 'GuardrailNotice', 'GuardrailPolicyRevision']) {
+      expect(TENANT_SCOPED_MODELS.has(model), model).toBe(true);
+      expect(SYSTEM_SHARED_READ_MODELS.has(model), `${model} must not be SYSTEM-shared-read`).toBe(false);
+    }
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

@@ -108,3 +108,6 @@ export * from './ConsultationAttachmentEntityMapper';
 export * from './ConsultationFeedbackEntityMapper';
 export * from './ConsultationFeedbackDailyRollupEntityMapper';
 export * from './AiActivityRunEntityMapper';
+export * from './GuardrailEvaluationEntityMapper';
+export * from './GuardrailNoticeEntityMapper';
+export * from './GuardrailPolicyRevisionEntityMapper';

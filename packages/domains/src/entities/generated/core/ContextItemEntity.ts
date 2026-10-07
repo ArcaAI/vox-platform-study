@@ -50,6 +50,10 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   speaker?: string | null;
   capturedAt?: Date | null;
   occurredAt?: Date;
+  // TASK-1050 — denormalised guardrail marker (§9.7.4). Side-channel, outside
+  // OCC (OD-21): read-only on the entity; the only writer after create is
+  // `ContextItemRepository.setGuardrailStatus(Many)`. Absent reads as CLEAN.
+  guardrailStatus?: Enums.GuardrailItemStatus;
   qdrantSynced: boolean;
   qdrantSyncedAt?: Date | null;
   Consultation?: Entities.ConsultationEntity | null;
@@ -81,6 +85,7 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _speaker?: IContextItemEntity['speaker'];
   private _capturedAt?: IContextItemEntity['capturedAt'];
   private _occurredAt?: IContextItemEntity['occurredAt'];
+  private _guardrailStatus?: IContextItemEntity['guardrailStatus'];
   private _contextSchemaVersionId?: IContextItemEntity['contextSchemaVersionId'];
   // Clinical Workflow Playground — round-trips the `_metadata` JSONB column so
   // ATTACHMENT lab/exam results can carry a `metadata.subType = 'LAB_RESULT'`
@@ -117,6 +122,7 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._speaker = init.speaker;
     this._capturedAt = init.capturedAt;
     this._occurredAt = init.occurredAt;
+    this._guardrailStatus = init.guardrailStatus;
     this._contextSchemaVersionId = init.contextSchemaVersionId;
     this._metaData = init.metaData;
     this._qdrantSynced = init.qdrantSynced ?? false;
@@ -302,6 +308,15 @@ export class ContextItemEntity extends BaseTenantEntity {
 
   set occurredAt(value: IContextItemEntity['occurredAt']) {
     this.setProperty('occurredAt', value);
+  }
+
+  /**
+   * TASK-1050 — the guardrail marker. Deliberately NO setter: an entity change
+   * would ride an OCC update and bump `_version` (OD-21). Write it with
+   * `ContextItemRepository.setGuardrailStatus(Many)`.
+   */
+  get guardrailStatus(): Enums.GuardrailItemStatus {
+    return this._guardrailStatus ?? Enums.GuardrailItemStatus.CLEAN;
   }
 
   get contextSchemaVersionId(): IContextItemEntity['contextSchemaVersionId'] {

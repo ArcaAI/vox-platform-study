@@ -36,6 +36,9 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   speaker?: IContextItemEntity['speaker'];
   capturedAt?: IContextItemEntity['capturedAt'];
   occurredAt?: IContextItemEntity['occurredAt'];
+  // TASK-1050 — omitted by every pre-existing caller (the row then takes the
+  // DB default CLEAN); a WITHHELD outbound-block placeholder sets it at create.
+  guardrailStatus?: IContextItemEntity['guardrailStatus'];
   metaData?: IContextItemEntity['metaData'];
   qdrantSynced?: IContextItemEntity['qdrantSynced'];
   tenantId: IContextItemEntity['tenantId'];
@@ -82,6 +85,7 @@ export class ContextItemFactory {
       speaker: props.speaker ?? null,
       capturedAt: props.capturedAt ?? null,
       occurredAt: props.occurredAt ?? props.capturedAt ?? now,
+      guardrailStatus: props.guardrailStatus,
       metaData: props.metaData,
       qdrantSynced: props.qdrantSynced ?? false,
       qdrantSyncedAt: null,

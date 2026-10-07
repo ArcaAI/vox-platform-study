@@ -108,3 +108,6 @@ export * from './ConsultationAttachmentEntity';
 export * from './ConsultationFeedbackEntity';
 export * from './ConsultationFeedbackDailyRollupEntity';
 export * from './AiActivityRunEntity';
+export * from './GuardrailEvaluationEntity';
+export * from './GuardrailNoticeEntity';
+export * from './GuardrailPolicyRevisionEntity';

@@ -156,6 +156,9 @@ export * from './ConsultationAttachmentRepository';
 export * from './ConsultationFeedbackRepository';
 export * from './ConsultationFeedbackDailyRollupRepository';
 export * from './AiActivityRunRepository';
+export * from './GuardrailEvaluationRepository';
+export * from './GuardrailNoticeRepository';
+export * from './GuardrailPolicyRevisionRepository';
 // Siblings that patch ConsultationFeedbackRepository / ConsultationAttachmentRepository.prototype.
 export * from './ConsultationFeedbackRepository.encryption';
 export * from './ConsultationAttachmentRepository.encryption';

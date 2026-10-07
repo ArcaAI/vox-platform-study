@@ -389,6 +389,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-checkpoint.prisma (2) — tenant-scoped job state, never shared-read.
   'TenantCheckpoint',
   'TenantCheckpointRestore',
+  // TASK-1050 — guardrail-evaluation.prisma (3). Evaluations and notices are a
+  // tenant's own audit/operational rows. Policy revisions live in the SYSTEM
+  // tenant and are written by a platform admin in a SYSTEM/tenant-less context.
+  // Deliberately NOT SYSTEM-shared reads: no tenant ever widens to SYSTEM here.
+  'GuardrailEvaluation',
+  'GuardrailNotice',
+  'GuardrailPolicyRevision',
 ]);
 
 /**

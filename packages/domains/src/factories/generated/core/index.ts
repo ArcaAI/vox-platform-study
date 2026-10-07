@@ -108,3 +108,6 @@ export * from './ConsultationAttachmentFactory';
 export * from './ConsultationFeedbackFactory';
 export * from './ConsultationFeedbackDailyRollupFactory';
 export * from './AiActivityRunFactory';
+export * from './GuardrailEvaluationFactory';
+export * from './GuardrailNoticeFactory';
+export * from './GuardrailPolicyRevisionFactory';

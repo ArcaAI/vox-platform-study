@@ -18,6 +18,9 @@ import { ConsultationAttachmentRepository } from '../../../repositories/generate
 import { ConsultationFeedbackRepository } from '../../../repositories/generated/core/ConsultationFeedbackRepository';
 import { ConsultationFeedbackDailyRollupRepository } from '../../../repositories/generated/core/ConsultationFeedbackDailyRollupRepository';
 import { AiActivityRunRepository } from '../../../repositories/generated/core/AiActivityRunRepository';
+import { GuardrailEvaluationRepository } from '../../../repositories/generated/core/GuardrailEvaluationRepository';
+import { GuardrailNoticeRepository } from '../../../repositories/generated/core/GuardrailNoticeRepository';
+import { GuardrailPolicyRevisionRepository } from '../../../repositories/generated/core/GuardrailPolicyRevisionRepository';
 import { ConsultationHistoryReadRepository } from '../../../repositories/consultation-history.read-repository';
 import { ModelResidencyPolicyRepository } from '../../../repositories/generated/core/ModelResidencyPolicyRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
@@ -330,6 +333,10 @@ const repositories = [
   ConsultationFeedbackDailyRollupRepository,
   // Durable per-AI-activity run records.
   AiActivityRunRepository,
+  // TASK-1050 — guardrail evaluations (append-only), client notices, platform policy revisions.
+  GuardrailEvaluationRepository,
+  GuardrailNoticeRepository,
+  GuardrailPolicyRevisionRepository,
   // Consultation history / activity feed reads (no content columns; decrypts on demand).
   ConsultationHistoryReadRepository,
 ];

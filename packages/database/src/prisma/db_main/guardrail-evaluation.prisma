@@ -1,0 +1,173 @@
+// ============================================================================
+// TASK-1050 — guardrail evaluations, notices and platform policy revisions.
+//
+// Three append-only/side-channel tables. None carries `resourceStatus` (all
+// three are in MODELS_WITHOUT_SOFT_DELETE), and all three are tenant-scoped
+// (TENANT_SCOPED_MODELS) but NOT SYSTEM-shared reads.
+//
+// No content and no judge reasoning is ever stored in plaintext here — either
+// can quote PHI or the injection itself. The one exception is the withheld
+// output of an outbound block, which is Vault-Transit (hope-phi) ciphertext.
+// ============================================================================
+
+// One row per text-generation request × direction (§9.8.2). Written by the
+// gateway from guardrail's at-least-once outbox (`POST internal/guardrail/
+// evaluations`), idempotent on `id`: the `evaluationId` is minted by guardrail
+// BEFORE it answers, so the id is supplied by the caller and has NO default —
+// an insert that forgot it fails loudly instead of creating a duplicate.
+//
+// Raw-SQL addition (inexpressible in the Prisma DSL, see the ticket's
+// sql/w0_draft.sql): a PARTIAL index on (tenantId, at) WHERE decision <> 'ALLOW'
+// for the violation views.
+model GuardrailEvaluation {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields — identity and correlation (soft references, no FK)
+  requestId      String
+  consultationId String?
+  runId          String?
+  // Joins AiActivityRun.runKey.
+  runKey         String?
+  nodeId         String?
+  agentSlug      String?
+  // text.generate | text.translate | harness.guardrail_check | playground | governed_prompt
+  caller         String
+
+  // per direction
+  direction GuardrailDirection
+  decision  GuardrailDecision
+  // e.g. `medical_exempt:internal` — recorded rather than invisible.
+  exempt    String?
+
+  // Per-check results, no content: [{ checkId, verdict, score?, category?,
+  // confidence?, actionTaken, model, latencyMs, regionKeys[] }].
+  checks Json @db.JsonB
+
+  // audit
+  policyVersion String
+  noticeIds     String[] @default([])
+
+  // Outbound block only (§9.7.6): the withheld generation, Vault-Transit
+  // (hope-phi) ciphertext. Readable only through the admin review route.
+  encryptedWithheldContent Bytes?
+  keyVersion               Int?
+
+  // When guardrail evaluated (not when the row landed).
+  at DateTime
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, consultationId, at], name: "GuardrailEvaluation_tenant_consultation_at_idx")
+  @@index([tenantId, at], name: "GuardrailEvaluation_tenant_at_idx")
+  @@index([runKey], name: "GuardrailEvaluation_runKey_idx")
+  @@index([requestId], name: "GuardrailEvaluation_requestId_idx")
+  @@schema("core")
+}
+
+// The standard client message (`GuardrailNotice` v1, §9.7.3) plus its
+// acknowledgement/resolution state. One row per dedupe key per tenant
+// (`(consultation, checkId, itemId, policyVersion)`, composed by the writer),
+// so a live summary re-screened every few seconds raises ONE notice. OCC-
+// written (`_version`): acknowledge, resolve and approve race on it.
+model GuardrailNotice {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  // = noticeId
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields (soft references, no FK)
+  consultationId String?
+  runId          String?
+  nodeId         String?
+
+  type       GuardrailNoticeType
+  direction  GuardrailDirection
+  // warn | block
+  action     String
+  // [{ checkId, category, severity }] — no content.
+  checks     Json                @db.JsonB
+  itemIds    String[]            @default([])
+  // guardrail.warning.generic | guardrail.blocked.inbound | guardrail.blocked.outbound | …
+  messageKey String
+  // low | medium | high — the highest check severity; drives the UI weight.
+  severity   String
+
+  requiresAcknowledgement Boolean @default(false)
+  resumable               Boolean @default(false)
+  policyVersion           String
+  dedupeKey               String
+
+  // status
+  status          GuardrailNoticeStatus @default(OPEN)
+  acknowledgedBy  String?
+  acknowledgedAt  DateTime?
+  // notice | approve
+  acknowledgedVia String?
+  // item_excluded | item_edited | acknowledged
+  resolution      String?
+  resolvedBy      String?
+  resolvedAt      DateTime?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // On `@@unique`, `name:` is the client-facing compound key and `map:` is the
+  // DATABASE index name (rule 02).
+  @@unique([tenantId, dedupeKey], name: "tenantId_dedupeKey", map: "GuardrailNotice_tenantId_dedupeKey_key")
+  @@index([tenantId, consultationId, status], name: "GuardrailNotice_tenant_consultation_status_idx")
+  @@index([tenantId, runId], name: "GuardrailNotice_tenant_run_idx")
+  @@schema("core")
+}
+
+// Append-only history of every platform guardrail policy value (§11.3 B/C):
+// one row per edit, reset, restore or seed of one `_metadata.policy[key]` on a
+// SYSTEM guardrail AiModel row. Rows live in the SYSTEM tenant. `aiModelId` is
+// a soft reference (no FK). `value` is the policy value itself (criteria text
+// or a hyper-parameter) — platform configuration, never PHI.
+model GuardrailPolicyRevision {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (always SYSTEM)
+  tenantId String
+
+  // core fields
+  aiModelId              String
+  policyKey              String
+  value                  Json     @db.JsonB
+  valueHash              String
+  actorId                String
+  // edit | reset | restore | seed
+  reason                 String
+  restoredFromRevisionId String?
+  at                     DateTime @default(now())
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([aiModelId, policyKey, at], name: "GuardrailPolicyRevision_model_key_at_idx")
+  @@index([tenantId], name: "GuardrailPolicyRevision_tenantId_idx")
+  @@schema("core")
+}
