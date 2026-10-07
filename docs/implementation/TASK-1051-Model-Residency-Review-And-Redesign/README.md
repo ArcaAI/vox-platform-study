@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **In Progress** — owner go 2026-10-07 (all OD defaults); wave 0 contract committed |
+| Status | **Review** — merged on `dev-2.2` (not pushed); runtime proof + artifact regeneration pending (§7) |
 | Type | bugfix + feature (console redesign) |
 | Branch | `dev-2.2` (lanes in worktrees, merged back by the orchestrator) |
 | Builds on | TASK-1005 (residency controller), TASK-1019/1023 (failed state, status read), TASK-1031 (GPU-aware nlp) |
@@ -170,11 +170,33 @@ it locally.
 
 ## 7. Implementation summary
 
-_Pending go._
+Merged into `dev-2.2` (local only, never pushed): contract `2ea2d625a`/`59cfd6b43` → lanes `b457187e9` → artifacts `b320f1578` → review fixes `e9b17277f`/`4664e16f2` → integration `dfc53f153`, `99d30f030`.
+
+| Lane | Tier | Delivered |
+|---|---|---|
+| Wave 0 (orchestrator) | — | `runtime-key.ts`, `residency-budget.ts`, DTO/fixture additions, 4 route contracts, console types/hooks, frozen dialog props + stubs |
+| B1 | opus | runtime-key identity in the service, `POST links`, NO_SIZE admission, `load/preview`, replace rollback, standing recommendations + dismiss, readiness + `residency.shadowReviewedAt` descriptor, 4 controller routes |
+| B2 | sonnet | catalogue: identity/candidates, `kind` remote/builtin, `budgetBytes`, device attributed/unattributed/headroom/over-headroom + LM Studio per-card share, derived `runsOn`, ≤ 20 standing suggestions |
+| B3 | opus | one consumer snapshot: primary, fallback, routing, ASR pipeline stages, workflow nodes; live path = usage (OD-1) |
+| C1 | opus | overview (artboard 01): attention strip, GPU memory bars, one models table with line tabs + URL filters, recommendations rail, per-model operation tracking |
+| C2 | sonnet | drawer (02), link (03), load preview (04), unload dialog, readiness page (05) |
+| F1 | sonnet | aligned TASK-1005/1019 tests with the contract |
+| R1 / R2 | opus / sonnet | review: 9 correctness, 16 UX/a11y findings + fidelity gaps |
+| FB / FC | opus / sonnet | all 25 findings fixed (ranked key resolution incl. 409 `RUNTIME_KEY_TAKEN`, SYSTEM-only live path, no 0-byte enforce admission, honest preview/readiness, rollback, OCC link; stuck-row recovery, stale draft, reload confirm, a11y) |
+
+**Gate (orchestrator, after merge, `b320f1578`)**: api tests 5239 passed · admin-console tests 4650 passed · vox-node tests pass · api / console / vox-node typecheck clean · applications + api lint 0 errors · openapi coverage, portal and `gen:admin` checks no drift · applications tests 17957 passed, **1 failed outside this ticket** (`tenant-checkpoint/registry.completeness` — TASK-1050's three new guardrail models are not registered). Console lint had one error in `load-preview-dialog.tsx` → fixed by FC.
+**Post-review re-check (`99d30f030`)**: residency backend 216 tests, console residency 132 tests, api residency controller 15 tests pass; console typecheck + eslint clean; no residency type errors in applications.
+
+**Open (§7.1)**
+1. Regenerate the five API artifacts for the preview `refusal` enum (+`LOAD_IN_PROGRESS`, `IN_FLIGHT`) — blocked while TASK-1050 has `@arcaai/domains` failing to build (its `ContextItemType.SUMMARY` test files) and uncommitted API edits in the shared checkout; the CI drift gate will flag it until done.
+2. Runtime proof in a browser (both themes) — no local stack is running; per the owner's e2e standard it runs once, after all implementation, with the local hope stack.
+3. Lane notes: FC wrote its new tests after the code and once ran its test directory against the brief; B2 ran one whole-package typecheck. Recorded, no impact on results.
+4. Known limits: shadow counts and the 7-day clock are in-memory (reset on gateway restart); a dismissal is in-memory; the platform default speaker-embedding model is not counted as a consumer.
 
 ## 8. Change history
 
 | Date | Change |
 |---|---|
 | 2026-10-07 | Ticket opened from the live review of `/model-residency`; design canvas published; plan written (status Pending). |
+| 2026-10-07 | Wave 1 (5 lanes), integration, gate, review (R1/R2) and fix wave (FB/FC) merged into `dev-2.2`; status Review. |
 | 2026-10-07 | Owner go with all OD defaults. Wave 0 contract: `MR/runtime-key.ts` (+9 tests), `MR/residency-budget.ts` (+3 tests), catalogue/admin DTO additions, `dto/model-residency-review.dto.ts` (preview, links, dismiss, readiness), `IModelResidencyService` +4 methods, both contract fixtures extended (`$unmatchedExample`), console wire types + client + hooks, `components/residency-dialog-contracts.ts`. Deviation from §4.1: `POST load/preview` is its own route (not `dryRun` on `load`), so one route keeps one response shape; `applied` kept on suggestions. |
