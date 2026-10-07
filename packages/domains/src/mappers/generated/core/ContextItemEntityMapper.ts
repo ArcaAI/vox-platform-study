@@ -13,6 +13,13 @@ import * as Mappers from '../../../mappers';
 // otherwise leak `_version` into Prisma and silently break optimistic concurrency.
 const FIELDS_NOT_WRITABLE: string[] = ['version'];
 
+// TASK-1050 — `guardrailStatus` is a side-channel marker OUTSIDE OCC (OD-21). It is written on
+// CREATE (a WITHHELD outbound-block placeholder) but never by an entity UPDATE, which would ride
+// `updateWithVersion` and bump `_version`; its only writer afterwards is
+// `ContextItemRepository.setGuardrailStatus(Many)`. The entity has no setter, so this strip is the
+// second line of defense.
+const CHANGE_FIELDS_NOT_WRITABLE: string[] = [...FIELDS_NOT_WRITABLE, 'guardrailStatus'];
+
 function stripNonWritableFields<T extends object>(model: T, fields: string[]): T {
   for (const field of fields) {
     delete (model as Record<string, unknown>)[field];
@@ -32,7 +39,7 @@ export class ContextItemEntityMapper extends BaseMapper<Entities.ContextItemEnti
 
   public toPersistenceChanges(entity: Entities.ContextItemEntity): Partial<Models.ContextItem> {
     const result = AutoEntityChangeMapper(entity, Models.ContextItem, ContextItemEntityMapperHandlers.$toPersistence);
-    return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
+    return stripNonWritableFields(result, CHANGE_FIELDS_NOT_WRITABLE);
   }
 
   public toDomainEntity(dataModel: Models.ContextItem): Entities.ContextItemEntity {

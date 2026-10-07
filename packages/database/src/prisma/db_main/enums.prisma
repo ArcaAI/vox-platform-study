@@ -1227,3 +1227,54 @@ enum GovernedPromptVerdict {
 
   @@schema("core")
 }
+
+// TASK-1050 — which way a guardrail evaluation screened: the prompt going IN to
+// a model, or the generation coming OUT of it.
+enum GuardrailDirection {
+  INBOUND
+  OUTBOUND
+
+  @@schema("core")
+}
+
+// TASK-1050 — the resolved decision of one guardrail evaluation (one request ×
+// direction). UNVERIFIED = a check was unavailable and the run degraded rather
+// than stopped (§9.8.1); it is never a pass.
+enum GuardrailDecision {
+  ALLOW
+  WARN
+  BLOCK
+  UNVERIFIED
+
+  @@schema("core")
+}
+
+// TASK-1050 — the kind of standard client message (`GuardrailNotice` v1).
+enum GuardrailNoticeType {
+  WARNING
+  BLOCKED
+  UNVERIFIED
+
+  @@schema("core")
+}
+
+// TASK-1050 — where a notice is in its life: raised, seen by a clinician,
+// or closed by a resolution (a hold resumed, an item excluded/edited).
+enum GuardrailNoticeStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+
+  @@schema("core")
+}
+
+// TASK-1050 — the denormalised guardrail marker on a ContextItem (§9.7.4).
+// WITHHELD = an outbound-blocked placeholder that carries no content (§9.7.6).
+enum GuardrailItemStatus {
+  CLEAN
+  WARNED
+  BLOCKED
+  WITHHELD
+
+  @@schema("core")
+}

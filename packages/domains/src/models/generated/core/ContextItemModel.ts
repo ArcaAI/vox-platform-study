@@ -33,6 +33,7 @@ export class ContextItem extends BaseTenantDataModel {
   public speaker: string | null;
   public capturedAt: Date | null;
   public occurredAt: Date;
+  public guardrailStatus: Enums.GuardrailItemStatus;
   public qdrantSynced: boolean;
   public qdrantSyncedAt: Date | null;
   public resourceStatus: Enums.ResourceStatusType;
@@ -76,6 +77,7 @@ export class ContextItem extends BaseTenantDataModel {
     this.speaker = data.speaker;
     this.capturedAt = data.capturedAt;
     this.occurredAt = data.occurredAt;
+    this.guardrailStatus = data.guardrailStatus;
     this.qdrantSynced = data.qdrantSynced ?? false;
     this.qdrantSyncedAt = data.qdrantSyncedAt;
     this.resourceStatus = data.resourceStatus;

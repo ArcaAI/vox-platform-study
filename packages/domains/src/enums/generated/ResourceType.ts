@@ -185,4 +185,9 @@ export enum ResourceType {
   ConsultationFeedback = 'ConsultationFeedback',
   ConsultationFeedbackRollup = 'ConsultationFeedbackRollup',
   GovernedPromptPiece = 'GovernedPromptPiece',
+  // TASK-1050 — guardrail evaluations, notices and platform policy revisions.
+  // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  GuardrailEvaluation = 'GuardrailEvaluation',
+  GuardrailNotice = 'GuardrailNotice',
+  GuardrailPolicyRevision = 'GuardrailPolicyRevision',
 }

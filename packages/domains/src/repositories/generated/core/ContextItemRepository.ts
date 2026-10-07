@@ -5,7 +5,7 @@ import { ContextItemEntityMapper } from '../../../mappers';
 import { ContextItemEntity } from '../../../entities';
 import { ContextItem } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
-import { ResourceStatusType, ContextItemType, ContextItemSource } from '../../../enums';
+import { ResourceStatusType, ContextItemType, ContextItemSource, GuardrailItemStatus } from '../../../enums';
 import { removeNullValues } from '../../../common/removeNullValues';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { Prisma } from '@arcaai/database';
@@ -472,6 +472,33 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
         qdrantSyncedAt: new Date(),
       },
     });
+  }
+
+  // ============================================
+  // TASK-1050 — guardrail marker (outside OCC, OD-21)
+  // ============================================
+
+  /**
+   * Set the denormalised guardrail marker of one item. Writes ONLY the
+   * `guardrailStatus` column and never increments `_version`, so a background
+   * verdict never makes a clinician's open editor 412. Pass `tx` to write in
+   * the same transaction as the GuardrailEvaluation the marker derives from.
+   */
+  async setGuardrailStatus(id: string, status: GuardrailItemStatus, tx?: Prisma.TransactionClient | any): Promise<void> {
+    const delegate = tx ? (tx as Record<string, any>).contextItem : (this as any).db;
+    await delegate.update({ where: { id }, data: { guardrailStatus: status } });
+  }
+
+  /**
+   * {@link setGuardrailStatus} for many items in one write — an inbound
+   * transcript window spans many TRANSCRIPT_SEGMENT items (§9.7.4). Returns the
+   * number of rows marked; an empty list touches nothing.
+   */
+  async setGuardrailStatusMany(ids: string[], status: GuardrailItemStatus, tx?: Prisma.TransactionClient | any): Promise<number> {
+    if (ids.length === 0) return 0;
+    const delegate = tx ? (tx as Record<string, any>).contextItem : (this as any).db;
+    const { count } = await delegate.updateMany({ where: { id: { in: ids } }, data: { guardrailStatus: status } });
+    return count;
   }
 
   // ============================================

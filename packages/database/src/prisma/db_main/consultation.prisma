@@ -312,6 +312,13 @@ model ContextItem {
   capturedAt   DateTime?
   occurredAt   DateTime  @default(now())
 
+  // TASK-1050 — denormalised guardrail marker (§9.7.4), written in the same
+  // transaction as the GuardrailEvaluation it derives from. A SIDE-CHANNEL
+  // column outside OCC (OD-21): only `ContextItemRepository.setGuardrailStatus`
+  // writes it after create, and that write never bumps `_version`, so a
+  // background verdict never makes a clinician's open editor 412.
+  guardrailStatus GuardrailItemStatus @default(CLEAN)
+
   // Qdrant sync status (for semantic search). RESERVED, NO WRITER
   // Phase 0 / SOTA gap review D2): the target `context_items` Qdrant
   // collection was never actually provisioned-and-used — its provisioning
