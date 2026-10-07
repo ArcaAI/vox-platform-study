@@ -1,5 +1,6 @@
 import type {
   ModelResidencyCatalogueDevice,
+  ModelResidencyIdentity,
   ModelResidencyCatalogueModel,
   ModelResidencyCatalogueResponse,
   ModelResidencyCatalogueService,
@@ -13,6 +14,8 @@ import type {
 } from './dto';
 import {
   type CatalogueAction,
+  type CatalogueDeviceBytesSource,
+  type CatalogueModelKind,
   type CatalogueModelStatus,
   type CatalogueRefFields,
   type CatalogueRunsOn,
@@ -30,6 +33,8 @@ import {
   residencyKey,
   residencyServiceOf,
 } from './model-residency.types';
+import { budgetFor } from './residency-budget';
+import { matchesRuntimeKey, rankRuntimeKeyCandidates, runtimeKeysFor } from './runtime-key';
 import type { ModelResidencyUsageIndex } from './model-usage-index';
 
 /**
@@ -55,6 +60,8 @@ export interface CatalogueModelRow extends ServingIdentity, CatalogueRefFields {
   id: string;
   name: string;
   format: string;
+  /** TASK-1051 F3 — `AiModel.libraryName`: names a library that compiles the model in, or a cloud engine. */
+  libraryName?: string | null;
   memorySizeMb?: number | null;
   observedMemoryMb?: number | null;
   observedLoadSeconds?: number | null;
@@ -118,7 +125,8 @@ export interface CatalogueBuildInput {
   /** A MEASURED footprint when not resident (LM Studio's own measurement, else `observedMemoryMb`). */
   observedBytes(service: string, modelRef: string, model: CatalogueModelRow | undefined): number | undefined;
   observedLoadSeconds(service: string, modelRef: string, model: CatalogueModelRow | undefined): number | null;
-  recommendations: ModelResidencyRecommendation[];
+  /** Standing, non-dismissed recommendations (TASK-1051 F4); `firstSeenAt` / `repeats` fall back to `at` / 1 when absent. */
+  recommendations: Array<Omit<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'> & Partial<Pick<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'>>>;
 }
 
 const SERVICE_META: Record<(typeof CATALOGUE_SERVICES)[number], { label: string; runsOn: CatalogueRunsOn }> = {
@@ -129,8 +137,32 @@ const SERVICE_META: Record<(typeof CATALOGUE_SERVICES)[number], { label: string;
 };
 
 const STATUS_ORDER: Record<CatalogueModelStatus, number> = { loaded: 0, loading: 1, unloading: 2, failed: 3, not_loaded: 4 };
-const SUGGESTION_LIMIT = 100;
-const EMPTY_USAGE: ModelResidencyUsage = { agentCount: 0, tenantCount: 0, liveConsultation: false, uses: [] };
+const SUGGESTION_LIMIT = 20;
+const EMPTY_USAGE: ModelResidencyUsage = {
+  agentCount: 0,
+  tenantCount: 0,
+  liveConsultation: false,
+  uses: [],
+  consumers: { agents: 0, fallbacks: 0, routingPolicies: 0, pipelineStages: 0, workflowNodes: 0 },
+};
+
+/** Libraries that compile the model into themselves: nothing for HOPE to load (lower-case). */
+const BUILTIN_LIBRARIES: ReadonlySet<string> = new Set(['pyrnnoise']);
+/** Cloud API engines (matched against library, provider and format, lower-case): nothing resident. */
+const REMOTE_ENGINES: ReadonlySet<string> = new Set(['sarvam', 'azure', 'deepgram', 'openai', 'elevenlabs']);
+const BUILTIN_FAILURE_CODE = 'ModelNotCacheServedError';
+const REMOTE_FAILURE_PREFIX = 'CloudASR';
+
+function modelKind(model: CatalogueModelRow | undefined, entries: CatalogueResidentEntry[], failure?: CatalogueFailedEntry): CatalogueModelKind {
+  if (entries.length > 0) return 'resident';
+  const library = model?.libraryName?.toLowerCase();
+  if ((library && BUILTIN_LIBRARIES.has(library)) || failure?.error.code === BUILTIN_FAILURE_CODE) return 'builtin';
+  const engines = [model?.libraryName, model?.provider, model?.format].map((v) => v?.toLowerCase());
+  if (engines.some((v) => v && REMOTE_ENGINES.has(v)) || failure?.error.code.startsWith(REMOTE_FAILURE_PREFIX)) return 'remote';
+  return 'resident';
+}
+
+const onGpu = (device: string): boolean => device.startsWith('gpu') || device === 'multi' || device.startsWith('cuda');
 
 function isControlled(service: string): boolean {
   return (RESIDENCY_CONTROLLED_SERVICES as readonly string[]).includes(service);
@@ -142,19 +174,21 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
   const consumed = new Set<CatalogueResidentEntry>();
   const consumedFailures = new Set<CatalogueFailedEntry>();
   const catalogueById = new Map(input.catalogue.map((m) => [m.id, m]));
+  const entryModel = new Map<CatalogueResidentEntry, CatalogueModelRow | undefined>();
 
   // 1. Every catalogue model, under the workload that runs it.
   for (const model of input.catalogue) {
     const service = residencyServiceOf(model);
     if (!service || !groups.has(service)) continue;
     const modelRef = refFor(service, model);
-    const entries = input.entries.filter(
-      (e) => e.service === service && ((e.aiModelId !== null && e.aiModelId === model.id) || (modelRef !== null && e.modelRef === modelRef)),
-    );
-    for (const e of entries) consumed.add(e);
-    const failures = input.failed.filter(
-      (f) => f.service === service && ((f.aiModelId !== null && f.aiModelId === model.id) || (modelRef !== null && f.modelRef === modelRef)),
-    );
+    const claims = (r: { aiModelId: string | null; modelRef: string }): boolean =>
+      (r.aiModelId !== null && r.aiModelId === model.id) || matchesRuntimeKey(service, model, r.modelRef);
+    const entries = input.entries.filter((e) => e.service === service && claims(e));
+    for (const e of entries) {
+      consumed.add(e);
+      entryModel.set(e, model);
+    }
+    const failures = input.failed.filter((f) => f.service === service && claims(f));
     for (const f of failures) consumedFailures.add(f);
     const ref = modelRef ?? entries[0]?.modelRef ?? failures[0]?.modelRef ?? null;
     if (ref) names.set(residencyKey(service, ref), model.name);
@@ -172,6 +206,7 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
     const { service, modelRef, aiModelId } = entries[0];
     const model = aiModelId ? (catalogueById.get(aiModelId) ?? input.modelById(aiModelId)) : undefined;
     if (model || entries[0].aiModelName) names.set(residencyKey(service, modelRef), model?.name ?? entries[0].aiModelName!);
+    for (const e of entries) entryModel.set(e, model);
     groups.get(service)!.push(modelRow(input, service, model, modelRef, entries));
   }
 
@@ -199,7 +234,7 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
     return {
       service,
       label: SERVICE_META[service].label,
-      runsOn: SERVICE_META[service].runsOn,
+      runsOn: runsOnFor(service, input.entries),
       controllable: isControlled(service),
       // stt-worker sends no report: "reachable" is Prometheus answering at all (its residency is read from there).
       reachable: service === 'stt-worker' ? input.devices.some((d) => d.kind === 'gpu') : !input.staleServices.includes(service),
@@ -208,22 +243,48 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
     };
   });
 
+  const footprintOf = (e: CatalogueResidentEntry): { bytes: number; source: CatalogueDeviceBytesSource } | null => {
+    const model = entryModel.get(e);
+    if (e.bytes !== null && e.bytes > 0) return { bytes: e.bytes, source: e.bytesSource === 'measured' ? 'measured' : 'estimated' };
+    const observed = input.observedBytes(e.service, e.modelRef, model);
+    if (observed) return { bytes: observed, source: 'estimated' };
+    if (model?.memorySizeMb) return { bytes: model.memorySizeMb * MiB, source: 'estimated' };
+    return null;
+  };
+  const gpuDevices = input.devices.filter((d) => d.kind === 'gpu');
+  // One model split over every card (LM Studio `multi`): its footprint divided in proportion to each card's used bytes.
+  const splitShare = (footprint: number, device: { id: string }): number => {
+    const usedTotal = gpuDevices.reduce((sum, d) => sum + d.usedBytes, 0);
+    const weight = (d: { usedBytes: number }): number => (usedTotal > 0 ? d.usedBytes / usedTotal : 1 / gpuDevices.length);
+    let allocated = 0;
+    for (let i = 0; i < gpuDevices.length; i++) {
+      const share = i === gpuDevices.length - 1 ? footprint - allocated : Math.floor(footprint * weight(gpuDevices[i]));
+      if (gpuDevices[i].id === device.id) return share;
+      allocated += share;
+    }
+    return 0;
+  };
+
   const devices: ModelResidencyCatalogueDevice[] = input.devices.map((device) => {
     const seen = new Set<string>();
-    const models = [];
+    const models: ModelResidencyCatalogueDevice['models'] = [];
     for (const e of input.entries) {
-      const here = e.device === device.id || (e.device === 'multi' && device.kind === 'gpu');
+      const multi = e.device === 'multi' && device.kind === 'gpu';
+      const here = e.device === device.id || multi;
       const key = residencyKey(e.service, e.modelRef);
       if (!here || seen.has(key)) continue;
       seen.add(key);
-      models.push({
-        service: e.service,
-        modelRef: e.modelRef,
-        name: nameOf(e.service, e.modelRef),
-        // LM Studio splits one model over every card; its per-card share is not known.
-        bytes: e.device === 'multi' || e.bytesSource !== 'measured' ? null : e.bytes,
-      });
+      const footprint = footprintOf(e);
+      let bytes: number | null = null;
+      let bytesSource: CatalogueDeviceBytesSource = 'unknown';
+      if (footprint) {
+        bytes = multi ? splitShare(footprint.bytes, device) : footprint.bytes;
+        bytesSource = multi ? 'estimated' : footprint.source;
+      }
+      models.push({ service: e.service, modelRef: e.modelRef, name: nameOf(e.service, e.modelRef), bytes, bytesSource });
     }
+    const headroomBytes = Math.floor((device.totalBytes * input.headroomPercent) / 100);
+    const attributedBytes = models.reduce((sum, m) => sum + (m.bytes ?? 0), 0);
     return {
       id: device.id,
       kind: device.kind,
@@ -233,26 +294,50 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
       freeBytes: device.freeBytes,
       utilisationPercent: device.utilisationPercent,
       headroomPercent: input.headroomPercent,
+      headroomBytes,
+      overHeadroom: device.freeBytes < headroomBytes,
+      attributedBytes,
+      unattributedBytes: Math.max(0, device.usedBytes - attributedBytes),
       models,
     };
   });
 
-  const suggestions: ModelResidencySuggestion[] = input.recommendations.slice(0, SUGGESTION_LIMIT).map((r) => {
-    const entry = input.entries.find((e) => e.service === r.service && e.modelRef === r.modelRef);
-    const lastUsed = entry?.lastUsedAt ? Date.parse(entry.lastUsedAt) : NaN;
-    const idleMinutes = Number.isFinite(lastUsed) ? Math.max(1, Math.round((input.now - lastUsed) / 60_000)) : null;
-    return {
-      id: r.id,
-      at: r.at,
-      text: suggestionText(r, nameOf(r.service, r.modelRef), idleMinutes),
-      action: r.action,
-      service: r.service,
-      modelRef: r.modelRef,
-      applied: r.applied,
-    };
-  });
+  // Standing recommendations: only the most recently confirmed one per (action, service, model).
+  const latest = new Map<string, CatalogueBuildInput['recommendations'][number]>();
+  for (const r of input.recommendations) {
+    const key = `${r.action}|${r.service}|${r.modelRef}`;
+    const kept = latest.get(key);
+    if (!kept || Date.parse(r.at) > Date.parse(kept.at)) latest.set(key, r);
+  }
+  const suggestions: ModelResidencySuggestion[] = [...latest.values()]
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, SUGGESTION_LIMIT)
+    .map((r) => {
+      const entry = input.entries.find((e) => e.service === r.service && e.modelRef === r.modelRef);
+      const lastUsed = entry?.lastUsedAt ? Date.parse(entry.lastUsedAt) : NaN;
+      const idleMinutes = Number.isFinite(lastUsed) ? Math.max(1, Math.round((input.now - lastUsed) / 60_000)) : null;
+      return {
+        id: r.id,
+        at: r.at,
+        firstSeenAt: r.firstSeenAt ?? r.at,
+        repeats: r.repeats ?? 1,
+        reason: r.reason,
+        text: suggestionText(r, nameOf(r.service, r.modelRef), idleMinutes),
+        action: r.action,
+        service: r.service,
+        modelRef: r.modelRef,
+        applied: r.applied,
+      };
+    });
 
   return { mode: input.mode, reportedAt: input.reportedAt, freshness: input.freshness, devices, services, suggestions };
+}
+
+/** Where the service actually runs: any GPU-placed instance → gpu; instances all on CPU → cpu; nothing resident → the static default. */
+function runsOnFor(service: ResidencyServiceName, entries: CatalogueResidentEntry[]): CatalogueRunsOn {
+  const mine = entries.filter((e) => e.service === service);
+  if (mine.some((e) => onGpu(e.device))) return 'gpu';
+  return mine.length > 0 ? 'cpu' : SERVICE_META[service].runsOn;
 }
 
 function modelRow(
@@ -295,15 +380,41 @@ function modelRow(
     : null;
 
   const cls = input.classify(service, modelRef ?? '', aiModelId);
+  const kind = modelKind(model, entries, failure);
+  const identity = identityFor(input, service, model, modelRef, primary);
+  if (kind !== 'resident') {
+    const reason = kind === 'remote' ? 'Cloud API — nothing to hold in memory' : `Built into ${model?.libraryName ?? 'its library'} — nothing to load`;
+    return {
+      aiModelId,
+      name: model?.name ?? failure?.aiModelName ?? modelRef ?? 'Unnamed model',
+      kind,
+      slug: model?.slug ?? null,
+      modelRef,
+      format: model?.format ?? null,
+      status: 'not_loaded',
+      error: null,
+      size,
+      budgetBytes: null,
+      identity,
+      loadSeconds: null,
+      residency: null,
+      usage: aiModelId ? input.usage.get(aiModelId) : EMPTY_USAGE,
+      keepPolicy: { kind: 'on_demand', label: 'Not applicable', reason, source: 'default', policyId: null, policyVersion: null, idleTtlSeconds: null },
+      actions: [],
+    };
+  }
   return {
     aiModelId,
     name: model?.name ?? primary?.aiModelName ?? failure?.aiModelName ?? modelRef ?? 'Unnamed model',
+    kind,
     slug: model?.slug ?? null,
     modelRef,
     format: model?.format ?? null,
     status,
     error: status === 'failed' && failure ? { ...failure.error } : null,
     size,
+    budgetBytes: budgetFor(size.source === 'measured' ? size.bytes : null, model?.memorySizeMb).bytes,
+    identity,
     loadSeconds: primary?.loadSeconds ?? (modelRef !== null ? input.observedLoadSeconds(service, modelRef, model) : null) ?? null,
     residency,
     usage: aiModelId ? input.usage.get(aiModelId) : EMPTY_USAGE,
@@ -313,6 +424,24 @@ function modelRow(
       entries.some((e) => e.adminPinned),
     ),
     actions: actionsFor(service, status, modelRef, aiModelId),
+  };
+}
+
+/** Whether the reported instance is tied to a catalogue row, and if not, which rows it could be. */
+function identityFor(
+  input: CatalogueBuildInput,
+  service: ResidencyServiceName,
+  model: CatalogueModelRow | undefined,
+  modelRef: string | null,
+  primary: CatalogueResidentEntry | undefined,
+): ModelResidencyIdentity {
+  if (model) return { matched: true, runtimeKeys: runtimeKeysFor(service, model), reportedKey: primary?.modelRef ?? null, candidates: [] };
+  const rows = input.catalogue.filter((m) => residencyServiceOf(m) === service);
+  return {
+    matched: false,
+    runtimeKeys: [],
+    reportedKey: primary?.modelRef ?? null,
+    candidates: modelRef ? rankRuntimeKeyCandidates(service, modelRef, rows) : [],
   };
 }
 

@@ -563,11 +563,11 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
     expect(view.devices[0]).toMatchObject({ kind: 'gpu', label: 'GPU 0 — NVIDIA RTX 2000 Ada Generation', headroomPercent: 15 });
     expect(view.devices[0].models).toEqual(
       expect.arrayContaining([
-        { service: 'stt', modelRef: LIVE_ASR, name: 'ArcaAI Whisper ml-en', bytes: 1.5 * GiB },
-        { service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null },
+        { service: 'stt', modelRef: LIVE_ASR, name: 'ArcaAI Whisper ml-en', bytes: 1.5 * GiB, bytesSource: 'measured' },
+        { service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null, bytesSource: 'unknown' },
       ]),
     );
-    expect(view.devices[1].models).toEqual([{ service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null }]);
+    expect(view.devices[1].models).toEqual([{ service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null, bytesSource: 'unknown' }]);
   });
 
   it('stt-worker is observed, not commanded: listed, but offered no load/unload', async () => {
