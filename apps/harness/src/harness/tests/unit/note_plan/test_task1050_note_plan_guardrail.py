@@ -253,7 +253,10 @@ async def test_the_note_plan_finalizer_turns_a_refused_call_into_a_hold(monkeypa
     assert result.guardrail_hold.evaluation_ids == ["ev-1"]
     # Primed: the lead call was refused, so the second group never ran.
     assert len(text.calls) == 1
-    # Each plan call is correlated to the run, the node and the consultation.
+    # Each plan call is correlated to the run, the node and the consultation, and names the agent
+    # (round 2: `agent_slug`); the output's item is not known yet, so no `response_items`.
+    assert text.calls[0]["agent_slug"] == "casenote-finalization"
+    assert "response_items" not in text.calls[0]
     assert text.calls[0]["correlation"]["runId"] == "run-1"
     assert text.calls[0]["correlation"]["consultationId"] == _GOV_CONSULTATION
     # A hold is resumable: the consultation is not told its note failed.

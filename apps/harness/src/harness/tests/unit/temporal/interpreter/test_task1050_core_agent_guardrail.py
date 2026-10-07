@@ -254,3 +254,15 @@ class TestBlock:
         assert hold is not None
         assert guardrail_notice_problems(hold.notice) == []
         assert hold.notice["type"] == "guardrail.blocked"
+
+
+class TestAttribution:
+    @pytest.mark.asyncio
+    async def test_the_invoked_agent_is_named_and_no_response_item_is_guessed(
+        self, run_agent
+    ) -> None:
+        text = _Text()
+        await run_agent(text)
+        (call,) = text.calls
+        assert call["agent_slug"] == "clinic-summarizer"
+        assert "response_items" not in call

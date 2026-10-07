@@ -8,7 +8,7 @@ hyperparameters are omitted so the Text service applies its own defaults.
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 import httpx
@@ -64,6 +64,9 @@ GUARDRAIL_CORRELATION_HEADERS: dict[str, str] = {
     "runKey": "X-Hope-Run-Key",
     "nodeId": "X-Hope-Node-Id",
 }
+#: `GenerateRequest.agent_slug` / `response_items` wire caps (apps/text `models/requests.py`).
+_AGENT_SLUG_MAX_CHARS = 200
+_RESPONSE_ITEMS_MAX = 64
 #: The header a node re-run after an `acknowledged` hold resolution carries: proceed ONCE, at
 #: warn weight, for exactly this notice. Proposed by TASK-1050 W2f (README §9.7.5 / §9.8.1).
 GUARDRAIL_OVERRIDE_HEADER = "X-Hope-Guardrail-Override"
@@ -380,6 +383,8 @@ class TextClient:
         system_governance: Mapping[str, Any] | None = None,
         correlation: Mapping[str, str] | None = None,
         guardrail_override: str | None = None,
+        agent_slug: str | None = None,
+        response_items: Sequence[Mapping[str, Any]] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -425,6 +430,8 @@ class TextClient:
             system_governance=system_governance,
             correlation=correlation,
             guardrail_override=guardrail_override,
+            agent_slug=agent_slug,
+            response_items=response_items,
             stream=False,
         )
 
@@ -493,6 +500,8 @@ class TextClient:
         system_governance: Mapping[str, Any] | None = None,
         correlation: Mapping[str, str] | None = None,
         guardrail_override: str | None = None,
+        agent_slug: str | None = None,
+        response_items: Sequence[Mapping[str, Any]] | None = None,
     ) -> TextGenerationResult:
         """TASK-1038 R8 — the same generation as :meth:`generate`, with ``stream: true``.
 
@@ -523,6 +532,8 @@ class TextClient:
             system_governance=system_governance,
             correlation=correlation,
             guardrail_override=guardrail_override,
+            agent_slug=agent_slug,
+            response_items=response_items,
             stream=True,
         )
         headers["Accept"] = "text/event-stream"
@@ -581,6 +592,8 @@ class TextClient:
         system_governance: Mapping[str, Any] | None = None,
         correlation: Mapping[str, str] | None = None,
         guardrail_override: str | None = None,
+        agent_slug: str | None = None,
+        response_items: Sequence[Mapping[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, str]]:
         """``(url, body, headers)`` of one generate call — the ONE preparation both the blocking
         and the streaming calls use (tenant guard, credential fold, locality, PHI, headers)."""
@@ -620,6 +633,14 @@ class TextClient:
         posture = reasoning_wire(reasoning)
         if posture is not None:
             body["reasoning"] = posture
+        # TASK-1050 (W2c round 2) — attribution for guardrail's evaluation record and the judge's
+        # caller context: the agent this call runs for, and the context item(s) the response
+        # becomes. Sent only when the caller KNOWS them; a slug over the wire cap is omitted
+        # rather than cut (a truncated slug names a different agent).
+        if agent_slug and len(agent_slug) <= _AGENT_SLUG_MAX_CHARS:
+            body["agent_slug"] = agent_slug
+        if response_items:
+            body["response_items"] = [dict(item) for item in response_items][:_RESPONSE_ITEMS_MAX]
 
         # Text holds no endpoint or credential of its own (/736):
         # every adapter, LM Studio included, reads ``provider_overrides[provider]`` and
