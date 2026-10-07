@@ -13,6 +13,8 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
+import type { RunView } from '@/shared/sandbox/api/run-fold';
+import { NodeGuardrailBadge } from '@/shared/sandbox/components/run-guardrail-summary';
 import { useRunLiveEvents } from '../api/live-events';
 import { useRunTrace, useWorkflowDefinitionVersion, useWorkflowRun } from '../api/hooks';
 import { isNonTerminalRunStatus } from '../api/polling';
@@ -26,6 +28,7 @@ import { NodeRunBadge } from './node-run-badge';
 import { RunLiveActivity } from './run-live-activity';
 import { RunNodeDetailDrawer } from './run-node-detail-drawer';
 import { RunReplayScrubber } from './run-replay-scrubber';
+import { RunGuardrailPanel } from './run-guardrail-panel';
 import { RunStatusBadge } from './run-status-badge';
 import { RunTraceListView } from './run-trace-list-view';
 import { TracePrunedState } from './trace-pruned-state';
@@ -51,6 +54,8 @@ function TraceBody({ runId }: { runId: string }) {
   // Fed back by the SSE hook below once it knows its own status — see that hook's own doc
   // comment for why this two-hook wiring can't be collapsed into one call.
   const [streamDegraded, setStreamDegraded] = useState(false);
+  // TASK-1050 W3b — the protocol-v2 admin-trace fold, present only while the guardrail panel is open.
+  const [guardrailView, setGuardrailView] = useState<RunView | null>(null);
   const traceQuery = useRunTrace(runId, streamDegraded);
   const trace = traceQuery.data;
   const isLiveRun = isNonTerminalRunStatus(trace?.run.status);
@@ -245,6 +250,7 @@ function TraceBody({ runId }: { runId: string }) {
           <GateApprovalPanel run={run} />
           <FailurePanel run={run} nodes={nodes} />
           <RunLiveActivity status={live.status} events={live.events} />
+          {!tracePruned ? <RunGuardrailPanel runId={runId} onView={setGuardrailView} /> : null}
         </div>
       }
       toolbar={
@@ -320,7 +326,15 @@ function TraceBody({ runId }: { runId: string }) {
           onSelect={selectGraphNode}
           overlay={(node) => {
             const rollup = correlation.get(node.id);
-            return rollup ? <NodeRunBadge rollup={rollup} /> : null;
+            // The v2 trace keys nodes by the authored graph node id, so this match is exact.
+            const guardrailNode = guardrailView?.nodes[node.id];
+            if (!guardrailNode) return rollup ? <NodeRunBadge rollup={rollup} /> : null;
+            return (
+              <span className="flex flex-wrap items-center gap-1">
+                {rollup ? <NodeRunBadge rollup={rollup} /> : null}
+                <NodeGuardrailBadge node={guardrailNode} />
+              </span>
+            );
           }}
           aria-label={`Run trace for ${run.definitionName} v${run.workflowVersionNumber}, pinned to the immutable published version`}
         />
