@@ -104,10 +104,31 @@ class GuardTaskSpec(BaseModel):
     labels: list[str] = Field(..., min_length=1)
     multi_label: bool = Field(default=False)
     cls_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: TASK-1049 R2 — which of `labels` mean "clean". Read ONLY by the
+    #: sequence-classification runtime, which must know them to pick a text's
+    #: worst segment and to threshold its attack classes; never part of the
+    #: gliner2 task schema (guardrail applies `benignLabels` itself there).
+    benign_labels: list[str] | None = Field(
+        default=None,
+        description=(
+            "Labels that mean 'clean' (caller policy). Required by the "
+            "sequence-classification runtime; ignored by gliner2."
+        ),
+    )
 
 
 class GuardClassifyRequest(_GuardModelSelection):
     text: str = Field(..., description="Text to moderate")
+    #: TASK-1049 R2 — the resolved row's `AiModel.libraryName`, which decides the
+    #: RUNTIME: absent or `gliner2` ⇒ GLiNER2 (unchanged), `transformers` ⇒ the
+    #: sequence-classification runtime, anything else ⇒ 503.
+    library_name: str | None = Field(
+        default=None,
+        description=(
+            "Resolved AiModel.libraryName: absent/'gliner2' => GLiNER2, "
+            "'transformers' => sequence classification, other => 503."
+        ),
+    )
     tasks: dict[str, GuardTaskSpec] = Field(
         default_factory=dict,
         description="task name → label spec (caller policy). Empty ⇒ 503.",

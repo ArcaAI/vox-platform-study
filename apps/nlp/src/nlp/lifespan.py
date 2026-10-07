@@ -230,6 +230,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await reset_guard_batchers()
 
+    # TASK-1049 F10: the NER result cache holds PHI (entity surface forms);
+    # it is dropped with the process state it belongs to, never carried over.
+    from nlp.services.ner_result_cache import reset_ner_result_cache
+
+    reset_ner_result_cache()
+
     await websocket_service.shutdown()
 
     await stop_registration(app.state.service_release_task)

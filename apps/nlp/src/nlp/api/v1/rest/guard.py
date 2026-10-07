@@ -8,7 +8,9 @@ classification and the model cache (rule 06).
 Three routes, one contract each way:
 
 * ``POST /guard/pii``        — GLiNER2 entity spans, byte-exact offsets back;
-* ``POST /guard/classify``   — GLiNER2 multi-task safety moderation;
+* ``POST /guard/classify``   — GLiNER2 multi-task safety moderation, or a
+  sequence classifier when the row's ``libraryName`` is ``transformers``
+  (TASK-1049 R2, :mod:`nlp.services.seq_cls_guard`);
 * ``POST /guard/entailment`` — MiniCheck NLI, raw support probabilities back.
 
 Every one receives its model id AND its taxonomy from the caller. Fail posture,
@@ -36,6 +38,7 @@ from nlp.dependencies import (
     get_inference_bound,
     pinned_entailment_scorer,
     pinned_gliner2_guard,
+    pinned_seq_cls_guard,
 )
 from nlp.schemas.common import DeviceLabel
 from nlp.schemas.guard import (
@@ -56,6 +59,7 @@ from nlp.services.guard_dispatch import (
     pii_group_key,
 )
 from nlp.services.model_cache import ModelUnavailableError
+from nlp.services.seq_cls_guard import GLINER2_LIBRARY, SEQ_CLS_LIBRARY
 
 logger = get_logger(__name__)
 
@@ -102,6 +106,33 @@ def _require(
 async def _acquire_guard(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
     async with pinned_gliner2_guard(model_name, model_path) as service:
         yield service
+
+
+@asynccontextmanager
+async def _acquire_seq_cls_guard(
+    model_name: str, model_path: str | None = None
+) -> AsyncIterator[Any]:
+    async with pinned_seq_cls_guard(model_name, model_path) as service:
+        yield service
+
+
+def _classify_runtime(library_name: str | None) -> str:
+    """The `/guard/classify` runtime for the resolved row's `libraryName`.
+
+    Absent is GLiNER2 — every caller that predates TASK-1049 R2 sends none, and
+    its call must not change. A library this route has no runtime for is a 503:
+    guessing one would load the weights into the wrong runtime.
+    """
+    library = (library_name or "").strip().lower() or GLINER2_LIBRARY
+    if library not in (GLINER2_LIBRARY, SEQ_CLS_LIBRARY):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"/guard/classify has no runtime for libraryName {library_name!r} "
+                f"(served: {GLINER2_LIBRARY}, {SEQ_CLS_LIBRARY}) — fail-closed."
+            ),
+        )
+    return library
 
 
 @asynccontextmanager
@@ -365,6 +396,8 @@ async def guard_classify(
             detail="no classification task schema supplied; the caller owns it (fail-closed).",
         )
 
+    runtime = _classify_runtime(request.library_name)
+    seq_cls = runtime == SEQ_CLS_LIBRARY
     tasks: dict[str, Any] = {}
     for name, spec in request.tasks.items():
         entry: dict[str, Any] = {
@@ -373,19 +406,29 @@ async def guard_classify(
         }
         if spec.cls_threshold is not None:
             entry["cls_threshold"] = spec.cls_threshold
+        # Inside the entry, so the batcher's group key fingerprints it too.
+        if seq_cls and spec.benign_labels is not None:
+            entry["benign_labels"] = list(spec.benign_labels)
         tasks[name] = entry
+
+    acquire = _acquire_seq_cls_guard if seq_cls else _acquire_guard
+    # A distinct batcher slot per runtime: a batcher is bound to the service it
+    # was created with, so one slot must never be shared across runtimes.
+    slot_key = _slot_key(model_name, request.model_path)
+    if seq_cls:
+        slot_key = f"{slot_key}\x00{SEQ_CLS_LIBRARY}"
 
     lane = normalize_lane(request.latency_class)
     batch_size = batch_size_for(lane)
     device: DeviceLabel = "cpu"
     try:
-        async with _acquire_guard(model_name, request.model_path) as service:
+        async with acquire(model_name, request.model_path) as service:
             # See `guard_pii` — read once, before inference (TASK-959).
             device = getattr(service, "device", "cpu")
             async with inference_bound:
                 raw, inference_ms = await _submit_classify(
                     service,
-                    _slot_key(model_name, request.model_path),
+                    slot_key,
                     request.text,
                     tasks,
                     request.threshold,

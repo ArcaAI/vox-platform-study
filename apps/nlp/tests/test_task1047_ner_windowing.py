@@ -280,12 +280,14 @@ def test_short_text_is_one_unchanged_pass(client, monkeypatch):
     assert entity["text"] == "FEVR"
 
 
-def test_text_at_max_input_chars_is_still_one_pass(client, monkeypatch):
+def test_text_at_max_input_chars_is_windowed_at_window_chars(client, monkeypatch):
+    # TASK-1049 F10: windowing starts above ONE window (windowChars), not above
+    # maxInputChars — a text at the cap is no longer a single 8,192-char pass.
     runtime = WindowRuntime()
     _install(monkeypatch, runtime)
     text = "a" * 8192
     assert client.post("/api/v1/classify/tokens", json=_body(text)).status_code == 200
-    assert runtime.texts == [text]
+    assert runtime.texts == [text[s:e] for s, e in plan_ner_windows(text, 2000, 256)]
 
 
 def test_a_20k_text_is_windowed_rebased_and_merged(client, monkeypatch):

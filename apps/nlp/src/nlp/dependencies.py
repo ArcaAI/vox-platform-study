@@ -288,6 +288,8 @@ _CACHE_GLOBALS = (
     # Phases 3 & 6 — the guardrail-class models moved here.
     "_gliner2_guard_cache_instance",
     "_entailment_scorer_cache_instance",
+    # TASK-1049 R2 — the sequence-classification guard runtime.
+    "_seq_cls_guard_cache_instance",
 )
 
 
@@ -383,6 +385,10 @@ def reset_model_caches() -> None:
     for name in _CACHE_GLOBALS:
         globals()[name] = None
     _current_retention.clear()
+    # TASK-1049 F10: results derived from those models go with them.
+    from nlp.services.ner_result_cache import reset_ner_result_cache
+
+    reset_ner_result_cache()
 
 
 def _token_classifier_cache() -> ModelCache[TokenClassifier]:
@@ -547,6 +553,30 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
     return await get_weight_registry().get_or_load((model_name, model_path), load)
 
 
+async def _create_seq_cls_guard(cache_key: str) -> Any:
+    """The sequence-classification guard runtime (TASK-1049 R2).
+
+    Same fail-closed reference resolution as `_create_gliner2_guard` — a staged
+    path that is missing raises instead of falling through to a hub download.
+    NOT routed through the weight registry: no other cache serves these weights,
+    and a registry entry keyed only by `(model_name, model_path)` could hand a
+    GLiNER2 slot this object (or the reverse) under a misconfigured row.
+    """
+    from nlp.core.config import settings
+    from nlp.core.device import resolve_inference_device
+    from nlp.core.guard_model_reference import resolve_guard_weights_source
+    from nlp.services.seq_cls_guard import SeqClsGuardService
+
+    model_name, model_path = _split_cache_key(cache_key)
+    service = SeqClsGuardService(
+        weights_source=resolve_guard_weights_source(model_name, model_path),
+        model_id=model_name,
+        device=resolve_inference_device(settings.service.inference_device),
+    )
+    await asyncio.to_thread(service.load)
+    return service
+
+
 #: `cache_key -> EntailmentCalibration` for the load currently being requested.
 #: The cache factory receives only the slot key, but the calibration is part of
 #: the slot's IDENTITY (it is folded into the key by `_entailment_cache_key`), so
@@ -582,6 +612,14 @@ def _gliner2_guard_cache() -> ModelCache[Any]:
     return cast("ModelCache[Any]", globals()["_gliner2_guard_cache_instance"])
 
 
+def _seq_cls_guard_cache() -> ModelCache[Any]:
+    if globals().get("_seq_cls_guard_cache_instance") is None:
+        globals()["_seq_cls_guard_cache_instance"] = ModelCache(
+            factory=_create_seq_cls_guard, name="nlp_seq_cls_guard", **_retention_kwargs()
+        )
+    return cast("ModelCache[Any]", globals()["_seq_cls_guard_cache_instance"])
+
+
 def _entailment_scorer_cache() -> ModelCache[Any]:
     if globals().get("_entailment_scorer_cache_instance") is None:
         globals()["_entailment_scorer_cache_instance"] = ModelCache(
@@ -597,6 +635,24 @@ async def pinned_gliner2_guard(
     """Resolve + lazily load + pin the GLiNER2 guard runtime for one request."""
     key = _model_cache_key(model_name, model_path)
     cache = _gliner2_guard_cache()
+    await cache.pin(key)
+    try:
+        try:
+            service = await cache.get(key)
+        except Exception as e:
+            raise ModelUnavailableError(str(e)) from e
+        yield service
+    finally:
+        await cache.unpin(key)
+
+
+@asynccontextmanager
+async def pinned_seq_cls_guard(
+    model_name: str, model_path: str | None = None
+) -> AsyncIterator[Any]:
+    """Resolve + lazily load + pin the sequence-classification guard for one request."""
+    key = _model_cache_key(model_name, model_path)
+    cache = _seq_cls_guard_cache()
     await cache.pin(key)
     try:
         try:

@@ -32,7 +32,7 @@ from nlp.services.external_text_client import (
 )
 from nlp.services.gliner_token_classifier import ExtractorLabelsUnavailable
 from nlp.services.model_cache import ModelUnavailableError
-from nlp.services.ner_windowing import classify_tokens_windowed
+from nlp.services.ner_windowing import classify_tokens_windowed, needs_windowing, run_ner_pass
 
 logger = get_logger(__name__)
 
@@ -216,6 +216,7 @@ async def classify_text_multi_label(
 @router.post("/tokens", response_model=TokenClassificationResponse)
 async def classify_tokens(
     request: TokenClassificationRequest,
+    http_request: Request,
     inference_bound: ResizableSemaphore = Depends(get_inference_bound),
 ) -> TokenClassificationResponse:
     """
@@ -226,13 +227,17 @@ async def classify_tokens(
     """
     # model_name (gateway-injected AiModel.sourceUri) is required;
     # a missing/unloadable model fails closed with HTTP 503.
-    # FC-8a (OD-10): above maxInputChars this route windows the text server-side
-    # (callers send whole transcripts); only above nlp.ner.maxRequestChars is it 413.
+    # FC-8a (OD-10): this route windows long text server-side (callers send
+    # whole transcripts); only above nlp.ner.maxRequestChars is it 413.
     bounds = get_bounds()
-    # A text within maxInputChars is always served in one pass, whatever maxRequestChars says.
+    # A text within maxInputChars is never refused, whatever maxRequestChars says.
     request_cap = max(bounds.ner_max_request_chars, bounds.max_input_chars)
     enforce_input_cap("classify_tokens", request.text, limit=request_cap)
-    windowed = len(request.text) > bounds.max_input_chars
+    # TASK-1049 F10: windowed as soon as it is longer than ONE window, not only
+    # above maxInputChars — otherwise nlp.ner.windowChars never bit below 8,192.
+    windowed = needs_windowing(request.text)
+    # The NER result cache is tenant-keyed; callers send X-Tenant-Id on this hop.
+    tenant_id = http_request.headers.get(TENANT_HEADER)
     if not request.model_name:
         raise HTTPException(status_code=503, detail="Token classification model not available")
 
@@ -245,11 +250,12 @@ async def classify_tokens(
 
             if windowed:
                 # Each window takes the inference bound itself, one at a time.
-                result = await classify_tokens_windowed(service, request, inference_bound)
+                result = await classify_tokens_windowed(
+                    service, request, inference_bound, tenant_id
+                )
             else:
-                # Bound concurrent inference.
-                async with inference_bound:
-                    result = await service.process(request)
+                # Bound concurrent inference (a cache hit takes no bound).
+                result = await run_ner_pass(service, request, inference_bound, tenant_id)
             logger.info("nlp.classify.tokens_done", entity_count=len(result.entities))
             return result
     except ExtractorLabelsUnavailable as e:

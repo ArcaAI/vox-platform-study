@@ -20,6 +20,12 @@ descriptors that serve them are registered by lane L8.
   text above ``maxInputChars`` server-side (:mod:`nlp.services.ner_windowing`)
   and answers 413 only above ``maxRequestChars``. ``windowChars +
   windowOverlapChars`` must stay <= ``maxInputChars`` (:func:`resolve_ner_window`).
+  TASK-1049 F10: a text is windowed as soon as it is longer than ONE window
+  (``windowChars``), not only above ``maxInputChars``.
+* ``nlp.ner.resultCacheTtlSeconds`` / ``nlp.ner.resultCacheMaxEntries`` ->
+  TASK-1049 F10: the tenant-keyed NER result cache
+  (:mod:`nlp.services.ner_result_cache`). Tuning knobs, open-to-default: until a
+  descriptor serves them the defaults below apply; ``0`` for either disables it.
 
 THREAD PRECEDENCE. ``configure_torch_threading`` (``torch_runtime.py``) sizes the
 pools once, at boot, from ``OMP_NUM_THREADS`` > ``NLP_TORCH_NUM_THREADS`` >
@@ -66,6 +72,11 @@ class InferenceBounds:
     ner_max_request_chars: int = 200000
     ner_window_chars: int = 2000
     ner_window_overlap_chars: int = 256
+    # TASK-1049 F10. 600 s matches the model-cache idle TTL default; 1,024
+    # entries is ~ one 2,000-char window per entry, about 40 consultations' worth of
+    # transcript + note windows, a few MB of entity lists.
+    ner_result_cache_ttl_seconds: int = 600
+    ner_result_cache_max_entries: int = 1024
 
 
 _lock = threading.Lock()
@@ -129,6 +140,8 @@ def apply_snapshot(snapshot: EffectiveConfigSnapshot) -> InferenceBounds:
         ("ner_max_request_chars", "nlp.ner.maxRequestChars", False),
         ("ner_window_chars", "nlp.ner.windowChars", False),
         ("ner_window_overlap_chars", "nlp.ner.windowOverlapChars", True),
+        ("ner_result_cache_ttl_seconds", "nlp.ner.resultCacheTtlSeconds", True),
+        ("ner_result_cache_max_entries", "nlp.ner.resultCacheMaxEntries", True),
     )
     changes: dict[str, int] = {}
     for attr, key, allow_zero in mapping:
