@@ -239,14 +239,28 @@ export class GuardrailEvaluationIngestService extends BaseService {
 
   // ── item marking ──────────────────────────────────────────────────────────────────────────
 
-  /** The strongest marker each screened item earned (warn → WARNED, block → BLOCKED). */
+  /**
+   * The strongest marker each FLAGGED item earned (warn → WARNED, block → BLOCKED). A check's `items`
+   * are every item its regions COVERED; when the record carries a notice for the check, only the items
+   * that notice names were flagged (an instruction-region flag names none). A check no notice names —
+   * a TEXT- or harness-minted record — keeps marking what it covered.
+   */
   private markTargets(records: readonly GuardrailEvaluationRecord[]): Map<string, MarkTarget> {
     const targets = new Map<string, MarkTarget>();
     for (const record of records) {
+      const flaggedByCheck = new Map<string, Set<string>>();
+      for (const notice of record.notices ?? []) {
+        for (const noticeCheck of notice.checks) {
+          const flagged = flaggedByCheck.get(noticeCheck.checkId) ?? new Set<string>();
+          for (const itemId of notice.itemIds) flagged.add(itemId);
+          flaggedByCheck.set(noticeCheck.checkId, flagged);
+        }
+      }
       for (const check of record.checks) {
         const status = check.actionTaken === 'block' ? GuardrailItemStatus.BLOCKED : check.actionTaken === 'warn' ? GuardrailItemStatus.WARNED : null;
         if (!status) continue;
-        for (const ref of check.items ?? []) {
+        const flagged = flaggedByCheck.get(check.checkId);
+        for (const ref of (check.items ?? []).filter((one) => !flagged || flagged.has(one.itemId))) {
           const prior = targets.get(ref.itemId);
           if (prior && prior.version !== ref.itemVersion) {
             // Two versions of one item in one batch: the newer screen speaks for the item.

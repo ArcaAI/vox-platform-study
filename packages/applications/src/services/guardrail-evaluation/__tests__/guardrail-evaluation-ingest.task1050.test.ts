@@ -297,6 +297,37 @@ describe('GuardrailEvaluationIngestService.ingest — item marking', () => {
     expect(h.contextItems.setGuardrailStatusMany).not.toHaveBeenCalled();
   });
 
+  it('marks only the items the check`s notice names — a block on the system region marks no transcript item (e2e S1)', async () => {
+    const h = makeHarness({
+      items: [
+        { id: SEG, tenantId: TENANT, consultationId: CONSULTATION, currentVersionNumber: 2 },
+        { id: SEG2, tenantId: TENANT, consultationId: CONSULTATION, currentVersionNumber: 1 },
+      ],
+    });
+    const r = record();
+    const systemBlock = blockNotice({ checks: [{ checkId: 'jailbreak_detection', category: 'MALICIOUS', severity: 'high' }], itemIds: [] });
+    const segBlock = blockNotice({
+      noticeId: '01927f6e-9999-7000-8000-0000000000cc',
+      checks: [{ checkId: 'prompt_safety', category: 'unsafe', severity: 'high' }],
+      itemIds: [SEG2],
+    });
+    const covered = [{ itemId: SEG, itemVersion: 2 }, { itemId: SEG2, itemVersion: 1 }];
+    await h.service.ingest(TENANT, {
+      evaluations: [
+        record({
+          decision: 'block',
+          noticeIds: [systemBlock.noticeId, segBlock.noticeId],
+          notices: [systemBlock, segBlock],
+          checks: [
+            { ...r.checks[0], checkId: 'jailbreak_detection', actionTaken: 'block', regionKeys: ['system', 'transcript'], items: covered },
+            { ...r.checks[0], checkId: 'prompt_safety', actionTaken: 'block', regionKeys: ['system', 'transcript'], items: covered },
+          ],
+        }),
+      ],
+    });
+    expect(h.contextItems.setGuardrailStatusMany.mock.calls.map(([ids, status]) => [ids, status])).toEqual([[[SEG2], GuardrailItemStatus.BLOCKED]]);
+  });
+
   it('marks the source items of an inbound block BLOCKED, the strongest action per item', async () => {
     const h = makeHarness({
       items: [
