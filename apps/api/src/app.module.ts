@@ -116,6 +116,7 @@ import { PlatformMetricsModule } from './modules/platform-metrics/platform-metri
 import { AiModelModule } from './modules/ai-model/ai-model.module';
 import { InferenceEnginesModule } from './modules/inference-engines/inference-engines.module';
 import { ModelResidencyModule } from './modules/model-residency/model-residency.module';
+import { GuardrailPolicyModule } from './modules/guardrail-policy/guardrail-policy.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
 import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/pstudio.module';
 import { PrismaStudioStatusModule } from './modules/pstudio/pstudio-status.module';
@@ -464,6 +465,7 @@ const featureModules: any[] = [
   // recommendations). Platform-admin only; shares InferenceEnginesModule's
   // LM Studio client so both surfaces hold one load lock per engine.
   ModelResidencyModule,
+  GuardrailPolicyModule,
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
   // instruction content — separate subject from AiRoutingPolicy). The
   // /admin/ai-task-defaults surface this module used to carry was retired by TASK-881.
