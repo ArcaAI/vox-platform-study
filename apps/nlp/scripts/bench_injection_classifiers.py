@@ -132,6 +132,8 @@ class RssGuard:
         swap_reader=None,
         max_swap_growth_mib: float = float("inf"),
         swap_needs_sys_below_pct: float = 100.0,
+        pressure_reader=None,
+        max_pressure_level: int = 1,
     ) -> None:
         self.ceiling_mib = ceiling_mib
         self.reader = reader
@@ -143,6 +145,8 @@ class RssGuard:
         # Swap growth alone is noise on macOS (it reshuffles > 1 GiB with memory plentiful);
         # it counts only while system available memory is also below this.
         self.swap_needs_sys_below_pct = swap_needs_sys_below_pct
+        self.pressure_reader = pressure_reader
+        self.max_pressure_level = max_pressure_level
         self._swap_base: float | None = None
         self.peak_mib = 0.0
         self.reason = ""
@@ -159,6 +163,10 @@ class RssGuard:
                 self._swap_base = swap
             swap_growth = swap - self._swap_base
         reasons = []
+        if self.pressure_reader is not None:
+            level = self.pressure_reader()
+            if level is not None and level > self.max_pressure_level:
+                reasons.append(f"kernel memory pressure level {level} (warn+)")
         if rss > self.ceiling_mib:
             reasons.append(f"rss {rss:.0f} MiB > {self.ceiling_mib:.0f}")
         if sys_free < self.min_sys_free_pct:
@@ -194,6 +202,23 @@ def _swap_used_mib() -> float:
     return psutil.swap_memory().used / (1024 * 1024)
 
 
+def _kernel_pressure_level() -> int | None:
+    """macOS `kern.memorystatus_vm_pressure_level`: 1 normal, 2 warn, 4 critical."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        out = subprocess.run(
+            ["sysctl", "-n", "kern.memorystatus_vm_pressure_level"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        ).stdout.strip()
+        return int(out) if out else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
 def _guard(a: argparse.Namespace) -> RssGuard:
     guard = RssGuard(
         ceiling_mib=a.max_rss_mib,
@@ -204,6 +229,8 @@ def _guard(a: argparse.Namespace) -> RssGuard:
         swap_reader=_swap_used_mib,
         max_swap_growth_mib=a.max_swap_growth_mib,
         swap_needs_sys_below_pct=30.0,
+        pressure_reader=_kernel_pressure_level,
+        max_pressure_level=1,
     )
     return guard
 
@@ -635,7 +662,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--granularity", choices=("window", "line"), default="window")
     s.add_argument("--max-rss-mib", type=float, default=4608)
     s.add_argument("--min-free-pct", type=int, default=35)
-    s.add_argument("--min-sys-free-pct", type=float, default=15.0)
+    # last-resort floor; the primary system stop is the kernel pressure level (macOS)
+    s.add_argument("--min-sys-free-pct", type=float, default=5.0)
     s.add_argument("--max-swap-growth-mib", type=float, default=1024)
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_score)
@@ -648,7 +676,7 @@ def build_parser() -> argparse.ArgumentParser:
     lt.add_argument("--out", required=True)
     lt.add_argument("--max-rss-mib", type=float, default=4608)
     lt.add_argument("--min-free-pct", type=int, default=35)
-    lt.add_argument("--min-sys-free-pct", type=float, default=15.0)
+    lt.add_argument("--min-sys-free-pct", type=float, default=5.0)
     lt.add_argument("--max-swap-growth-mib", type=float, default=1024)
     lt.set_defaults(fn=cmd_latency)
     la = sub.add_parser("latency-all")

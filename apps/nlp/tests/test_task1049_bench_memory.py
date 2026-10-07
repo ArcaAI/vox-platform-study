@@ -231,3 +231,21 @@ def test_score_line_granularity_writes_a_separate_result(tmp_path, monkeypatch) 
     assert (scores / "fake@line.jsonl").exists()
     meta = json.loads((scores / "fake@line.meta.json").read_text())
     assert meta["name"] == "fake@line" and meta["granularity"] == "line"
+
+
+def test_guard_stops_on_kernel_memory_pressure_warn() -> None:
+    # macOS's own signal (kern.memorystatus_vm_pressure_level: 1 normal, 2 warn, 4 critical).
+    # psutil "available" dips when LM Studio mmaps a 4.5 GB weight file while the kernel
+    # still reports normal (2026-10-07), so pressure, not that metric, is the primary stop.
+    fired: list[float] = []
+    levels = iter([1, 1, 2, 4])
+    guard = bench.RssGuard(
+        ceiling_mib=100_000,
+        reader=lambda: 500.0,
+        on_exceed=fired.append,
+        pressure_reader=lambda: next(levels),
+        max_pressure_level=1,
+    )
+    for _ in range(4):
+        guard.check()
+    assert fired == [500.0] and "pressure" in guard.reason
