@@ -1126,16 +1126,16 @@
         "illicit_synthesis"
       ],
       "Criminal Planning/Confessions": [
-        "adjacent",
-        "other_harm"
+        "criterion",
+        "criminal_planning"
       ],
       "Fraud/Deception": [
-        "adjacent",
-        "other_harm"
+        "criterion",
+        "criminal_planning"
       ],
       "Malware": [
-        "adjacent",
-        "other_harm"
+        "criterion",
+        "criminal_planning"
       ],
       "Illegal Activity": [
         "adjacent",
@@ -1145,6 +1145,22 @@
         "adjacent",
         "other_harm"
       ]
+    },
+    "topup": {
+      "_comment": "OD-43: thin categories are topped up from REAL Aegis 2.0 prompts (validation, then train), never templated harmful text.",
+      "target": 60,
+      "splits": [
+        "validation",
+        "train"
+      ],
+      "hazards": {
+        "self_harm_instructions": [
+          "Suicide and Self Harm"
+        ],
+        "abuse": [
+          "Sexual (minor)"
+        ]
+      }
     }
   },
   "iu_negative": {
