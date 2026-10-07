@@ -81,7 +81,17 @@
     "classSource": ["policy", "implicit-live-path", "default"],
     "recommendationAction": ["load", "unload", "pin", "unpin"],
     "recommendationReason": ["idle_ttl_expired", "promotion_rate", "live_path_pin", "make_room", "admission_rejected"],
-    "errorCode": ["IN_FLIGHT", "LOAD_FAILED", "LOAD_IN_PROGRESS", "MODEL_UNKNOWN", "OPTIONS_UNSUPPORTED", "OVER_BUDGET", "SERVICE_UNREACHABLE"],
+    "errorCode": [
+      "IN_FLIGHT",
+      "LOAD_FAILED",
+      "LOAD_IN_PROGRESS",
+      "MODEL_UNKNOWN",
+      "OPTIONS_UNSUPPORTED",
+      "OVER_BUDGET",
+      "SERVICE_UNREACHABLE",
+      "NO_SIZE",
+      "SERVICE_MISMATCH"
+    ],
     "loadOutcome": ["accepted", "already_loaded"],
     "operationStatus": ["running", "succeeded", "failed"],
     "readinessCheck": [

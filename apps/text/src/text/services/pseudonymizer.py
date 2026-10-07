@@ -17,12 +17,23 @@ Two sources, one pass per text:
 Where the two overlap, one replacement wins (known value first, then the longer
 span), so a value is never tokenised twice.
 
+Round trip (TASK-1050 P-F1). ``restore(pseudonymize(text)) == text`` exactly:
+
+* every occurrence's own spelling is remembered BY POSITION in the masked text this
+  object produced, so case and whitespace variants that share one token come back
+  as written. Text the model wrote is not a masked source: there, a token restores
+  to the first spelling seen;
+* a token is never minted if it already occurs in the request's source text (every
+  segment, given up front as ``sources``, plus the text being masked): the counter
+  skips it, so a literal ``[PERSON_1]`` in the source stays a literal both ways.
+
 The token → value map lives on this object and nowhere else: it is never logged,
 never cached and never serialised, and it dies with the request.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import Counter
 from collections.abc import Iterable
@@ -57,10 +68,16 @@ def _value_pattern(value: str) -> re.Pattern[str]:
     return re.compile(r"(?<!\w)" + r"\s+".join(parts) + r"(?!\w)", re.IGNORECASE)
 
 
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 class Pseudonymizer:
     """Mints, applies and reverses the tokens of ONE request."""
 
-    def __init__(self, known_phi: Iterable[tuple[str, str]]) -> None:
+    def __init__(
+        self, known_phi: Iterable[tuple[str, str]], *, sources: Iterable[str] = ()
+    ) -> None:
         # Longest value first, so "John Doe" wins over a known "John".
         self._known = sorted(
             ((label, value) for label, value in known_phi if value.strip()),
@@ -71,6 +88,13 @@ class Pseudonymizer:
         self._token_by_key: dict[tuple[str, str], str] = {}
         self._value_by_token: dict[str, str] = {}
         self._counter: Counter[str] = Counter()
+        #: Token-shaped strings already in the source text: never minted.
+        self._reserved: set[str] = set()
+        for source in sources:
+            self._reserve(source)
+        #: Masked text this object produced (by digest) -> ``(start, end, surface)`` of
+        #: each token in it, so restoring it gives every occurrence its own spelling.
+        self._placements: dict[str, list[tuple[int, int, str]]] = {}
         #: Detections by taxonomy label, counted whether or not they are replaced.
         self.detected: Counter[str] = Counter()
         #: Occurrences replaced by a token.
@@ -108,34 +132,65 @@ class Pseudonymizer:
 
     # -- pseudonymize / restore -------------------------------------------------
 
+    def _reserve(self, text: str) -> None:
+        self._reserved.update(match.group(0) for match in TOKEN_PATTERN.finditer(text or ""))
+
     def _token(self, label: str, value: str) -> str:
         key = (token_label(label), _normalise(value))
         token = self._token_by_key.get(key)
         if token is None:
-            self._counter[key[0]] += 1
-            token = f"[{key[0]}_{self._counter[key[0]]}]"
+            while True:
+                self._counter[key[0]] += 1
+                token = f"[{key[0]}_{self._counter[key[0]]}]"
+                if token not in self._reserved:
+                    break
             self._token_by_key[key] = token
             self._value_by_token[token] = value
         return token
 
     def pseudonymize(self, text: str, spans: Iterable[Span]) -> str:
         """``text`` with every detected identifier replaced by its token."""
+        self._reserve(text)
         intervals = self._intervals(text, spans)
         if not intervals:
             return text
         out: list[str] = []
+        placements: list[tuple[int, int, str]] = []
+        length = 0
         cursor = 0
         for start, end, label in intervals:
             out.append(text[cursor:start])
-            out.append(self._token(label, text[start:end]))
+            length += start - cursor
+            surface = text[start:end]
+            token = self._token(label, surface)
+            out.append(token)
+            placements.append((length, length + len(token), surface))
+            length += len(token)
             cursor = end
             self.detected[label] += 1
             self.redacted += 1
         out.append(text[cursor:])
-        return "".join(out)
+        masked = "".join(out)
+        self._placements[_digest(masked)] = placements
+        return masked
 
     def restore(self, text: str) -> tuple[str, int]:
-        """``text`` with this request's tokens replaced by their values, and how many."""
+        """``text`` with this request's tokens replaced by their values, and how many.
+
+        A masked text this object produced is restored by position, each occurrence
+        to its own spelling; any other text (what the model wrote) token by token.
+        """
+        placements = self._placements.get(_digest(text)) if self._placements else None
+        if placements is not None:
+            out: list[str] = []
+            cursor = 0
+            for start, end, surface in placements:
+                out.append(text[cursor:start])
+                out.append(surface)
+                cursor = end
+            out.append(text[cursor:])
+            return "".join(out), len(placements)
+
         restored = 0
 
         def _swap(match: re.Match[str]) -> str:

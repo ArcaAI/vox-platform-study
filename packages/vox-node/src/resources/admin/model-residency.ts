@@ -13,12 +13,17 @@ import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
 import type {
   CreateModelResidencyPolicyRequest,
+  DismissModelResidencySuggestionResponse,
+  LinkModelResidencyRuntimeKeyRequest,
+  LinkModelResidencyRuntimeKeyResponse,
   LoadModelResidencyRequest,
   ModelResidencyCatalogueResponse,
+  ModelResidencyLoadPreviewResponse,
   ModelResidencyLoadResponse,
   ModelResidencyOperationResponse,
   ModelResidencyPinResponse,
   ModelResidencyPolicyResponse,
+  ModelResidencyReadinessResponse,
   ModelResidencyUnloadResponse,
   ModelResidencyViewResponse,
   PinModelResidencyRequest,
@@ -34,7 +39,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller ModelResidencyController
- * (10 routes). Several controllers sharing one scope share one
+ * (14 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -74,6 +79,23 @@ export class AdminModelResidencyResource extends AdminResource {
   }
 
   /**
+   * Confirm which catalogue model a runtime key is
+   *
+   * Records that the key a service REPORTS for a resident instance (exactly as reported, e.g. LM Studio`s `gemma-4-e2b-it-qat@q4_0`) is this SYSTEM catalogue model. Stored on the model (`_metadata.residency.runtimeKeys`, de-duplicated) and matched exactly from the next read on, so the instance stops showing as unknown and is never loaded a second time. Audited. Answers every key the model is now recognised under (its catalogue ref first).
+   *
+   * `POST /api/v1/admin/model-residency/links` — `ModelResidencyController.link`.
+   */
+  link(body: LinkModelResidencyRuntimeKeyRequest, options: AdminRequestOptions = {}): Promise<LinkModelResidencyRuntimeKeyResponse> {
+    return this.request<LinkModelResidencyRuntimeKeyResponse>({
+      method: 'POST',
+      path: 'admin/model-residency/links',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Load a model on stt, nlp or LM Studio (asynchronous)
    *
    * ASYNCHRONOUS: answers 202 with an operation id as soon as the load is admitted, because a 5 GB LLM takes ~100 s — past the edge timeout of a browser request. Poll `GET operations/:operationId`, or watch the model`s `state` go `loading` → `loaded` in `GET`. A model already resident answers 200 `already_loaded` and creates no operation. Loads are serialised per PHYSICAL GPU across every service (an LM Studio load holds both cards) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that does not fit the measured free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty `reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation. `options` (LM Studio REST v1 documented keys only) are accepted for `lm-studio` alone (400 `OPTIONS_UNSUPPORTED`); `replace: true` unloads then reloads as ONE operation.
@@ -84,6 +106,23 @@ export class AdminModelResidencyResource extends AdminResource {
     return this.request<ModelResidencyLoadResponse>({
       method: 'POST',
       path: 'admin/model-residency/load',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Preview a model load without doing it (dry-run admission)
+   *
+   * Runs EXACTLY the admission arithmetic of `POST load` and changes nothing — no command is sent, no operation, recommendation or audit record is created. Answers where the model would land, what admission reserves for it (`needBytes`: the measured footprint, else the catalogue size × 1.2; `null` = no size known), the device`s free memory, the `residency.headroomPercent` reserve, the memory no resident model accounts for, the shortfall, and what an un-forced load would answer (`refusal`: `ALREADY_LOADED`, `NO_SIZE`, `OVER_BUDGET`, or `null` = admitted). `evictable` lists the idle, unpinned on-demand models on the same device, largest first; `pinned` the resident models that will not be offered, with the reason. Same body as `POST load`.
+   *
+   * `POST /api/v1/admin/model-residency/load/preview` — `ModelResidencyController.previewLoad`.
+   */
+  previewLoad(body: LoadModelResidencyRequest, options: AdminRequestOptions = {}): Promise<ModelResidencyLoadPreviewResponse> {
+    return this.request<ModelResidencyLoadPreviewResponse>({
+      method: 'POST',
+      path: 'admin/model-residency/load/preview',
       body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
@@ -191,6 +230,38 @@ export class AdminModelResidencyResource extends AdminResource {
       path: `admin/model-residency/policies/${encodePathSegment(String(id))}`,
       body,
       ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read the enforce-readiness checklist
+   *
+   * Read-only: what must be true before `residency.enforce` is turned on — shadow review recorded (`residency.shadowReviewedAt`), every resident instance matched to a catalogue model, every GPU inside its headroom, decision state shared across gateway replicas, seven days of shadow observation, complete usage, budgeted never-measured models, audited actions — each with its evidence, plus the shadow decision counts since this gateway process started. The switch itself stays the `residency.enforce` setting.
+   *
+   * `GET /api/v1/admin/model-residency/readiness` — `ModelResidencyController.readiness`.
+   */
+  readiness(options: AdminRequestOptions = {}): Promise<ModelResidencyReadinessResponse> {
+    return this.request<ModelResidencyReadinessResponse>({
+      method: 'GET',
+      path: 'admin/model-residency/readiness',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Dismiss a standing residency recommendation
+   *
+   * Hides the recommendation until the controller reaches a DIFFERENT conclusion for that model (then it may show again). Recommendations and dismissals are kept in the gateway`s memory, per process (shadow mode); a restart clears both. Audited.
+   *
+   * `POST /api/v1/admin/model-residency/suggestions/{id}/dismiss` — `ModelResidencyController.dismissSuggestion`.
+   */
+  dismissSuggestion(id: string, options: AdminRequestOptions = {}): Promise<DismissModelResidencySuggestionResponse> {
+    return this.request<DismissModelResidencySuggestionResponse>({
+      method: 'POST',
+      path: `admin/model-residency/suggestions/${encodePathSegment(String(id))}/dismiss`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

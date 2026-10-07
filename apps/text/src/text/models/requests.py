@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     SecretStr,
     ValidationError,
@@ -182,6 +183,33 @@ class KnownPhi(BaseModel):
         return f"KnownPhi(label={self.label!r})"
 
     __str__ = __repr__
+
+
+class RegionItemRef(BaseModel):
+    """One context item behind a guardrail region, at the version sent (TASK-1050).
+
+    The frozen ``GuardrailEvaluationItemRef`` shape (``itemId`` / ``itemVersion``);
+    the snake-case names are accepted too. A violation belongs to a VERSION
+    (README §9.7.4), so guardrail stamps both on its evaluation record.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    item_id: str = Field(..., alias="itemId", min_length=1, max_length=128)
+    item_version: int = Field(..., alias="itemVersion", ge=0)
+
+
+def region_items_wire(
+    region_items: dict[str, list[RegionItemRef]] | None,
+) -> dict[str, list[dict[str, Any]]] | None:
+    """``region_items`` as guardrail takes them on a region: ``{key: [{itemId, itemVersion}]}``."""
+    if not region_items:
+        return None
+    return {
+        key: [{"itemId": ref.item_id, "itemVersion": ref.item_version} for ref in refs]
+        for key, refs in region_items.items()
+        if refs
+    }
 
 
 #: The provider locality the caller stamps (`core/locality.py` decides).
@@ -375,6 +403,10 @@ class GenerateRequest(BaseModel):
     # `system_prompt` against the governed-prompt registry. Verified by digest in
     # `services/egress.verify_system_governance`; never trusted on presence alone.
     system_governance: SystemGovernance | None = None
+    # TASK-1050 — the context items behind each guardrail region, keyed by region key
+    # (an ``EXTERNAL_DATA`` section name, ``user`` or ``system``). Passed through on the
+    # screen / validate regions; absent ⇒ regions carry no items.
+    region_items: dict[str, list[RegionItemRef]] | None = Field(default=None, max_length=256)
 
     @field_validator("system_governance", mode="wrap")
     @classmethod

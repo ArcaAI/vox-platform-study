@@ -5,6 +5,7 @@ import { Reflector } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   API_KEY_FORBIDDEN,
+  LinkModelResidencyRuntimeKeyRequest,
   LoadModelResidencyRequest,
   PinModelResidencyRequest,
   REQUIRED_PERMISSIONS_KEY,
@@ -61,6 +62,11 @@ const ROUTES: Array<[string, RequestMethod, string, 'read' | 'manage']> = [
   ['createPolicy', RequestMethod.POST, 'policies', 'manage'],
   ['updatePolicy', RequestMethod.PATCH, 'policies/:id', 'manage'],
   ['deletePolicy', RequestMethod.DELETE, 'policies/:id', 'manage'],
+  // TASK-1051
+  ['previewLoad', RequestMethod.POST, 'load/preview', 'manage'],
+  ['link', RequestMethod.POST, 'links', 'manage'],
+  ['dismissSuggestion', RequestMethod.POST, 'suggestions/:id/dismiss', 'manage'],
+  ['readiness', RequestMethod.GET, 'readiness', 'read'],
 ];
 
 describe('ModelResidencyController (TASK-1005)', () => {
@@ -139,6 +145,38 @@ describe('ModelResidencyController (TASK-1005)', () => {
   it('unload and pin answer 200', () => {
     expect(Reflect.getMetadata(HTTP_CODE_METADATA, proto.unload)).toBe(HttpStatus.OK);
     expect(Reflect.getMetadata(HTTP_CODE_METADATA, proto.pin)).toBe(HttpStatus.OK);
+  });
+
+  describe('TASK-1051 routes', () => {
+    it('preview, links and dismiss answer 200 and delegate; readiness delegates', async () => {
+      for (const handler of ['previewLoad', 'link', 'dismissSuggestion']) {
+        expect(Reflect.getMetadata(HTTP_CODE_METADATA, proto[handler]), handler).toBe(HttpStatus.OK);
+      }
+      const service = {
+        previewLoad: vi.fn().mockResolvedValue({ fits: true }),
+        linkRuntimeKey: vi.fn().mockResolvedValue({ runtimeKeys: [] }),
+        dismissSuggestion: vi.fn().mockResolvedValue({ id: 's1', dismissed: true }),
+        getReadiness: vi.fn().mockResolvedValue({ mode: 'shadow' }),
+      };
+      const controller = new ModelResidencyController(service as never);
+      const body = { service: 'stt' as const, modelRef: 'x' };
+      await expect(controller.previewLoad(body)).resolves.toEqual({ fits: true });
+      expect(service.previewLoad).toHaveBeenCalledWith(body);
+      const link = { service: 'lm-studio' as const, runtimeKey: 'gemma-4-e2b-it-qat@q4_0', aiModelId: '0199a1b2-0000-7000-8000-000000000010' };
+      await controller.link(link);
+      expect(service.linkRuntimeKey).toHaveBeenCalledWith(link);
+      await expect(controller.dismissSuggestion('s1')).resolves.toEqual({ id: 's1', dismissed: true });
+      expect(service.dismissSuggestion).toHaveBeenCalledWith('s1');
+      await expect(controller.readiness()).resolves.toEqual({ mode: 'shadow' });
+    });
+
+    it('the links body takes exactly the fixture request; a non-UUID model id is refused', async () => {
+      const validate = (body: unknown) => GLOBAL_PIPE.transform(body, { type: 'body', metatype: LinkModelResidencyRuntimeKeyRequest as never });
+      await expect(
+        validate({ service: 'lm-studio', runtimeKey: 'gemma-4-e2b-it-qat@q4_0', aiModelId: '0199a1b2-0000-7000-8000-000000000010' }),
+      ).resolves.toBeInstanceOf(LinkModelResidencyRuntimeKeyRequest);
+      await expect(validate({ service: 'lm-studio', runtimeKey: 'k', aiModelId: 'not-a-uuid' })).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
   describe('request bodies — the global pipe', () => {

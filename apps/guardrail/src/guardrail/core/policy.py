@@ -50,6 +50,24 @@ FAIL_OPEN_TO_DEFAULT: Final = "open-to-default"
 NLP_MAX_INPUT_CHARS: Final = 8_192
 
 
+#: The model rows a key can live on — the `AiRoutingPolicy` task key that elects each row. Wire
+#: identifiers (the TS worker seeds the same strings), not configuration.
+_VALIDATE: Final = "guardrail.validate"
+_SAFETY: Final = "guardrail.safety"
+_GROUNDEDNESS: Final = "guardrail.groundedness"
+_JUDGE_INJECTION: Final = "guardrail.judge.injection"
+_JUDGE_UNSAFE_CONTENT: Final = "guardrail.judge.unsafe_content"
+_JUDGE_CLINICAL_SAFETY: Final = "guardrail.judge.clinical_safety"
+_JUDGE_LEAKAGE: Final = "guardrail.judge.leakage"
+
+#: `GuardrailPolicyKeySpec.kind` / `.type` (packages/types/src/guardrail-policy.ts).
+KIND_CRITERIA: Final = "criteria"
+KIND_HYPERPARAMETER: Final = "hyperparameter"
+KIND_THRESHOLD: Final = "threshold"
+KIND_GEOMETRY: Final = "geometry"
+KIND_OPERATIONAL: Final = "operational"
+
+
 @dataclass(frozen=True)
 class _KeySpec:
     """One governed policy key: its posture and, for tuning keys, its bounds.
@@ -57,6 +75,12 @@ class _KeySpec:
     A NAME-LIST key (TASK-1047 FC-5c) carries ``default_names`` instead of a
     numeric default; it is read by :meth:`GuardrailPolicy.names`, never by
     :meth:`GuardrailPolicy.number` (whose ``default is None`` check refuses it).
+
+    TASK-1050 §11.3 A: each key also DECLARES what it is (``kind``, ``value_type``), the model
+    row it lives on (``task_key``) and whether a platform admin may write it (``editable``). Those
+    four are exported, with the posture and bounds, to the committed
+    ``tests/contracts/policy-keys.json`` (:func:`policy_key_catalogue`), which the gateway
+    validates platform writes against and never restates.
     """
 
     fail_mode: str
@@ -64,13 +88,47 @@ class _KeySpec:
     minimum: float | None = None
     maximum: float | None = None
     default_names: tuple[str, ...] | None = None
+    kind: str = KIND_THRESHOLD
+    value_type: str = "number"
+    task_key: str = _SAFETY
+    editable: bool = True
+
+
+#: TASK-1049 §13 F5 — the composer blocks that carry CONFIGURATION, not the request's subject.
+#:
+#: Block names follow TASK-1047 FC-1: a placeholder path lower-cased with every non-`[a-z0-9]` run
+#: replaced by `_`, in each spelling a scope admits (`PLACEHOLDER_PREFIXES` in
+#: `prompt-assembly-blocks.ts`: bare, `context.`, `trigger.context.`, `variables.`). The names are
+#: the clinician's DNA texts (style, redaction rules, style id), the NON_PHI platform variables that
+#: describe the encounter's configuration rather than its content (`language_name`,
+#: `current_department`, `visit_type`, `platform-context-variables.ts`), and the frozen template's
+#: headings (`document_headings` / `document_heading_list`, TASK-1022). `style_reference` is the
+#: gateway's own data block for DNA style + redaction rules + exemplars (`STYLE_REFERENCE_BLOCK`).
+#: Each is still inbound-SCREENED; it is only never judged for medical relevance.
+_CONFIG_VARIABLES: Final = (
+    "dna_style_text",
+    "dna_redaction_rules_text",
+    "dna_style_id",
+    "language_name",
+    "current_department",
+    "visit_type",
+    "document_headings",
+    "document_heading_list",
+)
+_CONFIG_PREFIXES: Final = ("", "context_", "trigger_context_", "variables_")
+_MEDICAL_JUDGE_CONFIG_REGIONS: Final[tuple[str, ...]] = (
+    "style_reference",
+    *(f"{prefix}{name}" for name in _CONFIG_VARIABLES for prefix in _CONFIG_PREFIXES),
+)
 
 
 #: The whole governed surface. Adding a key here is the ONLY step needed to make it
 #: readable, bounded and declared — there is no second allow-list.
 _SPECS: Final[dict[str, _KeySpec]] = {
     # --- verdict-deciding criteria (FAIL-CLOSED, no default by construction) ---
-    "medicalValidationCriteria": _KeySpec(FAIL_CLOSED),
+    "medicalValidationCriteria": _KeySpec(
+        FAIL_CLOSED, kind=KIND_CRITERIA, value_type="string", task_key=_VALIDATE
+    ),
     # TASK-1047 OD-5 — the PER-WINDOW medical judge (`/api/medical/validate` with
     # `regions`). A different question from `medicalValidationCriteria`, which
     # classifies a whole text as medical vs "general conversation": a window of a
@@ -79,7 +137,9 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # posture as its sibling — it decides a verdict, so it has no code default and
     # an unseeded row answers 503 on the regions path. Its reader is
     # `TextJudgeClient.judge_window_on_scope`.
-    "medicalWindowScopeCriteria": _KeySpec(FAIL_CLOSED),
+    "medicalWindowScopeCriteria": _KeySpec(
+        FAIL_CLOSED, kind=KIND_CRITERIA, value_type="string", task_key=_VALIDATE
+    ),
     #
     # `injectionScreeningCriteria` was declared here with NO READER — reserved
     # for "a future LLM-judge second opinion on the inbound path" that never
@@ -93,6 +153,40 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # worse, and it is the shape TASK-886's own catalogue rule now forbids
     # (`core/availability.py` §Membership rule). If an inbound LLM-judge lane is
     # ever built, it re-declares this key IN THE SAME CHANGE as its reader.
+    #
+    # TASK-1050 built those lanes, so the four safety-judge criteria are declared here WITH their
+    # reader in the same change: `services/judge_runner.py` (`LANE_CRITERIA_KEYS` in
+    # `services/judge_protocols.py` names which lane reads which key). Each lives on the model
+    # row ITS lane's routing key elects (`guardrail.judge.*`), so switching a lane's model switches
+    # its criteria with it. No code default: an unseeded lane is undetermined, never lenient. The
+    # §3.2 untrusted-data clause is appended to the seeded text (W4); the code never depends on it.
+    "injectionJudgeCriteria": _KeySpec(
+        FAIL_CLOSED, kind=KIND_CRITERIA, value_type="string", task_key=_JUDGE_INJECTION
+    ),
+    "unsafeContentJudgeCriteria": _KeySpec(
+        FAIL_CLOSED, kind=KIND_CRITERIA, value_type="string", task_key=_JUDGE_UNSAFE_CONTENT
+    ),
+    "outboundClinicalSafetyCriteria": _KeySpec(
+        FAIL_CLOSED, kind=KIND_CRITERIA, value_type="string", task_key=_JUDGE_CLINICAL_SAFETY
+    ),
+    "outboundLeakageCriteria": _KeySpec(
+        FAIL_CLOSED, kind=KIND_CRITERIA, value_type="string", task_key=_JUDGE_LEAKAGE
+    ),
+    # TASK-1050 OD-3 (b) / OD-42 — the per-check BORDERLINE BAND `{checkId: {low, high}}`, each in
+    # [0, 1], over the classifier's score (higher = more unsafe). Below `low` the classifier
+    # passes; at or above `high` the classifier verdict stands; in between the judge decides
+    # (`band_route`). Verdict-deciding, so FAIL-CLOSED (no default band) and in the policy
+    # version. It lives on the `guardrail.safety` row beside the label taxonomy because a score
+    # band is model-coupled. Readers: `GuardrailPolicy.judge_band` + `band_route`, called by the
+    # outbound gate (OD-3 b) and the inbound judge-down fallback (OD-42) in `services/screening.py`.
+    "judgeBands": _KeySpec(
+        FAIL_CLOSED,
+        minimum=0.0,
+        maximum=1.0,
+        kind=KIND_THRESHOLD,
+        value_type="object",
+        task_key=_SAFETY,
+    ),
     # --- judge hyperparameters (FAIL-CLOSED, no default by construction) ---
     #
     # They were `JudgePolicy.temperature = 0.05` and `.max_tokens = 300` — a
@@ -112,8 +206,20 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # `require_number` therefore raises on absence AND on an out-of-range value;
     # there is no default to fall back to, so a nonsensical value must be told
     # rather than quietly clamped.
-    "judgeTemperature": _KeySpec(FAIL_CLOSED, minimum=0.0, maximum=2.0),
-    "judgeMaxTokens": _KeySpec(FAIL_CLOSED, minimum=1.0, maximum=100_000.0),
+    #
+    # TASK-1050: every judge model row carries these (the row a lane's routing key elects). The
+    # catalogue's single `taskKey` names `guardrail.validate`, the default row for every lane.
+    "judgeTemperature": _KeySpec(
+        FAIL_CLOSED, minimum=0.0, maximum=2.0, kind=KIND_HYPERPARAMETER, task_key=_VALIDATE
+    ),
+    "judgeMaxTokens": _KeySpec(
+        FAIL_CLOSED,
+        minimum=1.0,
+        maximum=100_000.0,
+        kind=KIND_HYPERPARAMETER,
+        value_type="integer",
+        task_key=_VALIDATE,
+    ),
     # --- tuning (open-to-default, bounded) ---
     #
     # The default is DERIVED from `JudgePolicy`, not restated. Two literals for
@@ -130,9 +236,18 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # its reader (`build_judge_client`) landing in the same change, which is the
     # distinction that made the first attempt a defect. `judgeMaxInputChars` is
     # still absent: `JudgePolicy.max_input_chars` remains its one source.
-    "judgeMinConfidence": _KeySpec(FAIL_OPEN_TO_DEFAULT, JudgePolicy().min_confidence, 0.0, 1.0),
+    "judgeMinConfidence": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT,
+        JudgePolicy().min_confidence,
+        0.0,
+        1.0,
+        kind=KIND_HYPERPARAMETER,
+        task_key=_VALIDATE,
+    ),
     "piiLeakMinScore": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
-    "maxUntrustedChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 100_000.0, 1.0, 10_000_000.0),
+    "maxUntrustedChars": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 100_000.0, 1.0, 10_000_000.0, kind=KIND_GEOMETRY, value_type="integer"
+    ),
     # groundedness
     #
     # The VERDICT-DECIDING threshold for the clinical groundedness gate. It was a
@@ -144,7 +259,9 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # `guardrail.groundedness` selection resolved, and a threshold calibrated for
     # one checkpoint is meaningless against another. Resolving it through the same
     # cascade that chose the model keeps the two in step by construction.
-    "groundednessEntailmentThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
+    "groundednessEntailmentThreshold": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0, task_key=_GROUNDEDNESS
+    ),
     # realtime consultation plane
     #
     # The four session-aggregation numbers. is explicit that these must be
@@ -157,22 +274,42 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # text flags roughly three-quarters of safe conversation.
     "realtimeNoiseFloor": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.2, 0.0, 1.0),
     "realtimeExcessRiskThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 1.0, 0.0, 1_000.0),
-    "realtimeConsecutiveLimit": _KeySpec(FAIL_OPEN_TO_DEFAULT, 2.0, 1.0, 100.0),
+    "realtimeConsecutiveLimit": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 2.0, 1.0, 100.0, value_type="integer"
+    ),
     "realtimeMeanScoreThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
-    "realtimeMinWindowsForMean": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 10_000.0),
+    "realtimeMinWindowsForMean": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 10_000.0, value_type="integer"
+    ),
     # The classifier's inspection window, and the modest overlap that covers a
     # phrase straddling two windows. The overlap is for CONTIGUOUS straddle only
     # and is not the split-injection defence — that is the session
     # aggregation above.
-    "realtimeWindowChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4_000.0, 256.0, 200_000.0),
-    "realtimeWindowOverlapChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 50_000.0),
+    "realtimeWindowChars": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 4_000.0, 256.0, 200_000.0, kind=KIND_GEOMETRY, value_type="integer"
+    ),
+    "realtimeWindowOverlapChars": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 50_000.0, kind=KIND_GEOMETRY, value_type="integer"
+    ),
     # The hard cumulative ceiling ( mechanism 3). Beyond it the earlier prefix
     # must be represented by a rolling summary that is ITSELF a validated
     # artifact; the deterministic automaton's state stays whole-stream regardless.
     "realtimeCumulativeCeilingChars": _KeySpec(
-        FAIL_OPEN_TO_DEFAULT, 120_000.0, 1_000.0, 10_000_000.0
+        FAIL_OPEN_TO_DEFAULT,
+        120_000.0,
+        1_000.0,
+        10_000_000.0,
+        kind=KIND_GEOMETRY,
+        value_type="integer",
     ),
-    "realtimeVerdictTtlSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 3_600.0, 60.0, 86_400.0),
+    "realtimeVerdictTtlSeconds": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT,
+        3_600.0,
+        60.0,
+        86_400.0,
+        kind=KIND_OPERATIONAL,
+        value_type="integer",
+    ),
     # region windows for every ML screen (TASK-1047 D4)
     #
     # Each region (data block / untrusted segment) is cut from its OWN start into
@@ -182,16 +319,35 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # must also fit `NLP_MAX_INPUT_CHARS` — enforced by `screen_window_geometry`,
     # which falls back to BOTH defaults rather than honour half of a bad pair.
     # OD-6 re-decided 2026-10-06 on the V2 window sweep: 2,000 beats 4,000 on F1, p95 and memory.
-    "screenWindowChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 2_000.0, 256.0, NLP_MAX_INPUT_CHARS),
-    "screenWindowOverlapChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 4_096.0),
+    "screenWindowChars": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT,
+        2_000.0,
+        256.0,
+        NLP_MAX_INPUT_CHARS,
+        kind=KIND_GEOMETRY,
+        value_type="integer",
+    ),
+    "screenWindowOverlapChars": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 4_096.0, kind=KIND_GEOMETRY, value_type="integer"
+    ),
     # Windows of ONE request computed at a time (not a `gather` of all of them).
-    "screenWindowConcurrency": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 64.0),
+    "screenWindowConcurrency": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 64.0, kind=KIND_OPERATIONAL, value_type="integer"
+    ),
     # Window-verdict cache lifetime (FC-7). Rotation of the cache key, a policy
     # change or expiry all mean a COLD cache — never a wrong answer.
-    "windowCacheTtlSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 86_400.0, 60.0, 604_800.0),
+    "windowCacheTtlSeconds": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT,
+        86_400.0,
+        60.0,
+        604_800.0,
+        kind=KIND_OPERATIONAL,
+        value_type="integer",
+    ),
     # The whole-call deadline on a guardrail → apps/nlp call (D7). Every attempt
     # lives inside it, and an attempt that may still be running is never retried.
-    "nlpDeadlineSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 30.0, 1.0, 600.0),
+    # TASK-1050: also the deadline of a `qwen3guard_native` judge call, read off THAT row.
+    "nlpDeadlineSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 30.0, 1.0, 600.0, kind=KIND_OPERATIONAL),
     # outbound record-only checks (TASK-1047 FC-5c, owner decision OD-14)
     #
     # Outbound checks whose FLAG is recorded as a finding (`data_findings` on the
@@ -201,20 +357,30 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # It DECIDES an outbound verdict, so it is NOT operational: its raw value rides
     # the policy blob into the policy version. Flipping a check back to blocking is
     # a config edit on the SYSTEM row (`[]` makes every outbound check blocking).
+    #
+    # Not platform-editable through the policy-key API (TASK-1050 §11.1): it names CODE identifiers
+    # (check ids), and per-check violation handling now lives on the tenant policy's `action`.
     "outboundRecordOnlyChecks": _KeySpec(
-        FAIL_OPEN_TO_DEFAULT, default_names=("jailbreak_detection",)
+        FAIL_OPEN_TO_DEFAULT,
+        default_names=("jailbreak_detection",),
+        value_type="string[]",
+        editable=False,
     ),
     # TASK-1047 V7 (owner decision): data regions that carry SETTINGS rather than the request's
     # subject — the clinician's DNA style and redaction rules — are inbound-screened as usual but
     # never judged for medical relevance. Region keys are the composer's section names.
+    #
+    # TASK-1049 §13 F5 (fixed in TASK-1050 W2a): the list named only the two DNA texts, so the
+    # `style_reference` block (DNA style, redaction rules and exemplars together,
+    # `style-reference.ts` / `note-plan-governance.ts`) and the FC-1 CONFIGURATION blocks were
+    # still judged on every call — the V7-5 refusal on another path. See `_MEDICAL_JUDGE_CONFIG_REGIONS`.
+    # Region keys, not code identifiers a platform admin can usefully move: not editable.
     "medicalJudgeConfigRegions": _KeySpec(
         FAIL_OPEN_TO_DEFAULT,
-        default_names=(
-            "context_dna_style_text",
-            "context_dna_redaction_rules_text",
-            "trigger_context_dna_style_text",
-            "trigger_context_dna_redaction_rules_text",
-        ),
+        default_names=_MEDICAL_JUDGE_CONFIG_REGIONS,
+        kind=KIND_GEOMETRY,
+        value_type="string[]",
+        editable=False,
     ),
 }
 
@@ -352,6 +518,32 @@ class GuardrailPolicy:
     def judge_max_tokens(self) -> int:
         return int(self.require_number("judgeMaxTokens"))
 
+    def judge_band(self, check_id: str) -> tuple[float, float]:
+        """``check_id``'s borderline band ``(low, high)`` from ``judgeBands`` — fail-CLOSED.
+
+        TASK-1050 OD-3 (b) / OD-42. Absent, malformed, out of [0, 1] or ``low > high`` all raise:
+        a band decides WHO renders a verdict, so a guessed band is a guessed verdict. Read through
+        :func:`band_route`.
+        """
+        spec = _SPECS["judgeBands"]
+        bands = self.blob.get("judgeBands")
+        entry = bands.get(check_id) if isinstance(bands, dict) else None
+        low = entry.get("low") if isinstance(entry, dict) else None
+        high = entry.get("high") if isinstance(entry, dict) else None
+        numbers = [
+            float(v) for v in (low, high) if isinstance(v, (int, float)) and not isinstance(v, bool)
+        ]
+        lo_bound = spec.minimum if spec.minimum is not None else 0.0
+        hi_bound = spec.maximum if spec.maximum is not None else 1.0
+        if len(numbers) != 2 or not (lo_bound <= numbers[0] <= numbers[1] <= hi_bound):
+            raise GuardrailUndeterminedError(
+                REASON_UNSUPPORTED,
+                f"policy key 'judgeBands' has no valid band for {check_id!r} (failMode=closed): "
+                "a {low, high} pair in [0, 1] with low <= high is configuration with no code "
+                "default — seed it on the guardrail.safety AiModel row's `_metadata.policy`",
+            )
+        return numbers[0], numbers[1]
+
     @property
     def groundedness_entailment_threshold(self) -> float:
         return self.number("groundednessEntailmentThreshold")
@@ -440,3 +632,72 @@ class GuardrailPolicy:
                 source_tenant_id=self.source_tenant_id,
             )
         return honoured
+
+
+# -- borderline band (TASK-1050 OD-3 b / OD-42) ------------------------------------------------
+
+#: `band_route` outcomes: the classifier PASSES it, the JUDGE decides, the CLASSIFIER verdict stands.
+BAND_PASS: Final = "pass"
+BAND_JUDGE: Final = "judge"
+BAND_CLASSIFIER: Final = "classifier"
+
+
+def band_route(score: float, band: tuple[float, float]) -> str:
+    """Who owns the verdict for a classifier ``score`` (higher = more unsafe) under ``band``.
+
+    ``score < low`` → :data:`BAND_PASS`; ``low <= score < high`` → :data:`BAND_JUDGE` (the judge
+    verdict wins); ``score >= high`` → :data:`BAND_CLASSIFIER`.
+    """
+    low, high = band
+    if score < low:
+        return BAND_PASS
+    if score < high:
+        return BAND_JUDGE
+    return BAND_CLASSIFIER
+
+
+# -- the shared policy-key catalogue (TASK-1050 §11.3 A) ----------------------------------------
+
+POLICY_KEY_CATALOGUE_COMMENT: Final = [
+    "TASK-1050 §11.3 A — GENERATED from apps/guardrail/src/guardrail/core/policy.py `_SPECS` by",
+    "apps/guardrail/scripts/export_policy_keys.py. Do not hand-edit: the parity test",
+    "test_task1050_judge_policy_keys.py fails when this file and `_SPECS` drift.",
+    "One entry per governed `AiModel._metadata.policy` key, in the shape of GuardrailPolicyKeySpec",
+    "(packages/types/src/guardrail-policy.ts). The gateway validates platform writes against it.",
+    "min/max: inclusive bounds for a numeric key; for the `object` key `judgeBands` they bound each",
+    "member's `low` / `high` (and low <= high). null when unbounded or not numeric.",
+    "taskKey: the routing key that elects the row the key lives on. The judge hyperparameters",
+    "(judgeTemperature / judgeMaxTokens / judgeMinConfidence) are read off EVERY judge row — the",
+    "row each lane's key elects — and are listed under guardrail.validate, the default row.",
+    "inPolicyVersion: not operational AND on a row the policy version hashes.",
+]
+
+
+def _bound(value: float | None, value_type: str) -> float | int | None:
+    if value is None:
+        return None
+    return int(value) if value_type == "integer" else float(value)
+
+
+def policy_key_catalogue() -> dict[str, Any]:
+    """`_SPECS` as the `GuardrailPolicyKeyCatalogue` artifact (`tests/contracts/policy-keys.json`)."""
+    from guardrail.core.policy_version import HASHED_TASK_KEYS
+
+    keys = []
+    for name, spec in _SPECS.items():
+        numeric = spec.value_type in ("number", "integer", "object")
+        keys.append(
+            {
+                "key": name,
+                "kind": spec.kind,
+                "type": spec.value_type,
+                "min": _bound(spec.minimum, spec.value_type) if numeric else None,
+                "max": _bound(spec.maximum, spec.value_type) if numeric else None,
+                "failMode": spec.fail_mode,
+                "taskKey": spec.task_key,
+                "inPolicyVersion": name not in OPERATIONAL_KEYS
+                and spec.task_key in HASHED_TASK_KEYS,
+                "editable": spec.editable,
+            }
+        )
+    return {"$comment": list(POLICY_KEY_CATALOGUE_COMMENT), "schemaVersion": 1, "keys": keys}

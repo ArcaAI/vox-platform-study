@@ -133,7 +133,10 @@ export class AdminAuditResource extends AdminResource {
           | 'ConsultationAttachment'
           | 'ConsultationFeedback'
           | 'ConsultationFeedbackRollup'
-          | 'GovernedPromptPiece';
+          | 'GovernedPromptPiece'
+          | 'GuardrailEvaluation'
+          | 'GuardrailNotice'
+          | 'GuardrailPolicyRevision';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -270,7 +273,10 @@ export class AdminAuditResource extends AdminResource {
           | 'ConsultationAttachment'
           | 'ConsultationFeedback'
           | 'ConsultationFeedbackRollup'
-          | 'GovernedPromptPiece';
+          | 'GovernedPromptPiece'
+          | 'GuardrailEvaluation'
+          | 'GuardrailNotice'
+          | 'GuardrailPolicyRevision';
         to?: string;
         userId?: string;
       };
@@ -389,7 +395,10 @@ export class AdminAuditResource extends AdminResource {
           | 'ConsultationAttachment'
           | 'ConsultationFeedback'
           | 'ConsultationFeedbackRollup'
-          | 'GovernedPromptPiece';
+          | 'GovernedPromptPiece'
+          | 'GuardrailEvaluation'
+          | 'GuardrailNotice'
+          | 'GuardrailPolicyRevision';
         search?: string;
         searchFields?: string;
         sort?: string;

@@ -8,10 +8,12 @@ could change:
 * the gateway's governed-prompt registry (L3) — a piece screened under another
   policy version is not governed until it is re-screened.
 
-It is a SHA-256 over a canonical JSON of, for each of the four selections a screen
-can consult (`guardrail.safety`, `guardrail.pii`, `guardrail.pii.spans`,
-`guardrail.validate`), the model id, the provider, the label taxonomy and the
-policy blob — minus `OPERATIONAL_KEYS`, which cannot change a verdict — plus the
+It is a SHA-256 over a canonical JSON of, for each selection a screen can consult
+(`HASHED_TASK_KEYS`: `guardrail.safety`, `guardrail.pii`, `guardrail.pii.spans`,
+`guardrail.validate`, and since TASK-1050 the four judge-lane keys `guardrail.judge.*`), the
+model id, the provider, the label taxonomy, the judge declaration (`_metadata.judge`), the
+serving library and the policy blob — minus `OPERATIONAL_KEYS`, which cannot change a verdict —
+plus the
 EFFECTIVE window geometry (the resolved pair, so a value that falls back to the
 default hashes like the default), the judge window bound, and the screening task
 names this code consults. The judge criteria (`medicalValidationCriteria`,
@@ -37,7 +39,22 @@ _GEOMETRY_KEYS: Final = frozenset({"screenWindowChars", "screenWindowOverlapChar
 
 #: Bump when screening CODE changes what a verdict means (window semantics, the
 #: merge rule, a task's role) without any configuration moving.
-SCREEN_CONTRACT_VERSION: Final = "task-1047.1"
+#: task-1050.1: the judge's user turn is enveloped (M-1) and judge lanes combine per model.
+SCREEN_CONTRACT_VERSION: Final = "task-1050.1"
+
+#: Every routing selection whose row can change a screening verdict. The four judge-lane keys
+#: (TASK-1050 §12) are here so a lane switching model — or its model's criteria, parameters or
+#: native mapping changing — re-screens and colds the window cache.
+HASHED_TASK_KEYS: Final[tuple[str, ...]] = (
+    "guardrail.safety",
+    "guardrail.pii",
+    "guardrail.pii.spans",
+    "guardrail.validate",
+    "guardrail.judge.injection",
+    "guardrail.judge.unsafe_content",
+    "guardrail.judge.clinical_safety",
+    "guardrail.judge.leakage",
+)
 
 
 class PolicyVersionUnavailableError(RuntimeError):
@@ -55,6 +72,11 @@ def _selection_component(cfg: Any) -> dict[str, Any] | None:
         "azureDeployment": getattr(cfg, "azure_deployment", None),
         "labelTaxonomy": getattr(cfg, "label_taxonomy", None),
         "entailment": getattr(cfg, "entailment", None),
+        # TASK-1050 §12: the judge protocol + native mapping decide what a judge verdict means,
+        # and the serving library decides which runtime scores (TASK-1049 R2). `getattr`: both
+        # ride the resolver's config once its row reader carries them.
+        "judge": getattr(cfg, "judge", None),
+        "libraryName": getattr(cfg, "library_name", None),
         "policy": {
             k: v for k, v in blob.items() if k not in OPERATIONAL_KEYS and k not in _GEOMETRY_KEYS
         },
@@ -99,10 +121,7 @@ def judge_window_chars(screen_policy: GuardrailPolicy, judge_max_input_chars: in
 async def resolve_policy_version(app_state: Any, tenant_id: str) -> str:
     """The policy version for ``tenant_id``. Raises :class:`PolicyVersionUnavailableError`."""
     from guardrail.core.tenant_config import (
-        TASK_KEY_GUARDRAIL_PII,
-        TASK_KEY_GUARDRAIL_PII_SPANS,
         TASK_KEY_GUARDRAIL_SAFETY,
-        TASK_KEY_GUARDRAIL_VALIDATE,
         TenantConfigUnavailableError,
         TenantSelectionVetoedError,
     )
@@ -112,12 +131,7 @@ async def resolve_policy_version(app_state: Any, tenant_id: str) -> str:
         raise PolicyVersionUnavailableError("tenant config resolver is not wired")
 
     selections: dict[str, Any] = {}
-    for task_key in (
-        TASK_KEY_GUARDRAIL_SAFETY,
-        TASK_KEY_GUARDRAIL_PII,
-        TASK_KEY_GUARDRAIL_PII_SPANS,
-        TASK_KEY_GUARDRAIL_VALIDATE,
-    ):
+    for task_key in HASHED_TASK_KEYS:
         try:
             selections[task_key] = await resolver.resolve(tenant_id, task_key)
         except TenantSelectionVetoedError:

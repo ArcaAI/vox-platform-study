@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 
 class StreamChunk(BaseModel):
-    type: Literal["chunk", "reasoning", "meta", "done", "error", "usage"]
+    # TASK-1050: `guardrail.notice` carries one `GuardrailNotice` v1 in `data`.
+    type: Literal["chunk", "reasoning", "meta", "done", "error", "usage", "guardrail.notice"]
     content: str | None = None
     data: dict[str, Any] | None = None

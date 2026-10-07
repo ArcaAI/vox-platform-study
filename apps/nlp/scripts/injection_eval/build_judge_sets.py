@@ -33,6 +33,11 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from injection_eval.build_guardrail_sets import (  # noqa: E402
+    AEGIS,
+    _usable_aegis,
+    fetch_split_rows,
+)
 from injection_eval.build_public_sets import (  # noqa: E402
     ACI_FILES,
     MTS_FILES,
@@ -448,7 +453,88 @@ def _lower_first(q: str) -> str:
     return q[:1].lower() + q[1:]
 
 
-def build_iu(t: dict, guard: list[dict], bases: list[dict]) -> tuple[list[dict], dict]:
+def _sha1(text: str) -> str:
+    return hashlib.sha1(text.encode()).hexdigest()
+
+
+def _iu_positive(
+    spec: dict, bases: list[dict], rid: str, q: str, rng: random.Random, meta: dict
+) -> dict:
+    base = rng.choice(bases)
+    payload = rng.choice(spec["addressees"]).format(q=_lower_first(q))
+    carrier = rng.choice(spec["carriers"])
+    text = embed_payload(base["text"], payload, carrier, rng, max_chars=IU_MAX_CHARS)
+    meta = {
+        "source": "Aegis-2.0 request embedded in a b1 base",
+        **meta,
+        "prompt_sha1": _sha1(q),
+        "base_id": base["id"],
+        "carrier": carrier,
+        "payload_line": f"{carrier}: {payload}",
+    }
+    return make_record(rid, "iu", 1, text, meta, rid)
+
+
+def _iu_topup(
+    spec: dict,
+    bases: list[dict],
+    aegis_extra: dict[str, list[dict]],
+    seen: set[str],
+    existing: Counter,
+) -> tuple[list[dict], dict]:
+    """Top up thin criterion categories from REAL Aegis prompts of other splits (OD-43).
+
+    Candidates are prompt-level unsafe rows whose violated categories include a mapped
+    hazard, at most IU_MAX_REQUEST chars, and not an exact duplicate of any prompt already
+    seen (s.jsonl, an earlier split, or another category). A deterministic sample tops each
+    category up to ``target``; when fewer are available, all are used.
+    """
+    cfg = spec["topup"]
+    records: list[dict] = []
+    stats: dict[str, dict] = {}
+    for category, hazards in cfg["hazards"].items():
+        available: list[tuple[str, str, str, str, list[str]]] = []
+        for split in cfg["splits"]:
+            for rec in _usable_aegis(aegis_extra.get(split, []), split):
+                if rec["label"] != 1:
+                    continue
+                cats = rec["meta"]["categories"]
+                matched = next((c for c in cats if c in hazards), None)
+                q = _one_line(rec["text"])
+                if matched is None or q in seen or len(q) > IU_MAX_REQUEST:
+                    continue
+                seen.add(q)
+                available.append((split, rec["id"].split(":")[-1], q, matched, cats))
+        need = max(0, cfg["target"] - existing[category])
+        chosen = sample(available, need, random.Random(f"{SEED}:iu:topup:{category}"))
+        for split, row_id, q, hazard, cats in chosen:
+            rid = f"iu:top:{split}:{row_id}"
+            rng = random.Random(f"{SEED}:{rid}")
+            meta = {
+                "category": category,
+                "scope": "criterion",
+                "hazard": hazard,
+                "categories": cats,
+                "aegis_id": f"aegis:{split}:{row_id}",
+                "aegis_split": split,
+            }
+            records.append(_iu_positive(spec, bases, rid, q, rng, meta))
+        stats[category] = {
+            "existing": existing[category],
+            "available": len(available),
+            "used": len(chosen),
+            "total": existing[category] + len(chosen),
+            "target": cfg["target"],
+        }
+    return records, stats
+
+
+def build_iu(
+    t: dict,
+    guard: list[dict],
+    bases: list[dict],
+    aegis_extra: dict[str, list[dict]] | None = None,
+) -> tuple[list[dict], dict, dict]:
     bases = sorted(bases, key=lambda r: r["id"])
     spec = t["iu_positive"]
     records: list[dict] = []
@@ -466,22 +552,19 @@ def build_iu(t: dict, guard: list[dict], bases: list[dict]) -> tuple[list[dict],
             continue
         scope, judge_category = spec["hazard_map"][hazard]
         rng = random.Random(f"{SEED}:iu:pos:{item['id']}")
-        base = rng.choice(bases)
-        payload = rng.choice(spec["addressees"]).format(q=_lower_first(q))
-        carrier = rng.choice(spec["carriers"])
-        text = embed_payload(base["text"], payload, carrier, rng, max_chars=IU_MAX_CHARS)
         rid = f"iu:pos:{item['id'].split(':')[-1]}"
         meta = {
-            "source": "Aegis-2.0 request embedded in a b1 base",
             "category": judge_category,
             "scope": scope,
             "hazard": hazard,
             "aegis_id": item["id"],
-            "base_id": base["id"],
-            "carrier": carrier,
-            "payload_line": f"{carrier}: {payload}",
+            "aegis_split": item["meta"].get("aegis_split") or item["id"].split(":")[2],
         }
-        records.append(make_record(rid, "iu", 1, text, meta, rid))
+        records.append(_iu_positive(spec, bases, rid, q, rng, meta))
+    seen_prompts = {_one_line(item["text"]) for item in guard}
+    existing = Counter(r["meta"]["category"] for r in records)
+    topup, topup_stats = _iu_topup(spec, bases, aegis_extra or {}, seen_prompts, existing)
+    records += topup
     seen: set[str] = set()
     neg = t["iu_negative"]
     for scenario in neg["scenarios"]:
@@ -507,7 +590,7 @@ def build_iu(t: dict, guard: list[dict], bases: list[dict]) -> tuple[list[dict],
                 "payload_line": block,
             }
             records.append(make_record(rid, "iu", 0, text, meta, rid))
-    return records, dict(sorted(excluded.items()))
+    return records, dict(sorted(excluded.items())), topup_stats
 
 
 # --------------------------------------------------------------------------- IO
@@ -567,16 +650,29 @@ def write_sets(out: Path, sets: dict[str, list[dict]], extra: dict[str, dict]) -
 
 def build_all(cache: Path, guard_s: Path, b1: Path, templates: Path = TEMPLATES) -> tuple:
     t = load_templates(templates)
-    iu, excluded = build_iu(t, _read_jsonl(guard_s), _read_jsonl(b1))
+    aegis_extra = {
+        split: fetch_split_rows(AEGIS, split, cache)
+        for split in t["iu_positive"]["topup"]["splits"]
+    }
+    iu, excluded, topup = build_iu(t, _read_jsonl(guard_s), _read_jsonl(b1), aegis_extra)
+    iu_pos = [r for r in iu if r["label"] == 1]
     on = build_on(cache)
     sets = {"oc": build_oc(t), "ol": build_ol(t), "on": on, "iu": iu}
     extra = {
         "oc": {"dosing_drugs": len({r["drug"] for r in t["dangerous_dosing"]})},
         "on": {"by_source": _counts(r["meta"]["source"] for r in on)},
         "iu": {
-            "positive_scope": _counts(r["meta"]["scope"] for r in iu if r["label"] == 1),
-            "positive_hazard": _counts(r["meta"]["hazard"] for r in iu if r["label"] == 1),
+            "positive_scope": _counts(r["meta"]["scope"] for r in iu_pos),
+            "positive_category_scope": _counts(
+                f"{r['meta']['category']}:{r['meta']['scope']}" for r in iu_pos
+            ),
+            "positive_category_split": _counts(
+                f"{r['meta']['category']}:{r['split']}" for r in iu_pos
+            ),
+            "positive_aegis_split": _counts(r["meta"]["aegis_split"] for r in iu_pos),
+            "positive_hazard": _counts(r["meta"]["hazard"] for r in iu_pos),
             "excluded_unsafe": excluded,
+            "topup": topup,
             "negative_scenarios": len({r["meta"]["scenario"] for r in iu if r["label"] == 0}),
             "negative_themes": _counts(r["meta"]["theme"] for r in iu if r["label"] == 0),
         },

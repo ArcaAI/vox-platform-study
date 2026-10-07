@@ -4,6 +4,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ModelResidencyClass, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { ImplicitLivePathReader } from '../implicit-live-path';
 import { ModelUsageIndexReader } from '../model-usage-index';
 
 /**
@@ -148,8 +149,9 @@ function build() {
       aiModel({ id: 'model-gone', slug: 'retired', sourceUri: 's3://x', name: 'Retired', servedBy: 'stt', resourceStatus: 'DELETED' }),
     ] as Row[],
     policies: [] as Row[],
-    livePath: [{ service: 'stt', modelRef: LIVE_ASR, aiModelId: 'model-asr', tenantId: T1, agentSlug: 'realtime-transcription-ml-en' }] as Row[],
-    liveAgents: new Set<string>([`${T1}|realtime-transcription-ml-en`]),
+    assignments: [
+      { tenantId: T1, task: 'SPEECH_TO_TEXT', agentSlug: 'realtime-transcription-ml-en', resourceStatus: 'ENABLED' },
+    ] as Row[],
     agents: [
       agent({
         id: 'a1',
@@ -257,21 +259,29 @@ function build() {
     }),
   };
   const effectiveSettings = { resolveEffective: vi.fn(async () => null) };
-  const livePath = { read: vi.fn(async () => state.livePath), readLiveAgents: vi.fn(async () => state.liveAgents) };
   const specs = { build: vi.fn() };
   const repos = {
     agents: fakeRepo(() => state.agents),
     fallbacks: fakeRepo(() => state.fallbacks),
     routing: fakeRepo(() => state.routing),
     tenants: fakeRepo(() => state.tenants),
+    assignments: fakeRepo(() => state.assignments),
+    aiModels: fakeRepo(() => state.catalogue),
+    workflows: fakeRepo(() => []),
+    workflowAssignments: fakeRepo(() => []),
   };
-  const usage = new ModelUsageIndexReader(
+  // TASK-1051: the pin set and the usage index share ONE consumer snapshot, so the real reader is
+  // driven from the same fake repositories instead of a hand-written `{ read, readLiveAgents }` stub.
+  const livePath = new ImplicitLivePathReader(
+    repos.assignments as never,
     repos.agents as never,
+    repos.aiModels as never,
     repos.fallbacks as never,
     repos.routing as never,
-    repos.tenants as never,
-    livePath as never,
+    repos.workflows as never,
+    repos.workflowAssignments as never,
   );
+  const usage = new ModelUsageIndexReader(repos.tenants as never, livePath);
 
   const service = new ModelResidencyService(
     policies as never,
@@ -467,6 +477,8 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
         agentCount: 1,
         tenantCount: 1,
         liveConsultation: false,
+        // TASK-1051: the usage DTO now carries a per-kind consumer breakdown.
+        consumers: { agents: 0, fallbacks: 1, pipelineStages: 0, routingPolicies: 0, workflowNodes: 0 },
         uses: [
           {
             tenantId: T1,
@@ -485,7 +497,9 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
       expect(ner.usage).toEqual({
         agentCount: 0,
         tenantCount: 1,
-        liveConsultation: false,
+        // TASK-1051 OD-1: an ACTIVE routing policy's model is on the live path.
+        liveConsultation: true,
+        consumers: { agents: 0, fallbacks: 0, pipelineStages: 0, routingPolicies: 1, workflowNodes: 0 },
         uses: [
           {
             tenantId: SYSTEM_TENANT_ID,
@@ -494,12 +508,18 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
             agentName: 'Medical NER (platform)',
             task: 'nlp.ner',
             role: 'routing',
-            liveConsultation: false,
+            liveConsultation: true,
           },
         ],
       });
 
-      expect(modelById(view, 'model-worker')!.usage).toEqual({ agentCount: 0, tenantCount: 0, liveConsultation: false, uses: [] });
+      expect(modelById(view, 'model-worker')!.usage).toEqual({
+        agentCount: 0,
+        tenantCount: 0,
+        liveConsultation: false,
+        consumers: { agents: 0, fallbacks: 0, pipelineStages: 0, routingPolicies: 0, workflowNodes: 0 }, // TASK-1051
+        uses: [],
+      });
     });
 
     it('reads the index with explicit, bounded queries — never one per row', async () => {
@@ -563,11 +583,11 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
     expect(view.devices[0]).toMatchObject({ kind: 'gpu', label: 'GPU 0 — NVIDIA RTX 2000 Ada Generation', headroomPercent: 15 });
     expect(view.devices[0].models).toEqual(
       expect.arrayContaining([
-        { service: 'stt', modelRef: LIVE_ASR, name: 'ArcaAI Whisper ml-en', bytes: 1.5 * GiB },
-        { service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null },
+        { service: 'stt', modelRef: LIVE_ASR, name: 'ArcaAI Whisper ml-en', bytes: 1.5 * GiB, bytesSource: 'measured' },
+        { service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null, bytesSource: 'unknown' },
       ]),
     );
-    expect(view.devices[1].models).toEqual([{ service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null }]);
+    expect(view.devices[1].models).toEqual([{ service: 'lm-studio', modelRef: GEMMA, name: 'Gemma 4 E2B', bytes: null, bytesSource: 'unknown' }]);
   });
 
   it('stt-worker is observed, not commanded: listed, but offered no load/unload', async () => {
