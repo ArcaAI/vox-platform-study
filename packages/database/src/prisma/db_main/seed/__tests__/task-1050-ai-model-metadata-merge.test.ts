@@ -99,6 +99,83 @@ describe('mergeSeedMetaDataForUpdate (pure)', () => {
   });
 });
 
+describe('mergeSeedMetaDataForUpdate — labelTaxonomy thresholds (W2h round 2)', () => {
+  const seed: NonNullable<AiModelSeed['metaData']> = {
+    labelTaxonomy: {
+      threshold: 0.5,
+      benignLabels: ['benign', 'safe'],
+      tasks: {
+        prompt_safety: { labels: ['safe', 'unsafe'], multi_label: false },
+        jailbreak_detection: { labels: ['benign', 'prompt_injection', 'roleplay_bypass'], multi_label: true, cls_threshold: 0.4 },
+        response_toxicity: { labels: ['benign', 'other'], multi_label: true, cls_threshold: 0.45 },
+      },
+    },
+    labelTaxonomyDefaults: {
+      threshold: 0.5,
+      benignLabels: ['benign', 'safe'],
+      tasks: {
+        prompt_safety: { labels: ['safe', 'unsafe'], multi_label: false },
+        jailbreak_detection: { labels: ['benign', 'prompt_injection', 'roleplay_bypass'], multi_label: true, cls_threshold: 0.4 },
+        response_toxicity: { labels: ['benign', 'other'], multi_label: true, cls_threshold: 0.45 },
+      },
+    },
+  };
+  const stored = {
+    labelTaxonomy: {
+      threshold: 0.8,
+      benignLabels: ['benign'],
+      tasks: {
+        prompt_safety: { labels: ['safe', 'unsafe'], multi_label: true },
+        jailbreak_detection: { labels: ['benign', 'prompt_injection'], multi_label: false, cls_threshold: 0.9 },
+        retired_task: { labels: ['x'], cls_threshold: 0.3 },
+      },
+    },
+    labelTaxonomyDefaults: { threshold: 0.1 },
+  };
+  const merged = () => mergeSeedMetaDataForUpdate(stored, seed) as Record<string, any>;
+
+  it('keeps an admin-edited top-level threshold across a reseed', () => {
+    expect(merged().labelTaxonomy.threshold).toBe(0.8);
+  });
+
+  it('keeps an admin-edited task cls_threshold across a reseed', () => {
+    expect(merged().labelTaxonomy.tasks.jailbreak_detection.cls_threshold).toBe(0.9);
+  });
+
+  it('refreshes the model facts from the seed: labels, benignLabels, multi_label and the task set', () => {
+    const lt = merged().labelTaxonomy;
+    expect(lt.benignLabels).toEqual(['benign', 'safe']);
+    expect(lt.tasks.jailbreak_detection.labels).toEqual(['benign', 'prompt_injection', 'roleplay_bypass']);
+    expect(lt.tasks.jailbreak_detection.multi_label).toBe(true);
+    expect(lt.tasks.prompt_safety).toEqual({ labels: ['safe', 'unsafe'], multi_label: false });
+    expect(Object.keys(lt.tasks).sort()).toEqual(['jailbreak_detection', 'prompt_safety', 'response_toxicity']);
+  });
+
+  it('gives a task that is new in the seed its seed cls_threshold', () => {
+    expect(merged().labelTaxonomy.tasks.response_toxicity.cls_threshold).toBe(0.45);
+  });
+
+  it('always refreshes labelTaxonomyDefaults to the seed', () => {
+    expect(merged().labelTaxonomyDefaults).toEqual(seed.labelTaxonomyDefaults);
+  });
+
+  it('takes the seed taxonomy whole for a row with none, and ignores a non-numeric stored threshold', () => {
+    expect((mergeSeedMetaDataForUpdate({}, seed) as Record<string, any>).labelTaxonomy).toEqual(seed.labelTaxonomy);
+    const garbage = { labelTaxonomy: { threshold: 'high', tasks: { jailbreak_detection: { cls_threshold: null } } } };
+    expect((mergeSeedMetaDataForUpdate(garbage, seed) as Record<string, any>).labelTaxonomy).toEqual(seed.labelTaxonomy);
+  });
+
+  it('is pure: the stored and seed taxonomies are not mutated or aliased', () => {
+    const storedBefore = structuredClone(stored);
+    const seedBefore = structuredClone(seed);
+    const result = merged();
+    expect(stored).toEqual(storedBefore);
+    expect(seed).toEqual(seedBefore);
+    expect(result.labelTaxonomy).not.toBe(seed.labelTaxonomy);
+    expect(result.labelTaxonomy.tasks).not.toBe(seed.labelTaxonomy!.tasks);
+  });
+});
+
 describe('seedAiModels uses the merge on UPDATE and is unchanged on CREATE', () => {
   type Call = { where?: { id: string }; data: Record<string, any> };
 
@@ -127,6 +204,35 @@ describe('seedAiModels uses the merge on UPDATE and is unchanged on CREATE', () 
     expect(granite.data.metaData.policy.unsafeContentJudgeCriteria).toBe(seedMeta(GRANITE).policy.unsafeContentJudgeCriteria);
     expect(granite.data.metaData.policyDefaults).toEqual(seedMeta(GRANITE).policyDefaults);
     expect(client.aiModel.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps an edited GLiGuard threshold and cls_threshold on an existing row while refreshing labels and defaults', async () => {
+    const updates: Call[] = [];
+    const seeded = seedMeta('gliguard-llm-guardrails-300m');
+    const stored = structuredClone(seeded);
+    stored.labelTaxonomy.threshold = 0.77;
+    stored.labelTaxonomy.tasks.jailbreak_detection.cls_threshold = 0.66;
+    stored.labelTaxonomy.tasks.jailbreak_detection.labels = ['benign', 'stale_label'];
+    stored.labelTaxonomyDefaults = { threshold: 0.1 };
+    const client = {
+      aiModel: {
+        findFirst: vi.fn(async (args: { where: { slug: string } }) => ({
+          id: `id-${args.where.slug}`,
+          metaData: args.where.slug === 'gliguard-llm-guardrails-300m' ? stored : null,
+        })),
+        update: vi.fn(async (args: Call) => {
+          updates.push(args);
+          return {};
+        }),
+        create: vi.fn(),
+      },
+    };
+    await seedAiModels(client as never);
+    const meta = updates.find((u) => u.where?.id === 'id-gliguard-llm-guardrails-300m')!.data.metaData;
+    expect(meta.labelTaxonomy.threshold).toBe(0.77);
+    expect(meta.labelTaxonomy.tasks.jailbreak_detection.cls_threshold).toBe(0.66);
+    expect(meta.labelTaxonomy.tasks.jailbreak_detection.labels).toEqual(seeded.labelTaxonomy.tasks.jailbreak_detection.labels);
+    expect(meta.labelTaxonomyDefaults).toEqual(seeded.labelTaxonomyDefaults);
   });
 
   it('creates a new row with the seed metaData verbatim', async () => {

@@ -202,6 +202,23 @@ describe('defaults are data (README §11.3 C): reset copies policyDefaults / jud
   });
 });
 
+describe('labelTaxonomyDefaults (W2h round 2): classifier threshold reset', () => {
+  const THRESHOLD_TASK_KEYS = ['guardrail.safety', 'guardrail.injection', 'guardrail.pii', 'guardrail.pii.spans'];
+  const elected = THRESHOLD_TASK_KEYS.map((key) => SYSTEM_TASK_DEFAULT_ROUTING.find((r) => r.taskKey === key)!.modelSlug);
+
+  it('is seeded on exactly the rows the four threshold-editable task keys elect', () => {
+    const withDefaults = DEFAULT_AI_MODELS.filter((m) => m.metaData?.labelTaxonomyDefaults !== undefined).map((m) => m.slug);
+    expect(withDefaults.sort()).toEqual([...new Set(elected)].sort());
+  });
+
+  it.each(elected)('%s: labelTaxonomyDefaults is a deep, equal copy of labelTaxonomy', (slug) => {
+    const m = meta(slug);
+    expect(m.labelTaxonomyDefaults).toEqual(m.labelTaxonomy);
+    expect(m.labelTaxonomyDefaults).not.toBe(m.labelTaxonomy);
+    if (m.labelTaxonomy.tasks) expect(m.labelTaxonomyDefaults.tasks).not.toBe(m.labelTaxonomy.tasks);
+  });
+});
+
 describe('routing (16): the injection classifier and the four judge lanes', () => {
   const byKey = new Map(SYSTEM_TASK_DEFAULT_ROUTING.map((r) => [r.taskKey, r]));
 

@@ -62,6 +62,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => type
  *
  * The merge is one level deep on purpose: a nested object (`judgeBands`, `categoryMap`) is one admin-edited
  * value, so an entry an admin removed from it is not re-added by a re-seed.
+ *
+ * `labelTaxonomy` is the seed's, with the stored classifier thresholds kept ({@link mergeLabelTaxonomy});
+ * `labelTaxonomyDefaults` is refreshed to the seed.
  */
 export function mergeSeedMetaDataForUpdate(existing: unknown, seed: SeedMetaData): SeedMetaData {
   const stored = isPlainObject(existing) ? existing : {};
@@ -75,7 +78,29 @@ export function mergeSeedMetaDataForUpdate(existing: unknown, seed: SeedMetaData
     }
     merged[key] = structuredClone({ ...(isPlainObject(fromSeed) ? fromSeed : {}), ...current });
   }
+  if (seed.labelTaxonomy !== undefined) merged.labelTaxonomy = mergeLabelTaxonomy(stored.labelTaxonomy, seed.labelTaxonomy);
   return merged as SeedMetaData;
+}
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+/**
+ * TASK-1050 (W2h round 2) — `labelTaxonomy` on UPDATE: the seed's taxonomy (labels, the task set,
+ * `benignLabels`, `multi_label` are MODEL FACTS), carrying over the two admin-editable thresholds from the stored
+ * row: the top-level `threshold`, and `tasks.<task>.cls_threshold` for every task the seed still declares. A task
+ * new in the seed, or a stored threshold that is not a finite number, takes the seed value. `labelTaxonomyDefaults`
+ * is not handled here: it is written from the seed like any other key.
+ */
+function mergeLabelTaxonomy(stored: unknown, seed: NonNullable<SeedMetaData['labelTaxonomy']>): NonNullable<SeedMetaData['labelTaxonomy']> {
+  const merged = structuredClone(seed);
+  if (!isPlainObject(stored)) return merged;
+  if (isFiniteNumber(stored.threshold)) merged.threshold = stored.threshold;
+  const storedTasks = isPlainObject(stored.tasks) ? stored.tasks : {};
+  for (const [task, spec] of Object.entries(merged.tasks ?? {})) {
+    const storedTask = storedTasks[task];
+    if (isPlainObject(storedTask) && isFiniteNumber(storedTask.cls_threshold)) spec.cls_threshold = storedTask.cls_threshold;
+  }
+  return merged;
 }
 
 /**
