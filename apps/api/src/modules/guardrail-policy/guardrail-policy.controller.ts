@@ -213,6 +213,24 @@ export class GuardrailPolicyController {
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the class note.
+  @Get('judge-models/:modelId/judge-meta')
+  @CanRead('AiModel')
+  @RequiredSvcScopes(SCOPE)
+  @ApiOperation({
+    summary: 'Read a judge model`s declaration and its default',
+    description:
+      '`_metadata.judge` and `_metadata.judgeDefaults` of a SYSTEM judge model, `version` (the model row `_version`, also the ETag to send as ' +
+      '`If-Match` on the PUT), `isDefault`, and `defaultChangedSinceEdit` (the seed moved the default since the last edit).',
+  })
+  @ApiParam({ name: 'modelId' })
+  @ApiResponse({ status: 200, type: GuardrailJudgeMetaResponse })
+  @ApiResponse({ status: 403, description: FORBIDDEN })
+  @ApiResponse({ status: 404, description: 'No SYSTEM model with a judge declaration.' })
+  async getJudgeMeta(@Param('modelId') modelId: string): Promise<GuardrailJudgeMetaResponse> {
+    return this.service.getJudgeMeta(modelId);
+  }
+
+  // AUTH-NOTE: platform-admin only, imperatively — see the class note.
   @Put('judge-models/:modelId/judge-meta')
   @RequiresIfMatch()
   @CanUpdate('AiModel')

@@ -52,6 +52,12 @@ export class GuardrailJudgeMetaResponse {
   @ApiProperty({ description: 'The current declaration equals the default.' })
   isDefault!: boolean;
 
+  @ApiProperty({
+    description:
+      'The current declaration differs from `judgeDefaults` AND `judgeDefaults` is not the one the last edit was made against (`_metadata.defaultAtEdit` on that `judge` revision). False for legacy revisions.',
+  })
+  defaultChangedSinceEdit!: boolean;
+
   @ApiPropertyOptional({ description: 'False for an idempotent no-op.' })
   changed?: boolean;
 }

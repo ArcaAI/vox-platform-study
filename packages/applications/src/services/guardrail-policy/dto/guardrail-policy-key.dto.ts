@@ -81,6 +81,12 @@ export class GuardrailPolicyKeyEntryResponse {
   @ApiProperty({ description: 'The current value equals the default (both absent counts as equal).' })
   isDefault!: boolean;
 
+  @ApiProperty({
+    description:
+      'README §11.3 C — "default changed since your edit": the current value differs from the default AND the default is not the one the last edit / restore was made against (`_metadata.defaultAtEdit` on that revision). False for revisions written before the capture existed.',
+  })
+  defaultChangedSinceEdit!: boolean;
+
   @ApiProperty({ type: GuardrailPolicyRevisionSummaryResponse, nullable: true })
   lastRevision!: GuardrailPolicyRevisionSummaryResponse | null;
 }

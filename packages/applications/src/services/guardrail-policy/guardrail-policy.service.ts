@@ -181,6 +181,31 @@ interface KeyChange {
   readonly value: unknown;
   /** Label-threshold path inside `labelTaxonomy`; absent for a catalogue key. */
   readonly path?: readonly string[] | null;
+  /** The default the change was made against (`null` = none), stored as the revision's `_metadata.defaultAtEdit`. */
+  readonly defaultAtEdit?: unknown;
+}
+
+/** How many newest revisions are scanned for the last edit / restore (the "default changed since your edit" read). */
+const HISTORY_SCAN = 50;
+const NO_HISTORY: KeyHistory = { latest: null, lastEdit: null };
+/** Revisions that record an administrator's own value (a reset puts the default back, so it is not one). */
+const EDIT_REASONS: ReadonlySet<string> = new Set(['edit', 'restore']);
+
+interface KeyHistory {
+  readonly latest: GuardrailPolicyRevisionEntity | null;
+  readonly lastEdit: GuardrailPolicyRevisionEntity | null;
+}
+
+/**
+ * README §11.3 C — "default changed since your edit": the current value differs from the default AND the default
+ * differs from the one captured (`_metadata.defaultAtEdit`) by the last edit / restore. A revision written before
+ * the capture existed carries no `defaultAtEdit` and reports false.
+ */
+function defaultChangedSinceEdit(currentValue: unknown, defaultValue: unknown, lastEdit: GuardrailPolicyRevisionEntity | null): boolean {
+  if (sameValue(currentValue, defaultValue)) return false;
+  const meta = lastEdit?.metaData as Rec | null | undefined;
+  if (!isRec(meta) || !Object.prototype.hasOwnProperty.call(meta, 'defaultAtEdit')) return false;
+  return !sameValue(meta.defaultAtEdit, defaultValue);
 }
 
 /** Apply key changes to a `_metadata` copy. */
@@ -238,7 +263,7 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
         for (const key of labelThresholdKeysOf(model)) refs.push({ spec: labelThresholdSpec(key, taskKey), path: guardrailLabelThresholdPath(key) as string[] });
       }
       if (refs.length === 0) continue;
-      const keys = await Promise.all(refs.map(async (ref) => this.toEntry(ref, model, model ? await this.revisions.findLatestByKey(model.id, ref.spec.key) : null)));
+      const keys = await Promise.all(refs.map(async (ref) => this.toEntry(ref, model, model ? await this.history(model.id, ref.spec.key) : NO_HISTORY)));
       groups.push({
         taskKey,
         lane: JUDGE_LANE_BY_TASK_KEY[taskKey] ?? (taskKey === guardrailJudgeLaneTaskKey('medical_validation') ? 'medical_validation' : null),
@@ -256,8 +281,7 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     this.assertPlatformAdmin('read a guardrail policy key');
     const { ref, model } = await this.resolveRef(key, taskKey, 'read');
     if (!model) throw this.modelUnresolved(ref.spec);
-    const latest = await this.revisions.findLatestByKey(model.id, ref.spec.key);
-    return { ...this.toEntry(ref, model, latest), version: model.version };
+    return { ...this.toEntry(ref, model, await this.history(model.id, ref.spec.key)), version: model.version };
   }
 
   async listRevisions(key: string, limit?: number, taskKey?: string): Promise<GuardrailPolicyRevisionsResponse> {
@@ -327,7 +351,7 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
         skippedKeys.push(ref.spec.key);
         continue;
       }
-      changes.push({ key: ref.spec.key, value: fallback.value, path: ref.path });
+      changes.push({ key: ref.spec.key, value: fallback.value, path: ref.path, defaultAtEdit: fallback.value });
     }
     if (changes.length === 0) return { taskKey, version: model.version, resetKeys: [], skippedKeys };
 
@@ -352,6 +376,11 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
   }
 
   // ── _metadata.judge ──────────────────────────────────────────────────────
+
+  async getJudgeMeta(modelId: string): Promise<GuardrailJudgeMetaResponse> {
+    this.assertPlatformAdmin("read a judge model's category mapping");
+    return this.judgeMetaResponse(await this.requireJudgeModel(modelId));
+  }
 
   async updateJudgeMeta(modelId: string, request: UpdateGuardrailJudgeMetaRequest): Promise<GuardrailJudgeMetaResponse> {
     this.assertPlatformAdmin("change a judge model's category mapping");
@@ -605,13 +634,12 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     restoredFromRevisionId: string | null = null,
   ): Promise<GuardrailPolicyKeyResponse> {
     if (sameValue(this.currentOf(ref, model).value, value)) {
-      const latest = await this.revisions.findLatestByKey(model.id, ref.spec.key);
-      return { ...this.toEntry(ref, model, latest), version: model.version, changed: false, revisionId: null };
+      return { ...this.toEntry(ref, model, await this.history(model.id, ref.spec.key)), version: model.version, changed: false, revisionId: null };
     }
-    const changes: KeyChange[] = [{ key: ref.spec.key, value, path: ref.path }];
+    const changes: KeyChange[] = [{ key: ref.spec.key, value, path: ref.path, defaultAtEdit: this.defaultOf(ref, model).value }];
     const { saved, revisions } = await this.commit(model, (meta) => applyChanges(meta, changes), changes, reason, restoredFromRevisionId, ref.spec.taskKey);
     const revision = revisions[0] ?? null;
-    return { ...this.toEntry(ref, saved, revision), version: saved.version, changed: true, revisionId: revision?.id ?? null };
+    return { ...this.toEntry(ref, saved, await this.history(saved.id, ref.spec.key)), version: saved.version, changed: true, revisionId: revision?.id ?? null };
   }
 
   private async writeJudge(model: AiModelEntity, next: Rec, reason: 'edit' | 'reset'): Promise<GuardrailJudgeMetaResponse> {
@@ -620,10 +648,35 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       throw new BadRequestException({ code: 'GUARDRAIL_JUDGE_META_INVALID', message: 'The judge declaration is invalid.', problems });
     }
     const meta = (model.metaData ?? {}) as Rec;
-    if (sameValue(meta.judge, next)) return toJudgeMeta(model, false);
+    if (sameValue(meta.judge, next)) return this.judgeMetaResponse(model, false);
     const taskKeys = laneTaskKeysOf(next);
-    const { saved } = await this.commit(model, (current) => ({ ...current, judge: next }), [{ key: GUARDRAIL_JUDGE_META_REVISION_KEY, value: next }], reason, null, taskKeys);
-    return toJudgeMeta(saved, true);
+    const changes: KeyChange[] = [{ key: GUARDRAIL_JUDGE_META_REVISION_KEY, value: next, defaultAtEdit: isRec(meta.judgeDefaults) ? meta.judgeDefaults : null }];
+    const { saved } = await this.commit(model, (current) => ({ ...current, judge: next }), changes, reason, null, taskKeys);
+    return this.judgeMetaResponse(saved, true);
+  }
+
+  /** `{ modelId, slug, version, judge, judgeDefaults, isDefault, defaultChangedSinceEdit, changed? }`. */
+  private async judgeMetaResponse(model: AiModelEntity, changed?: boolean): Promise<GuardrailJudgeMetaResponse> {
+    const meta = (model.metaData ?? {}) as Rec;
+    const judge = isRec(meta.judge) ? meta.judge : {};
+    const defaults = isRec(meta.judgeDefaults) ? meta.judgeDefaults : null;
+    const { lastEdit } = await this.history(model.id, GUARDRAIL_JUDGE_META_REVISION_KEY);
+    return {
+      modelId: model.id,
+      slug: model.slug,
+      version: model.version,
+      judge,
+      judgeDefaults: defaults,
+      isDefault: defaults !== null && sameValue(judge, defaults),
+      defaultChangedSinceEdit: defaults !== null && defaultChangedSinceEdit(judge, defaults, lastEdit),
+      ...(changed !== undefined ? { changed } : {}),
+    };
+  }
+
+  /** The newest revision and the newest edit / restore of one key on one row. */
+  private async history(aiModelId: string, key: string): Promise<KeyHistory> {
+    const rows = await this.revisions.listByKey(aiModelId, key, HISTORY_SCAN);
+    return { latest: rows[0] ?? null, lastEdit: rows.find((row) => EDIT_REASONS.has(row.reason)) ?? null };
   }
 
   /**
@@ -657,6 +710,8 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
           actorId,
           reason,
           restoredFromRevisionId: restoredFromRevisionId ?? undefined,
+          // README §11.3 C — the default this value was set against, for "default changed since your edit".
+          ...(Object.prototype.hasOwnProperty.call(change, 'defaultAtEdit') ? { metaData: { defaultAtEdit: (change.defaultAtEdit ?? null) as never } } : {}),
         });
         revisions.push(await this.revisions.create(entity, tx));
       }
@@ -802,7 +857,7 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     return { ref: { spec, path }, model };
   }
 
-  private toEntry(ref: KeyRef, model: AiModelEntity | null, latest: GuardrailPolicyRevisionEntity | null): GuardrailPolicyKeyEntryResponse {
+  private toEntry(ref: KeyRef, model: AiModelEntity | null, { latest, lastEdit }: KeyHistory): GuardrailPolicyKeyEntryResponse {
     const { spec } = ref;
     const currentValue = model ? this.currentOf(ref, model).value : null;
     const fallback = model ? this.defaultOf(ref, model) : { has: false, value: null, source: null };
@@ -824,6 +879,7 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       defaultValue: fallback.value,
       defaultSource: fallback.source,
       isDefault: sameValue(currentValue, fallback.value),
+      defaultChangedSinceEdit: fallback.has ? defaultChangedSinceEdit(currentValue, fallback.value, lastEdit) : false,
       lastRevision: latest ? toRevisionSummary(latest) : null,
     };
   }
@@ -849,13 +905,6 @@ function laneTaskKeysOf(judge: Rec): string[] {
 function toRevisionSummary(row: GuardrailPolicyRevisionEntity): GuardrailPolicyRevisionSummaryResponse {
   const at = row.at instanceof Date ? row.at : new Date(row.at as unknown as string);
   return { id: row.id, reason: row.reason, actorId: row.actorId, at: at.toISOString(), valueHash: row.valueHash };
-}
-
-function toJudgeMeta(model: AiModelEntity, changed: boolean): GuardrailJudgeMetaResponse {
-  const meta = (model.metaData ?? {}) as Rec;
-  const judge = isRec(meta.judge) ? meta.judge : {};
-  const defaults = isRec(meta.judgeDefaults) ? meta.judgeDefaults : null;
-  return { modelId: model.id, slug: model.slug, version: model.version, judge, judgeDefaults: defaults, isDefault: defaults !== null && sameValue(judge, defaults), changed };
 }
 
 function residencyOf(states: ModelResidencyStateSnapshot | null, modelId: string): string {
