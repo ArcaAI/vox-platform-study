@@ -77,7 +77,7 @@ const QWEN3GUARD_POLICY: Record<string, GuardrailPolicySeedValue> = {
  * rows: the Qwen3Guard-Gen-0.6B judge and the Prompt Guard 2 86M injection
  * classifier (TASK-1049 R1).
  */
-export const NLP_AI_MODELS: AiModelSeed[] = [
+const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
   {
     id: '80000000-0000-0000-0007-000000000010',
     tenantId: SYSTEM_TENANT_ID,
@@ -1043,3 +1043,20 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     },
   },
 ];
+
+/**
+ * TASK-1050 (W2h round 2) — every row that carries a `labelTaxonomy` also carries `labelTaxonomyDefaults`, a
+ * deep copy, so a platform admin's classifier-threshold edit (`threshold`, `tasks.<task>.cls_threshold`) can be
+ * reset. Those rows are exactly the four the threshold-editable task keys elect (`guardrail.safety`,
+ * `guardrail.injection`, `guardrail.pii`, `guardrail.pii.spans`), pinned by `task-1050-guardrail-seed.test.ts`.
+ * Derived rather than written twice per row, so the default cannot drift from the value it defaults.
+ */
+function withLabelTaxonomyDefaults(rows: AiModelSeed[]): AiModelSeed[] {
+  return rows.map((row) =>
+    row.metaData?.labelTaxonomy === undefined
+      ? row
+      : { ...row, metaData: { ...row.metaData, labelTaxonomyDefaults: structuredClone(row.metaData.labelTaxonomy) } },
+  );
+}
+
+export const NLP_AI_MODELS: AiModelSeed[] = withLabelTaxonomyDefaults(NLP_AI_MODEL_ROWS);

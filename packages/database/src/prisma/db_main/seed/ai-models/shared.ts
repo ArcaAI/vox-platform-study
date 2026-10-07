@@ -551,6 +551,12 @@ export interface AiModelSeed {
      */
     capabilities?: AiModelCapability[] | AiModelCapabilityFlags;
     labelTaxonomy?: LabelTaxonomy;
+    /**
+     * TASK-1050 (W2h round 2) — the factory default of `labelTaxonomy`, seed-owned, the same shape (a deep copy).
+     * A platform admin edits `labelTaxonomy.threshold` and `tasks.<task>.cls_threshold`; Reset reads them back
+     * from here. Seeded on every row that carries a `labelTaxonomy` (`ai-models/nlp.ts`).
+     */
+    labelTaxonomyDefaults?: LabelTaxonomy;
     clinicalTaxonomy?: ClinicalTaxonomy;
     entailment?: EntailmentCalibration;
     supportedGenerationParams?: GenerationParamName[];
