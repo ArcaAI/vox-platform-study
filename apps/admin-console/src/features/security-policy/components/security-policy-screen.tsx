@@ -1,7 +1,8 @@
 'use client';
 
 import { useId, useState, type FormEvent } from 'react';
-import { IconKey, IconLock, IconRefresh } from '@tabler/icons-react';
+import Link from 'next/link';
+import { IconExternalLink, IconKey, IconLock, IconRefresh, IconShieldCog } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -17,8 +18,7 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorState } from '@/shared/state/error-state';
-import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { GuardrailAvailabilityTab } from './guardrail-availability-tab';
+import { EmptyState } from '@/shared/state/empty-state';
 import { useSecurityPolicy, useUpdateSecurityPolicy } from '../api/hooks';
 import type { SecretEncoding, SecurityPolicy, UpdateSecurityPolicyRequest } from '../api/types';
 
@@ -167,12 +167,7 @@ export function SecurityPolicyScreen() {
                   </Badge>
                 </>
               ) : (
-                <>
-                  <span>Platform-managed. Selects which safety policies apply to the working tenant.</span>
-                  <Badge variant="outline" className="font-mono text-xs">
-                    admin/guardrail/availability
-                  </Badge>
-                </>
+                <span>Moved to Guardrail control.</span>
               )
             }
             actions={
@@ -201,7 +196,7 @@ export function SecurityPolicyScreen() {
           <StatusFooter
             start={
               !onCredentials
-                ? 'Guardrail always gates — availability selects which policies apply'
+                ? 'Availability is edited on Guardrail control → Rules'
                 : mutation.isPending
                   ? 'Saving…'
                   : dirty
@@ -219,16 +214,22 @@ export function SecurityPolicyScreen() {
         }
       >
         <TabsContent value="guardrail">
-          {/* Tier sub-pattern (rule 13 §Routing): a `(global)` screen may wrap
-              `WorkingTenantGate`. The TIER answers who may open the screen
-              (SUPER_ADMIN); the gate answers whose rows this panel reads. */}
-          <WorkingTenantGate
-            title="Guardrail availability"
-            meta={<span>GET/PUT admin/guardrail/availability/:tenantId · SUPER_ADMIN only</span>}
-            description="Guardrail availability is per tenant. Pick a working tenant from the switcher in the top bar to see which safety policies apply to it."
-          >
-            <GuardrailAvailabilityTab />
-          </WorkingTenantGate>
+          {/* TASK-1050 W3c: availability moved into `/guardrails/control` → Rules (one authoritative
+              editor per backend resource, rule 13). This deep link stays for ONE release (R+1) and is
+              deleted with the tab in the next one. */}
+          <EmptyState
+            icon={IconShieldCog}
+            title="Guardrail availability moved to Guardrail control"
+            description="Platform defaults, per-tenant overrides, actions and locks now live on the Rules tab of Guardrail control."
+            action={
+              <Button asChild variant="outline">
+                <Link href="/guardrails/control">
+                  Open Guardrail control
+                  <IconExternalLink aria-hidden />
+                </Link>
+              </Button>
+            }
+          />
         </TabsContent>
         <TabsContent value="credentials">
           {!policy || !current ? (

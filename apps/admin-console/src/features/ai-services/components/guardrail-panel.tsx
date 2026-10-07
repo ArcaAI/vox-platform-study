@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Fragment, useId, type ReactNode } from 'react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Card } from '@arcaai/ui/components/shadcn/card';
@@ -142,6 +143,14 @@ export function GuardrailPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* TASK-1050 W3c: this tab stays a read-only view; rules, prompts and parameters are edited on Guardrail control. */}
+      <p className="text-muted-foreground text-sm">
+        Read-only view of the guardrail service. Edit rules, judge prompts and parameters on{' '}
+        <Link href="/guardrails/control" className="text-primary underline underline-offset-4">
+          Guardrail control
+        </Link>
+        .
+      </p>
       {statusQuery.isPending ? (
         <DocumentCard title="Guardrail service status">
           <DocumentSkeleton />

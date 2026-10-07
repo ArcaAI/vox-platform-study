@@ -54,6 +54,7 @@ import {
   IconShieldBolt,
   IconShieldCheck,
   IconShieldCog,
+  IconShieldHalf,
   IconShieldLock,
   IconSitemap,
   IconSparkles,
@@ -589,6 +590,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'all']],
     implemented: true,
     order: 6,
+  },
+  // TASK-1050 W3c — the platform admin's guardrail editor: rules (platform defaults, per-tenant
+  // overrides and locks), judge prompts, parameters and monitoring. Platform-admin only (§11.1); the
+  // tenant admin's on/off screen is `/guardrails` (Identity & Access, tier 30-49).
+  {
+    route: '/guardrails/control',
+    domain: 'ai-platform',
+    label: 'Guardrail control',
+    tier: '10-19',
+    icon: IconShieldHalf,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 7,
   },
   // TASK-1023 — the AI-models registry, tier 20-29: EVERY admin reads it, but only
   // a platform admin manages it. `GET admin/ai-models/access` decides which grid

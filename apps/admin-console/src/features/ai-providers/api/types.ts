@@ -410,4 +410,9 @@ export interface RoutingBinding {
   enabled: boolean;
   status: string;
   priority: number;
+  /**
+   * TASK-1050 (OD-39): `'guardrail-control'` on a `guardrail.*` row — its selection is owned by
+   * `/guardrails/control`, so this screen lists it read-only with a deep link. Absent on older gateways.
+   */
+  managedBy?: 'guardrail-control' | null;
 }
