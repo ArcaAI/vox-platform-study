@@ -182,9 +182,11 @@ export function ModelResidencyScreen() {
 
   function handleAdmitted(target: Resolved, response: LoadModelResidencyResponse) {
     setLoadKey(null);
-    // `already_loaded` is the dialog's own toast; only an accepted load has an operation to follow.
+    // The dialog toasts only its failures; an accepted load is followed to its terminal state, an already-resident one is said here.
     if (response.outcome === 'accepted' && response.operationId) {
       track(target.service.service, target.model.modelRef, response.operationId, target.model.name);
+    } else if (response.outcome === 'already_loaded') {
+      toast.success(`${target.model.name} is already loaded.`);
     }
   }
 
