@@ -13,6 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
+  GUARDRAIL_CHECK_IDS,
   GUARDRAIL_JUDGE_LANE_CATEGORIES,
   GUARDRAIL_POLICY_KEY_KINDS,
   GUARDRAIL_POLICY_KEY_VALUE_TYPES,
@@ -32,6 +33,12 @@ const CRITERIA_KEY_LANES: Readonly<Record<string, GuardrailJudgeCheckId>> = Obje
   outboundClinicalSafetyCriteria: 'clinical_safety_judge',
   outboundLeakageCriteria: 'leakage_judge',
 });
+
+/**
+ * Object keys whose value is a per-check band map `{ <checkId>: { low, high } }` (W2a1 `judgeBands`): the
+ * catalogue's `min` / `max` bound EACH of `low` and `high`, and `low <= high` (`GuardrailPolicy.judge_band`).
+ */
+const BAND_MAP_KEYS: ReadonlySet<string> = new Set(['judgeBands']);
 
 /** The safety-judge lane a criteria key is templated for, or `null` (medical criteria, any non-criteria key). */
 export function guardrailCriteriaLane(key: string): GuardrailJudgeCheckId | null {
@@ -157,6 +164,29 @@ function rangeProblem(spec: GuardrailPolicyKeySpec, value: number): GuardrailPol
   return null;
 }
 
+function bandMapProblems(spec: GuardrailPolicyKeySpec, value: Record<string, unknown>): GuardrailPolicyValueProblem[] {
+  const problems: GuardrailPolicyValueProblem[] = [];
+  const lo = spec.min ?? Number.NEGATIVE_INFINITY;
+  const hi = spec.max ?? Number.POSITIVE_INFINITY;
+  for (const [check, band] of Object.entries(value)) {
+    if (!(GUARDRAIL_CHECK_IDS as readonly string[]).includes(check)) {
+      problems.push({ code: 'POLICY_VALUE_TYPE', message: `${spec.key}.${check}: '${check}' is not a guardrail check id.` });
+      continue;
+    }
+    const low = isRec(band) ? band.low : undefined;
+    const high = isRec(band) ? band.high : undefined;
+    const keys = isRec(band) ? Object.keys(band) : [];
+    if (typeof low !== 'number' || typeof high !== 'number' || !Number.isFinite(low) || !Number.isFinite(high) || keys.some((k) => k !== 'low' && k !== 'high')) {
+      problems.push({ code: 'POLICY_VALUE_TYPE', message: `${spec.key}.${check} must be exactly { low: number, high: number }.` });
+      continue;
+    }
+    if (low < lo || high > hi || low > high) {
+      problems.push({ code: 'POLICY_VALUE_OUT_OF_RANGE', message: `${spec.key}.${check} must satisfy ${spec.min ?? '-∞'} <= low <= high <= ${spec.max ?? '∞'}.` });
+    }
+  }
+  return problems;
+}
+
 const typeProblem = (spec: GuardrailPolicyKeySpec): GuardrailPolicyValueProblem => ({
   code: 'POLICY_VALUE_TYPE',
   message: `${spec.key} must be a value of type ${spec.type}.`,
@@ -179,7 +209,8 @@ export function validateGuardrailPolicyValue(spec: GuardrailPolicyKeySpec, value
     case 'string[]':
       return Array.isArray(value) && value.every((item) => typeof item === 'string') ? [] : [typeProblem(spec)];
     case 'object':
-      return isRec(value) ? [] : [typeProblem(spec)];
+      if (!isRec(value)) return [typeProblem(spec)];
+      return BAND_MAP_KEYS.has(spec.key) ? bandMapProblems(spec, value) : [];
     case 'string': {
       if (typeof value !== 'string') return [typeProblem(spec)];
       if (value.trim() === '') return [{ code: 'POLICY_VALUE_EMPTY', message: `${spec.key} must not be empty.` }];

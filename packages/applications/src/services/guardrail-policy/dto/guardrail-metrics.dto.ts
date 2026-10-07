@@ -141,6 +141,7 @@ export class GuardrailPerformanceResponse {
   @ApiProperty({ type: [GuardrailMetricSample], description: 'p50 inference latency (s) per guardrail model.' }) modelLatencyP50!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample], description: 'p95 inference latency (s) per guardrail model.' }) modelLatencyP95!: GuardrailMetricSample[];
   @ApiProperty({ nullable: true, type: Number, description: 'Medical-judge verdicts per second (5 m rate).' }) judgeCallsPerSecond!: number | null;
+  @ApiProperty({ type: [GuardrailMetricSample], description: 'Delegated peer calls per second (the judge lanes ride text / nlp), per peer and operation.' }) peerCallsPerSecond!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample] }) queueDepth!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample], description: 'Admission rejections per second, per gate.' }) admissionRejectionsPerSecond!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample], description: '0 closed, 1 half-open, 2 open, per peer.' }) circuitBreakers!: GuardrailMetricSample[];

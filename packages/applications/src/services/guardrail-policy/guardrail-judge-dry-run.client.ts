@@ -17,18 +17,30 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSetti
 
 export const GUARDRAIL_DRY_RUN_PATH = '/api/v1/guardrail/judge/dry-run';
 
+/** The camelCase wire body of guardrail's `JudgeDryRunRequest` (lane W2a1). */
 export interface GuardrailDryRunCall {
   readonly lanes: readonly string[];
-  readonly text?: string;
-  readonly sampleId?: string;
-  /** Draft `_metadata.policy` values, already validated against the catalogue. */
-  readonly policyOverrides: Readonly<Record<string, unknown>>;
+  readonly direction: string;
+  readonly mode?: string;
+  readonly promptContext?: string;
+  /** Draft `_metadata.policy` values (criteria, judgeTemperature, judgeMaxTokens), already validated. */
+  readonly draftPolicy?: Readonly<Record<string, unknown>>;
+  readonly draftJudgeMeta?: Readonly<Record<string, unknown>>;
+  readonly samples: readonly string[];
 }
 
 export class GuardrailDryRunUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'GuardrailDryRunUnavailableError';
+  }
+}
+
+/** Guardrail refused the draft (422): `detail` is its body's `detail` (e.g. `{ code: 'JUDGE_META_INVALID', problems }`). */
+export class GuardrailDryRunRejectedError extends Error {
+  constructor(readonly detail: unknown) {
+    super('Guardrail refused the dry-run draft.');
+    this.name = 'GuardrailDryRunRejectedError';
   }
 }
 
@@ -58,9 +70,12 @@ export class GuardrailJudgeDryRunClient {
         `${this.guardrailUrl}${GUARDRAIL_DRY_RUN_PATH}`,
         {
           lanes: call.lanes,
-          ...(call.text !== undefined ? { text: call.text } : {}),
-          ...(call.sampleId !== undefined ? { sample_id: call.sampleId } : {}),
-          policy_overrides: call.policyOverrides,
+          direction: call.direction,
+          ...(call.mode !== undefined ? { mode: call.mode } : {}),
+          ...(call.promptContext !== undefined ? { promptContext: call.promptContext } : {}),
+          ...(call.draftPolicy !== undefined ? { draftPolicy: call.draftPolicy } : {}),
+          ...(call.draftJudgeMeta !== undefined ? { draftJudgeMeta: call.draftJudgeMeta } : {}),
+          samples: call.samples,
         },
         {
           timeout: (timeoutS + 5) * 1000,
@@ -79,6 +94,8 @@ export class GuardrailJudgeDryRunClient {
       return body as Record<string, unknown>;
     } catch (error) {
       if (error instanceof GuardrailDryRunUnavailableError) throw error;
+      const response = (error as { response?: { status?: number; data?: { detail?: unknown } } } | null)?.response;
+      if (response?.status === 422) throw new GuardrailDryRunRejectedError(response.data?.detail ?? null);
       // The sample is synthetic, but log the error TYPE only, as every guardrail client does.
       this.logger.warn({ message: 'guardrail.dry_run.unavailable', error: error instanceof Error ? error.name : 'unknown' });
       throw new GuardrailDryRunUnavailableError('The guardrail judge dry run is unavailable.');

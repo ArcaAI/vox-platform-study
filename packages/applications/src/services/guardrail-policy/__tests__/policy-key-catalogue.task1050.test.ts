@@ -14,7 +14,7 @@ import {
   parseGuardrailPolicyKeyCatalogue,
   validateGuardrailPolicyValue,
 } from '../policy-key-catalogue';
-import fixture from './fixtures/policy-keys.fixture.json';
+import { realCatalogue as fixture } from './real-catalogue';
 
 const catalogue = parseGuardrailPolicyKeyCatalogue(fixture);
 const spec = (key: string) => {
@@ -36,8 +36,12 @@ const validInjectionPrompt = composeGuardrailJudgePrompt(
 );
 
 describe('parseGuardrailPolicyKeyCatalogue', () => {
-  it('reads every well-formed entry of the artifact', () => {
+  it('reads every entry of the committed artifact with no problem', () => {
     expect(catalogue.problems).toEqual([]);
+    expect(catalogue.specs.length).toBe(fixture.keys.length);
+    expect(spec('injectionJudgeCriteria')).toMatchObject({ kind: 'criteria', taskKey: 'guardrail.judge.injection', editable: true });
+    expect(spec('outboundRecordOnlyChecks').editable).toBe(false);
+    expect(spec('judgeBands')).toMatchObject({ type: 'object', min: 0, max: 1, taskKey: 'guardrail.safety' });
     expect(catalogue.specs.map((s) => s.key)).toContain('judgeTemperature');
     expect(spec('judgeTemperature')).toMatchObject({ kind: 'hyperparameter', type: 'number', min: 0, max: 2, taskKey: 'guardrail.validate' });
   });
@@ -86,7 +90,9 @@ describe('validateGuardrailPolicyValue — bounds come from the catalogue', () =
     ['judgeTemperature', 0],
     ['judgeTemperature', 2],
     ['judgeMaxTokens', 300],
-    ['safetyJudgeBandLow', 0.4],
+    ['judgeBands', { injection_judge: { low: 0.2, high: 0.8 }, jailbreak_detection: { low: 0.5, high: 0.5 } }],
+    ['judgeBands', {}],
+    ['piiLeakMinScore', 0.5],
     ['outboundRecordOnlyChecks', ['jailbreak_detection']],
     ['outboundRecordOnlyChecks', []],
   ])('accepts %s = %j', (key, value) => {
@@ -103,6 +109,13 @@ describe('validateGuardrailPolicyValue — bounds come from the catalogue', () =
     ['screenWindowChars', 9000, 'POLICY_VALUE_OUT_OF_RANGE'],
     ['outboundRecordOnlyChecks', ['ok', 3], 'POLICY_VALUE_TYPE'],
     ['medicalValidationCriteria', '   ', 'POLICY_VALUE_EMPTY'],
+    ['judgeBands', { injection_judge: { low: 0.8, high: 0.2 } }, 'POLICY_VALUE_OUT_OF_RANGE'],
+    ['judgeBands', { injection_judge: { low: -0.1, high: 0.2 } }, 'POLICY_VALUE_OUT_OF_RANGE'],
+    ['judgeBands', { injection_judge: { low: 0.1, high: 1.1 } }, 'POLICY_VALUE_OUT_OF_RANGE'],
+    ['judgeBands', { injection_judge: { low: 0.1 } }, 'POLICY_VALUE_TYPE'],
+    ['judgeBands', { injection_judge: { low: 0.1, high: 0.2, mid: 0.15 } }, 'POLICY_VALUE_TYPE'],
+    ['judgeBands', { not_a_check: { low: 0.1, high: 0.2 } }, 'POLICY_VALUE_TYPE'],
+    ['judgeBands', [0.1, 0.2], 'POLICY_VALUE_TYPE'],
     ['medicalValidationCriteria', 42, 'POLICY_VALUE_TYPE'],
   ])('refuses %s = %j with %s', (key, value, code) => {
     expect(validateGuardrailPolicyValue(spec(key), value).map((p) => p.code)).toContain(code);
@@ -120,6 +133,11 @@ describe('validateGuardrailPolicyValue — bounds come from the catalogue', () =
   it('validates a criteria key against ITS lane categories (an injection prompt is not an unsafe-content prompt)', () => {
     const codes = validateGuardrailPolicyValue(spec('unsafeContentJudgeCriteria'), validInjectionPrompt).map((p) => p.code);
     expect(codes).toEqual(expect.arrayContaining(['LOCKED_SECTION_MODIFIED', 'CATEGORY_UNKNOWN', 'CATEGORY_MISSING']));
+  });
+
+  it('templates all four safety-judge criteria keys of the real catalogue', () => {
+    const lanes = fixture.keys.filter((k) => k.kind === 'criteria').map((k) => guardrailCriteriaLane(String(k.key)));
+    expect(lanes.filter(Boolean).sort()).toEqual(['clinical_safety_judge', 'injection_judge', 'leakage_judge', 'unsafe_content_judge']);
   });
 
   it('does NOT apply the safety-judge template to the medical criteria (another verdict schema)', () => {

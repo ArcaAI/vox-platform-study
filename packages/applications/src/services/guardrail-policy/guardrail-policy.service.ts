@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -39,14 +38,13 @@ import {
   type GuardrailPolicyKeySpec,
 } from '@arcaai/types';
 import { BaseService } from '../../common/base.service';
-import { isSuperAdmin } from '../../common/tenant-guards';
 import type { IActiveUserContext } from '../../interfaces';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
 import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import { IModelResidencyService } from '../model-residency/IModelResidencyService';
 import type { ModelResidencyStateSnapshot } from '../model-residency/model-residency.service';
 import {
-  GuardrailDryRunLaneResult,
+  GuardrailDryRunVerdict,
   GuardrailDryRunRequest,
   GuardrailDryRunResponse,
   GuardrailJudgeLaneCandidateResponse,
@@ -63,7 +61,8 @@ import {
   UpdateGuardrailJudgeMetaRequest,
   UpdateGuardrailPolicyKeyRequest,
 } from './dto';
-import { GuardrailDryRunUnavailableError, GuardrailJudgeDryRunClient } from './guardrail-judge-dry-run.client';
+import { GuardrailDryRunRejectedError, GuardrailDryRunUnavailableError, GuardrailJudgeDryRunClient } from './guardrail-judge-dry-run.client';
+import { assertGuardrailPlatformAdmin } from './guardrail-platform-gate';
 import type { IGuardrailPolicyService } from './IGuardrailPolicyService';
 import { guardrailCriteriaLane, validateGuardrailPolicyValue, type LoadedGuardrailPolicyKeyCatalogue } from './policy-key-catalogue';
 
@@ -355,9 +354,6 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
 
   async dryRun(request: GuardrailDryRunRequest): Promise<GuardrailDryRunResponse> {
     this.assertPlatformAdmin('dry-run a guardrail judge');
-    if ((request.text === undefined) === (request.sampleId === undefined)) {
-      throw new BadRequestException({ code: 'GUARDRAIL_DRY_RUN_SAMPLE_REQUIRED', message: 'Send exactly one of `text` or `sampleId`.' });
-    }
     const overrides = request.policy ?? {};
     if (Object.keys(overrides).length > 0) this.requireCatalogue();
     const problems: Array<{ key: string; code: string; message: string }> = [];
@@ -367,12 +363,27 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
         problems.push({ key, code: 'POLICY_KEY_UNKNOWN', message: `'${key}' is not a governed guardrail policy key.` });
         continue;
       }
+      if (spec.kind !== 'criteria' && !DRAFTABLE_HYPERPARAMETERS.has(spec.key)) {
+        problems.push({ key, code: 'POLICY_KEY_NOT_DRAFTABLE', message: `'${key}' cannot be drafted: a dry run takes criteria and judgeTemperature / judgeMaxTokens only.` });
+        continue;
+      }
       for (const problem of validateGuardrailPolicyValue(spec, value)) problems.push({ key, code: problem.code, message: problem.message });
     }
     if (problems.length > 0) throw new BadRequestException({ code: 'GUARDRAIL_POLICY_VALUE_INVALID', message: 'A draft value is invalid.', problems });
 
     const lanes = request.lanes as GuardrailJudgeLane[];
     const laneModels = await Promise.all(lanes.map(async (lane) => ({ lane, model: await this.resolveModel(guardrailJudgeLaneTaskKey(lane)) })));
+
+    // A draft mapping is checked over each NATIVE lane model's stored declaration (guardrail re-checks: 422).
+    const draftJudgeMeta = request.judgeMeta ? (JSON.parse(JSON.stringify(request.judgeMeta)) as Rec) : undefined;
+    if (draftJudgeMeta && Object.keys(draftJudgeMeta).length > 0) {
+      const metaProblems = laneModels.flatMap(({ lane, model }) => {
+        const stored = (model?.metaData as Rec | undefined)?.judge;
+        return isRec(stored) && stored.protocol === 'qwen3guard_native' ? judgeMetadataProblems({ ...stored, ...draftJudgeMeta }).map((p) => `${lane}: ${p}`) : [];
+      });
+      if (metaProblems.length > 0) throw new BadRequestException({ code: 'GUARDRAIL_JUDGE_META_INVALID', message: 'The draft judge mapping is invalid.', problems: metaProblems });
+    }
+
     const states = await this.readResidency();
     const blocked = laneModels
       .map(({ lane, model }) => ({ lane, modelId: model?.id ?? null, slug: model?.slug ?? null, state: model ? residencyOf(states, model.id) : 'unselected' }))
@@ -392,20 +403,39 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     try {
       body = await this.dryRunClient.run({
         lanes,
-        ...(request.text !== undefined ? { text: request.text } : {}),
-        ...(request.sampleId !== undefined ? { sampleId: request.sampleId } : {}),
-        policyOverrides: overrides,
+        direction: request.direction,
+        ...(request.mode !== undefined ? { mode: request.mode } : {}),
+        ...(request.promptContext !== undefined ? { promptContext: request.promptContext } : {}),
+        ...(Object.keys(overrides).length > 0 ? { draftPolicy: overrides } : {}),
+        ...(draftJudgeMeta && Object.keys(draftJudgeMeta).length > 0 ? { draftJudgeMeta } : {}),
+        samples: request.samples,
       });
     } catch (error) {
+      if (error instanceof GuardrailDryRunRejectedError) {
+        const detail = isRec(error.detail) ? error.detail : {};
+        if (detail.code === 'JUDGE_META_INVALID') {
+          throw new BadRequestException({ code: 'GUARDRAIL_JUDGE_META_INVALID', message: 'The draft judge mapping is invalid.', problems: detail.problems ?? [] });
+        }
+        throw new BadRequestException({ code: 'GUARDRAIL_DRY_RUN_REJECTED', message: 'Guardrail refused the dry-run request.', detail: error.detail });
+      }
       if (error instanceof GuardrailDryRunUnavailableError) {
         throw new ServiceUnavailableException({ code: 'GUARDRAIL_DRY_RUN_UNAVAILABLE', message: error.message });
       }
       throw error;
     }
-    const reported = Array.isArray(body.lanes) ? body.lanes.filter(isRec) : [];
+    const results = Array.isArray(body.results) ? body.results.filter(isRec) : [];
     return {
       persisted: false,
-      lanes: laneModels.map(({ lane, model }) => toDryRunLane(lane, model, reported.find((entry) => entry.lane === lane))),
+      latencyMs: finiteOrNull(body.latencyMs),
+      models: laneModels.map(({ lane, model }) => ({ lane, modelId: model?.id ?? null, modelSlug: model?.slug ?? null })),
+      results: results.map((result, index) => {
+        const verdicts = isRec(result.verdicts) ? result.verdicts : {};
+        return {
+          sampleIndex: typeof result.sampleIndex === 'number' ? result.sampleIndex : index,
+          latencyMs: finiteOrNull(result.latencyMs),
+          verdicts: lanes.map((lane) => toDryRunVerdict(lane, isRec(verdicts[lane]) ? (verdicts[lane] as Rec) : undefined)),
+        };
+      }),
     };
   }
 
@@ -417,11 +447,7 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
    * every tenant — the same posture as model residency and promote-to-system.
    */
   private assertPlatformAdmin(action: string): void {
-    if (!isSuperAdmin(this.requestUser)) throw new ForbiddenException(`Only platform administrators may ${action}.`);
-    const tenant = this.tenantId;
-    if (tenant && tenant !== SYSTEM_TENANT_ID) {
-      throw new ForbiddenException(`Guardrail control is platform-wide; clear the working tenant to ${action}.`);
-    }
+    assertGuardrailPlatformAdmin(this.requestUser, this.tenantId, action);
   }
 
   private requireCatalogue(): void {
@@ -718,16 +744,20 @@ function toCandidate(model: AiModelEntity, states: ModelResidencyStateSnapshot |
 
 const DRY_RUN_VERDICTS = ['pass', 'flag', 'undetermined'];
 
-function toDryRunLane(lane: string, model: AiModelEntity | null, reported: Rec | undefined): GuardrailDryRunLaneResult {
-  const verdict = typeof reported?.verdict === 'string' && DRY_RUN_VERDICTS.includes(reported.verdict) ? reported.verdict : 'undetermined';
-  const latency = reported?.latencyMs ?? reported?.latency_ms;
+/** The two non-criteria keys guardrail's dry run accepts as drafts (`judge_dry_run._DRAFTABLE_KEYS`). */
+const DRAFTABLE_HYPERPARAMETERS: ReadonlySet<string> = new Set(['judgeTemperature', 'judgeMaxTokens']);
+
+const finiteOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+const stringOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
+function toDryRunVerdict(lane: string, reported: Rec | undefined): GuardrailDryRunVerdict {
   return {
     lane,
-    modelId: model?.id ?? null,
-    modelSlug: model?.slug ?? null,
-    verdict,
-    category: typeof reported?.category === 'string' ? reported.category : null,
-    confidence: typeof reported?.confidence === 'number' && Number.isFinite(reported.confidence) ? reported.confidence : null,
-    latencyMs: typeof latency === 'number' && Number.isFinite(latency) ? latency : null,
+    verdict: typeof reported?.verdict === 'string' && DRY_RUN_VERDICTS.includes(reported.verdict) ? reported.verdict : 'undetermined',
+    category: stringOrNull(reported?.category),
+    confidence: finiteOrNull(reported?.confidence),
+    model: stringOrNull(reported?.model),
+    latencyMs: finiteOrNull(reported?.latencyMs),
+    tier: stringOrNull(reported?.tier),
   };
 }

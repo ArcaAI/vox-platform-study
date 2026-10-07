@@ -48,6 +48,8 @@ describe('resolveRunStartLimits', () => {
     expect(resolveRunStartLimits(settings as never)).toEqual({
       retentionSeconds: 7200,
       limits: { nodeOutputClaimCheckMinBytes: 4096, resultInlineMaxBytes: 32768, activityInputMaxBytes: 1000000 },
+      // TASK-1050 — the guardrail hold timeout rides the same body (its own test: run-start-limits.task1050).
+      guardrailHoldTimeoutSeconds: 86_400,
     });
   });
 
@@ -55,6 +57,7 @@ describe('resolveRunStartLimits', () => {
     const expected = {
       retentionSeconds: WORKFLOW_RUNS_DEFAULTS.eventRetentionHours * 3600,
       limits: { nodeOutputClaimCheckMinBytes: 20480, resultInlineMaxBytes: 65536, activityInputMaxBytes: 1572864 },
+      guardrailHoldTimeoutSeconds: 86_400,
     };
     expect(resolveRunStartLimits(undefined)).toEqual(expected);
     expect(resolveRunStartLimits(settingsWith({ [WORKFLOW_RUNS_RESULT_INLINE_MAX_BYTES_KEY]: 'x' }) as never)).toEqual(expected);
