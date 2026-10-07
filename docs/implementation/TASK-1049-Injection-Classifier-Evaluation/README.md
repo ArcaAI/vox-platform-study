@@ -412,10 +412,37 @@ The judge's latency is dominated by output tokens: the verdict's free-text `reas
   - It isolates screening latency from summarisation/ASR bursts and removes the single point of failure for safety checks.
 - **Dev (2× RTX 2000 Ada 16 GB, time-sliced, 6/8 slices allocated):** run the guard encoders on CPU (dev load is a few users) and keep the judge on LM Studio. Dev is not a capacity proxy (sm_89 vs sm_86, shared cards).
 
+## 12. Single-judge load test: granite-guardian 4.1 8B, 25 concurrent consultations (2026-10-07)
+
+**Setup.**
+- Host: M3 Max 48 GB, LM Studio llama.cpp Metal, Q4_K_S.
+- Workload, simulated in real time: 25 sessions flush every 20 s. Each flush screens one new 2,000-char window with three native no-think checks (harm, jailbreak, medical scope; ~700 prompt tokens, ≤ 20 out). A stop burst follows: 4 windows × 3 checks per session.
+- Volume: 900 checks per config; the steady phase **needs 3.75 checks/s**.
+- Stop rule (owner decision): macOS critical, swap +1 GiB or LM Studio RSS > 10 GiB; 240 s cap; checks still queued at the cap are backlog.
+- Tooling: `apps/nlp/scripts/bench_guard_concurrency.py`, report `render_concurrency_report.py`. Interactive report: https://claude.ai/artifact/FLAet7ttuDjcnkVUg1j84R
+
+| Parallel · context | Answered / 900 | Backlog | Throughput | Check p50 / p95 | Outcome |
+|---|---|---|---|---|---|
+| 4 · 8k | 264 | 636 | 1.10 /s | 89 s / 161 s | falls behind (queue grows all run) |
+| 10 · 8k | 235 | 665 | 0.98 /s | 95 s / 168 s | falls behind; more slots add no throughput |
+| 10 · 16k | 30 | 96 | 0.88 /s | 17 s / 26 s | stopped: LM Studio RSS 10.4 GB (estimate said 6.3 GiB) |
+| 10 · 32k | 6 | 27 | 0.68 /s | 8 s / 9 s | stopped: LM Studio RSS 10.7 GB within seconds |
+| 32 · 8k | 0 valid of 544 | 356 | — | — | **silent truncation**: 8k shared by 32 slots (~256 tokens each) cut every prompt; empty `<score>`, no HTTP error |
+
+**Findings.**
+1. On this host one 8B judge serves ~1 check/s, about **29 % of what 25 consultations need**. The bottleneck is prefill compute: more slots do not help.
+2. The context is one KV pool shared by all slots. It must be ≥ parallel × (prompt + output); otherwise llama.cpp silently truncates, and guardrail turns every truncated check into undetermined → fail closed.
+3. LM Studio's memory estimate ignores per-slot compute buffers: real RSS was 1.6–1.7× the estimate at 10 slots.
+4. For production, two remedies:
+   - **Halve the prefill**: send the window once and the three criteria as a shared-prefix suffix (vLLM automatic prefix caching).
+   - **Measure on the A6000 itself**: this Mac is not a proxy for it.
+5. If the single judge must run on constrained hardware, use GLiGuard (CPU, one pass for harm + toxicity + jailbreak, ~3 windows/s ≈ 2.4× the 1.25 windows/s need), record-only on data.
+
 ## 10. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | Single-judge load test (granite-guardian 4.1 8B, 25 consultations, 5 parallel/context configs) and interactive report (§12). Loads owner-requested; stop rule continued through macOS warn (owner decision). |
 | 2026-10-07 | Laya comparison (T1 injection, T2 safety vs GLiGuard, T3 medical scope vs granite) and production sizing for 25 concurrent consultations (§11). Owner-approved: laya package (isolated venv), laya/typed-decisions/multilingual loads, Aegis 2.0 + Dolly-15k, granite load/unload. Memory guard now stops on macOS kernel pressure (warn+). |
 | 2026-10-06 | **Evaluation complete → Review.** All five candidates scored on a+b1+b2+b3+c1+c2 (window and, for PG2-86M, line granularity), governed instruction texts (62) and CPU latency. Verdict: no candidate meets OD-13; FC-5b stays record-only. Recommendations R1–R5 (§9). b2 generated with `gemma-4-e2b-it-qat` (owner-approved; unloaded afterwards). Memory guard: swap-growth stop added; every run stayed under the ceilings (peak 3.9 GB). |
 | 2026-10-06 | Lanes L1/L2/L3 merged. GLiGuard production parity, production region rendering and short-window FP finding (§8.2). Host force-restarted mid-run (§8.4) → memory guard + persistent data dir (§8.3). Scoring paused until a peer session's tests finish (owner). |

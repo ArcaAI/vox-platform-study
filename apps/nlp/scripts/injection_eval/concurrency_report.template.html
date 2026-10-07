@@ -110,7 +110,8 @@ function ticks(max, n=5) { const s = niceMax(max) / n; return Array.from({length
 function verdict(s) {
   if (!s || s.requests == null) return ["bad","no data"];
   const p95 = s.flush_latency_p95_s, bl = s.unfinished || 0;
-  if (s.aborted && !s.requests) return ["bad","stopped"];
+  if (s.requests > 0 && s.errors === s.requests) return ["bad","no valid answers"];
+  if (s.aborted) return ["bad","stopped: memory cap"];
   if (p95 != null && p95 <= 1 && bl === 0) return ["ok","real-time"];
   if (p95 != null && p95 <= 20 && bl === 0) return ["warn","near-real-time"];
   return ["bad","falls behind"];
@@ -136,7 +137,7 @@ cfgs.forEach((k,i) => {
   tr.innerHTML = `<td class="cfg"><span class="sw" style="background:${COLORS[ORDER.indexOf(k)]}"></span>${label(k)}</td>
     <td><span class="chip ${cls}">${txt}</span></td><td>${s.requests ?? 0} / ${s.scheduled_requests ?? "—"}</td><td>${s.unfinished ?? 0}</td><td>${s.errors ?? 0}</td>
     <td>${fmt(s.throughput_req_s)} /s</td><td>${fmt(s.latency_p50_s,1)} s</td><td>${fmt(s.latency_p95_s,1)} s</td><td>${fmt(s.flush_latency_p95_s,1)} s</td><td>${fmt(burst.flush_latency_p95_s,1)} s</td>
-    <td>${peak}</td><td>${(rss/1024).toFixed(1)} GB</td><td>${s.aborted ? s.aborted : "—"}</td>`;
+    <td>${peak}</td><td>${(rss/1024).toFixed(1)} GB</td><td>${s.aborted ? s.aborted : (s.errors && s.errors === s.requests ? "truncated output (context per slot)" : "—")}</td>`;
   tb.appendChild(tr);
 });
 document.getElementById("slo").textContent =
