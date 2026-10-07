@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
+    "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
+    "bytes": 12304
+  },
+  "artifact": {
+    "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+    "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
+    "bytes": 815350
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/evidence-path-conflict",
+      "severity": "error",
+      "message": "browser-check will not replace the existing unowned evidence path \"/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json\".",
+      "subject": {
+        "artifact": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "evidencePath": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
+      },
+      "evidence": {
+        "reason": {
+          "code": "ownership-artifact-mismatch"
+        }
+      },
+      "supportedFixes": [
+        "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.finalize.json",
+    "summaryReceipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.finalize-summary.json",
+    "browserCheckReceipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-07T04:28:01.636Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1230
+}

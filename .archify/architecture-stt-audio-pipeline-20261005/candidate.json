@@ -1,0 +1,615 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "STT Microservice Architecture & Model Registry Breakdown",
+    "subtitle": "Services, Explicit Model Names (DeepFilterNet3, Silero VAD v5, whisper-large-v3, ecapa-voxceleb, Cadence-Fast), & Gating Flags",
+    "output": ".archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Doctor / Client App",
+      "sublabel": "Browser Mic (PCM)",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Audio Stream"
+    },
+    {
+      "id": "ticket_service",
+      "type": "security",
+      "label": "StreamTicketService",
+      "sublabel": "Auth Ticket Minting",
+      "pos": [
+        40,
+        370
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Ticket Auth"
+    },
+    {
+      "id": "gateway",
+      "type": "frontend",
+      "label": "SttWsGateway",
+      "sublabel": "NestJS WS Gateway",
+      "pos": [
+        320,
+        100
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Resume Buffer :200"
+    },
+    {
+      "id": "audio_bridge",
+      "type": "frontend",
+      "label": "StreamingAudioBridge",
+      "sublabel": "BridgeService",
+      "pos": [
+        320,
+        280
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "XADD Audio Bridge"
+    },
+    {
+      "id": "redis_streams",
+      "type": "messagebus",
+      "label": "Redis Streams Broker",
+      "sublabel": "stt:audio, control, result",
+      "pos": [
+        320,
+        460
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Stream Transport"
+    },
+    {
+      "id": "dramatiq",
+      "type": "messagebus",
+      "label": "Dramatiq Broker",
+      "sublabel": "Redis Task Queue",
+      "pos": [
+        320,
+        640
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Batch Queue"
+    },
+    {
+      "id": "fastapi",
+      "type": "backend",
+      "label": "STT FastAPI Server",
+      "sublabel": "routes.py (:8861)",
+      "pos": [
+        600,
+        100
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Control Plane"
+    },
+    {
+      "id": "control_plane",
+      "type": "backend",
+      "label": "ControlPlane Sync",
+      "sublabel": "arca:config.invalidate",
+      "pos": [
+        600,
+        280
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Control Plane"
+    },
+    {
+      "id": "session_mgr",
+      "type": "backend",
+      "label": "SessionManager",
+      "sublabel": "session_manager.py",
+      "pos": [
+        600,
+        460
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Session Registry"
+    },
+    {
+      "id": "model_cache",
+      "type": "backend",
+      "label": "ModelCache & BYOK",
+      "sublabel": "esdk/L_credentials.py",
+      "pos": [
+        600,
+        640
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "BYOK Credential Cache"
+    },
+    {
+      "id": "ingestion_consumer",
+      "type": "backend",
+      "label": "IngestionConsumer",
+      "sublabel": "redis_streams.py",
+      "pos": [
+        600,
+        820
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "XREAD stt:audio"
+    },
+    {
+      "id": "denoiser",
+      "type": "security",
+      "label": "DeepFilterNet Denoiser",
+      "sublabel": "Model: DeepFilterNet3",
+      "pos": [
+        880,
+        100
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "OPTIONAL: denoise"
+    },
+    {
+      "id": "silero_vad",
+      "type": "security",
+      "label": "Silero VAD v5 ONNX",
+      "sublabel": "Model: silero_vad.onnx",
+      "pos": [
+        880,
+        280
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "FIXED VAD STAGE"
+    },
+    {
+      "id": "semantic_endpointer",
+      "type": "backend",
+      "label": "Semantic Endpointer",
+      "sublabel": "Model: MiniLM Evaluator",
+      "pos": [
+        880,
+        460
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "OPTIONAL: semantic"
+    },
+    {
+      "id": "diarization",
+      "type": "backend",
+      "label": "PyAnnote Diarization",
+      "sublabel": "Model: ecapa-voxceleb",
+      "pos": [
+        880,
+        640
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "OPTIONAL: diarization"
+    },
+    {
+      "id": "engine_switch",
+      "type": "backend",
+      "label": "EngineSwitchController",
+      "sublabel": "Failover Router",
+      "pos": [
+        1160,
+        100
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "OPTIONAL: autoSwitch"
+    },
+    {
+      "id": "asr_registry",
+      "type": "backend",
+      "label": "ASR Engine Registry",
+      "sublabel": "Model: whisper-large-v3",
+      "pos": [
+        1160,
+        280
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "FIXED ASR DECODER"
+    },
+    {
+      "id": "post_process",
+      "type": "backend",
+      "label": "Post-Processing",
+      "sublabel": "RepeatGuard & Lexicon",
+      "pos": [
+        1160,
+        460
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "OPTIONAL: stabilizer"
+    },
+    {
+      "id": "punctuation",
+      "type": "backend",
+      "label": "Cadence Punctuation",
+      "sublabel": "Model: Cadence-Fast",
+      "pos": [
+        1160,
+        640
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "OPTIONAL: punctuation"
+    },
+    {
+      "id": "batch_worker",
+      "type": "backend",
+      "label": "Dramatiq Worker",
+      "sublabel": "Batch Pipeline",
+      "pos": [
+        1160,
+        820
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Batch Processing"
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL DB",
+      "sublabel": "Voice Profiles DB",
+      "pos": [
+        1440,
+        100
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Database"
+    },
+    {
+      "id": "live_doc",
+      "type": "backend",
+      "label": "LiveDocService",
+      "sublabel": "NLP / SOAP Notes",
+      "pos": [
+        1440,
+        280
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Downstream NLP"
+    },
+    {
+      "id": "result_pub",
+      "type": "messagebus",
+      "label": "ResultPublisher",
+      "sublabel": "redis_streams.py",
+      "pos": [
+        1440,
+        460
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "XADD stt:result"
+    },
+    {
+      "id": "minio_s3",
+      "type": "database",
+      "label": "MinIO S3 Storage",
+      "sublabel": "s3://hope-audio/",
+      "pos": [
+        1440,
+        640
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Archival Storage"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "NestJS API Gateway Layer (apps/api)",
+      "wraps": [
+        "gateway",
+        "audio_bridge",
+        "ticket_service",
+        "live_doc"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Redis Message Transport & Task Broker",
+      "wraps": [
+        "redis_streams",
+        "dramatiq",
+        "ingestion_consumer",
+        "result_pub"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "FastAPI STT Control Plane (apps/stt)",
+      "wraps": [
+        "fastapi",
+        "control_plane",
+        "session_mgr",
+        "model_cache"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Streaming Speech Intelligence & ASR Core",
+      "wraps": [
+        "denoiser",
+        "silero_vad",
+        "semantic_endpointer",
+        "diarization",
+        "engine_switch",
+        "asr_registry",
+        "post_process",
+        "punctuation",
+        "batch_worker"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Persistence & Storage Plane",
+      "wraps": [
+        "postgres",
+        "minio_s3"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-ticket",
+      "from": "client",
+      "to": "ticket_service",
+      "label": "1. Mint Ticket"
+    },
+    {
+      "id": "client-gateway",
+      "from": "client",
+      "to": "gateway",
+      "label": "2. WS Handshake"
+    },
+    {
+      "id": "gateway-ticket",
+      "from": "gateway",
+      "to": "ticket_service",
+      "label": "Auth Ticket Minting"
+    },
+    {
+      "id": "gateway-fastapi",
+      "from": "gateway",
+      "to": "fastapi",
+      "label": "3. POST /sessions"
+    },
+    {
+      "id": "fastapi-controlplane",
+      "from": "fastapi",
+      "to": "control_plane",
+      "label": "Sync Config"
+    },
+    {
+      "id": "fastapi-sessionmgr",
+      "from": "fastapi",
+      "to": "session_mgr",
+      "label": "create_session()"
+    },
+    {
+      "id": "gateway-bridge",
+      "from": "gateway",
+      "to": "audio_bridge",
+      "label": "4. PCM Audio Chunks"
+    },
+    {
+      "id": "bridge-redis",
+      "from": "audio_bridge",
+      "to": "redis_streams",
+      "label": "XADD stt:audio"
+    },
+    {
+      "id": "redis-ingestion",
+      "from": "redis_streams",
+      "to": "ingestion_consumer",
+      "label": "XREADGROUP stt:audio"
+    },
+    {
+      "id": "sessionmgr-modelcache",
+      "from": "session_mgr",
+      "to": "model_cache",
+      "label": "Load BYOK Keys"
+    },
+    {
+      "id": "sessionmgr-ingestion",
+      "from": "session_mgr",
+      "to": "ingestion_consumer",
+      "label": "Consume Job"
+    },
+    {
+      "id": "ingestion-denoiser",
+      "from": "ingestion_consumer",
+      "to": "denoiser",
+      "label": "IF Denoise ON"
+    },
+    {
+      "id": "ingestion-silerovad",
+      "from": "ingestion_consumer",
+      "to": "silero_vad",
+      "label": "Direct Pass"
+    },
+    {
+      "id": "denoiser-silero",
+      "from": "denoiser",
+      "to": "silero_vad",
+      "label": "Denoised PCM"
+    },
+    {
+      "id": "silero-semantic",
+      "from": "silero_vad",
+      "to": "semantic_endpointer",
+      "label": "IF Semantic ON"
+    },
+    {
+      "id": "silero-diarization",
+      "from": "silero_vad",
+      "to": "diarization",
+      "label": "Utterances"
+    },
+    {
+      "id": "silero-engineswitch",
+      "from": "silero_vad",
+      "to": "engine_switch",
+      "label": "Fixed VAD"
+    },
+    {
+      "id": "engineswitch-asr",
+      "from": "engine_switch",
+      "to": "asr_registry",
+      "label": "Delegate ASR"
+    },
+    {
+      "id": "asr-postprocess",
+      "from": "asr_registry",
+      "to": "post_process",
+      "label": "Raw Text Pass"
+    },
+    {
+      "id": "postprocess-punctuation",
+      "from": "post_process",
+      "to": "punctuation",
+      "label": "IF PostProcess ON"
+    },
+    {
+      "id": "diarization-punctuation",
+      "from": "diarization",
+      "to": "punctuation",
+      "label": "Speaker Trace"
+    },
+    {
+      "id": "punctuation-resultpub",
+      "from": "punctuation",
+      "to": "result_pub",
+      "label": "SegmentResult"
+    },
+    {
+      "id": "semantic-resultpub",
+      "from": "semantic_endpointer",
+      "to": "result_pub",
+      "label": "XADD stt:result"
+    },
+    {
+      "id": "resultpub-redis",
+      "from": "result_pub",
+      "to": "redis_streams",
+      "label": "XADD stt:result"
+    },
+    {
+      "id": "redis-gateway",
+      "from": "redis_streams",
+      "to": "gateway",
+      "label": "XADD stt:result"
+    },
+    {
+      "id": "gateway-livedoc",
+      "from": "gateway",
+      "to": "live_doc",
+      "label": "LiveDoc sync"
+    },
+    {
+      "id": "sessionmgr-postgres",
+      "from": "session_mgr",
+      "to": "postgres",
+      "label": "Voice Profiles DB"
+    },
+    {
+      "id": "sessionmgr-s3",
+      "from": "session_mgr",
+      "to": "minio_s3",
+      "label": "Archival S3 Upload"
+    },
+    {
+      "id": "gateway-dramatiq",
+      "from": "gateway",
+      "to": "dramatiq",
+      "label": "Enqueue Batch"
+    },
+    {
+      "id": "dramatiq-batchworker",
+      "from": "dramatiq",
+      "to": "batch_worker",
+      "label": "Worker pickup"
+    },
+    {
+      "id": "batchworker-punctuation",
+      "from": "batch_worker",
+      "to": "punctuation",
+      "label": "Batch ASR"
+    }
+  ]
+}

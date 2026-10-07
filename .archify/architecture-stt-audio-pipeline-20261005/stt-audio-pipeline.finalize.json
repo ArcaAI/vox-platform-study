@@ -1,0 +1,1421 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-07T05:16:28.698Z",
+  "specification": {
+    "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
+    "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
+    "bytes": 12304
+  },
+  "artifact": {
+    "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+    "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
+    "bytes": 815350
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
+        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
+        "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
+          "bytes": 12304
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 755,
+      "command": [
+        "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
+        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
+        "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "dafec2cd-9e35-4e8f-b570-f21b2bc448e3",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
+        "output": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "specification": {
+          "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
+          "bytes": 12304
+        },
+        "artifact": {
+          "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
+          "bytes": 815350
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 235,
+      "command": [
+        "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
+        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "check",
+        "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "artifact": {
+          "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
+          "bytes": 815350
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 38,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 4,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 6.447904191616766,
+            "maxBends": 4,
+            "routesOverSuggestedBends": 9,
+            "maxStretch": 1.727,
+            "routesOverSuggestedStretch": 3,
+            "minSegmentPx": 21,
+            "minInteriorSegmentPx": 21,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [
+              {
+                "left": {
+                  "id": "fastapi-controlplane",
+                  "from": "fastapi",
+                  "to": "control_plane",
+                  "label": "Sync Config",
+                  "collectionIndex": 4,
+                  "artifactIndex": 5
+                },
+                "right": {
+                  "id": "gateway-livedoc",
+                  "from": "gateway",
+                  "to": "live_doc",
+                  "label": "LiveDoc sync",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  673,
+                  256
+                ]
+              },
+              {
+                "left": {
+                  "id": "fastapi-sessionmgr",
+                  "from": "fastapi",
+                  "to": "session_mgr",
+                  "label": "create_session()",
+                  "collectionIndex": 5,
+                  "artifactIndex": 6
+                },
+                "right": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  784,
+                  436
+                ]
+              },
+              {
+                "left": {
+                  "id": "fastapi-sessionmgr",
+                  "from": "fastapi",
+                  "to": "session_mgr",
+                  "label": "create_session()",
+                  "collectionIndex": 5,
+                  "artifactIndex": 6
+                },
+                "right": {
+                  "id": "gateway-livedoc",
+                  "from": "gateway",
+                  "to": "live_doc",
+                  "label": "LiveDoc sync",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  784,
+                  256
+                ]
+              },
+              {
+                "left": {
+                  "id": "fastapi-sessionmgr",
+                  "from": "fastapi",
+                  "to": "session_mgr",
+                  "label": "create_session()",
+                  "collectionIndex": 5,
+                  "artifactIndex": 6
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  784,
+                  343
+                ],
+                "sharedNode": "session_mgr"
+              },
+              {
+                "left": {
+                  "id": "gateway-bridge",
+                  "from": "gateway",
+                  "to": "audio_bridge",
+                  "label": "4. PCM Audio Chunks",
+                  "collectionIndex": 6,
+                  "artifactIndex": 7
+                },
+                "right": {
+                  "id": "redis-gateway",
+                  "from": "redis_streams",
+                  "to": "gateway",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "point": [
+                  400,
+                  252.93333333333334
+                ],
+                "sharedNode": "gateway"
+              },
+              {
+                "left": {
+                  "id": "gateway-bridge",
+                  "from": "gateway",
+                  "to": "audio_bridge",
+                  "label": "4. PCM Audio Chunks",
+                  "collectionIndex": 6,
+                  "artifactIndex": 7
+                },
+                "right": {
+                  "id": "gateway-dramatiq",
+                  "from": "gateway",
+                  "to": "dramatiq",
+                  "label": "Enqueue Batch",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  393,
+                  220.06666666666666
+                ],
+                "sharedNode": "gateway"
+              },
+              {
+                "left": {
+                  "id": "bridge-redis",
+                  "from": "audio_bridge",
+                  "to": "redis_streams",
+                  "label": "XADD stt:audio",
+                  "collectionIndex": 7,
+                  "artifactIndex": 8
+                },
+                "right": {
+                  "id": "redis-gateway",
+                  "from": "redis_streams",
+                  "to": "gateway",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "point": [
+                  393,
+                  363
+                ],
+                "sharedNode": "redis_streams"
+              },
+              {
+                "left": {
+                  "id": "redis-ingestion",
+                  "from": "redis_streams",
+                  "to": "ingestion_consumer",
+                  "label": "XREADGROUP stt:audio",
+                  "collectionIndex": 8,
+                  "artifactIndex": 9
+                },
+                "right": {
+                  "id": "sessionmgr-ingestion",
+                  "from": "session_mgr",
+                  "to": "ingestion_consumer",
+                  "label": "Consume Job",
+                  "collectionIndex": 10,
+                  "artifactIndex": 11
+                },
+                "point": [
+                  576,
+                  836
+                ],
+                "sharedNode": "ingestion_consumer"
+              },
+              {
+                "left": {
+                  "id": "redis-ingestion",
+                  "from": "redis_streams",
+                  "to": "ingestion_consumer",
+                  "label": "XREADGROUP stt:audio",
+                  "collectionIndex": 8,
+                  "artifactIndex": 9
+                },
+                "right": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  504,
+                  476
+                ],
+                "sharedNode": "redis_streams"
+              },
+              {
+                "left": {
+                  "id": "redis-ingestion",
+                  "from": "redis_streams",
+                  "to": "ingestion_consumer",
+                  "label": "XREADGROUP stt:audio",
+                  "collectionIndex": 8,
+                  "artifactIndex": 9
+                },
+                "right": {
+                  "id": "dramatiq-batchworker",
+                  "from": "dramatiq",
+                  "to": "batch_worker",
+                  "label": "Worker pickup",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  540,
+                  817
+                ]
+              },
+              {
+                "left": {
+                  "id": "sessionmgr-ingestion",
+                  "from": "session_mgr",
+                  "to": "ingestion_consumer",
+                  "label": "Consume Job",
+                  "collectionIndex": 10,
+                  "artifactIndex": 11
+                },
+                "right": {
+                  "id": "dramatiq-batchworker",
+                  "from": "dramatiq",
+                  "to": "batch_worker",
+                  "label": "Worker pickup",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  576,
+                  817
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-denoiser",
+                  "from": "ingestion_consumer",
+                  "to": "denoiser",
+                  "label": "IF Denoise ON",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "ingestion-silerovad",
+                  "from": "ingestion_consumer",
+                  "to": "silero_vad",
+                  "label": "Direct Pass",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "point": [
+                  820,
+                  796
+                ],
+                "sharedNode": "ingestion_consumer"
+              },
+              {
+                "left": {
+                  "id": "ingestion-denoiser",
+                  "from": "ingestion_consumer",
+                  "to": "denoiser",
+                  "label": "IF Denoise ON",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  820,
+                  436
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-denoiser",
+                  "from": "ingestion_consumer",
+                  "to": "denoiser",
+                  "label": "IF Denoise ON",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "gateway-livedoc",
+                  "from": "gateway",
+                  "to": "live_doc",
+                  "label": "LiveDoc sync",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  820,
+                  256
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-denoiser",
+                  "from": "ingestion_consumer",
+                  "to": "denoiser",
+                  "label": "IF Denoise ON",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  820,
+                  343
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-denoiser",
+                  "from": "ingestion_consumer",
+                  "to": "denoiser",
+                  "label": "IF Denoise ON",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "sessionmgr-s3",
+                  "from": "session_mgr",
+                  "to": "minio_s3",
+                  "label": "Archival S3 Upload",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  820,
+                  637
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-denoiser",
+                  "from": "ingestion_consumer",
+                  "to": "denoiser",
+                  "label": "IF Denoise ON",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "dramatiq-batchworker",
+                  "from": "dramatiq",
+                  "to": "batch_worker",
+                  "label": "Worker pickup",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  820,
+                  817
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-silerovad",
+                  "from": "ingestion_consumer",
+                  "to": "silero_vad",
+                  "label": "Direct Pass",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  856,
+                  436
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-silerovad",
+                  "from": "ingestion_consumer",
+                  "to": "silero_vad",
+                  "label": "Direct Pass",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  856,
+                  343
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-silerovad",
+                  "from": "ingestion_consumer",
+                  "to": "silero_vad",
+                  "label": "Direct Pass",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "sessionmgr-s3",
+                  "from": "session_mgr",
+                  "to": "minio_s3",
+                  "label": "Archival S3 Upload",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  856,
+                  637
+                ]
+              },
+              {
+                "left": {
+                  "id": "ingestion-silerovad",
+                  "from": "ingestion_consumer",
+                  "to": "silero_vad",
+                  "label": "Direct Pass",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "dramatiq-batchworker",
+                  "from": "dramatiq",
+                  "to": "batch_worker",
+                  "label": "Worker pickup",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  701,
+                  817
+                ]
+              },
+              {
+                "left": {
+                  "id": "denoiser-silero",
+                  "from": "denoiser",
+                  "to": "silero_vad",
+                  "label": "Denoised PCM",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "gateway-livedoc",
+                  "from": "gateway",
+                  "to": "live_doc",
+                  "label": "LiveDoc sync",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  967,
+                  256
+                ]
+              },
+              {
+                "left": {
+                  "id": "silero-semantic",
+                  "from": "silero_vad",
+                  "to": "semantic_endpointer",
+                  "label": "IF Semantic ON",
+                  "collectionIndex": 14,
+                  "artifactIndex": 15
+                },
+                "right": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  974,
+                  436
+                ]
+              },
+              {
+                "left": {
+                  "id": "silero-semantic",
+                  "from": "silero_vad",
+                  "to": "semantic_endpointer",
+                  "label": "IF Semantic ON",
+                  "collectionIndex": 14,
+                  "artifactIndex": 15
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  974,
+                  343
+                ]
+              },
+              {
+                "left": {
+                  "id": "silero-diarization",
+                  "from": "silero_vad",
+                  "to": "diarization",
+                  "label": "Utterances",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  877,
+                  436
+                ]
+              },
+              {
+                "left": {
+                  "id": "silero-diarization",
+                  "from": "silero_vad",
+                  "to": "diarization",
+                  "label": "Utterances",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  960,
+                  343
+                ]
+              },
+              {
+                "left": {
+                  "id": "silero-diarization",
+                  "from": "silero_vad",
+                  "to": "diarization",
+                  "label": "Utterances",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "sessionmgr-s3",
+                  "from": "session_mgr",
+                  "to": "minio_s3",
+                  "label": "Archival S3 Upload",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  960,
+                  637
+                ]
+              },
+              {
+                "left": {
+                  "id": "silero-engineswitch",
+                  "from": "silero_vad",
+                  "to": "engine_switch",
+                  "label": "Fixed VAD",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "gateway-livedoc",
+                  "from": "gateway",
+                  "to": "live_doc",
+                  "label": "LiveDoc sync",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  1100,
+                  256
+                ]
+              },
+              {
+                "left": {
+                  "id": "engineswitch-asr",
+                  "from": "engine_switch",
+                  "to": "asr_registry",
+                  "label": "Delegate ASR",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "gateway-livedoc",
+                  "from": "gateway",
+                  "to": "live_doc",
+                  "label": "LiveDoc sync",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  1240,
+                  256
+                ]
+              },
+              {
+                "left": {
+                  "id": "asr-postprocess",
+                  "from": "asr_registry",
+                  "to": "post_process",
+                  "label": "Raw Text Pass",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  1240,
+                  436
+                ]
+              },
+              {
+                "left": {
+                  "id": "asr-postprocess",
+                  "from": "asr_registry",
+                  "to": "post_process",
+                  "label": "Raw Text Pass",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  1240,
+                  343
+                ]
+              },
+              {
+                "left": {
+                  "id": "postprocess-punctuation",
+                  "from": "post_process",
+                  "to": "punctuation",
+                  "label": "IF PostProcess ON",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "semantic-resultpub",
+                  "from": "semantic_endpointer",
+                  "to": "result_pub",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "point": [
+                  1240,
+                  543
+                ]
+              },
+              {
+                "left": {
+                  "id": "postprocess-punctuation",
+                  "from": "post_process",
+                  "to": "punctuation",
+                  "label": "IF PostProcess ON",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "sessionmgr-s3",
+                  "from": "session_mgr",
+                  "to": "minio_s3",
+                  "label": "Archival S3 Upload",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  1240,
+                  637
+                ]
+              },
+              {
+                "left": {
+                  "id": "punctuation-resultpub",
+                  "from": "punctuation",
+                  "to": "result_pub",
+                  "label": "SegmentResult",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "right": {
+                  "id": "semantic-resultpub",
+                  "from": "semantic_endpointer",
+                  "to": "result_pub",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "point": [
+                  1380,
+                  542.9999999999999
+                ],
+                "sharedNode": "result_pub"
+              },
+              {
+                "left": {
+                  "id": "punctuation-resultpub",
+                  "from": "punctuation",
+                  "to": "result_pub",
+                  "label": "SegmentResult",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "right": {
+                  "id": "sessionmgr-s3",
+                  "from": "session_mgr",
+                  "to": "minio_s3",
+                  "label": "Archival S3 Upload",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  1380,
+                  637
+                ]
+              },
+              {
+                "left": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  687,
+                  436
+                ]
+              },
+              {
+                "left": {
+                  "id": "redis-gateway",
+                  "from": "redis_streams",
+                  "to": "gateway",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "right": {
+                  "id": "gateway-dramatiq",
+                  "from": "gateway",
+                  "to": "dramatiq",
+                  "label": "Enqueue Batch",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  298,
+                  277
+                ],
+                "sharedNode": "gateway"
+              },
+              {
+                "left": {
+                  "id": "gateway-livedoc",
+                  "from": "gateway",
+                  "to": "live_doc",
+                  "label": "LiveDoc sync",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "right": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  1402,
+                  256
+                ]
+              }
+            ],
+            "detours": [
+              {
+                "relationship": {
+                  "id": "ingestion-silerovad",
+                  "from": "ingestion_consumer",
+                  "to": "silero_vad",
+                  "label": "Direct Pass",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "silero-diarization",
+                  "from": "silero_vad",
+                  "to": "diarization",
+                  "label": "Utterances",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "bends": 4,
+                "stretch": 1.553,
+                "directCorridorBlockers": [
+                  {
+                    "id": "semantic_endpointer",
+                    "label": "Semantic Endpointer",
+                    "box": [
+                      880,
+                      460,
+                      160,
+                      60
+                    ]
+                  }
+                ]
+              },
+              {
+                "relationship": {
+                  "id": "semantic-resultpub",
+                  "from": "semantic_endpointer",
+                  "to": "result_pub",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "bends": 4,
+                "stretch": 1.265,
+                "directCorridorBlockers": [
+                  {
+                    "id": "post_process",
+                    "label": "Post-Processing",
+                    "box": [
+                      1160,
+                      460,
+                      160,
+                      60
+                    ]
+                  }
+                ]
+              },
+              {
+                "relationship": {
+                  "id": "resultpub-redis",
+                  "from": "result_pub",
+                  "to": "redis_streams",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "bends": 3,
+                "stretch": 1.045,
+                "directCorridorBlockers": [
+                  {
+                    "id": "session_mgr",
+                    "label": "SessionManager",
+                    "box": [
+                      600,
+                      460,
+                      160,
+                      60
+                    ]
+                  },
+                  {
+                    "id": "semantic_endpointer",
+                    "label": "Semantic Endpointer",
+                    "box": [
+                      880,
+                      460,
+                      160,
+                      60
+                    ]
+                  },
+                  {
+                    "id": "post_process",
+                    "label": "Post-Processing",
+                    "box": [
+                      1160,
+                      460,
+                      160,
+                      60
+                    ]
+                  }
+                ]
+              },
+              {
+                "relationship": {
+                  "id": "redis-gateway",
+                  "from": "redis_streams",
+                  "to": "gateway",
+                  "label": "XADD stt:result",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "bends": 4,
+                "stretch": 1.727,
+                "directCorridorBlockers": [
+                  {
+                    "id": "audio_bridge",
+                    "label": "StreamingAudioBridge",
+                    "box": [
+                      320,
+                      280,
+                      160,
+                      60
+                    ]
+                  }
+                ]
+              },
+              {
+                "relationship": {
+                  "id": "sessionmgr-postgres",
+                  "from": "session_mgr",
+                  "to": "postgres",
+                  "label": "Voice Profiles DB",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "bends": 4,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "sessionmgr-s3",
+                  "from": "session_mgr",
+                  "to": "minio_s3",
+                  "label": "Archival S3 Upload",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "gateway-dramatiq",
+                  "from": "gateway",
+                  "to": "dramatiq",
+                  "label": "Enqueue Batch",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "bends": 4,
+                "stretch": 1.579,
+                "directCorridorBlockers": [
+                  {
+                    "id": "audio_bridge",
+                    "label": "StreamingAudioBridge",
+                    "box": [
+                      320,
+                      280,
+                      160,
+                      60
+                    ]
+                  },
+                  {
+                    "id": "redis_streams",
+                    "label": "Redis Streams Broker",
+                    "box": [
+                      320,
+                      460,
+                      160,
+                      60
+                    ]
+                  }
+                ]
+              },
+              {
+                "relationship": {
+                  "id": "dramatiq-batchworker",
+                  "from": "dramatiq",
+                  "to": "batch_worker",
+                  "label": "Worker pickup",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "bends": 3,
+                "stretch": 1
+              }
+            ]
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 70,
+            "emptyTopRatio": 0.072,
+            "occupiedTop": 70,
+            "viewBoxTop": 0,
+            "canvasHeight": 968,
+            "typicalNodeHeight": 60,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "recognized-declared-wide",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 1346,
+            "actualBudgetPx": 1346,
+            "actualReaderWidth": 1376,
+            "desiredReaderWidth": 1595.625,
+            "viewportCap": 1376,
+            "limit": "viewport-cap",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": false,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": "client-ticket",
+              "from": "client",
+              "to": "ticket_service"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 6.447904191616766,
+            "semanticTextCount": 84
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "dafec2cd-9e35-4e8f-b570-f21b2bc448e3"
+      }
+    },
+    "browser-check": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": 15,
+      "command": [
+        "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
+        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "browser-check",
+        "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "fail",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "dafec2cd-9e35-4e8f-b570-f21b2bc448e3",
+        "artifact": {
+          "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+          "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
+          "bytes": 815350
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "not-checked",
+          "executable": null
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/evidence-path-conflict",
+            "severity": "error",
+            "message": "browser-check will not replace the existing unowned evidence path \"/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json\".",
+            "subject": {
+              "artifact": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+              "evidencePath": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
+            },
+            "evidence": {
+              "reason": {
+                "code": "ownership-artifact-mismatch"
+              }
+            },
+            "supportedFixes": [
+              "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "fail",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "fail",
+          "viewports": []
+        },
+        "readability": {
+          "status": "fail",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "fail",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "stt-audio-pipeline.browser-check.json",
+          "files": []
+        },
+        "error": "browser-check will not replace the existing unowned evidence path \"/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json\"."
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/evidence-path-conflict",
+      "severity": "error",
+      "message": "browser-check will not replace the existing unowned evidence path \"/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json\".",
+      "subject": {
+        "artifact": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
+        "evidencePath": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
+      },
+      "evidence": {
+        "reason": {
+          "code": "ownership-artifact-mismatch"
+        }
+      },
+      "supportedFixes": [
+        "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.finalize.json",
+    "summaryReceipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.finalize-summary.json",
+    "browserCheckReceipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-10-07T05:16:29.929Z",
+  "durationMs": 1230,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-07T04:28:01.636Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}
