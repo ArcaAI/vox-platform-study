@@ -1,4 +1,4 @@
-import type { CaptureState, ConsultationProcessing, StopResult } from '@arcaai/types';
+import type { CaptureState, ConsultationProcessing, GuardrailHoldResolution, StopResult } from '@arcaai/types';
 import type { ConsultationResponse } from '../consultation/dto/consultation.response';
 
 /** Who is acting, as resolved by the controller (human JWT, API key, or service account). */
@@ -16,7 +16,8 @@ export interface ClinicalCaller {
  */
 export abstract class IConsultationLifecycleService {
   abstract start(consultationId: string, options?: { sttSessionId?: string; supersedeByDurableBinding?: boolean }): Promise<CaptureState>;
-  abstract pause(consultationId: string, options?: { reason?: 'user' | 'stale_recording' }): Promise<CaptureState>;
+  /** `guardrail_hold`: capture stopped by a guardrail block (TASK-1050 §9.7.5) — recorded as the transition reason. */
+  abstract pause(consultationId: string, options?: { reason?: 'user' | 'stale_recording' | 'guardrail_hold' }): Promise<CaptureState>;
   /** Idempotent on STOPPED: returns the current `finalTranscript` state. */
   abstract stop(consultationId: string, options?: { waitForFinal?: boolean }): Promise<StopResult>;
   /**
@@ -32,6 +33,10 @@ export abstract class IConsultationLifecycleService {
       overrideSafetyFlag?: boolean;
       caller: ClinicalCaller;
       legacyContextItemId?: string;
+      /** TASK-1050 §9.8.3 — every open warning is acknowledged in the approve transaction either way. */
+      acknowledgeGuardrailNotices?: boolean;
+      /** TASK-1050 §9.8.3 / OD-24 — resolve an inbound guardrail hold and approve in one transaction. */
+      resolveHold?: GuardrailHoldResolution;
     },
   ): Promise<ConsultationResponse>;
   /** CLOSED_COMPLETE when APPROVED, else CLOSED_INCOMPLETE. Idempotent on a closed row. */

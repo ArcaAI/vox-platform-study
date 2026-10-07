@@ -50,6 +50,7 @@ import {
   DocumentSectionRepository,
   generateId,
 } from '@arcaai/domains';
+import { latestShownRawSummary } from './latest-shown-raw-summary';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
 import { HarnessAuditService } from '../../harness-audit';
@@ -1024,7 +1025,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     let contextItem = input.legacyContextItemId
       ? await assertParentInScope(this.contextItemRepository, input.legacyContextItemId, tenantId)
       : ((await this.contextItemRepository.findLatestModifiedSummary(input.consultationId)) ??
-        (await this.contextItemRepository.findLatestRawSummary(input.consultationId)));
+        (await latestShownRawSummary(this.contextItemRepository, input.consultationId)));
     if (contextItem && (!contextItem.isFinalSummary || contextItem.consultationId !== input.consultationId)) {
       throw new BadRequestException(`Context item ${contextItem.id} is not a final summary of this consultation`);
     }
@@ -1399,7 +1400,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Try to get latest modified summary first, then raw summary
     let summary = await this.contextItemRepository.findLatestModifiedSummary(consultationId);
     if (!summary) {
-      summary = await this.contextItemRepository.findLatestRawSummary(consultationId);
+      summary = await latestShownRawSummary(this.contextItemRepository, consultationId);
     }
     if (!summary) return null;
     const response = SummaryDtoMapper.toResponse(summary);

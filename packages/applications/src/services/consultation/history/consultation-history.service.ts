@@ -11,6 +11,8 @@ import {
   ContextItemSource,
   ContextItemType,
   ContextItemVersionRepository,
+  GuardrailEvaluationRepository,
+  GuardrailNoticeRepository,
   ResourceType,
   SysEventType,
   UserRoleAssignmentRepository,
@@ -35,6 +37,7 @@ import { clampCursorLimit, decodeCursor, encodeCursor } from '../../../common/cu
 import { IActiveUserContext } from '../../../interfaces';
 import { IActivityRunRecordReader, IActivityRunRecordReaderToken } from '../../ai-activity-run/IAiActivityRunService';
 import { assertPromptInspectorAccess } from '../../composed-prompt/prompt-inspector-access';
+import { countGuardrailAggregates, type GuardrailAggregates } from '../../guardrail-evaluation/guardrail-aggregates';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
 import type { VersionDiffResponse } from '../context/dto/version-diff.response';
 import type { FeedbackResponse } from '../feedback/dto/feedback.response';
@@ -176,6 +179,9 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
     @Optional() private readonly roleAssignments?: UserRoleAssignmentRepository,
     @Optional() @Inject(ConsultationActivityFeedbackSourceToken) private readonly feedbackSource?: ConsultationActivityFeedbackSource,
     @Optional() @Inject(IActivityRunRecordReaderToken) private readonly runReader?: IActivityRunRecordReader,
+    // TASK-1050 — the guardrail counts on the admin aggregates. Unwired ⇒ the aggregates carry none.
+    @Optional() @Inject(GuardrailEvaluationRepository) private readonly guardrailEvaluations?: Pick<GuardrailEvaluationRepository, 'count'>,
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'count'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -423,10 +429,17 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
     });
   }
 
-  private async aggregates(tenantId: string, consultationId: string, feedback: FeedbackResponse[]): Promise<Aggregates> {
-    const [runs, editedItems] = await Promise.all([
+  private async aggregates(
+    tenantId: string,
+    consultationId: string,
+    feedback: FeedbackResponse[],
+  ): Promise<Aggregates & { guardrail?: GuardrailAggregates }> {
+    const [runs, editedItems, guardrail] = await Promise.all([
       this.runReader ? this.runReader.listForConsultation({ tenantId, consultationId }) : Promise.resolve([]),
       this.historyReads.countEditedItems(tenantId, consultationId),
+      this.guardrailEvaluations && this.guardrailNotices
+        ? countGuardrailAggregates(this.guardrailEvaluations, this.guardrailNotices, tenantId, consultationId)
+        : Promise.resolve(null),
     ]);
     const latestRatings = feedback.filter((record) => record.isLatest);
     return {
@@ -438,6 +451,7 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
       editedItems,
       feedbackUp: latestRatings.filter((record) => record.rating === 'up').length,
       feedbackDown: latestRatings.filter((record) => record.rating === 'down').length,
+      ...(guardrail ? { guardrail } : {}),
     };
   }
 

@@ -94,9 +94,11 @@ export class ConsultationLifecycleEventPublisher extends BaseService {
   async publish(
     subject: LifecycleSubject,
     type: LifecycleEventType,
-    extras: { encounterSeq?: number; userId?: string } = {},
+    extras: { encounterSeq?: number; userId?: string; noticeId?: string } = {},
   ): Promise<LifecycleEvent> {
-    const event: LifecycleEvent = {
+    // TASK-1050 — `noticeId` is a POINTER (a guardrail hold's notice), never content: the frame
+    // stays state-only and the client reads the notice by id (`GET consultations/:id/guardrail-notices`).
+    const event: LifecycleEvent & { noticeId?: string } = {
       type,
       consultationId: subject.id,
       status: subject.status as ConsultationStatus,
@@ -105,6 +107,7 @@ export class ConsultationLifecycleEventPublisher extends BaseService {
       ...(subject.closedReason ? { closedReason: subject.closedReason as ConsultationClosedReason } : {}),
       encounterSeq: extras.encounterSeq ?? subject.currentEncounterSeq,
       version: subject.version,
+      ...(extras.noticeId ? { noticeId: extras.noticeId } : {}),
       at: new Date().toISOString(),
       seq: await this.nextSeq(subject.id),
     };

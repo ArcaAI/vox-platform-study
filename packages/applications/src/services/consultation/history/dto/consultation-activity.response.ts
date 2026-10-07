@@ -63,6 +63,15 @@ export class ActivityRunRecordResponse extends RunSummaryResponse implements Act
   @ApiProperty() versionNumber!: number;
 }
 
+/** TASK-1050 §9.6 — the consultation's guardrail counts (no content). */
+export class ActivityGuardrailAggregatesResponse {
+  @ApiProperty({ description: 'Guardrail evaluations recorded for the consultation (one per request × direction).' }) evaluations!: number;
+  @ApiProperty({ description: 'Evaluations decided warn.' }) warn!: number;
+  @ApiProperty({ description: 'Evaluations decided block.' }) block!: number;
+  @ApiProperty({ description: 'Evaluations where a check could not run and degraded (unverified).' }) unverified!: number;
+  @ApiProperty({ description: 'Guardrail notices not yet acknowledged or resolved.' }) openNotices!: number;
+}
+
 export class ActivityAggregatesResponse implements Aggregates {
   @ApiProperty() aiRunCount!: number;
   @ApiProperty() tokensIn!: number;
@@ -72,6 +81,8 @@ export class ActivityAggregatesResponse implements Aggregates {
   @ApiProperty() editedItems!: number;
   @ApiProperty() feedbackUp!: number;
   @ApiProperty() feedbackDown!: number;
+  @ApiPropertyOptional({ type: () => ActivityGuardrailAggregatesResponse, description: 'TASK-1050 — the guardrail counts, when recorded.' })
+  guardrail?: ActivityGuardrailAggregatesResponse;
 }
 
 export class ItemVersionSummaryResponse implements ItemVersionSummary {

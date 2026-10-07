@@ -7,6 +7,7 @@ import {
   ContextItemRepository,
   ContextItemType,
   ContextItemVersionRepository,
+  GuardrailNoticeRepository,
   ModelTaskType,
   SYSTEM_TENANT_ID,
   generateId,
@@ -35,6 +36,7 @@ import {
   NOTE_TOKENIZER_ALLOW_ESTIMATE_KEY,
 } from '../../settings-registry/descriptors/consultation-note-composition.descriptors';
 import { contextItemDecryptor } from '../context/client-clinical-context';
+import { isGuardrailExcludedItem, loadGuardrailExcludedItemIds } from '../../guardrail-notice/guardrail-item-exclusion';
 import { computeInputDigest, parseStoredLedger, type FactLedgerV1, type LedgerFact } from '../fact-ledger/fact-ledger.schema';
 import { HARNESS_DRAFT_SUBTYPE } from '../harness/harness-draft.constants';
 import { noteSections, renderDraftSections, splitDraft } from './draft-split';
@@ -55,6 +57,7 @@ import {
   NOTE_PLAN_TTL_SECONDS,
   notePlanEnvelopeSchema,
   type NoteBlock,
+  type NoteBlockItem,
   type NoteBlockRole,
   type NoteCriticalFact,
   type NoteEncounterSource,
@@ -213,6 +216,12 @@ interface BlockDraft {
   role: NoteBlockRole;
   label: string;
   lines: string[];
+  /** TASK-1050 — the context items (at their composed version) the lines come from. */
+  items?: NoteBlockItem[];
+}
+
+function ref(itemId: string, versionNumber: number): NoteBlockItem {
+  return { itemId, itemVersion: versionNumber };
 }
 
 interface EncounterModel {
@@ -232,7 +241,7 @@ interface InputModel {
   /** Encounters with no speech at all — listed in `sources`, never a block. */
   silent: EncounterModel[];
   results: BlockDraft | null;
-  attachments: { label: string; lines: Array<{ itemId: string; line: string }> };
+  attachments: { label: string; lines: Array<{ itemId: string; versionNumber: number; line: string }> };
   drafts: BlockDraft[];
   sourceIds: Record<string, NoteSourceId>;
   /** `null` when any spoken encounter has no current ledger — coverage cannot be checked. */
@@ -310,7 +319,13 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
     );
     const verbatim: BlockDraft | null =
       lines.length > 0
-        ? { key: `encounter_${encounter.seq}`, role: 'encounter_transcript', label: `Encounter ${encounter.seq} transcript (${visitType})`, lines }
+        ? {
+            key: `encounter_${encounter.seq}`,
+            role: 'encounter_transcript',
+            label: `Encounter ${encounter.seq} transcript (${visitType})`,
+            lines,
+            items: encounter.segments.map((segment) => ref(segment.id, segment.versionNumber)),
+          }
         : null;
 
     let reduced: EncounterModel['reduced'] = null;
@@ -319,6 +334,7 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
     if (ledger && ledger.ledger.facts.length > 0) {
       const cited = new Set(ledger.ledger.facts.flatMap((fact) => fact.citations));
       const citedLines = encounter.segments.flatMap((segment, index) => (cited.has(segment.id) ? [lines[index]] : []));
+      const citedItems = encounter.segments.filter((segment) => cited.has(segment.id)).map((segment) => ref(segment.id, segment.versionNumber));
       const ledgerLines = ledger.ledger.facts.map((fact) => renderLedgerFact(fact, labelsFor(fact.citations), superseded.get(fact.factId) ?? null));
       reduced = {
         cited:
@@ -328,9 +344,16 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
                 role: 'encounter_transcript',
                 label: `Encounter ${encounter.seq} — cited segments`,
                 lines: citedLines,
+                items: citedItems,
               }
             : null,
-        ledger: { key: `ledger_${encounter.seq}`, role: 'encounter_ledger', label: `Encounter ${encounter.seq} fact ledger`, lines: ledgerLines },
+        ledger: {
+          key: `ledger_${encounter.seq}`,
+          role: 'encounter_ledger',
+          label: `Encounter ${encounter.seq} fact ledger`,
+          lines: ledgerLines,
+          items: [ref(ledger.itemId, ledger.versionNumber)],
+        },
         itemId: ledger.itemId,
         versionNumber: ledger.versionNumber,
       };
@@ -360,6 +383,7 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
           role: 'encounter_transcript',
           label: `Encounter 1 transcript (${visitTypeOf(encounters.find((e) => e.seq === 1)?.visitType)})`,
           lines: [text],
+          items: snapshot.legacyTranscripts.filter((item) => item.text.trim()).map((item) => ref(item.itemId, item.versionNumber)),
         },
         reduced: null,
         coveredAttachmentIds: new Set(),
@@ -373,19 +397,30 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
 
   const head: BlockDraft[] = [];
   const preSummary = snapshot.preSummary?.text.trim();
-  if (preSummary) head.push({ key: 'pre_summary', role: 'pre_summary', label: 'Pre-summary', lines: [preSummary] });
+  if (preSummary && snapshot.preSummary)
+    head.push({
+      key: 'pre_summary',
+      role: 'pre_summary',
+      label: 'Pre-summary',
+      lines: [preSummary],
+      items: [ref(snapshot.preSummary.itemId, snapshot.preSummary.versionNumber)],
+    });
   for (const entry of snapshot.background) {
     const text = entry.text.trim();
     if (text) head.push({ key: entry.key, role: 'pre_summary', label: entry.label, lines: [text] });
   }
 
   const resultLines = snapshot.results.flatMap((result, index) => (result.text.trim() ? [renderLabelledLine(resultLabel(index), result.text)] : []));
-  const results: BlockDraft | null = resultLines.length > 0 ? { key: 'results', role: 'results', label: 'Results', lines: resultLines } : null;
+  const resultItems = snapshot.results.filter((result) => result.text.trim()).map((result) => ref(result.itemId, result.versionNumber));
+  const results: BlockDraft | null =
+    resultLines.length > 0 ? { key: 'results', role: 'results', label: 'Results', lines: resultLines, items: resultItems } : null;
 
   const attachments = {
     label: ATTACHMENT_BLOCK.label,
     lines: snapshot.attachmentTranscripts.flatMap((attachment, index) =>
-      attachment.text.trim() ? [{ itemId: attachment.itemId, line: renderLabelledLine(attachmentTranscriptLabel(index), attachment.text) }] : [],
+      attachment.text.trim()
+        ? [{ itemId: attachment.itemId, versionNumber: attachment.versionNumber, line: renderLabelledLine(attachmentTranscriptLabel(index), attachment.text) }]
+        : [],
     ),
   };
 
@@ -398,9 +433,16 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
         role: 'draft_clinician',
         label: 'Clinician-edited sections (keep their meaning)',
         lines: [renderDraftSections(split.clinician)],
+        items: [ref(snapshot.draft.itemId, snapshot.draft.versionNumber)],
       });
     if (carryAiDraft && split.ai.length > 0)
-      drafts.push({ key: 'draft_ai', role: 'draft_ai', label: 'Previous AI draft', lines: [renderDraftSections(split.ai)] });
+      drafts.push({
+        key: 'draft_ai',
+        role: 'draft_ai',
+        label: 'Previous AI draft',
+        lines: [renderDraftSections(split.ai)],
+        items: [ref(snapshot.draft.itemId, snapshot.draft.versionNumber)],
+      });
   }
 
   const criticalFacts: NoteCriticalFact[] = [];
@@ -526,7 +568,13 @@ export function previewNoteBlocks(snapshot: NoteSourceSnapshot, carryAiDraft = t
     label: block.label,
     content: contentOf(block),
     tokens: 0,
+    ...itemsOf(block),
   }));
+}
+
+/** `items` only when the block has some — a plan without guardrail-mappable sources is unchanged. */
+function itemsOf(block: BlockDraft): { items?: NoteBlockItem[] } {
+  return block.items && block.items.length > 0 ? { items: block.items } : {};
 }
 
 function orderedBlocks(model: InputModel, reduced: ReadonlySet<number>): BlockDraft[] {
@@ -542,9 +590,15 @@ function orderedBlocks(model: InputModel, reduced: ReadonlySet<number>): BlockDr
     }
   }
   if (model.results) blocks.push(model.results);
-  const attachmentLines = model.attachments.lines.filter((entry) => !coveredByReduction.has(entry.itemId)).map((entry) => entry.line);
-  if (attachmentLines.length > 0)
-    blocks.push({ key: ATTACHMENT_BLOCK.key, role: 'attachment_transcript', label: model.attachments.label, lines: attachmentLines });
+  const attachmentEntries = model.attachments.lines.filter((entry) => !coveredByReduction.has(entry.itemId));
+  if (attachmentEntries.length > 0)
+    blocks.push({
+      key: ATTACHMENT_BLOCK.key,
+      role: 'attachment_transcript',
+      label: model.attachments.label,
+      lines: attachmentEntries.map((entry) => entry.line),
+      items: attachmentEntries.map((entry) => ref(entry.itemId, entry.versionNumber)),
+    });
   if (model.last?.verbatim) blocks.push(model.last.verbatim);
   blocks.push(...model.drafts);
   return blocks;
@@ -662,6 +716,7 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
     label: block.label,
     content: contentOf(block),
     tokens: block.key === ATTACHMENT_BLOCK.key ? attachmentBlockTokens(dropped) : blockTokens(block),
+    ...itemsOf(block),
   }));
 
   const encounterSources: NoteEncounterSource[] = [...model.priors, ...(model.last ? [model.last] : []), ...model.silent]
@@ -822,6 +877,8 @@ export class NoteInputComposerService {
     // TASK-1047 FC-4 — verifies the plan's system message. Unwired ⇒ no call carries governance, so
     // the harness's system prompt is screened as untrusted — the safe direction.
     @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistry,
+    // TASK-1050 — the resolved `item_excluded` holds. Unwired ⇒ only WITHHELD items are skipped.
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll'>,
   ) {}
 
   /**
@@ -1078,9 +1135,12 @@ export class NoteInputComposerService {
     const { consultationId, tenantId } = request;
     const decrypt = contextItemDecryptor(this.contextItemRepository, this.secretsService);
     const text = async (item: ContextItemEntity): Promise<string> => ((await decrypt(item)) ?? '').trim();
+    // TASK-1050 — a WITHHELD item, or a BLOCKED one its hold excluded, never reaches an LLM.
+    const guardrailExcluded = await loadGuardrailExcludedItemIds(this.guardrailNotices, tenantId, consultationId);
+    const skip = (item: ContextItemEntity): boolean => isExcluded(item) || isGuardrailExcludedItem(item, guardrailExcluded);
 
-    const segmentItems = (await this.contextItemRepository.findSegments(consultationId)).filter((item) => !isExcluded(item));
-    const transcriptItems = (await this.contextItemRepository.findTranscripts(consultationId)).filter((item) => !isExcluded(item)).sort(byCreated);
+    const segmentItems = (await this.contextItemRepository.findSegments(consultationId)).filter((item) => !skip(item));
+    const transcriptItems = (await this.contextItemRepository.findTranscripts(consultationId)).filter((item) => !skip(item)).sort(byCreated);
     const audioItems = transcriptItems.filter((item) => meta(item).origin === ATTACHMENT_AUDIO_ORIGIN);
 
     const attachmentTranscripts: NoteSourceSnapshot['attachmentTranscripts'] = [];
@@ -1146,7 +1206,7 @@ export class NoteInputComposerService {
 
     const results: NoteSnapshotText[] = [];
     for (const item of (await this.contextItemRepository.findAttachments(consultationId))
-      .filter((candidate) => !isExcluded(candidate))
+      .filter((candidate) => !skip(candidate))
       .sort(byCreated)) {
       const extracted = typeof meta(item).extractedText === 'string' ? (meta(item).extractedText as string).trim() : '';
       const body = extracted || (await text(item));
@@ -1154,11 +1214,11 @@ export class NoteInputComposerService {
     }
     results.push(...(request.extras?.results ?? []).filter((entry) => entry.text.trim()));
 
-    const preSummaries = (await this.contextItemRepository.findPreSummaries(consultationId)).filter((item) => !isExcluded(item)).sort(byCreated);
+    const preSummaries = (await this.contextItemRepository.findPreSummaries(consultationId)).filter((item) => !skip(item)).sort(byCreated);
     const latestPreSummary = preSummaries[preSummaries.length - 1];
     const preSummaryText = latestPreSummary ? await text(latestPreSummary) : '';
 
-    const draft = await this.readDraft(consultationId, text);
+    const draft = await this.readDraft(consultationId, text, skip);
     let headings = await this.resolveHeadings(tenantId, request.documentTemplateSlug);
     if (headings.length === 0 && draft) {
       headings = [...noteSections(draft.latestText, [])].map(([key, section]) => ({ key, title: section.title }));
@@ -1233,9 +1293,13 @@ export class NoteInputComposerService {
   }
 
   /** The harness's own note item (never a note another path authored) and its latest AI version. */
-  private async readDraft(consultationId: string, text: (item: ContextItemEntity) => Promise<string>): Promise<NoteSourceSnapshot['draft']> {
+  private async readDraft(
+    consultationId: string,
+    text: (item: ContextItemEntity) => Promise<string>,
+    skip: (item: ContextItemEntity) => boolean = isExcluded,
+  ): Promise<NoteSourceSnapshot['draft']> {
     const notes = (await this.contextItemRepository.findByType(consultationId, ContextItemType.RAW_SUMMARY))
-      .filter((item) => meta(item).subType === HARNESS_DRAFT_SUBTYPE && !isExcluded(item))
+      .filter((item) => meta(item).subType === HARNESS_DRAFT_SUBTYPE && !skip(item))
       .sort(byCreated);
     const note = notes[notes.length - 1];
     if (!note) return null;

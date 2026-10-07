@@ -109,8 +109,22 @@ export const noteSourcesSchema = z
   })
   .strict();
 
+/**
+ * TASK-1050 — a context item at the version a block was composed from. Guardrail screens each
+ * block as a REGION and maps a verdict back to these items (`GuardrailEvaluationCheck.items`).
+ */
+export const noteBlockItemSchema = z.object({ itemId: z.string(), itemVersion: z.number().int() }).strict();
+
 export const noteBlockSchema = z
-  .object({ key: z.string(), role: z.enum(NOTE_BLOCK_ROLES), label: z.string(), content: z.string(), tokens: z.number().int() })
+  .object({
+    key: z.string(),
+    role: z.enum(NOTE_BLOCK_ROLES),
+    label: z.string(),
+    content: z.string(),
+    tokens: z.number().int(),
+    /** TASK-1050 — the items behind the block (absent for a block with none, e.g. caller background). */
+    items: z.array(noteBlockItemSchema).optional(),
+  })
   .strict();
 
 export const noteHeadingSchema = z.object({ key: z.string(), title: z.string() }).strict();
@@ -235,6 +249,7 @@ export type NoteReduction = z.infer<typeof noteReductionSchema>;
 export type NoteBudget = z.infer<typeof noteBudgetSchema>;
 export type NoteEncounterSource = z.infer<typeof noteEncounterSourceSchema>;
 export type NoteBlock = z.infer<typeof noteBlockSchema>;
+export type NoteBlockItem = z.infer<typeof noteBlockItemSchema>;
 export type NoteHeading = z.infer<typeof noteHeadingSchema>;
 export type NoteCall = z.infer<typeof noteCallSchema>;
 export type NoteCriticalFact = z.infer<typeof noteCriticalFactSchema>;

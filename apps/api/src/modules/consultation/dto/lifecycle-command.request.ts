@@ -1,6 +1,7 @@
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { StopRecordingRequest } from '@arcaai/applications';
+import { ApproveResolveHoldRequest, StopRecordingRequest } from '@arcaai/applications';
 
 /** Body of `POST consultations/:id/start`. */
 export class StartConsultationRequest {
@@ -44,6 +45,24 @@ export class ApproveConsultationRequest {
   @IsOptional()
   @IsBoolean()
   overrideSafetyFlag?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1050 — the client showed the outstanding guardrail warnings in its confirm step. Either way every open warning is acknowledged in the approve transaction (by the approver) and listed in `acknowledgedNotices`; warnings never block approve.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeGuardrailNotices?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1050 — resolve an INBOUND guardrail hold (`acknowledged` or `item_excluded`) and approve in the same transaction. An outbound hold must be resumed and the note regenerated first (409 `GUARDRAIL_HOLD`).',
+    type: () => ApproveResolveHoldRequest,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ApproveResolveHoldRequest)
+  resolveHold?: ApproveResolveHoldRequest;
 }
 
 /** Body of `POST consultations/:id/reopen`. */

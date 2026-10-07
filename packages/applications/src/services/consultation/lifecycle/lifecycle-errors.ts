@@ -24,6 +24,8 @@ export const LifecycleConflictCode = {
   CONSULTATION_NOT_RECORDABLE: 'CONSULTATION_NOT_RECORDABLE',
   /** `start` naming an STT session apps/stt reports as not active. */
   STT_SESSION_NOT_ACTIVE: 'STT_SESSION_NOT_ACTIVE',
+  /** TASK-1050 — `start` on a consultation in a guardrail hold: resume the hold first. */
+  GUARDRAIL_HOLD: 'GUARDRAIL_HOLD',
 } as const;
 export type LifecycleConflictCode = (typeof LifecycleConflictCode)[keyof typeof LifecycleConflictCode];
 

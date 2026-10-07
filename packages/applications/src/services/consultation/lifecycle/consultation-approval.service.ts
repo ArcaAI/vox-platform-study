@@ -13,10 +13,14 @@ import {
   ContextItemRepository,
   ContextItemVersionRepository,
   CoreUnitOfWorkService,
+  GuardrailNoticeRepository,
+  GuardrailNoticeStatus,
   HarnessAuditAction,
   JsonValue,
   ResourceType,
+  type GuardrailNoticeEntity,
 } from '@arcaai/domains';
+import { isGuardrailHoldReason, type GuardrailHoldResolution, type GuardrailNoticeAcknowledgement } from '@arcaai/types';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { HarnessAuditService } from '../../harness-audit';
@@ -27,6 +31,8 @@ import { IConsultationEncounterService, IConsultationEncounterServiceToken } fro
 import { LifecycleConflictCode, applyLifecycleTransition, lifecycleConflict } from './lifecycle-errors';
 import { ConsultationLifecycleEventPublisher } from './lifecycle-event.publisher';
 import { SESSION_NOTE_SIGNER, type PreparedSessionSignature, type SessionNoteSigner, type SessionSignerCaller } from './session-note-signer';
+import { GUARDRAIL_CONFLICT_CODES, assertResolutionAllowed, guardrailConflict } from '../../guardrail-notice/guardrail-hold.rules';
+import { acknowledgementOf, isBlockNotice } from '../../guardrail-notice/guardrail-wire';
 
 /** One approved item, by reference only — never content. */
 export interface ApprovalSnapshotItem {
@@ -38,6 +44,12 @@ export interface ApprovalSnapshotItem {
 
 export interface ApprovalSnapshot {
   items: ApprovalSnapshotItem[];
+  /**
+   * TASK-1050 §9.8.3 — the guardrail notices this approval acknowledged (or whose inbound hold it
+   * resolved), sorted. Present only when there is at least one, so a snapshot with no guardrail
+   * outcome hashes exactly as before.
+   */
+  guardrailNotices?: string[];
 }
 
 /** SHA-256 over the canonical snapshot (items sorted by id, fixed key order). */
@@ -51,6 +63,18 @@ export interface ApproveOptions {
   overrideSafetyFlag?: boolean;
   caller: ClinicalCaller;
   legacyContextItemId?: string;
+  /** TASK-1050 §9.8.3 — the client showed the warnings; either way every open warning is acknowledged. */
+  acknowledgeGuardrailNotices?: boolean;
+  /** TASK-1050 §9.8.3 / OD-24 — resolve an INBOUND guardrail hold and approve in the same transaction. */
+  resolveHold?: GuardrailHoldResolution;
+}
+
+/** What approve does with the consultation's guardrail notices, decided before anything is written. */
+interface GuardrailApprovalPlan {
+  warnings: GuardrailNoticeEntity[];
+  resolve: { notice: GuardrailNoticeEntity; resolution: GuardrailHoldResolution['resolution'] } | null;
+  /** The processing marker still says GUARDRAIL_HOLD: the approve write clears it. */
+  clearHold: boolean;
 }
 
 const APPROVAL_BLOCKING_PROCESSING: ReadonlySet<ConsultationProcessing> = new Set([
@@ -112,6 +136,8 @@ export class ConsultationApprovalService extends BaseService {
     @Optional()
     @Inject(IConsultationEncounterServiceToken)
     private readonly encounterService?: Pick<IConsultationEncounterService, 'lifecycleView'>,
+    // TASK-1050 — the consultation's guardrail notices. Unwired ⇒ approve sees no guardrail outcome.
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll' | 'updateWithVersion'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -149,6 +175,9 @@ export class ConsultationApprovalService extends BaseService {
       applyLifecycleTransition(consultation, ConsultationStatus.APPROVED, 'approve', 'approve');
     }
 
+    // TASK-1050 — warnings never block; a hold does unless `resolveHold` resolves it (inbound only).
+    const guardrail = await this.planGuardrail(consultation, tenantId, options);
+
     // The per-summary route's If-Match is the NOTE's; the consultation is then compare-and-set on
     // the version just read. The session route's If-Match is the consultation's.
     const legacy = options.legacyContextItemId !== undefined;
@@ -165,6 +194,8 @@ export class ConsultationApprovalService extends BaseService {
     const { approvedBy, actor, note } = prepared;
 
     const snapshot = await this.buildSnapshot(consultationId, prepared);
+    const guardrailNoticeIds = [...guardrail.warnings.map((notice) => notice.id), ...(guardrail.resolve ? [guardrail.resolve.notice.id] : [])].sort();
+    if (guardrailNoticeIds.length > 0) snapshot.guardrailNotices = guardrailNoticeIds;
     const snapshotHash = computeSnapshotHash(snapshot);
     const encounterCount = (await this.encounterRepository.findByConsultation(consultationId)).length || consultation.currentEncounterSeq;
     const approvedAt = new Date();
@@ -185,11 +216,13 @@ export class ConsultationApprovalService extends BaseService {
       consultation.approvedAt = approvedAt;
     }
     consultation.updatedBy = approvedBy;
+    if (guardrail.clearHold) consultation.setProcessing(ConsultationProcessing.IDLE);
 
     const createdBy = actor.principalId || approvedBy;
     const lateMeta = lateSignOff ? { lateSignOff: true, fromStatus } : undefined;
 
     const write = async (tx?: unknown) => {
+      await this.applyGuardrailPlan(guardrail, { tenantId, consultationId, approvedBy, createdBy, approvedAt }, tx);
       if (note?.version) {
         await this.contextItemVersionRepository.create(note.version, tx);
         await this.contextItemRepository.updateWithVersion(
@@ -243,7 +276,92 @@ export class ConsultationApprovalService extends BaseService {
     }
     await this.noteSigner.afterSessionSigned({ tenantId, consultation: updated, note, approvedBy, actor });
 
-    return this.respond(updated);
+    const response = await this.respond(updated);
+    const acknowledgedNotices = guardrail.warnings
+      .map((notice) => acknowledgementOf(notice))
+      .filter((ack): ack is GuardrailNoticeAcknowledgement => ack !== null);
+    return Object.assign(response, { acknowledgedNotices });
+  }
+
+  /**
+   * TASK-1050 §9.8.3 — decide, BEFORE anything is written, what approve does with the guardrail
+   * notices. Every open warning / unverified notice is acknowledged (never a refusal). An
+   * unresolved block — a guardrail hold — is 409 `GUARDRAIL_HOLD` unless `resolveHold` names it and
+   * is legal: inbound only (an outbound hold withheld the note, OD-24), `acknowledged` /
+   * `item_excluded` only (an edit needs a regenerated note), the override only below a block floor.
+   */
+  private async planGuardrail(consultation: ConsultationEntity, tenantId: string, options: ApproveOptions): Promise<GuardrailApprovalPlan> {
+    const held = consultation.processing === ConsultationProcessing.AWAITING_REVIEW && isGuardrailHoldReason(consultation.processingReason);
+    const notices = this.guardrailNotices
+      ? await this.guardrailNotices.findAll({
+          where: {
+            tenantId,
+            consultationId: consultation.id,
+            status: { in: [GuardrailNoticeStatus.OPEN, GuardrailNoticeStatus.ACKNOWLEDGED] },
+          } as never,
+          sort: [{ createdAt: 'asc' }, { id: 'asc' }] as never,
+        })
+      : [];
+    const blocks = notices.filter((notice) => isBlockNotice(notice));
+    const warnings = notices.filter((notice) => !isBlockNotice(notice) && String(notice.status) === GuardrailNoticeStatus.OPEN);
+    // A hold marker with no unresolved block behind it is stale state, never a dead end.
+    if (blocks.length === 0) return { warnings, resolve: null, clearHold: held };
+
+    const noticeIds = blocks.map((notice) => notice.id);
+    const request = options.resolveHold;
+    if (!request) {
+      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'The consultation is in a guardrail hold: resolve it (`resolveHold`) or resume it first.', {
+        noticeIds,
+      });
+    }
+    const target = blocks.find((notice) => notice.id === request.noticeId);
+    if (!target || blocks.length > 1) {
+      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'Every guardrail hold but the one approve resolves must be resumed first.', { noticeIds });
+    }
+    if (String(target.direction) === 'OUTBOUND') {
+      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'The generated content was withheld: resume the hold and regenerate the note before approving.', {
+        noticeIds,
+        reason: 'outbound_hold',
+      });
+    }
+    if (request.resolution === 'item_edited') {
+      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'An edited item needs a regenerated note: resume the hold, then approve.', {
+        noticeIds,
+        reason: 'item_edited',
+      });
+    }
+    assertResolutionAllowed(target, request.resolution);
+    return { warnings, resolve: { notice: target, resolution: request.resolution }, clearHold: true };
+  }
+
+  /** Inside the approve transaction: acknowledge the warnings, resolve the hold, record an override. */
+  private async applyGuardrailPlan(
+    plan: GuardrailApprovalPlan,
+    context: { tenantId: string; consultationId: string; approvedBy: string; createdBy: string; approvedAt: Date },
+    tx: unknown,
+  ): Promise<void> {
+    if (!this.guardrailNotices) return;
+    for (const notice of plan.warnings) {
+      notice.acknowledge({ by: context.approvedBy, via: 'approve', at: context.approvedAt });
+      await this.guardrailNotices.updateWithVersion(notice.id, notice, notice.version, tx);
+    }
+    if (!plan.resolve) return;
+    const { notice, resolution } = plan.resolve;
+    notice.resolve({ by: context.approvedBy, resolution, at: context.approvedAt });
+    await this.guardrailNotices.updateWithVersion(notice.id, notice, notice.version, tx);
+    if (resolution === 'acknowledged') {
+      await this.harnessAuditService.append({
+        tenantId: context.tenantId,
+        consultationId: context.consultationId,
+        action: HarnessAuditAction.SAFETY_OVERRIDE,
+        modelName: 'guardrail-hold-override',
+        modelVersion: 'v1',
+        sensorScores: { noticeId: notice.id, messageKey: notice.messageKey, policyVersion: notice.policyVersion, via: 'approve' } as JsonValue,
+        citations: [] as JsonValue,
+        clinicianId: context.approvedBy,
+        createdBy: context.createdBy,
+      });
+    }
   }
 
   private async assertLegacyNoteInScope(consultationId: string, tenantId: string, contextItemId: string): Promise<void> {

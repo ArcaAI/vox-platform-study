@@ -419,6 +419,21 @@ export interface DecideWorkflowRunReviewResult {
   signaled: boolean;
 }
 
+/** Body of `POST /workflow-runs/{runId}/guardrail-resolution` (TASK-1050, lane W2f's route). */
+export interface GuardrailResolutionSignalInput {
+  noticeId: string;
+  resolution: 'item_excluded' | 'item_edited' | 'acknowledged';
+  /** The clinician the resolution is attributed to. */
+  by: string;
+}
+
+/** Response of `POST /workflow-runs/{runId}/guardrail-resolution`. */
+export interface GuardrailResolutionSignalResult {
+  signaled: boolean;
+  runId?: string;
+  nodeId?: string;
+}
+
 /**
  * HarnessGatewayService.
  *
@@ -781,6 +796,25 @@ export class HarnessGatewayService {
     );
     this.logger.log({ message: 'Harness workflow run review decided', runId, nodeId, decision: input.decision });
     return response.data as DecideWorkflowRunReviewResult;
+  }
+
+  /**
+   * TASK-1050 §9.8.1 — release a run PAUSED at a guardrail-blocked node: the node re-executes with
+   * the clinician's resolution and the run continues (harness route from lane W2f).
+   *
+   * Throws when the harness answers non-2xx — notably when the run is no longer paused on that
+   * notice (timed out → `run.failed GUARDRAIL_BLOCKED`); the caller then falls back to the
+   * supersede path. `by` is the clinician resolved server-side, never a client-supplied id.
+   */
+  async signalGuardrailResolution(runId: string, input: GuardrailResolutionSignalInput, tenantId: string): Promise<GuardrailResolutionSignalResult> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${encodeURIComponent(runId)}/guardrail-resolution`;
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { noticeId: input.noticeId, resolution: input.resolution, by: input.by },
+      { headers: await this.buildHeaders(tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
+    );
+    this.logger.log({ message: 'Harness run signalled with a guardrail resolution', runId, noticeId: input.noticeId, resolution: input.resolution });
+    return (response.data ?? { signaled: true }) as GuardrailResolutionSignalResult;
   }
 
   /**
