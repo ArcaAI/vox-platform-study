@@ -624,7 +624,10 @@ def _load_laya(name: str) -> LayaScorer:
 
     base, _, task = name.partition("@")
     task = task or "injection"
-    return LayaScorer(name=name, hf_id=LAYA_MODELS[base], agent=Agent(LAYA_MODELS[base]), task=task)
+    # CPU only: Laya auto-selects MPS on Apple silicon, whose memory the RSS guard cannot see,
+    # and the cluster target (apps/nlp) is CPU.
+    agent = Agent(LAYA_MODELS[base], device="cpu")
+    return LayaScorer(name=name, hf_id=LAYA_MODELS[base], agent=agent, task=task)
 
 
 # ── GLiGuard safety / toxicity (production schema) ────────────────────────────

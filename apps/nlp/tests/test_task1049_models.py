@@ -555,3 +555,28 @@ def test_scope_judge_unparseable_verdict_raises_and_preflight_runs_first() -> No
     )
     with pytest.raises(ValueError):
         bad.score(["x"])
+
+
+def test_laya_is_loaded_on_cpu_never_mps(monkeypatch) -> None:
+    # Laya auto-selects MPS on Apple silicon; GPU memory is invisible to the RSS ceiling
+    # (2026-10-07: system available fell to 14 % with the process at 0.7 GB RSS).
+    import types
+
+    from injection_eval import models
+
+    seen: dict = {}
+
+    class Agent:
+        revision = "r"
+
+        def __init__(self, model_id, **kw):
+            seen.update(kw, model_id=model_id)
+
+    fake = types.ModuleType("laya.agent")
+    fake.Agent = Agent
+    monkeypatch.setitem(sys.modules, "laya", types.ModuleType("laya"))
+    monkeypatch.setitem(sys.modules, "laya.agent", fake)
+    scorer = models._load_laya("laya-multilingual")
+    assert seen["device"] == "cpu"
+    assert seen["model_id"] == "convaiinnovations/laya-multilingual"
+    assert scorer.task == "injection"
