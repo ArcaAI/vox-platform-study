@@ -6,11 +6,16 @@ per-request tenant credential keyed by the SAME provider name as ``provider``.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from text.models.requests import KnownPhi, ProviderLocalityStamp, ProviderOverride
+from text.models.requests import (
+    KnownPhi,
+    ProviderLocalityStamp,
+    ProviderOverride,
+    RegionItemRef,
+)
 from text.models.responses import EgressSummary
 
 
@@ -28,6 +33,8 @@ class TranslateRequest(BaseModel):
     provider_locality: dict[str, ProviderLocalityStamp] | None = None
     known_phi: list[KnownPhi] | None = Field(default=None, max_length=200)
     medical_exempt: Literal["internal"] | None = None
+    # TASK-1050 — as on `/generate`; the texts are screened as region ``user``.
+    region_items: dict[str, list[RegionItemRef]] | None = Field(default=None, max_length=256)
 
 
 class TranslateResponse(BaseModel):
@@ -39,3 +46,6 @@ class TranslateResponse(BaseModel):
     chars: int = 0
     # TASK-1035 — counts only, never values.
     egress: EgressSummary | None = None
+    # TASK-1050 — see `GenerateResponse`.
+    guardrail_notices: list[dict[str, Any]] = Field(default_factory=list)
+    guardrail_evaluation_ids: list[str] = Field(default_factory=list)

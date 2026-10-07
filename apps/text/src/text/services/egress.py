@@ -5,8 +5,13 @@
 1. **classify locality** per provider actually called (`core/locality.py`);
 2. **inbound gate** — guardrail ``/screen/inbound`` (prompt safety + GLiNER2 PII
    spans) over every UNTRUSTED region the provider receives, CONCURRENTLY with the
-   medical judge (``/api/medical/validate``) over the data regions only; both
-   verdicts block. The judge is skipped only for ``medical_exempt: "internal"``.
+   medical judge (``/api/medical/validate``) over the data regions only; a
+   ``block`` from either stops the call, ``warn`` / ``unverified`` continue with
+   their notices, and an outage degrades to ``guardrail.unverified`` — except the
+   screen before a CLOUD call, whose PII spans the pseudonymiser needs: then the
+   call is refused (``EGRESS_REDACTION_UNAVAILABLE``, TASK-1050 §9.8.1). PII spans
+   are requested only off LOCAL (TASK-1049 F8). The judge is skipped only for
+   ``medical_exempt: "internal"``.
    A system prompt is untrusted unless its ``system_governance`` digest verifies
    (TASK-1047 FC-4): GOVERNED text is static, registry-screened at authoring time,
    and is neither screened nor judged per call;
@@ -34,7 +39,7 @@ from typing import Any, Literal
 
 from prometheus_client import Counter
 
-from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError
+from text.core.exceptions import ContentBlockedError, EgressRedactionUnavailableError
 from text.core.locality import CLOUD, LOCAL, resolve_locality
 from text.core.logging import get_logger
 from text.models.requests import GenerateRequest, TextContentPart, serialize_provider_overrides
@@ -44,6 +49,17 @@ from text.services.data_blocks import keyed_ranges
 from text.services.external_guardrail import (
     GUARDRAIL_UNAVAILABLE_REASON,
     OUTBOUND_FINDING_REGION,
+)
+from text.services.guardrail_notices import (
+    INBOUND_SCREEN_CHECKS,
+    MEDICAL_CHECKS,
+    UNKNOWN_POLICY_VERSION,
+    GuardrailOutcome,
+    blocked_checks,
+    blocked_notice,
+    redaction_unavailable_notice,
+    unverified_notice,
+    valid_notices,
 )
 from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.pseudonymizer import Pseudonymizer, Span
@@ -58,6 +74,7 @@ __all__ = [
     "USER_REGION",
     "EgressContext",
     "InboundResult",
+    "RegionItems",
     "SystemTrust",
     "prepare_egress",
     "prepare_text_egress",
@@ -106,6 +123,11 @@ _DATA_FINDING_CHECKS = frozenset(
 #: ``/translate``), ``governed`` (verified by digest — never screened) or
 #: ``untrusted`` (screened as region :data:`SYSTEM_REGION`).
 SystemTrust = Literal["absent", "governed", "untrusted"]
+
+#: TASK-1050: the context items behind each region, ``{region key: [{itemId,
+#: itemVersion}, ...]}``, as the caller supplied them (``GenerateRequest.region_items``).
+#: Guardrail stamps them on its evaluation record; a notice names their ids.
+RegionItems = Mapping[str, list[dict[str, Any]]]
 
 #: Per-call system-prompt trust outcomes (TASK-1047 FC-4). Counts only.
 SYSTEM_PROMPT_GOVERNANCE = Counter(
@@ -216,7 +238,9 @@ class _ScreenRegion:
         self.text += source[start:end]
 
 
-def _screen_regions(segments: list[str], *, system: SystemTrust) -> list[_ScreenRegion]:
+def _screen_regions(
+    segments: list[str], *, system: SystemTrust, outside_trust: str = TRUST_INSTRUCTION
+) -> list[_ScreenRegion]:
     """The regions of ``segments`` an ML screen inspects, in first-appearance order.
 
     Each ``EXTERNAL_DATA`` body is keyed by its block name and caller text outside
@@ -228,6 +252,9 @@ def _screen_regions(segments: list[str], *, system: SystemTrust) -> list[_Screen
 
     Trust (FC-5b): a block body is DATA; caller text outside blocks and an untrusted
     system prompt are INSTRUCTION, and a region stitched from both is INSTRUCTION.
+    ``outside_trust`` overrides the outside-text trust for text THIS service composed
+    from clinical input (``/translate``: TASK-1049 F3) — that is data, not an
+    instruction anyone authored.
     """
     regions: dict[str, _ScreenRegion] = {}
     for index, text in enumerate(segments):
@@ -239,28 +266,43 @@ def _screen_regions(segments: list[str], *, system: SystemTrust) -> list[_Screen
             if is_system:
                 key, trust = SYSTEM_REGION, TRUST_INSTRUCTION
             elif key == _OUTSIDE:
-                key, trust = USER_REGION, TRUST_INSTRUCTION
+                key, trust = USER_REGION, outside_trust
             regions.setdefault(key, _ScreenRegion(key)).add(index, text, start, end, trust=trust)
     return list(regions.values())
 
 
-def _wire(regions: list[_ScreenRegion]) -> list[dict[str, str]]:
-    """Regions as the judge and the output screen take them: key and text only."""
-    return [{"key": region.key, "text": region.text} for region in regions]
+def _with_items(wire: dict[str, Any], items: RegionItems | None) -> dict[str, Any]:
+    """``wire`` plus the caller's ``items`` for its key (TASK-1050), when there are any."""
+    region_items = (items or {}).get(wire["key"])
+    if region_items:
+        wire["items"] = [dict(item) for item in region_items]
+    return wire
 
 
-def _screen_wire(regions: list[_ScreenRegion]) -> list[dict[str, str]]:
-    """Regions for the inbound screen: each with its explicit ``trust`` (FC-5b)."""
-    return [{"key": region.key, "text": region.text, "trust": region.trust} for region in regions]
+def _wire(regions: list[_ScreenRegion], items: RegionItems | None = None) -> list[dict[str, Any]]:
+    """Regions as the judge and the output screen take them: key and text (+ items)."""
+    return [_with_items({"key": region.key, "text": region.text}, items) for region in regions]
 
 
-def source_regions(segments: list[str], *, system: SystemTrust) -> list[dict[str, str]]:
+def _screen_wire(
+    regions: list[_ScreenRegion], items: RegionItems | None = None
+) -> list[dict[str, Any]]:
+    """Regions for the inbound screen: each with its explicit ``trust`` (FC-5b) (+ items)."""
+    return [
+        _with_items({"key": region.key, "text": region.text, "trust": region.trust}, items)
+        for region in regions
+    ]
+
+
+def source_regions(
+    segments: list[str], *, system: SystemTrust, region_items: RegionItems | None = None
+) -> list[dict[str, Any]]:
     """The ``pii_leak`` source (FC-5 ``source_regions``): the untrusted regions sent.
 
     Governed system text is not a source — it carries no runtime value — and the
     platform token sentence is never included (it names a token shape, not data).
     """
-    return _wire(_screen_regions(segments, system=system))
+    return _wire(_screen_regions(segments, system=system), region_items)
 
 
 def _rebase(raw: Any, segment_count: int, regions: list[_ScreenRegion]) -> list[list[Span]]:
@@ -300,12 +342,14 @@ def _rebase(raw: Any, segment_count: int, regions: list[_ScreenRegion]) -> list[
 
 @dataclass(frozen=True)
 class InboundResult:
-    """What the inbound gate produced: guardrail's own spend, spans per text, and the
-    FC-5b data findings (``[{region, reasons}]`` — keys and check names, never text)."""
+    """What the inbound gate produced: guardrail's own spend, spans per text, the
+    FC-5b data findings (``[{region, reasons}]`` — keys and check names, never text),
+    and (TASK-1050) the notices and evaluation ids collected so far."""
 
     guardrail_usage: UsageDetail | None
     spans_by_segment: list[list[Span]]
     data_findings: list[dict[str, Any]] = field(default_factory=list)
+    outcome: GuardrailOutcome = field(default_factory=GuardrailOutcome)
 
 
 def _record_data_findings(verdict: Any, regions: list[_ScreenRegion]) -> list[dict[str, Any]]:
@@ -377,18 +421,71 @@ def _count_findings(findings: list[dict[str, Any]]) -> None:
             DATA_FINDINGS.labels(check=check if check in _DATA_FINDING_CHECKS else "other").inc()
 
 
-def _raise_for(verdict: dict[str, Any], *, medical: bool) -> None:
-    """Map a not-allowed verdict onto the fixed, non-PHI HTTP surface."""
-    reason = verdict.get("reason", "not_allowed")
-    if reason == GUARDRAIL_UNAVAILABLE_REASON:
-        raise GuardrailUnavailableError()
-    if medical and verdict.get("is_medical") is False:
-        raise ContentBlockedError(
+def _unavailable(verdict: Any) -> bool:
+    """No verdict was reached: an outage, a shed call, or a coverage gap."""
+    return not isinstance(verdict, dict) or (
+        not verdict.get("allowed", False) and verdict.get("reason") == GUARDRAIL_UNAVAILABLE_REASON
+    )
+
+
+def _policy_version(verdict: dict[str, Any]) -> str:
+    raw = verdict.get("raw")
+    source = raw if isinstance(raw, dict) else verdict
+    version = source.get("policy_version", source.get("policyVersion"))
+    return version if isinstance(version, str) and version else UNKNOWN_POLICY_VERSION
+
+
+def _item_ids(items: RegionItems | None) -> list[str]:
+    return [
+        str(item["itemId"])
+        for region_items in (items or {}).values()
+        for item in region_items
+        if item.get("itemId")
+    ]
+
+
+def _block_error(
+    verdict: dict[str, Any],
+    *,
+    medical: bool,
+    outcome: GuardrailOutcome,
+    item_ids: list[str],
+) -> ContentBlockedError:
+    """The fixed, non-PHI 422 for a block — guardrail's own notice, or one synthesised."""
+    not_medical = medical and verdict.get("is_medical") is False
+    notice = next(
+        (n for n in valid_notices(verdict.get("notices")) if n["type"] == "guardrail.blocked"),
+        None,
+    )
+    if notice is None:
+        if medical:
+            checks = [{"checkId": MEDICAL_CHECKS[0], "severity": "high"}]
+            key = "guardrail.blocked.not_medical" if not_medical else "guardrail.blocked.inbound"
+        else:
+            raw = verdict.get("raw")
+            checks = blocked_checks(raw if isinstance(raw, dict) else verdict) or blocked_checks(
+                {"reasons": [verdict.get("reason")]}
+            )
+            # Guardrail named no check id (a malformed verdict): the screen as a whole.
+            checks = checks or [
+                {"checkId": check, "severity": "high"} for check in INBOUND_SCREEN_CHECKS
+            ]
+            key = "guardrail.blocked.inbound"
+        notice = blocked_notice("inbound", key, checks, item_ids, _policy_version(verdict))
+    outcome.add_notice(notice)
+    if not_medical:
+        return ContentBlockedError(
             "The prompt was not classified as clinical content by the "
             "medical-relevance guardrail.",
             error_code="CONTENT_BLOCKED_NOT_MEDICAL",
+            guardrail_notice=notice,
+            guardrail_evaluation_ids=outcome.evaluation_ids,
         )
-    raise ContentBlockedError("Content was blocked by the safety guardrail.")
+    return ContentBlockedError(
+        "Content was blocked by the safety guardrail.",
+        guardrail_notice=notice,
+        guardrail_evaluation_ids=outcome.evaluation_ids,
+    )
 
 
 async def run_inbound_gate(
@@ -401,8 +498,11 @@ async def run_inbound_gate(
     tenant_policy: Any = None,
     provider_overrides: Any = None,
     medical_exempt: str | None = None,
+    locality: str | None = None,
+    region_items: RegionItems | None = None,
+    outside_trust: str = TRUST_INSTRUCTION,
 ) -> InboundResult:
-    """Run the inbound screen and the medical judge CONCURRENTLY; both verdicts block.
+    """Run the inbound screen and the medical judge CONCURRENTLY; enforce their decisions.
 
     ``segments`` are the texts the provider will receive; segment 0 is the system
     prompt unless ``system`` is ``absent``. The screen gets the UNTRUSTED regions
@@ -416,19 +516,46 @@ async def run_inbound_gate(
 
     The cycle tripwire holds: guardrail delegates its judgement to this service,
     so reaching this gate from the judge lane raises.
+
+    TASK-1050 (README §9.7.1, §9.8.1) — guardrail decides, this gate enforces:
+
+    * ``block`` (either verdict) raises the 422 ``ContentBlockedError`` it always
+      did, now carrying the ``GuardrailNotice`` and the evaluation ids;
+    * ``warn`` / ``unverified`` continue; their notices are collected on
+      ``InboundResult.outcome``;
+    * an OUTAGE (no verdict) degrades to a ``guardrail.unverified`` notice and the
+      call continues — EXCEPT the screen on a non-LOCAL provider: its PII spans are
+      what the cloud pseudonymiser replaces, so without them the call is refused
+      with :class:`EgressRedactionUnavailableError` (a resumable hold). A judged
+      block wins over that hold.
+
+    ``locality`` is the provider actually called (``None`` = unknown, read as
+    cloud). PII spans are requested only off LOCAL (TASK-1049 F8: they decide
+    nothing on a local call). ``region_items`` ride on the regions; ``outside_trust``
+    is the trust of text outside any block (``data`` for ``/translate``, F3).
     """
     if guardrail_client is None:
         return InboundResult(None, [[] for _ in segments])
     assert_not_in_judge_scope("egress.run_inbound_gate")
 
-    regions = _screen_regions(segments, system=system)
-    screen = guardrail_client.screen_inbound(regions=_screen_wire(regions), tenant_id=tenant_id)
+    regions = _screen_regions(segments, system=system, outside_trust=outside_trust)
+    screen = guardrail_client.screen_inbound(
+        regions=_screen_wire(regions, region_items),
+        tenant_id=tenant_id,
+        include_pii_spans=locality != LOCAL,
+        locality=locality,
+    )
     if medical_exempt == "internal":
         screen_verdict = await screen
         medical_verdict: dict[str, Any] | None = None
     else:
         judged = _wire(
-            _screen_regions(segments, system="absent" if system == "absent" else "governed")
+            _screen_regions(
+                segments,
+                system="absent" if system == "absent" else "governed",
+                outside_trust=outside_trust,
+            ),
+            region_items,
         )
         # An empty context is nothing to judge; the judge then gets the direct prompt.
         judge = guardrail_client.validate(
@@ -438,6 +565,7 @@ async def run_inbound_gate(
             # The connection the gateway injected, forwarded so guardrail's judge
             # has one (TASK-890). Serialized: `SecretStr` masks itself on dump.
             provider_overrides=serialize_provider_overrides(provider_overrides),
+            locality=locality,
         )
         screen_verdict, medical_verdict = await asyncio.gather(screen, judge)
 
@@ -451,18 +579,37 @@ async def run_inbound_gate(
     # always visible.
     data_findings = _record_data_findings(screen_verdict, regions)
 
-    # Fail-closed default: a missing ``allowed`` key is a rejection.
-    if medical_verdict is not None and not medical_verdict.get("allowed", False):
-        _raise_for(medical_verdict, medical=True)
-    if not isinstance(screen_verdict, dict):
-        raise GuardrailUnavailableError()
-    if not screen_verdict.get("allowed", False):
-        _raise_for(screen_verdict, medical=False)
+    outcome = GuardrailOutcome()
+    outcome.add_verdict(screen_verdict)
+    outcome.add_verdict(medical_verdict)
+    item_ids = _item_ids(region_items)
+    screen_down = _unavailable(screen_verdict)
+    medical_down = medical_verdict is not None and _unavailable(medical_verdict)
 
+    # A judged block first: a missing ``allowed`` key is a rejection, as before.
+    if medical_verdict is not None and not medical_down and not medical_verdict.get("allowed"):
+        raise _block_error(medical_verdict, medical=True, outcome=outcome, item_ids=item_ids)
+    if not screen_down and not screen_verdict.get("allowed", False):
+        raise _block_error(screen_verdict, medical=False, outcome=outcome, item_ids=item_ids)
+    if screen_down:
+        if locality != LOCAL:
+            # Privacy, not a safety verdict: no spans, so nothing goes to a cloud model.
+            raise EgressRedactionUnavailableError(
+                guardrail_notice=redaction_unavailable_notice(item_ids),
+                guardrail_evaluation_ids=outcome.evaluation_ids,
+            )
+        outcome.add_notice(unverified_notice("inbound", INBOUND_SCREEN_CHECKS, item_ids))
+        logger.warning("text.egress.inbound_unverified", check="screen", locality=locality)
+    if medical_down:
+        outcome.add_notice(unverified_notice("inbound", MEDICAL_CHECKS, item_ids))
+        logger.warning("text.egress.inbound_unverified", check="medical", locality=locality)
+
+    spans = screen_verdict.get("pii_spans") if isinstance(screen_verdict, dict) else None
     return InboundResult(
         usage,
-        _rebase(screen_verdict.get("pii_spans"), len(segments), regions),
+        _rebase(spans if not screen_down else None, len(segments), regions),
         data_findings,
+        outcome,
     )
 
 
@@ -481,6 +628,8 @@ class EgressContext:
     restored: int = 0
     pii_leak_blocked: bool = False
     data_findings: list[dict[str, Any]] = field(default_factory=list)
+    #: TASK-1050: the notices and evaluation ids of BOTH directions, in the order known.
+    guardrail: GuardrailOutcome = field(default_factory=GuardrailOutcome)
 
     @property
     def is_cloud(self) -> bool:
@@ -540,6 +689,8 @@ def prepare_egress(
     spans_by_segment: list[list[Span]] | None,
     system_governed: bool = False,
     data_findings: list[dict[str, Any]] | None = None,
+    outcome: GuardrailOutcome | None = None,
+    region_items: RegionItems | None = None,
 ) -> EgressContext:
     """Build what the provider receives for ``request``, per its locality.
 
@@ -547,7 +698,10 @@ def prepare_egress(
     system prompt included, as defence in depth; ML spans exist only where the
     inbound screen looked. ``system_governed`` (verified by the caller, FC-4) keeps
     the system prompt out of the ``pii_leak`` source regions. ``data_findings`` (the
-    inbound gate's FC-5b findings) ride on the egress summary.
+    inbound gate's FC-5b findings) ride on the egress summary. ``outcome`` (the
+    inbound gate's notices and evaluation ids) becomes ``EgressContext.guardrail``,
+    which the outbound screen then adds to; ``region_items`` ride on the source
+    regions (TASK-1050).
     """
     locality = resolve_locality(request.provider, request.provider_locality)
     segments = request_segments(request)
@@ -561,7 +715,7 @@ def prepare_egress(
         for text, segment_spans in zip(segments, spans, strict=False):
             pseudonymizer.count(text, segment_spans)
         provider_request = request
-        regions = source_regions(segments, system=system)
+        regions = source_regions(segments, system=system, region_items=region_items)
     else:
         rewritten = [
             pseudonymizer.pseudonymize(text, segment_spans) if text else text
@@ -570,7 +724,7 @@ def prepare_egress(
         # The output screen's source is the untrusted regions the provider was
         # given, pseudonymised; never the platform sentence (it names a token
         # shape, not anything the model read).
-        regions = source_regions(rewritten, system=system)
+        regions = source_regions(rewritten, system=system, region_items=region_items)
         system_prompt = rewritten[0]
         system_prompt = (
             f"{system_prompt}{_SEGMENT_SEPARATOR}{PLATFORM_TOKEN_SENTENCE}"
@@ -605,6 +759,7 @@ def prepare_egress(
         source_regions=regions,
         images_unredacted=images,
         data_findings=list(data_findings or []),
+        guardrail=outcome if outcome is not None else GuardrailOutcome(),
     )
 
 
@@ -615,6 +770,8 @@ def prepare_text_egress(
     provider_locality: Mapping[str, str] | None,
     known_phi: Any,
     spans_by_segment: list[list[Span]] | None,
+    outcome: GuardrailOutcome | None = None,
+    region_items: RegionItems | None = None,
 ) -> tuple[EgressContext, list[str]]:
     """The same egress for a list of plain texts (``/translate``)."""
     locality = resolve_locality(provider, provider_locality)
@@ -635,6 +792,7 @@ def prepare_text_egress(
         locality=locality,
         pseudonymizer=pseudonymizer,
         provider_request=None,
-        source_regions=source_regions(outgoing, system="absent"),
+        source_regions=source_regions(outgoing, system="absent", region_items=region_items),
+        guardrail=outcome if outcome is not None else GuardrailOutcome(),
     )
     return context, outgoing

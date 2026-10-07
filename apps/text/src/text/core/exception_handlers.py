@@ -11,6 +11,7 @@ from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
     ContentBlockedError,
+    EgressRedactionUnavailableError,
     GuardrailUnavailableError,
     InputValidationError,
     JudgeProviderNotLocalError,
@@ -32,6 +33,7 @@ logger = get_logger(__name__)
 _STATUS_MAP: dict[type, int] = {
     InputValidationError: 422,
     ContentBlockedError: 422,
+    EgressRedactionUnavailableError: 503,
     GuardrailUnavailableError: 503,
     JudgeProviderNotLocalError: 503,
     RateLimitError: 429,
@@ -116,11 +118,13 @@ async def text_exception_handler(request: Request, exc: TextError) -> JSONRespon
         span.set_status(StatusCode.ERROR, exc.message)
         span.record_exception(exc)
 
-    return ERROR_RESPONSE_CLASS(
-        status_code=status,
-        content={"detail": exc.message, "error_code": exc.error_code},
-        headers=headers,
-    )
+    content: dict[str, object] = {"detail": exc.message, "error_code": exc.error_code}
+    # TASK-1050: a guardrail block / redaction hold adds its notice and evaluation ids
+    # (PHI-free by construction) beside the house envelope's two fields.
+    extra = getattr(exc, "extra_body", None)
+    if isinstance(extra, dict):
+        content.update(extra)
+    return ERROR_RESPONSE_CLASS(status_code=status, content=content, headers=headers)
 
 
 def register_exception_handlers(app: FastAPI) -> None:

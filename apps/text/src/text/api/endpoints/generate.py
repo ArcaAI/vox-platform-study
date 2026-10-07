@@ -51,6 +51,7 @@ from text.core.exceptions import (
 from text.core.exceptions import (
     QueueFullError as DomainQueueFullError,
 )
+from text.core.locality import resolve_locality
 from text.core.logging import get_logger
 from text.core.metrics import (
     ACTIVE_GENERATIONS,
@@ -70,7 +71,7 @@ from text.core.metrics import (
 )
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import set_generation_span_attributes
-from text.models.requests import GenerateRequest
+from text.models.requests import GenerateRequest, region_items_wire
 from text.models.responses import (
     ErrorResponse,
     GenerateResponse,
@@ -97,6 +98,7 @@ from text.services.egress import (
 )
 from text.services.external_guardrail import ExternalGuardrailClient
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
+from text.services.guardrail_notices import bind_guardrail_correlation
 from text.services.output_gate import (
     OutputRejectedError,
     assemble_completion,
@@ -400,6 +402,14 @@ async def generate(
     # governance digest verifies is static registry-screened text — not screened,
     # not judged, not a pii_leak source; anything else is screened as `system`.
     system_governed = verify_system_governance(request_body)
+    # TASK-1050: the caller's `X-Hope-*` correlation rides on every guardrail call of
+    # this request (and its streamed producer, which copies this context), and the
+    # locality of the provider ACTUALLY called (after degrade-routing rewrote
+    # `request_body.provider`) decides whether PII spans are needed (F8) and whether
+    # a screen outage is a redaction hold.
+    bind_guardrail_correlation(fastapi_request.headers)
+    locality = resolve_locality(request_body.provider, request_body.provider_locality)
+    region_items = region_items_wire(request_body.region_items)
     inbound = await run_inbound_gate(
         guardrail_client,
         segments=request_segments(request_body),
@@ -409,10 +419,11 @@ async def generate(
         tenant_policy=request_body.guardrail_policy,
         provider_overrides=request_body.provider_overrides,
         medical_exempt=request_body.medical_exempt,
+        locality=locality,
+        region_items=region_items,
     )
     guardrail_usage: UsageDetail | None = inbound.guardrail_usage
-    # Locality is resolved on the provider ACTUALLY called (after degrade-routing
-    # rewrote `request_body.provider`). On cloud the provider receives tokens.
+    # On cloud the provider receives tokens.
     egress = prepare_egress(
         request_body,
         spans_by_segment=inbound.spans_by_segment,
@@ -420,6 +431,9 @@ async def generate(
         # FC-5b: data-region flags guardrail reported instead of blocking ride on
         # the egress summary (region keys + check names only).
         data_findings=inbound.data_findings,
+        # TASK-1050: the inbound notices + evaluation ids; the outbound gate adds to them.
+        outcome=inbound.outcome,
+        region_items=region_items,
     )
     provider_request = egress.provider_request
 
@@ -748,6 +762,7 @@ async def generate(
             app_state=app_state,
             where="generate.post_receive_gate",
             locality=egress.locality,
+            outcome=egress.guardrail,
         )
         # Re-identify BEFORE the task is completed, returned or cached: nothing
         # downstream of this line ever sees a token.
@@ -892,6 +907,8 @@ async def generate(
             usage_detail=usage_detail,
             guardrail_usage=guardrail_usage,
             egress=egress.summary,
+            guardrail_notices=list(egress.guardrail.notices),
+            guardrail_evaluation_ids=list(egress.guardrail.evaluation_ids),
         )
         # Cache the completed generation so a replayed request carrying the
         # same key returns THIS response instead of re-billing the model (bounded TTL). STRICTLY
