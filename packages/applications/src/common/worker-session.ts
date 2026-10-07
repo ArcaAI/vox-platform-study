@@ -38,6 +38,8 @@ export type WorkerSessionKind =
   | 'tenant-checkpoint-export'
   | 'tenant-checkpoint-verify'
   | 'tenant-checkpoint-restore'
+  // TASK-1050: guardrail hold entry (run watcher, live lane, evaluation ingest).
+  | 'guardrail-hold'
   | 'tenant-checkpoint-sweeper'
   // Webhook delivery: SysEvent → matching Webhook fan-out, and the signed
   // per-webhook HTTP POST.

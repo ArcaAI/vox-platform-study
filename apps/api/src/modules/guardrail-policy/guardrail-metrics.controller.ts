@@ -1,6 +1,6 @@
 import {
   GuardrailActivityResponse,
-  GuardrailEvaluationListQuery,
+  GuardrailMetricsEvaluationListQuery,
   GuardrailEvaluationListResponse,
   GuardrailHealthResponse,
   GuardrailMetricsWindowQuery,
@@ -94,7 +94,7 @@ export class GuardrailMetricsController {
   @ApiResponse({ status: 200, type: GuardrailEvaluationListResponse })
   @ApiResponse({ status: 400, description: '`GUARDRAIL_METRICS_WINDOW_INVALID`, `GUARDRAIL_METRICS_CURSOR_INVALID`, or an invalid filter.' })
   @ApiResponse({ status: 403, description: FORBIDDEN })
-  async evaluations(@Query() query: GuardrailEvaluationListQuery): Promise<GuardrailEvaluationListResponse> {
+  async evaluations(@Query() query: GuardrailMetricsEvaluationListQuery): Promise<GuardrailEvaluationListResponse> {
     return this.service.evaluations(query);
   }
 }

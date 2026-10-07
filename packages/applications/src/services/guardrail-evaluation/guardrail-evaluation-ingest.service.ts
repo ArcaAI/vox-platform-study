@@ -208,7 +208,7 @@ export class GuardrailEvaluationIngestService extends BaseService {
       encryptedWithheldContent: sealed?.ciphertext ?? null,
       keyVersion: sealed?.keyVersion ?? null,
       at: new Date(record.occurredAt),
-      ...(record.itemId ? { metaData: { itemId: record.itemId } as unknown as JsonValue } : {}),
+      ...(record.itemId ? { metaData: { itemId: record.itemId } } : {}),
     });
   }
 

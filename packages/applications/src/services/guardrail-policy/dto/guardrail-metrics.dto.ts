@@ -29,7 +29,7 @@ export class GuardrailMetricsWindowQuery {
   tenantId?: string;
 }
 
-export class GuardrailEvaluationListQuery extends GuardrailMetricsWindowQuery {
+export class GuardrailMetricsEvaluationListQuery extends GuardrailMetricsWindowQuery {
   @ApiPropertyOptional({ enum: GUARDRAIL_DECISIONS })
   @IsOptional()
   @IsIn(GUARDRAIL_DECISIONS as unknown as string[])

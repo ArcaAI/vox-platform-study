@@ -14,7 +14,7 @@ import { IPrometheusQueryService, type PrometheusSample } from '../platform-metr
 import {
   GUARDRAIL_METRICS_BUCKETS,
   GuardrailActivityResponse,
-  GuardrailEvaluationListQuery,
+  GuardrailMetricsEvaluationListQuery,
   GuardrailEvaluationListResponse,
   GuardrailHealthResponse,
   GuardrailMetricSample,
@@ -30,7 +30,7 @@ export interface IGuardrailMonitoringService {
   activity(query: GuardrailMetricsWindowQuery): Promise<GuardrailActivityResponse>;
   performance(): Promise<GuardrailPerformanceResponse>;
   health(): Promise<GuardrailHealthResponse>;
-  evaluations(query: GuardrailEvaluationListQuery): Promise<GuardrailEvaluationListResponse>;
+  evaluations(query: GuardrailMetricsEvaluationListQuery): Promise<GuardrailEvaluationListResponse>;
 }
 
 const BUCKET_SECONDS: Readonly<Record<GuardrailMetricsBucket, number>> = Object.freeze({ '5m': 300, '1h': 3600, '1d': 86_400 });
@@ -182,7 +182,7 @@ export class GuardrailMonitoringService extends BaseService implements IGuardrai
     };
   }
 
-  async evaluations(query: GuardrailEvaluationListQuery): Promise<GuardrailEvaluationListResponse> {
+  async evaluations(query: GuardrailMetricsEvaluationListQuery): Promise<GuardrailEvaluationListResponse> {
     assertGuardrailPlatformAdmin(this.requestUser, this.tenantId, 'read guardrail evaluations');
     const window = this.window(query);
     const page = await this.evaluationRows.listForDrilldown({
