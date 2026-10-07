@@ -134,7 +134,10 @@ async def test_every_judge_prompt_is_bounded_to_one_window() -> None:
     region = CLINICAL * 500  # ~30,000 chars
     await judge_regions(_judge(http), [("transcript", region)], runner=_runner(), geometry=GEOMETRY)
     header = "Analyze this text for medical context:\n\n"
-    assert all(len(p) - len(header) <= GEOMETRY.size for p in http.prompts)
+    # TASK-1050 M-1: the window rides inside the nonce-delimited untrusted envelope; the judged
+    # text between the markers is still at most one window.
+    bodies = [p[len(header) :].split("\n", 1)[1].rsplit("\n", 1)[0] for p in http.prompts]
+    assert all(len(body) <= GEOMETRY.size for body in bodies)
 
 
 async def test_a_growing_transcript_is_rejudged_only_in_its_changed_window() -> None:
@@ -327,7 +330,9 @@ from guardrail.core.policy import GuardrailPolicy  # noqa: E402
 def test_the_config_region_list_is_a_declared_name_list_with_platform_defaults() -> None:
     policy = GuardrailPolicy.from_blob({})
     assert "medicalJudgeConfigRegions" in GuardrailPolicy.DECLARED_KEYS
-    assert policy.medical_judge_config_regions == frozenset(
+    # TASK-1049 F5 (TASK-1050) widened the default; the full list is pinned in
+    # test_task1050_judge_medical.py. The original four stay in it.
+    assert policy.medical_judge_config_regions >= frozenset(
         {
             "context_dna_style_text",
             "context_dna_redaction_rules_text",

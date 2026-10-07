@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, model_validator
 from guardrail.api.endpoints.screen import ScreenRegion
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import (
+    _provider_overrides,
     build_judge_window_plan,
     get_resolved_guardian_provider,
     get_settings,
@@ -32,7 +33,12 @@ from guardrail.core.dependencies import (
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
 from guardrail.services.external_text_client import TextJudgeClient
-from guardrail.services.medical_windows import judge_regions
+from guardrail.services.judge_runner import (
+    build_judge_runner_for_app,
+    enabled_inbound_safety_lanes,
+    judge_geometry,
+)
+from guardrail.services.medical_windows import judge_regions, judge_regions_combined
 
 logger = get_logger(__name__)
 
@@ -214,20 +220,42 @@ async def _validate_regions(
     guardian_provider: GuardianLike,
     start_time: float,
 ) -> MedicalValidationResponse:
-    """The OD-5 path: per-window `on_scope`, cached, fail-CLOSED (503 on undetermined)."""
+    """The OD-5 path: per-window `on_scope`, cached, fail-CLOSED (503 on undetermined).
+
+    TASK-1050: with an inbound safety-judge lane enabled for the tenant, the windows go through
+    the judge runner so each data window is ONE combined call (medical + the safety lanes),
+    shared with the screen route. With none enabled (the seeded default, OD-6) the medical judge
+    runs exactly as before. Either way the response contract is unchanged.
+    """
     regions = [(region.key, region.text) for region in request.regions or []]
     try:
         tenant_id = require_tenant_id(http_request)
-        runner, geometry = await build_judge_window_plan(
-            http_request.app.state, tenant_id, guardian_provider, settings
-        )
+        app_state = http_request.app.state
         # Settings regions (the clinician's DNA texts) are screened elsewhere and never judged for
         # medical relevance (TASK-1047 V7, owner decision); the list is policy, not code.
-        skip = (
-            await resolve_screen_policy(http_request.app.state, tenant_id)
-        ).medical_judge_config_regions
-        judged = [(key, text) for key, text in regions if key not in skip]
-        result = await judge_regions(guardian_provider, judged, runner=runner, geometry=geometry)
+        screen_policy = await resolve_screen_policy(app_state, tenant_id)
+        skip = screen_policy.medical_judge_config_regions
+        safety_lanes = await enabled_inbound_safety_lanes(app_state, tenant_id)
+        if safety_lanes:
+            judge_runner = await build_judge_runner_for_app(
+                app_state, tenant_id, provider_overrides=await _provider_overrides(http_request)
+            )
+            result = await judge_regions_combined(
+                judge_runner,
+                tenant_id,
+                [(region.key, region.text, region.trust) for region in request.regions or []],
+                enabled_safety_lanes=safety_lanes,
+                skip=skip,
+                geometry=judge_geometry(screen_policy, settings.judge.max_input_chars),
+            )
+        else:
+            runner, geometry = await build_judge_window_plan(
+                app_state, tenant_id, guardian_provider, settings
+            )
+            judged = [(key, text) for key, text in regions if key not in skip]
+            result = await judge_regions(
+                guardian_provider, judged, runner=runner, geometry=geometry
+            )
         if not result["is_medical"]:
             # Which regions were off scope — keys and counts only, never text (TASK-1047 V7).
             logger.info(

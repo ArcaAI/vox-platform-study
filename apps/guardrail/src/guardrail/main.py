@@ -462,6 +462,7 @@ def create_app() -> FastAPI:
     from guardrail.api.endpoints.guardrails import router as guardrails_router
     from guardrail.api.endpoints.health import router as health_router
     from guardrail.api.endpoints.jobs import router as jobs_router
+    from guardrail.api.endpoints.judge_dry_run import router as judge_dry_run_router
     from guardrail.api.endpoints.medical import router as medical_router
     from guardrail.api.endpoints.policy_version import router as policy_version_router
     from guardrail.api.endpoints.realtime import router as realtime_router
@@ -483,6 +484,8 @@ def create_app() -> FastAPI:
     app.include_router(screen_router, prefix="/api/v1", tags=["screening"])
     # The tenant's screening policy version (TASK-1047 FC-3) — behind X-Service-Token.
     app.include_router(policy_version_router, prefix="/api/v1", tags=["screening"])
+    # TASK-1050 §11.3 B — a platform admin's draft judge prompt, judged in memory.
+    app.include_router(judge_dry_run_router, prefix="/api/v1", tags=["screening"])
     app.include_router(realtime_router, prefix="/api/v1", tags=["realtime"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 
