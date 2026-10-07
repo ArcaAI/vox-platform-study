@@ -39,7 +39,10 @@ export class GuardrailRuleTestController {
       'Runs guardrail`s own inbound or outbound screen for the working tenant, exactly as a generation would be screened, and returns the four-way decision, every check`s verdict / configured action / action taken / score / category, the notices raised, the evaluation id and the policy version. Inbound takes `text` OR `regions` (each with its trust); outbound takes the response as `text` and optional source `regions`. Nothing is stored by the gateway, and no content is returned.',
   })
   @ApiResponse({ status: 200, type: ScreenGuardrailRulesResponse })
-  @ApiResponse({ status: 400, description: 'Malformed body, both or neither of `text` / `regions`, no working tenant, or guardrail refused the input shape.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Malformed body, both or neither of `text` / `regions`, no working tenant, or guardrail refused the input shape.',
+  })
   @ApiResponse({ status: 403, description: 'The caller holds no `read:TenantGuardrailPolicy`, or is an API key / service account.' })
   @ApiResponse({ status: 404, description: 'The working tenant is not the caller`s own (404-over-403).' })
   @ApiResponse({ status: 429, description: 'Heavy-tier rate limit reached.' })

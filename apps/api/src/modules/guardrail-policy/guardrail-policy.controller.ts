@@ -14,7 +14,16 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, CanRead, CanUpdate, ExpectedVersion, ForbidApiKey, NoOptimisticConcurrency, RequiredSvcScopes, RequiresIfMatch } from '../../decorators';
+import {
+  CanManage,
+  CanRead,
+  CanUpdate,
+  ExpectedVersion,
+  ForbidApiKey,
+  NoOptimisticConcurrency,
+  RequiredSvcScopes,
+  RequiresIfMatch,
+} from '../../decorators';
 
 const SCOPE = 'svc:admin:guardrail:manage';
 const FORBIDDEN = 'Not a platform administrator, or a customer working tenant is selected (guardrail control is platform-wide and tenant-less).';
@@ -25,7 +34,8 @@ const TASK_KEY_QUERY = {
     'Required for a label threshold (`labelTaxonomy.threshold`, `labelTaxonomy.tasks.<task>.cls_threshold`): the model row it lives on — `guardrail.safety`, `guardrail.injection`, `guardrail.pii` or `guardrail.pii.spans`. Ignored for a catalogue key.',
   example: 'guardrail.safety',
 };
-const LABEL_400 = '`GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED` (a label threshold without `?taskKey=`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE` (labels, the task set, benign labels).';
+const LABEL_400 =
+  '`GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED` (a label threshold without `?taskKey=`), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE` (labels, the task set, benign labels).';
 const IF_MATCH = {
   name: 'If-Match',
   description: 'RFC 7232 strong validator: the model row `_version` from the prior read (the key entry `modelVersion`, or the `ETag`).',
@@ -114,7 +124,10 @@ export class GuardrailPolicyController {
   @ApiResponse({ status: 400, description: `\`GUARDRAIL_POLICY_VALUE_INVALID\` (with \`problems\`), ${LABEL_400}` })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key (or not a threshold of that row`s label taxonomy).' })
-  @ApiResponse({ status: 409, description: '`GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE` (the lane elects a native-template guard).' })
+  @ApiResponse({
+    status: 409,
+    description: '`GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE` (the lane elects a native-template guard).',
+  })
   @ApiResponse({ status: 412, description: 'The model row changed since it was read.' })
   @ApiResponse({ status: 428, description: 'If-Match is required.' })
   async update(
@@ -165,7 +178,10 @@ export class GuardrailPolicyController {
   @ApiResponse({ status: 400, description: LABEL_400 })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: 'Not a governed guardrail policy key.' })
-  @ApiResponse({ status: 409, description: '`GUARDRAIL_POLICY_DEFAULT_MISSING`, `GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE`.' })
+  @ApiResponse({
+    status: 409,
+    description: '`GUARDRAIL_POLICY_DEFAULT_MISSING`, `GUARDRAIL_POLICY_MODEL_UNRESOLVED`, or `GUARDRAIL_CRITERIA_NOT_APPLICABLE`.',
+  })
   async reset(@Param('key') key: string, @Query('taskKey') taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
     return this.service.resetPolicyKey(key, taskKey);
   }
@@ -174,7 +190,10 @@ export class GuardrailPolicyController {
   @Get('policy-keys/:key/revisions')
   @CanRead('AiModel')
   @RequiredSvcScopes(SCOPE)
-  @ApiOperation({ summary: 'A guardrail policy key`s revision history', description: 'Newest first, with values, on the CURRENT model row of the key.' })
+  @ApiOperation({
+    summary: 'A guardrail policy key`s revision history',
+    description: 'Newest first, with values, on the CURRENT model row of the key.',
+  })
   @ApiParam({ name: 'key', example: 'injectionJudgeCriteria' })
   @ApiQuery({ name: 'limit', required: false, description: '1–200, default 50.' })
   @ApiQuery(TASK_KEY_QUERY)
@@ -204,11 +223,18 @@ export class GuardrailPolicyController {
   @ApiParam({ name: 'revisionId' })
   @ApiQuery(TASK_KEY_QUERY)
   @ApiResponse({ status: 200, type: GuardrailPolicyKeyResponse })
-  @ApiResponse({ status: 400, description: '`GUARDRAIL_POLICY_VALUE_INVALID` (the old value breaks today`s bounds), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE`.' })
+  @ApiResponse({
+    status: 400,
+    description: '`GUARDRAIL_POLICY_VALUE_INVALID` (the old value breaks today`s bounds), or `GUARDRAIL_POLICY_KEY_NOT_EDITABLE`.',
+  })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: 'Unknown key, or no such revision of it.' })
   @ApiResponse({ status: 409, description: '`GUARDRAIL_POLICY_REVISION_MODEL_MISMATCH` — the revision was written on another model row.' })
-  async restore(@Param('key') key: string, @Param('revisionId') revisionId: string, @Query('taskKey') taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
+  async restore(
+    @Param('key') key: string,
+    @Param('revisionId') revisionId: string,
+    @Query('taskKey') taskKey?: string,
+  ): Promise<GuardrailPolicyKeyResponse> {
     return this.service.restoreRevision(key, revisionId, taskKey);
   }
 
@@ -264,7 +290,10 @@ export class GuardrailPolicyController {
   @NoOptimisticConcurrency('reset-to-default: "put the seed default back whatever it says now"; the service CASes on the version it just read')
   @CanUpdate('AiModel')
   @RequiredSvcScopes(SCOPE)
-  @ApiOperation({ summary: 'Reset a native guard`s mapping to its default', description: 'Copies `_metadata.judgeDefaults` (seed-owned) into `_metadata.judge`.' })
+  @ApiOperation({
+    summary: 'Reset a native guard`s mapping to its default',
+    description: 'Copies `_metadata.judgeDefaults` (seed-owned) into `_metadata.judge`.',
+  })
   @ApiParam({ name: 'modelId' })
   @ApiResponse({ status: 200, type: GuardrailJudgeMetaResponse })
   @ApiResponse({ status: 403, description: FORBIDDEN })
@@ -292,7 +321,9 @@ export class GuardrailPolicyController {
 
   // AUTH-NOTE: platform-admin only, imperatively — see the class note.
   @Put('judge-lanes')
-  @NoOptimisticConcurrency('election: each lane is a new routing revision elected atomically by AiRoutingPolicyService.setDefault (partial unique index)')
+  @NoOptimisticConcurrency(
+    'election: each lane is a new routing revision elected atomically by AiRoutingPolicyService.setDefault (partial unique index)',
+  )
   @CanUpdate('AiModel')
   @RequiredSvcScopes(SCOPE)
   @ApiOperation({
@@ -324,7 +355,10 @@ export class GuardrailPolicyController {
       '`POST /api/v1/guardrail/judge/dry-run` as SYSTEM. Answers per sample, per lane, with latency. Persists nothing.',
   })
   @ApiResponse({ status: 200, type: GuardrailDryRunResponse })
-  @ApiResponse({ status: 400, description: '`GUARDRAIL_POLICY_VALUE_INVALID`, `GUARDRAIL_JUDGE_META_INVALID`, `GUARDRAIL_DRY_RUN_REJECTED`, or an invalid body.' })
+  @ApiResponse({
+    status: 400,
+    description: '`GUARDRAIL_POLICY_VALUE_INVALID`, `GUARDRAIL_JUDGE_META_INVALID`, `GUARDRAIL_DRY_RUN_REJECTED`, or an invalid body.',
+  })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 409, description: '`MODEL_NOT_RESIDENT` — `{ link: "/model-residency", models: [{ lane, modelId, slug, state }] }`.' })
   @ApiResponse({ status: 503, description: '`GUARDRAIL_DRY_RUN_UNAVAILABLE`.' })

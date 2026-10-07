@@ -7,10 +7,16 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { RunAppendInput } from '@arcaai/async-contract';
-import runEvents from '../../../../../../tests/contracts/guardrail-run-events.fixture.json';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { RunEventStreamHub } from '../run-event-stream-hub';
 import { WorkflowRunCompletionService } from '../workflow-run-completion.service';
 import { FakeRedisServer } from './fake-redis-streams';
+
+const runEvents = JSON.parse(readFileSync(join(__dirname, '../../../../../../tests/contracts/guardrail-run-events.fixture.json'), 'utf-8')) as Record<
+  string,
+  any
+>;
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 const RUN_ID = '01a08a8d-65fb-742b-824e-1c94af991050';
@@ -22,7 +28,10 @@ const ev = (input: Omit<RunAppendInput, 'runId' | 'ts'>): RunAppendInput => ({ r
 const BLOCK = (runEvents as unknown as { notices: Array<Record<string, unknown>> }).notices[1];
 const CONSULTATION = BLOCK.consultationId as string;
 
-function build(server: FakeRedisServer, enter = vi.fn(async () => ({ consultationId: CONSULTATION, noticeId: BLOCK.noticeId, reason: 'GUARDRAIL_HOLD', paused: true }))) {
+function build(
+  server: FakeRedisServer,
+  enter = vi.fn(async () => ({ consultationId: CONSULTATION, noticeId: BLOCK.noticeId, reason: 'GUARDRAIL_HOLD', paused: true })),
+) {
   const hub = new RunEventStreamHub(CONFIG as never, undefined);
   hub.connectionFactory = () => server.connection() as never;
   const runs = { recordRunFinished: vi.fn().mockResolvedValue({}) };
@@ -43,7 +52,13 @@ async function until(predicate: () => boolean, timeoutMs = 2_000): Promise<void>
 function pausedStream(server: FakeRedisServer, opts: { noticeFirst?: boolean } = {}): void {
   if (opts.noticeFirst !== false) server.appendV2(ev({ type: 'guardrail.notice', nodeId: 'n_note', data: BLOCK as never }));
   server.appendV2(ev({ type: 'run.paused', data: { reason: 'guardrail_hold', noticeId: BLOCK.noticeId as string, nodeId: 'n_note' } }));
-  server.appendV2(ev({ type: 'run.failed', data: { status: 'FAILED', durationMs: 5, error: { code: 'GUARDRAIL_BLOCKED', message: 'A guardrail blocked the content.' } }, retentionSeconds: 60 }));
+  server.appendV2(
+    ev({
+      type: 'run.failed',
+      data: { status: 'FAILED', durationMs: 5, error: { code: 'GUARDRAIL_BLOCKED', message: 'A guardrail blocked the content.' } },
+      retentionSeconds: 60,
+    }),
+  );
 }
 
 describe('completion watcher — run.paused guardrail_hold', () => {
@@ -56,7 +71,11 @@ describe('completion watcher — run.paused guardrail_hold', () => {
     await until(() => runs.recordRunFinished.mock.calls.length > 0);
 
     expect(holds.enterGuardrailHold).toHaveBeenCalledTimes(1);
-    const [tenantId, consultationId, notice] = holds.enterGuardrailHold.mock.calls[0] as unknown as [string, string, { noticeId: string; type: string }];
+    const [tenantId, consultationId, notice] = holds.enterGuardrailHold.mock.calls[0] as unknown as [
+      string,
+      string,
+      { noticeId: string; type: string },
+    ];
     expect([tenantId, consultationId]).toEqual([TENANT, CONSULTATION]);
     expect(notice).toMatchObject({ noticeId: BLOCK.noticeId, type: 'guardrail.blocked', messageKey: BLOCK.messageKey });
     await hub.onModuleDestroy();
@@ -78,7 +97,13 @@ describe('completion watcher — run.paused guardrail_hold', () => {
     delete standalone.consultationId;
     server.appendV2(ev({ type: 'guardrail.notice', nodeId: 'n_note', data: standalone as never }));
     server.appendV2(ev({ type: 'run.paused', data: { reason: 'guardrail_hold', noticeId: BLOCK.noticeId as string, nodeId: 'n_note' } }));
-    server.appendV2(ev({ type: 'run.failed', data: { status: 'FAILED', durationMs: 5, error: { code: 'GUARDRAIL_BLOCKED', message: 'A guardrail blocked the content.' } }, retentionSeconds: 60 }));
+    server.appendV2(
+      ev({
+        type: 'run.failed',
+        data: { status: 'FAILED', durationMs: 5, error: { code: 'GUARDRAIL_BLOCKED', message: 'A guardrail blocked the content.' } },
+        retentionSeconds: 60,
+      }),
+    );
     const { service, hub, runs, holds } = build(server);
     service.watch(TENANT, RUN_ID);
     await until(() => runs.recordRunFinished.mock.calls.length > 0);

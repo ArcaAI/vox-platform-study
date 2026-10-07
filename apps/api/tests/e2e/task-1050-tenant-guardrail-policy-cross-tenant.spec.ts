@@ -160,7 +160,10 @@ test.describe('TASK-1050 — tenant guardrail on/off (admin/guardrail/policy)', 
     expect(locked.status()).toBe(200);
 
     const { version } = await read(request);
-    const refused = await request.put(ROUTE, { headers: auth(tenantAdmin, { 'If-Match': `"${version}"` }), data: { checks: { prompt_safety: { enabled: false } } } });
+    const refused = await request.put(ROUTE, {
+      headers: auth(tenantAdmin, { 'If-Match': `"${version}"` }),
+      data: { checks: { prompt_safety: { enabled: false } } },
+    });
     expect(refused.status()).toBe(403);
 
     const unlockedRow = await locked.json();
@@ -197,7 +200,9 @@ test.describe('TASK-1050 — tenant guardrail on/off (admin/guardrail/policy)', 
     const body = await response.json();
     expect(['allow', 'warn', 'block', 'unverified']).toContain(body.decision);
     expect(Array.isArray(body.checks)).toBe(true);
-    expect(body.checks.every((check: { name: string; verdict: string }) => typeof check.name === 'string' && typeof check.verdict === 'string')).toBe(true);
+    expect(body.checks.every((check: { name: string; verdict: string }) => typeof check.name === 'string' && typeof check.verdict === 'string')).toBe(
+      true,
+    );
     expect(JSON.stringify(body)).not.toContain('envelope');
     expect(body).not.toHaveProperty('pii_spans');
   });

@@ -228,7 +228,11 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
       if (paused.reason !== 'guardrail_hold' || !paused.noticeId) return;
       const notice = notices.get(paused.noticeId);
       if (!notice) {
-        this.logger.warn({ message: 'run paused on a guardrail notice the stream never carried — no hold entered here', runId, noticeId: paused.noticeId });
+        this.logger.warn({
+          message: 'run paused on a guardrail notice the stream never carried — no hold entered here',
+          runId,
+          noticeId: paused.noticeId,
+        });
         return;
       }
       const subject = consultationId ?? notice.consultationId ?? null;

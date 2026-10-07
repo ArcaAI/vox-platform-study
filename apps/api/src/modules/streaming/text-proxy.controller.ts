@@ -260,7 +260,8 @@ const RELAYABLE_ERROR_PHRASES: Readonly<Record<string, string>> = {
   // TASK-1050 — a CLOUD call whose PII spans could not be computed is refused before anything is sent
   // (privacy, not a safety verdict): a distinct, RETRYABLE 503 that is also the consultation's
   // processing reason. The relay adds `processingReason` + `retryable` and the notice.
-  EGRESS_REDACTION_UNAVAILABLE: 'Patient details could not be protected before sending to an external model, so processing is paused. Retry to continue.',
+  EGRESS_REDACTION_UNAVAILABLE:
+    'Patient details could not be protected before sending to an external model, so processing is paused. Retry to continue.',
 };
 
 /** TASK-1050 — what the gateway knows about one TEXT call from its OWN reads (never the caller's). */

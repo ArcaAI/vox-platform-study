@@ -75,13 +75,22 @@ test.describe('TASK-1050 W2h — platform guardrail control', () => {
     const body = await keys.json();
     expect(body.catalogueAvailable).toBe(true);
     const validate = body.groups.find((g: { taskKey: string }) => g.taskKey === 'guardrail.validate');
-    expect(validate.keys.map((k: { key: string }) => k.key)).toEqual(expect.arrayContaining(['judgeTemperature', 'judgeMaxTokens', 'medicalValidationCriteria']));
-    for (const lane of ['guardrail.judge.injection', 'guardrail.judge.unsafe_content', 'guardrail.judge.clinical_safety', 'guardrail.judge.leakage']) {
+    expect(validate.keys.map((k: { key: string }) => k.key)).toEqual(
+      expect.arrayContaining(['judgeTemperature', 'judgeMaxTokens', 'medicalValidationCriteria']),
+    );
+    for (const lane of [
+      'guardrail.judge.injection',
+      'guardrail.judge.unsafe_content',
+      'guardrail.judge.clinical_safety',
+      'guardrail.judge.leakage',
+    ]) {
       expect(body.groups.map((g: { taskKey: string }) => g.taskKey)).toContain(lane);
     }
   });
 
-  test('PUT policy-keys/:key: 428 without If-Match, 412 stale, 400 out of bounds, 200 + revision, reset restores the default', async ({ request }) => {
+  test('PUT policy-keys/:key: 428 without If-Match, 412 stale, 400 out of bounds, 200 + revision, reset restores the default', async ({
+    request,
+  }) => {
     const headers = await platformAdmin(request);
     const read = await request.get(`${BASE}/policy-keys/judgeTemperature`, { headers });
     expect(read.status()).toBe(200);
@@ -89,15 +98,25 @@ test.describe('TASK-1050 W2h — platform guardrail control', () => {
     const version = entry.version as number;
 
     expect((await request.put(`${BASE}/policy-keys/judgeTemperature`, { headers, data: { value: 0.1 } })).status()).toBe(428);
-    expect((await request.put(`${BASE}/policy-keys/judgeTemperature`, { headers: { ...headers, 'If-Match': `"${version + 100}"` }, data: { value: 0.1 } })).status()).toBe(412);
+    expect(
+      (
+        await request.put(`${BASE}/policy-keys/judgeTemperature`, { headers: { ...headers, 'If-Match': `"${version + 100}"` }, data: { value: 0.1 } })
+      ).status(),
+    ).toBe(412);
 
-    const outOfBounds = await request.put(`${BASE}/policy-keys/judgeTemperature`, { headers: { ...headers, 'If-Match': `"${version}"` }, data: { value: 9 } });
+    const outOfBounds = await request.put(`${BASE}/policy-keys/judgeTemperature`, {
+      headers: { ...headers, 'If-Match': `"${version}"` },
+      data: { value: 9 },
+    });
     expect(outOfBounds.status()).toBe(400);
     expect(JSON.stringify(await outOfBounds.json())).toContain('GUARDRAIL_POLICY_VALUE_INVALID');
 
     try {
       const next = entry.currentValue === 0.1 ? 0.2 : 0.1;
-      const written = await request.put(`${BASE}/policy-keys/judgeTemperature`, { headers: { ...headers, 'If-Match': `"${version}"` }, data: { value: next } });
+      const written = await request.put(`${BASE}/policy-keys/judgeTemperature`, {
+        headers: { ...headers, 'If-Match': `"${version}"` },
+        data: { value: next },
+      });
       expect(written.status()).toBe(200);
       const saved = await written.json();
       expect(saved).toMatchObject({ currentValue: next, changed: true, version: version + 1 });
@@ -115,19 +134,28 @@ test.describe('TASK-1050 W2h — platform guardrail control', () => {
     const headers = await platformAdmin(request);
     const read = await (await request.get(`${BASE}/policy-keys/injectionJudgeCriteria`, { headers })).json();
     const broken = String(read.currentValue ?? '').replace(/<section id="untrusted_data_clause">[\s\S]*?<\/section>/, '');
-    const response = await request.put(`${BASE}/policy-keys/injectionJudgeCriteria`, { headers: { ...headers, 'If-Match': `"${read.version}"` }, data: { value: broken || 'x' } });
+    const response = await request.put(`${BASE}/policy-keys/injectionJudgeCriteria`, {
+      headers: { ...headers, 'If-Match': `"${read.version}"` },
+      data: { value: broken || 'x' },
+    });
     expect(response.status()).toBe(400);
     expect(JSON.stringify(await response.json())).toMatch(/SECTION_MISSING|TEXT_OUTSIDE_SECTION/);
   });
 
   test('a lane selection naming a model that does not declare the lane is 400 JUDGE_LANE_UNSUPPORTED', async ({ request }) => {
     const headers = await platformAdmin(request);
-    const lanes = (await (await request.get(`${BASE}/judge-lanes`, { headers })).json()).lanes as Array<{ lane: string; candidates: Array<{ modelId: string }> }>;
+    const lanes = (await (await request.get(`${BASE}/judge-lanes`, { headers })).json()).lanes as Array<{
+      lane: string;
+      candidates: Array<{ modelId: string }>;
+    }>;
     const injection = lanes.find((l) => l.lane === 'injection_judge')!;
     const clinical = lanes.find((l) => l.lane === 'clinical_safety_judge')!;
     const notClinical = injection.candidates.find((c) => !clinical.candidates.some((k) => k.modelId === c.modelId));
     test.skip(!notClinical, 'needs a judge model that declares injection but not clinical safety (W4 seeds Qwen3Guard-Gen-0.6B)');
-    const response = await request.put(`${BASE}/judge-lanes`, { headers, data: { selections: [{ lane: 'clinical_safety_judge', modelId: notClinical!.modelId }] } });
+    const response = await request.put(`${BASE}/judge-lanes`, {
+      headers,
+      data: { selections: [{ lane: 'clinical_safety_judge', modelId: notClinical!.modelId }] },
+    });
     expect(response.status()).toBe(400);
     expect(JSON.stringify(await response.json())).toContain('JUDGE_LANE_UNSUPPORTED');
   });
@@ -136,7 +164,12 @@ test.describe('TASK-1050 W2h — platform guardrail control', () => {
     const headers = await platformAdmin(request);
     const activity = await request.get(`${BASE}/metrics/activity?bucket=1h`, { headers });
     expect(activity.status()).toBe(200);
-    expect(await activity.json()).toMatchObject({ bucket: '1h', totals: expect.any(Object), series: expect.any(Array), perTenant: expect.any(Array) });
+    expect(await activity.json()).toMatchObject({
+      bucket: '1h',
+      totals: expect.any(Object),
+      series: expect.any(Array),
+      perTenant: expect.any(Array),
+    });
 
     const performance = await request.get(`${BASE}/metrics/performance`, { headers });
     expect(performance.status()).toBe(200);

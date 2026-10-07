@@ -103,7 +103,8 @@ export class GuardrailAvailabilityController {
   @ApiResponse({ status: 400, description: 'Unknown policy id, malformed selection, or a selection that would leave a direction ungated.' })
   @ApiResponse({
     status: 403,
-    description: 'Caller is not a super administrator, the selection would LOOSEN a policy below the platform floor, or it changes the locked medical check (`GUARDRAIL_CHECK_LOCKED`).',
+    description:
+      'Caller is not a super administrator, the selection would LOOSEN a policy below the platform floor, or it changes the locked medical check (`GUARDRAIL_CHECK_LOCKED`).',
   })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })

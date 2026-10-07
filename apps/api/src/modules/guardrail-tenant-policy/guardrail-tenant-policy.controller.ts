@@ -55,7 +55,12 @@ export class GuardrailTenantPolicyController {
     description:
       'Only fields whose value DIFFERS from the policy in force count, so the whole view read by GET may be sent back. A tenant admin may change `directions.<dir>.enabled` (off = monitor only: still screened and recorded) and `checks.<id>.enabled` of a check no lock holds. At least one check per direction must stay on. Any other changed field is refused with 403 `GUARDRAIL_FIELD_PLATFORM_ONLY` (`fields` names them); the medical-domain check is locked for everyone (403 `GUARDRAIL_CHECK_LOCKED`). A committed change reaches guardrail at once (cache invalidation).',
   })
-  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the version the client read (`"0"` creates the row).', required: true, example: '"0"' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (`"0"` creates the row).',
+    required: true,
+    example: '"0"',
+  })
   @ApiResponse({ status: 200, type: TenantGuardrailPolicyResponse })
   @ApiResponse({ status: 400, description: 'Unknown check id, malformed field, no working tenant, or a direction left with no check (OD-8).' })
   @ApiResponse({ status: 403, description: '`GUARDRAIL_FIELD_PLATFORM_ONLY` / `GUARDRAIL_CHECK_LOCKED` (with `fields`), or the SYSTEM tier.' })

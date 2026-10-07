@@ -88,7 +88,10 @@ export class GuardrailNoticeController {
   @ApiOkResponse({ type: GuardrailNoticeAckResponse })
   @ApiResponse({ status: 400, description: CLINICIAN_400 })
   @ApiResponse({ status: 403, description: 'Only the assigned doctor, a consultation manager or a tenant-bound service account may acknowledge.' })
-  @ApiResponse({ status: 404, description: 'Consultation or notice not found (or cross-tenant), or the named clinician is not a user of this tenant.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Consultation or notice not found (or cross-tenant), or the named clinician is not a user of this tenant.',
+  })
   @ApiResponse({ status: 409, description: '`GUARDRAIL_NOTICE_RESOLVED` — the notice is already resolved.' })
   @ApiResponse({ status: 412, description: 'The consultation changed since the client read it.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -134,7 +137,10 @@ export class GuardrailNoticeController {
   @ApiOkResponse({ type: GuardrailHoldResumeResponse })
   @ApiResponse({ status: 400, description: `Invalid resolution, or ${CLINICIAN_400}` })
   @ApiResponse({ status: 403, description: 'Only the assigned doctor, a consultation manager or a tenant-bound service account may resume.' })
-  @ApiResponse({ status: 404, description: 'Consultation or notice not found (or cross-tenant), or the named clinician is not a user of this tenant.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Consultation or notice not found (or cross-tenant), or the named clinician is not a user of this tenant.',
+  })
   @ApiResponse({
     status: 409,
     description:

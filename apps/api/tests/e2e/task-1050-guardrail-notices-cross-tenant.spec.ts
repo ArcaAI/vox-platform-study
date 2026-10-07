@@ -73,7 +73,10 @@ test.describe('TASK-1050 — guardrail notices, hold and evaluations: gates and 
     }
     const ack = await request.post(ACK(id), { headers: { ...headers, 'If-Match': '"1"' }, data: {} });
     expect(ack.status(), 'ack').toBe(404);
-    const resume = await request.post(RESUME(id), { headers: { ...headers, 'If-Match': '"1"' }, data: { noticeId: UNKNOWN_NOTICE, resolution: 'item_excluded' } });
+    const resume = await request.post(RESUME(id), {
+      headers: { ...headers, 'If-Match': '"1"' },
+      data: { noticeId: UNKNOWN_NOTICE, resolution: 'item_excluded' },
+    });
     expect(resume.status(), 'resume').toBe(404);
   });
 
@@ -115,7 +118,9 @@ test.describe('TASK-1050 — guardrail notices, hold and evaluations: gates and 
     const headers = { 'X-Service-Token': token as string };
     expect((await request.post(url, { headers, data: { evaluations: [record] } })).status()).toBe(400);
     expect(
-      (await request.post(url, { headers: { ...headers, 'X-Tenant-Id': '50000000-0000-0000-0000-000000000000' }, data: { evaluations: [record] } })).status(),
+      (
+        await request.post(url, { headers: { ...headers, 'X-Tenant-Id': '50000000-0000-0000-0000-000000000000' }, data: { evaluations: [record] } })
+      ).status(),
     ).toBe(400);
   });
 });

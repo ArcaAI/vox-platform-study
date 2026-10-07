@@ -73,7 +73,8 @@ export class GuardrailMetricsController {
   @RequiredSvcScopes(SCOPE)
   @ApiOperation({
     summary: 'Guardrail health',
-    description: 'Residency of the model each guardrail task key elects (read-only), the undetermined rate over the last hour, and the time since the last evaluation.',
+    description:
+      'Residency of the model each guardrail task key elects (read-only), the undetermined rate over the last hour, and the time since the last evaluation.',
   })
   @ApiResponse({ status: 200, type: GuardrailHealthResponse })
   @ApiResponse({ status: 403, description: FORBIDDEN })

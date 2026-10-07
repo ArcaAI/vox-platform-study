@@ -137,7 +137,12 @@ describe('422 block / 503 redaction — fixed phrase, PHI-free notice forwarded 
 
   it('a notice that fails the frozen schema is dropped; the ids still cross', async () => {
     const post = vi.fn(async () => {
-      throw upstreamError(422, { error_code: 'CONTENT_BLOCKED', type: 'urn:hope:problem:guardrail-blocked', guardrailNotice: FORGED, guardrailEvaluationIds: ['ev-in'] });
+      throw upstreamError(422, {
+        error_code: 'CONTENT_BLOCKED',
+        type: 'urn:hope:problem:guardrail-blocked',
+        guardrailNotice: FORGED,
+        guardrailEvaluationIds: ['ev-in'],
+      });
     });
     const body = (await thrown(build({ post }).ctrl.proxyGenerate({ ...GENERATE }))).getResponse() as Record<string, unknown>;
     expect(body).not.toHaveProperty('guardrailNotice');
@@ -168,7 +173,12 @@ describe('422 block / 503 redaction — fixed phrase, PHI-free notice forwarded 
   });
 
   it('a STREAMING request`s 422 (axios hands the body as a stream) is read and mapped the same way', async () => {
-    const payload = JSON.stringify({ error_code: 'CONTENT_BLOCKED', type: 'urn:hope:problem:guardrail-blocked', guardrailNotice: BLOCKED, guardrailEvaluationIds: ['ev-in'] });
+    const payload = JSON.stringify({
+      error_code: 'CONTENT_BLOCKED',
+      type: 'urn:hope:problem:guardrail-blocked',
+      guardrailNotice: BLOCKED,
+      guardrailEvaluationIds: ['ev-in'],
+    });
     const post = vi.fn(async () => {
       throw upstreamError(422, Readable.from([Buffer.from(payload)]));
     });
@@ -186,7 +196,11 @@ describe('SSE — the guardrail.notice event and the terminal lists', () => {
       chunkFrame +
       frame('guardrail.notice', { type: 'guardrail.notice', content: null, data: WARNING }, 'g:2') +
       frame('guardrail.notice', { type: 'guardrail.notice', content: null, data: FORGED }, 'g:3') +
-      frame('done', { type: 'done', content: null, data: { finish_reason: 'stop', guardrail_notices: [WARNING, FORGED], guardrail_evaluation_ids: ['ev-1'] } }, 'g:4');
+      frame(
+        'done',
+        { type: 'done', content: null, data: { finish_reason: 'stop', guardrail_notices: [WARNING, FORGED], guardrail_evaluation_ids: ['ev-1'] } },
+        'g:4',
+      );
     const relay = new GuardrailSseRelay();
     // Split mid-frame, as a socket would.
     const out = relay.push(Buffer.from(input.slice(0, 37))) + relay.push(Buffer.from(input.slice(37))) + relay.end();
@@ -196,7 +210,12 @@ describe('SSE — the guardrail.notice event and the terminal lists', () => {
     expect(out).not.toContain('Jane Doe');
     expect(out).not.toContain('g:3');
     const done = out.split(/\n\n/).find((part) => part.includes('event: done'))!;
-    const data = JSON.parse(done.split('\n').find((line) => line.startsWith('data: '))!.slice(6));
+    const data = JSON.parse(
+      done
+        .split('\n')
+        .find((line) => line.startsWith('data: '))!
+        .slice(6),
+    );
     expect(data.data).toEqual({ finish_reason: 'stop', guardrailNotices: [WARNING], guardrailEvaluationIds: ['ev-1'] });
     expect(done).toContain('id: g:4');
   });
@@ -204,17 +223,40 @@ describe('SSE — the guardrail.notice event and the terminal lists', () => {
   it('an error frame carries guardrailNotice (singular) and the lists in camelCase', () => {
     const relay = new GuardrailSseRelay();
     const out =
-      relay.push(Buffer.from(frame('error', { type: 'error', content: null, data: { error_code: 'CONTENT_BLOCKED', guardrail_notice: BLOCKED, guardrail_notices: [BLOCKED], guardrail_evaluation_ids: ['ev-b'] } }, 'g:9'))) +
-      relay.end();
-    const data = JSON.parse(out.split('\n').find((line) => line.startsWith('data: '))!.slice(6));
-    expect(data.data).toEqual({ error_code: 'CONTENT_BLOCKED', guardrailNotice: BLOCKED, guardrailNotices: [BLOCKED], guardrailEvaluationIds: ['ev-b'] });
+      relay.push(
+        Buffer.from(
+          frame(
+            'error',
+            {
+              type: 'error',
+              content: null,
+              data: { error_code: 'CONTENT_BLOCKED', guardrail_notice: BLOCKED, guardrail_notices: [BLOCKED], guardrail_evaluation_ids: ['ev-b'] },
+            },
+            'g:9',
+          ),
+        ),
+      ) + relay.end();
+    const data = JSON.parse(
+      out
+        .split('\n')
+        .find((line) => line.startsWith('data: '))!
+        .slice(6),
+    );
+    expect(data.data).toEqual({
+      error_code: 'CONTENT_BLOCKED',
+      guardrailNotice: BLOCKED,
+      guardrailNotices: [BLOCKED],
+      guardrailEvaluationIds: ['ev-b'],
+    });
   });
 
   it('streamTaskEvents writes the relayed frames to the client', async () => {
     const upstream = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
     upstream.destroy = vi.fn();
     const { ctrl } = build();
-    (ctrl as unknown as { httpService: { axiosRef: { get: ReturnType<typeof vi.fn> } } }).httpService.axiosRef.get = vi.fn(async () => ({ data: upstream }));
+    (ctrl as unknown as { httpService: { axiosRef: { get: ReturnType<typeof vi.fn> } } }).httpService.axiosRef.get = vi.fn(async () => ({
+      data: upstream,
+    }));
     const written: string[] = [];
     const res = Object.assign(new EventEmitter(), {
       setHeader: vi.fn(),
@@ -237,7 +279,7 @@ describe('trust — no caller x-hope-* header reaches TEXT; the gateway sets cor
     const { ctrl } = build({ post });
     // A caller can only reach TEXT through the body: header-shaped keys there are not headers either.
     await ctrl.proxyGenerate({ ...GENERATE, context: { 'X-Hope-Guardrail-Override': 'n-1', consultationId: 'forged' } });
-    const headers = post.mock.calls[0]![2].headers as Record<string, string>;
+    const headers = (post.mock.calls[0] as unknown as [string, unknown, { headers: Record<string, string> }])[2].headers;
     expect(Object.keys(headers).filter((name) => name.toLowerCase().startsWith('x-hope-'))).toEqual([]);
   });
 
@@ -250,7 +292,7 @@ describe('trust — no caller x-hope-* header reaches TEXT; the gateway sets cor
       agent_slug: 'other',
       response_items: [{ itemId: 'y', itemVersion: 1 }],
     } as never);
-    const forwarded = post.mock.calls[0]![1] as Record<string, unknown>;
+    const forwarded = (post.mock.calls[0] as unknown as [string, Record<string, unknown>])[1];
     expect(forwarded).not.toHaveProperty('region_items');
     expect(forwarded).not.toHaveProperty('agent_slug');
     expect(forwarded).not.toHaveProperty('response_items');
@@ -263,7 +305,7 @@ describe('trust — no caller x-hope-* header reaches TEXT; the gateway sets cor
       contextItem: { id: 'ci-1', type: 'TRANSCRIPT', content: 'Patient reports a cough.', tenantId: 'tenant-1', consultationId: 'c-1', version: 4 },
     });
     await ctrl.proxyGenerateAssembled({ type: 'summary', context_item_ids: ['ci-1'], provider: 'lm-studio', model: 'm' });
-    const [, forwarded, config] = post.mock.calls[0]! as [string, Record<string, unknown>, { headers: Record<string, string> }];
+    const [, forwarded, config] = post.mock.calls[0] as unknown as [string, Record<string, unknown>, { headers: Record<string, string> }];
     expect(config.headers['X-Hope-Consultation-Id']).toBe('c-1');
     expect(forwarded.region_items).toEqual({ transcript: [{ itemId: 'ci-1', itemVersion: 4 }] });
   });

@@ -1,29 +1,17 @@
 import 'reflect-metadata';
-import { ForbiddenException, RequestMethod, SetMetadata } from '@nestjs/common';
+import { ForbiddenException, RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
 
-/**
- * TASK-1050 W2h — `admin/guardrail/{policy-keys,judge-models,judge-lanes,dry-run,metrics}`.
- *
- * The workspace `@arcaai/applications` resolves to a built `dist` that predates this lane, so the new services
- * and DTOs are taken from SOURCE and merged in. `svc:admin:guardrail:manage` is recorded as plain metadata until
- * `admin:guardrail:manage` is registered in `API_KEY_SCOPE_REGISTRY` (orchestrator follow-up); a registered scope
- * always goes through the real decorator, so this shim then does nothing.
- */
-vi.mock('@arcaai/applications', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, any>>();
-  const lane = await import('../../../../../../packages/applications/src/services/guardrail-policy');
-  return {
-    ...actual,
-    ...lane,
-    RequiredSvcScopes: (...scopes: string[]) =>
-      scopes.every((scope) => actual.isValidServiceAccountScope(scope)) ? actual.RequiredSvcScopes(...scopes) : SetMetadata(actual.SERVICE_ACCOUNT_REQUIRED_SCOPES, scopes),
-  };
-});
-
-import { API_KEY_FORBIDDEN, GuardrailMonitoringService, GuardrailPolicyService, REQUIRED_PERMISSIONS_KEY, SERVICE_ACCOUNT_REQUIRED_SCOPES } from '@arcaai/applications';
+/** TASK-1050 W2h — `admin/guardrail/{policy-keys,judge-models,judge-lanes,dry-run,metrics}`. */
+import {
+  API_KEY_FORBIDDEN,
+  GuardrailMonitoringService,
+  GuardrailPolicyService,
+  REQUIRED_PERMISSIONS_KEY,
+  SERVICE_ACCOUNT_REQUIRED_SCOPES,
+} from '@arcaai/applications';
 import { API_TAGS } from '../../../openapi/tags';
 import { GuardrailMetricsController } from '../guardrail-metrics.controller';
 import { GuardrailPolicyController } from '../guardrail-policy.controller';
@@ -77,8 +65,12 @@ describe('GuardrailPolicyController — the declarative layer', () => {
   it('is admin-plane only: @ForbidApiKey, an AiModel CASL permission and the guardrail svc scope on every route', () => {
     const reflector = new Reflector();
     const all: Array<[Proto, unknown, string, 'read' | 'update']> = [
-      ...POLICY_ROUTES.map(([handler, , , ability]) => [policyProto, GuardrailPolicyController, handler, ability] as [Proto, unknown, string, 'read' | 'update']),
-      ...METRICS_ROUTES.map(([handler]) => [metricsProto, GuardrailMetricsController, handler, 'read'] as [Proto, unknown, string, 'read' | 'update']),
+      ...POLICY_ROUTES.map(
+        ([handler, , , ability]) => [policyProto, GuardrailPolicyController, handler, ability] as [Proto, unknown, string, 'read' | 'update'],
+      ),
+      ...METRICS_ROUTES.map(
+        ([handler]) => [metricsProto, GuardrailMetricsController, handler, 'read'] as [Proto, unknown, string, 'read' | 'update'],
+      ),
     ];
     for (const [proto, cls, handler, ability] of all) {
       const targets = [proto[handler], cls] as never;
@@ -102,7 +94,10 @@ describe('GuardrailPolicyController — the declarative layer', () => {
       const tags = Reflect.getMetadata(API_TAGS_METADATA, cls) as string[];
       for (const tag of tags) expect(API_TAGS.map((t) => t.name)).toContain(tag);
     }
-    for (const [proto, handler] of [...POLICY_ROUTES.map(([h]) => [policyProto, h] as const), ...METRICS_ROUTES.map(([h]) => [metricsProto, h] as const)]) {
+    for (const [proto, handler] of [
+      ...POLICY_ROUTES.map(([h]) => [policyProto, h] as const),
+      ...METRICS_ROUTES.map(([h]) => [metricsProto, h] as const),
+    ]) {
       expect((Reflect.getMetadata(API_OPERATION_METADATA, proto[handler]) as { summary?: string })?.summary, handler).toBeTruthy();
       expect(Object.keys(Reflect.getMetadata(API_RESPONSE_METADATA, proto[handler]) ?? {}), handler).toContain('403');
     }
@@ -141,9 +136,19 @@ describe('GuardrailPolicyController — the declarative layer', () => {
 });
 
 describe('every route refuses a non-platform-admin with 403, through the REAL services', () => {
-  const tenantAdminCls = { get: (k: string) => (k === 'user' ? { id: 'u', roles: ['TENANT_ADMIN'] } : k === 'tenantId' ? 'aaaaaaaa-0000-0000-0000-000000000001' : undefined) };
+  const tenantAdminCls = {
+    get: (k: string) => (k === 'user' ? { id: 'u', roles: ['TENANT_ADMIN'] } : k === 'tenantId' ? 'aaaaaaaa-0000-0000-0000-000000000001' : undefined),
+  };
   const untouched = new Proxy({}, { get: () => vi.fn(() => Promise.reject(new Error('must not be reached'))) });
-  const policyService = new (GuardrailPolicyService as any)(untouched, untouched, untouched, untouched, { available: true, specs: [], problems: [] }, { emit: vi.fn() }, tenantAdminCls);
+  const policyService = new (GuardrailPolicyService as any)(
+    untouched,
+    untouched,
+    untouched,
+    untouched,
+    { available: true, specs: [], problems: [] },
+    { emit: vi.fn() },
+    tenantAdminCls,
+  );
   const monitoringService = new (GuardrailMonitoringService as any)(untouched, untouched, untouched, { emit: vi.fn() }, tenantAdminCls);
   const policy = new GuardrailPolicyController(policyService);
   const metrics = new GuardrailMetricsController(monitoringService);

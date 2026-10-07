@@ -104,7 +104,9 @@ export function withoutHopeInternalHeaders(headers: Record<string, string>): Rec
 }
 
 function isReadable(value: unknown): value is Readable {
-  return typeof value === 'object' && value !== null && typeof (value as Readable).on === 'function' && typeof (value as Readable).read === 'function';
+  return (
+    typeof value === 'object' && value !== null && typeof (value as Readable).on === 'function' && typeof (value as Readable).read === 'function'
+  );
 }
 
 /**
@@ -190,7 +192,10 @@ export class GuardrailSseRelay {
   private rewrite(frame: string, original: string): string {
     if (!frame.includes('guardrail')) return original;
     const lines = frame.split(/\r\n|\n|\r/);
-    const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
+    const event = lines
+      .find((line) => line.startsWith('event:'))
+      ?.slice(6)
+      .trim();
     const dataLines = lines.filter((line) => line.startsWith('data:')).map((line) => line.slice(5).replace(/^ /, ''));
     if (dataLines.length === 0) return original;
     let payload: unknown;

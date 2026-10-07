@@ -51,7 +51,12 @@ export class GuardrailEvaluationInternalController {
     description:
       'At most 100 records. One transaction per batch: notices (deduped), evaluations (idempotent on evaluationId), item markers and, on a block, the consultation`s resumable guardrail hold.',
   })
-  @ApiQuery({ name: 'service', required: true, enum: [GUARDRAIL_INGEST_SERVICE], description: 'The calling service; selects the token the guard checks.' })
+  @ApiQuery({
+    name: 'service',
+    required: true,
+    enum: [GUARDRAIL_INGEST_SERVICE],
+    description: 'The calling service; selects the token the guard checks.',
+  })
   @ApiResponse({ status: 200, type: GuardrailEvaluationBatchResponseDto })
   @ApiResponse({ status: 400, description: 'Missing X-Tenant-Id, a record of another tenant, or an invalid / oversized batch.' })
   @ApiResponse({ status: 401, description: 'Missing or wrong X-Service-Token.' })
