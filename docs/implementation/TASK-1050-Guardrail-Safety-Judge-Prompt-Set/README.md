@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress.** §9 (tenant-admin rules plus playground and consultation-details results) is waiting on OD-7 to OD-38 and an explicit go. Joint 1049/1050 execution plan in §10; platform-admin vs tenant-admin split in §11. **2026-10-07: owner said go. Every OD (1–38, with OD-10 retired) is accepted at its recommendation. In Progress, executing the §10.6 phases. Commits are local only, never pushed.** |
+| Status | **In Progress (P4 gates green; live e2e pending owner approval L-5).** §9 (tenant-admin rules plus playground and consultation-details results) is waiting on OD-7 to OD-38 and an explicit go. Joint 1049/1050 execution plan in §10; platform-admin vs tenant-admin split in §11. **2026-10-07: owner said go. Every OD (1–38, with OD-10 retired) is accepted at its recommendation. In Progress, executing the §10.6 phases. Commits are local only, never pushed.** |
 | Type | feature (guardrail safety), plus a bugfix candidate (medical-judge prompt hardening) |
 | Branch | `dev-2.2` |
 | Services | `apps/guardrail`, seeds (`packages/database`), `packages/applications` (availability catalogue). `apps/text` and `apps/harness` change only if OD-4 widens the response. |
@@ -831,7 +831,59 @@ All model facts above (repo id, licence, revision, GGUF availability, exact outp
 
 ## 7. Implementation summary
 
-Not started.
+**State (2026-10-07):** every lane of TASK-1050 and the TASK-1049 tracks S (milestone 1 + top-up), P (P-1/P-2) and R are merged into `dev-2.2`. Everything is committed **locally only; nothing is pushed**. The P4 gates are green (below). Still open: syncing the dev DB, then the live end-to-end run, which needs owner approval **L-5**, then the owner decision round on Track S/P model picks (needs **L-1/L-2/L-3/L-6** loads).
+
+### 7.1 What shipped (by layer)
+
+| Layer | Delivered |
+|---|---|
+| DB / domain | `GuardrailEvaluation` (one row per request × direction; withheld text Transit-encrypted), `GuardrailNotice` (lifecycle OPEN → ACKNOWLEDGED → RESOLVED, keyed by guardrail's deterministic id), `GuardrailPolicyRevision` (append-only), `ContextItem.guardrailStatus` (outside OCC). Migration `20261007130131_task_1050_guardrail_evaluation`, authored on a shadow DB with no drift. |
+| Contract | `@arcaai/types` guardrail vocabulary, `GuardrailNotice` v1, evaluation wire format, tenant policy v2 with the field guard, judge template validator, judge-model capability, hold/approve additions. The run protocol gains `guardrail.notice` and `run.paused` in all five copies, with a parity overlay fixture. |
+| apps/guardrail | JudgeRunner: combined per-model calls (`criteria_json` granite, `qwen3guard_native` via nlp), the untrusted envelope (medical included), verdict-only output. Decision ladder ignore / warn / block / unverified; "direction off" means monitor only; a locked medical check; the SYSTEM-row lock wins at runtime. Notices with deterministic ids. An evaluation record for every request via an at-least-once Redis outbox and drainer. Config invalidation push. Verified override. PG2-86M injection routing. Policy keys + `policy-keys.json`. Dry run. F5, F6, F7, F8. |
+| apps/nlp | Seq-cls runtime (PG2-86M), Qwen3Guard `/guard/judge`, NER windowing fix and a tenant-keyed result cache (F10). |
+| apps/text | Enforces the decisions: warn/unverified continue; block returns 422 with the notice; outage and malformed responses degrade; cloud redaction fails closed as the resumable `EGRESS_REDACTION_UNAVAILABLE`. Notices and evaluation ids on JSON and SSE; correlation, items, locality and attribution forwarded. P-F1 Pseudonymizer round trip fixed. |
+| apps/harness | Node-level guardrail hold (signal + timeout, `workflow.patched`) with two replay fixtures; a resolution route; `run.paused` and notice events; `agent_slug` and correlation sent to TEXT; F4, F9. |
+| Gateway | Evaluation ingest (one transaction, marking, notices, hold); notices list and acknowledge; hold resume (redaction resume is a retry; medical cannot be overridden); `start` refused while held; composer and reader exclusion; WITHHELD placeholder plus admin review; one-action approve with acknowledgement and `resolveHold`. Tenant on/off route (field-level gate); platform v2 actions and locks. Platform control: policy keys with revisions, reset, restore and `defaultChangedSinceEdit`; editable classifier thresholds; judge-meta; judge lanes with a capability check (validate included); dry run (never loads); monitoring plus reconciler. `POST admin/guardrail/screen`. TEXT proxy relay (validated notices, `x-hope-*` strip, multibyte-safe decoding). Live lane: F3, F7, hold entry. F1, F2, F11 helpers. |
+| SDKs | vox and vox-node: typed block/hold errors, `run.paused` non-terminal, notice handlers, consultation notices / ack / resume / approve-with-acknowledge, `isNoteReady` false while held. No version bump or publish yet. |
+| Console | `/guardrails/control` (platform: Rules, Prompts, Parameters, Monitoring), `/guardrails` (tenant on/off). Playground (LLM, consultation, DNA) and workflow-run / studio trace guardrail UI. Consultation details: Guardrail tab, notices, hold banner, badges, withheld review. |
+| Seeds | Granite judge metadata with 4 composed criteria and the medical clause; Qwen3Guard-Gen-0.6B and PG2-86M rows; empty bands; routing rows; availability v2 with the judges off. Reseed keeps admin-edited `policy`, `judge` and thresholds. |
+
+### 7.2 P4 gate evidence (orchestrator, single pass after the full merge, then a confirmation run)
+
+Run 1 found real defects; all are fixed:
+1. `guardrailHoldTimeoutSeconds` was sent top-level, but the harness start body is `extra="forbid"`, so **every run start would have 422'd** (`883d18419`).
+2. The TEXT proxy relay decoded per chunk, which **corrupted multibyte characters split across chunks** (`StringDecoder`; test added).
+3. A live-lane deadlock between an overlapping forced flush and an in-flight flush (W2g round 4).
+4. `text-primary` emphasis-canon violations.
+5. Type gaps the lanes could not see: an SDK fixture type, `ContextItemType.SUMMARY`, a worker-session kind, a JsonValue cast, a DTO barrel clash, API test shims and JSON imports, console casts.
+
+Deliberate behaviour changes had their tests updated by the owning lanes: guardrail 8, text 8, nlp 4, applications sets.
+
+Run 2 (confirmation):
+
+| Gate | Result |
+|---|---|
+| `pnpm typecheck` | 36/36 tasks |
+| `pnpm lint` | 32/32 tasks, 0 errors |
+| TS unit (root vitest, `.env.test`) | 33,211 passed, **1 failed: out of scope** |
+| `@arcaai/vox` | 3,464 passed |
+| `@arcaai/admin-console` | 4,823 passed, **1 failed: out of scope** |
+| guardrail pytest | 955 passed |
+| text pytest | 2,225 passed |
+| harness pytest (incl. replay-compat + the TASK-1050 hold fixtures) | 3,814 passed |
+| nlp pytest | 1,113 passed |
+| Artifacts | route manifest, openapi, portal, `gen:admin` regenerated; `api:openapi:check`, `api:portal:check`, `gen:admin:check` OK |
+
+**Out of scope, not touched by TASK-1050, reported:**
+- `tests/contracts/cloud-asr-provider-identity.contract.test.ts` (null fallback in the TASK-1048 ASR resolver; fails on its own).
+- `apps/admin-console/src/shared/__tests__/emphasis-canon.test.ts` flags `features/model-residency/components/readiness-screen.tsx` (TASK-1051).
+- Run 1 only: `throttle-429-logging` (ordering) and harness `test_sandbox` (Temporal test-server port collision). Both pass on their own.
+
+### 7.3 Not done yet
+- Dev DB sync (`pnpm db:push` + `db:seed`) and the **live e2e** (ALaaS → local HOPE → console), which needs approval L-5.
+- Track S/P model scoring (L-1/L-2/L-3/L-6), then the owner decision round (OD-28/30), then calibrated bands/thresholds seeded and judges enabled.
+- SDK minor release (local runbook) and cluster rollout: reseed or a guarded upsert Job, and deploy order drain → harness → gateway. Both are the owner's to do after pushing.
+- Follow-ups recorded in §8: F11 call sites, the remaining gateway TEXT callers' attribution hints, exclusion in client context and same-day carry, the lane-model switch atomicity, and the dedicated OpenAPI tag.
 
 ## 8. Change history
 
