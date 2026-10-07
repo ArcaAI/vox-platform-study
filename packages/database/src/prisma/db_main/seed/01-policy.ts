@@ -167,6 +167,12 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'read', subject: 'WebhookRunHistory', conditions: { tenantId: '${context.tenantId}' } },
       // Settings & Configuration
       { action: 'manage', subject: 'GlobalSetting', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-1050 §11.1 — a tenant admin turns its OWN tenant's guardrail checks and screening
+      // directions on/off (`GET/PUT admin/guardrail/policy`). `manage` covers the read. The route's
+      // service enforces a FIELD-LEVEL split gate this grant cannot express: only `enabled` flags of
+      // unlocked checks; action, locks, thresholds and the SYSTEM row stay platform-admin only
+      // (403 GUARDRAIL_FIELD_PLATFORM_ONLY). Requires a reseed to take effect.
+      { action: 'manage', subject: 'TenantGuardrailPolicy', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'Tag', conditions: { tenantId: '${context.tenantId}' } },
       // Storage management
       { action: 'manage', subject: 'Storage', conditions: { tenantId: '${context.tenantId}' } },

@@ -387,9 +387,9 @@ export function applyGuardrailPolicyChanges(
       if (value) next.directions[key as GuardrailScreenDirection] = { enabled: value.enabled };
       continue;
     }
-    const value = (submitted.checks[key] as Record<string, unknown> | undefined)?.[field];
+    const value = (submitted.checks[key] as unknown as Record<string, unknown> | undefined)?.[field];
     if (value === undefined) continue;
-    next.checks[key] = { ...(next.checks[key] ?? {}), [field]: value, setBy };
+    next.checks[key] = { ...(next.checks[key] ?? {}), [field]: value, setBy } as StatedGuardrailCheck;
   }
   return next;
 }
@@ -400,11 +400,12 @@ export function stampPlatformGuardrailPolicyWrite(stored: StoredGuardrailPolicyV
   for (const [id, entry] of Object.entries(next.checks)) {
     if (guardrailPolicy(id)?.locked) continue; // a catalogue-locked check is never stored
     const before = stored.checks[id];
-    const { setBy: _ignored, ...fields } = entry;
+    const fields: StatedGuardrailCheck = { ...entry };
+    delete fields.setBy;
     const unchanged =
       before !== undefined &&
       Object.keys(fields).length === Object.keys(before).filter((key) => key !== 'setBy').length &&
-      Object.entries(fields).every(([key, value]) => (before as Record<string, unknown>)[key] === value);
+      Object.entries(fields).every(([key, value]) => (before as unknown as Record<string, unknown>)[key] === value);
     // An unchanged entry keeps its author; an unattributed (legacy) one is re-asserted by this platform write.
     out.checks[id] = { ...fields, setBy: unchanged && before.setBy ? before.setBy : 'platform_admin' };
   }

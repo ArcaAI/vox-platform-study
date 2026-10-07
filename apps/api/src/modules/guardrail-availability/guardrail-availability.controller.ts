@@ -16,10 +16,12 @@ import { CanManage, CanRead, CanUpdate, ExpectedVersion, ForbidApiKey, ForbidSer
  * `GuardrailAvailabilityService.assertSuperAdmin` (→ 403), because the
  * permission decorators express `action + subject` and cannot express "super
  * admins only": a tenant admin legitimately holds `manage:Tenant` for its OWN
- * tenant and would otherwise reach these routes. That is precisely the case the
- * owner ruled out — "no tenant admin manages any guardrail setting" — so a
- * tenant admin is refused even for its own tenant's row. Do not widen any
- * decorator here without reading the service first.
+ * tenant and would otherwise reach these routes. This is the PLATFORM plane:
+ * action, lock, data-region action and thresholds per tenant and on the SYSTEM
+ * row (TASK-1050 §11.1). A tenant admin turns its own checks on/off through
+ * `admin/guardrail/policy` (`GuardrailTenantPolicyController`, a field-level
+ * split gate) and is refused here even for its own tenant's row. Do not widen
+ * any decorator here without reading the service first.
  *
  * This is a 403 PRIVILEGE boundary, deliberately NOT the 404-over-403
  * cross-tenant posture: the answer is "you may not administer guardrail",
@@ -88,7 +90,7 @@ export class GuardrailAvailabilityController {
   @ApiOperation({
     summary: "Replace one tenant's guardrail availability under optimistic concurrency — SUPER_ADMIN only",
     description:
-      'Availability SELECTS policies; it can never disable the gate. An empty selection means "no opinion" and inherits the SYSTEM set, and a selection that would leave a screening direction ungated is REFUSED (400). A threshold weaker than the SYSTEM row\'s is REFUSED (403) rather than silently clamped. `If-Match` carries the version from the prior GET: `"0"` creates the row, an existing version CASes against `_version`.',
+      'Writes the tenant\'s whole policy row in the v2 shape `{ directions, checks: { <id>: { enabled, action, locked, minScore, dataRegionAction } } }` (the legacy flat shape is still accepted and rewritten as v2). Every field is optional and an absent one follows SYSTEM, then the catalogue. `locked: true` stops the tenant changing that check on `admin/guardrail/policy`. It can never disable the gate: a policy that would leave a screening direction with no check is REFUSED (400), and the medical-domain check is editable by nobody (403 `GUARDRAIL_CHECK_LOCKED`). A threshold weaker than the SYSTEM row\'s is REFUSED (403) rather than silently clamped. A committed write reaches guardrail at once (cache invalidation). `If-Match` carries the version from the prior GET: `"0"` creates the row, an existing version CASes against `_version`.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -99,7 +101,10 @@ export class GuardrailAvailabilityController {
   @ApiParam({ name: 'tenantId', description: 'The tenant whose availability to write. `00000000-…` is the platform default row.' })
   @ApiResponse({ status: 200, type: GuardrailAvailabilityResponse })
   @ApiResponse({ status: 400, description: 'Unknown policy id, malformed selection, or a selection that would leave a direction ungated.' })
-  @ApiResponse({ status: 403, description: 'Caller is not a super administrator, or the selection would LOOSEN a policy below the platform floor.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a super administrator, the selection would LOOSEN a policy below the platform floor, or it changes the locked medical check (`GUARDRAIL_CHECK_LOCKED`).',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   @CanUpdate('Tenant')
