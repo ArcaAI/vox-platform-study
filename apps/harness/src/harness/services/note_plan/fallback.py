@@ -26,7 +26,7 @@ from harness.services.note_plan.executor import (
     NoteCallResult,
 )
 from harness.services.note_plan.models import NotePlanV1
-from harness.services.text_client import TextServiceError
+from harness.services.text_client import TextGuardrailBlocked, TextServiceError
 from harness.temporal.interpreter.nodes._text_fallback import (
     TextFallbackCandidate,
     wire_provider,
@@ -113,6 +113,11 @@ def walk_attempts(
             started = datetime.now(UTC)
             try:
                 result = await call(request, attempt, index)
+            except TextGuardrailBlocked:
+                # TASK-1050 — a guardrail refusal is a policy verdict (or a privacy outage), not a
+                # provider outage: every candidate is screened against the same policy, so the call
+                # stops here and the caller holds it.
+                raise
             except TextServiceError as exc:
                 lost.append(FailedLeg(attempt, index, started, datetime.now(UTC), exc))
                 continue

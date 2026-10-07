@@ -75,13 +75,39 @@ def live_audio_wait_seconds(requested_seconds: int | None) -> int:
     return max(1, min(requested_seconds, LIVE_AUDIO_MAX_WAIT_SECONDS))
 
 
+#: TASK-1050 W2f — the longest ONE guardrail hold waits for its resolution (README §9.8.1: the
+#: platform setting `guardrail.hold.timeoutSeconds`, default 24 h). The gateway's injected value
+#: (`RunLimits.guardrail_hold_timeout_seconds`, lane W2h) may only TIGHTEN it; absent, the hold is
+#: bounded by the run's own `execution_timeout` backstop. A durable wait on a person, not compute:
+#: it is NOT charged to `maxTotalSeconds`.
+GUARDRAIL_HOLD_MAX_WAIT_SECONDS = 86400
+
+#: How many times ONE node may be held and re-run within a run. A resolution that does not fix the
+#: refused input (or a resolver that keeps acknowledging a check that keeps firing) must not grow
+#: the history without bound; past it the run fails `GUARDRAIL_BLOCKED` and the consultation's hold
+#: falls back to the gateway's supersede path (README §9.8.1 "a resume is always possible").
+MAX_GUARDRAIL_HOLD_ROUNDS = 5
+
+
+def guardrail_hold_wait_seconds(requested_seconds: int | None) -> int:
+    """Tighten-only: the gateway-resolved hold timeout, never above the platform constant (which
+    also applies when the gateway sent none)."""
+    if requested_seconds is None:
+        return GUARDRAIL_HOLD_MAX_WAIT_SECONDS
+    return max(1, min(requested_seconds, GUARDRAIL_HOLD_MAX_WAIT_SECONDS))
+
+
 def run_budget_seconds(max_total_seconds: int) -> int:
     """The compute budget a run may spend (tighten-only, like every other cap; never < 1)."""
     return max(1, min(max_total_seconds, MAX_TOTAL_SECONDS))
 
 
 def execution_timeout_seconds(
-    config: Any, *, consultation_bound: bool, live_audio_seconds: int | None = None
+    config: Any,
+    *,
+    consultation_bound: bool,
+    live_audio_seconds: int | None = None,
+    guardrail_hold_seconds: int | None = None,
 ) -> int | None:
     """The Temporal ``execution_timeout`` BACKSTOP for a run of ``config``, or ``None``.
 
@@ -110,6 +136,11 @@ def execution_timeout_seconds(
         seconds += LIVE_HANDOFF_MAX_WAIT_SECONDS
     if live_audio_seconds is not None:
         seconds += live_audio_wait_seconds(live_audio_seconds)
+    if guardrail_hold_seconds is not None:
+        # TASK-1050 W2f — room for ONE guardrail hold of the gateway's timeout. A second hold in the
+        # same run shares what is left: the walk bounds every hold by the backstop less the grace
+        # (`guardrail_hold.hold_wait_seconds`), so it still fails the run by name first.
+        seconds += guardrail_hold_wait_seconds(guardrail_hold_seconds)
     return seconds + RUN_TIMEOUT_GRACE_SECONDS
 
 

@@ -544,6 +544,18 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'ModelResidencyPolicy' }],
     reserved: true,
   },
+  // TASK-1050 — the platform guardrail-control surface (`admin/guardrail/policy-keys`,
+  // `judge-models`, `judge-lanes`, `dry-run`, `metrics/*`). The real gate (SUPER_ADMIN in a
+  // tenant-less context) is imperative in `assertGuardrailPlatformAdmin`.
+  'admin:guardrail:manage': {
+    description: 'Manage platform guardrail control (policy keys, judge lanes, dry run, monitoring)',
+    category: 'Admin',
+    implies: [
+      { action: 'manage', subject: 'AiModel' },
+      { action: 'manage', subject: 'AiRoutingPolicy' },
+    ],
+    reserved: true,
+  },
   'admin:harness:manage': {
     description: 'Manage the Clinical Documentation Harness admin surface',
     category: 'Admin',

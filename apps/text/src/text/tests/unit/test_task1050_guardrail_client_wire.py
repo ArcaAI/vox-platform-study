@@ -222,3 +222,128 @@ async def test_the_medical_verdict_reads_a_decision_when_guardrail_sends_one() -
     assert verdict["decision"] == "unverified"
     assert verdict["evaluation_id"] == "ev-med"
     assert len(verdict["notices"]) == 1
+
+
+# ── round 2: guardrail's actual W2a2 wire ────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("binary", "four_way", "expected", "allowed"),
+    [
+        ("allow", "warn", "warn", True),
+        ("allow", "unverified", "unverified", True),
+        ("block", "block", "block", False),
+        ("allow", None, "allow", True),  # an older guardrail: binary only
+        ("block", None, "block", False),
+        ("allow", "nonsense", "allow", True),  # unreadable four-way: the binary stands
+    ],
+)
+async def test_the_four_way_guardrail_decision_wins_over_the_binary_decision(
+    binary: str, four_way: str | None, expected: str, allowed: bool
+) -> None:
+    payload: dict[str, Any] = {"decision": binary, "pii_spans": [], "screened_regions": _SCREENED}
+    if four_way is not None:
+        payload["guardrail_decision"] = four_way
+    http = _Http(
+        {
+            "/screen/inbound": payload,
+            "/screen/outbound": {k: v for k, v in payload.items() if k != "pii_spans"},
+            "/medical/validate": {**payload, "is_medical": binary == "allow"},
+        }
+    )
+    client = _client(http)
+
+    for verdict in (
+        await client.screen_inbound(regions=_REGIONS, tenant_id="t"),
+        await client.screen_output("note", source_regions=_REGIONS, tenant_id="t"),
+        await client.validate(regions=_REGIONS, tenant_id="t"),
+    ):
+        assert verdict["decision"] == expected
+        assert verdict["allowed"] is allowed
+
+
+async def test_inbound_sends_caller_agent_exemption_and_the_injected_connection() -> None:
+    http = _Http(
+        {"/screen/inbound": {"decision": "allow", "pii_spans": [], "screened_regions": _SCREENED}}
+    )
+    overrides = {"openai": {"api_key": "k", "base_url": "https://x"}}
+
+    await _client(http).screen_inbound(
+        regions=_REGIONS,
+        tenant_id="t",
+        caller="text.generate",
+        agent_slug="soap-writer",
+        exempt="medical_internal",
+        provider_overrides=overrides,
+    )
+
+    body = http.calls[0]["json"]
+    assert body["caller"] == "text.generate"
+    assert body["agent_slug"] == "soap-writer"
+    assert body["exempt"] == "medical_internal"
+    assert body["provider_overrides"] == overrides
+
+
+async def test_outbound_sends_response_items_caller_agent_prompt_and_the_connection() -> None:
+    http = _Http({"/screen/outbound": {"decision": "allow", "screened_regions": _SCREENED}})
+    overrides = {"openai": {"api_key": "k"}}
+
+    await _client(http).screen_output(
+        "note",
+        source_regions=_REGIONS,
+        tenant_id="t",
+        caller="text.generate",
+        agent_slug="soap-writer",
+        response_items=[{"itemId": "note-1", "itemVersion": 1}],
+        prompt_context="Write the note.",
+        provider_overrides=overrides,
+    )
+
+    body = http.calls[0]["json"]
+    assert body["caller"] == "text.generate"
+    assert body["agent_slug"] == "soap-writer"
+    assert body["response_items"] == [{"itemId": "note-1", "itemVersion": 1}]
+    assert body["prompt_context"] == "Write the note."
+    assert body["provider_overrides"] == overrides
+
+
+async def test_the_new_request_fields_are_absent_when_unknown() -> None:
+    http = _Http(
+        {
+            "/screen/inbound": {
+                "decision": "allow",
+                "pii_spans": [],
+                "screened_regions": _SCREENED,
+            },
+            "/screen/outbound": {"decision": "allow", "screened_regions": _SCREENED},
+        }
+    )
+    client = _client(http)
+
+    await client.screen_inbound(regions=_REGIONS, tenant_id="t")
+    await client.screen_output("note", source_regions=_REGIONS, tenant_id="t")
+
+    inbound, outbound = (call["json"] for call in http.calls)
+    for key in ("caller", "agent_slug", "exempt", "provider_overrides"):
+        assert key not in inbound
+    for key in ("caller", "agent_slug", "response_items", "prompt_context", "provider_overrides"):
+        assert key not in outbound
+
+
+async def test_the_override_header_received_is_forwarded() -> None:
+    token = gn.bind_guardrail_correlation({"x-hope-guardrail-override": "notice-9"})
+    try:
+        http = _Http(
+            {
+                "/screen/inbound": {
+                    "decision": "allow",
+                    "pii_spans": [],
+                    "screened_regions": _SCREENED,
+                }
+            }
+        )
+        await _client(http).screen_inbound(regions=_REGIONS, tenant_id="t")
+    finally:
+        gn.reset_guardrail_correlation(token)
+
+    assert http.calls[0]["headers"][gn.GUARDRAIL_OVERRIDE_HEADER] == "notice-9"

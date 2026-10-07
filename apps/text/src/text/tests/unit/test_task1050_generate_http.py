@@ -340,3 +340,72 @@ async def test_translate_on_a_cloud_provider_holds_on_a_screen_outage(make_clien
     assert resp.status_code == 503
     assert resp.json()["error_code"] == "EGRESS_REDACTION_UNAVAILABLE"
     assert translator.calls == 0
+
+
+# ── round 2: the request fields guardrail now takes ──────────────────────────
+
+
+async def test_generate_sends_caller_agent_items_prompt_and_the_override_header(
+    make_client,
+) -> None:
+    guardrail = _Guardrail()
+    client = await make_client(guardrail)
+
+    resp = await client.post(
+        "/api/v1/generate",
+        json=_body(
+            agent_slug="soap-writer",
+            response_items=[{"itemId": "note-1", "itemVersion": 3}],
+            provider_overrides={"lm-studio": {"base_url": "http://lms"}},
+        ),
+        headers={**_HEADERS, "X-Hope-Guardrail-Override": "notice-7"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    (_, inbound, inbound_headers), _, (_, outbound, _) = guardrail.calls
+    assert inbound["caller"] == "text.generate"
+    assert inbound["agent_slug"] == "soap-writer"
+    assert inbound["exempt"] is None
+    assert inbound["provider_overrides"] == {
+        "lm-studio": {"base_url": "http://lms", "funding": "tenant"}
+    }
+    assert inbound_headers["X-Hope-Guardrail-Override"] == "notice-7"
+    assert outbound["caller"] == "text.generate"
+    assert outbound["agent_slug"] == "soap-writer"
+    assert outbound["response_items"] == [{"itemId": "note-1", "itemVersion": 3}]
+    assert outbound["prompt_context"] == f"Summarise.\n\n{_TRANSCRIPT}"
+    assert outbound["provider_overrides"] == inbound["provider_overrides"]
+
+
+async def test_generate_marks_the_internal_medical_exemption(make_client) -> None:
+    guardrail = _Guardrail()
+    client = await make_client(guardrail)
+
+    resp = await client.post(
+        "/api/v1/generate", json=_body(medical_exempt="internal"), headers=_HEADERS
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert [name for name, *_ in guardrail.calls] == ["inbound", "outbound"]
+    assert guardrail.calls[0][1]["exempt"] == "medical_internal"
+
+
+async def test_translate_is_the_text_translate_caller(make_client) -> None:
+    guardrail = _Guardrail()
+    client = await make_client(guardrail, translator=_Translator())
+
+    resp = await client.post(
+        "/api/v1/translate",
+        json={
+            "texts": ["Patient has fever."],
+            "provider_locality": {"sarvam": "local"},
+            "agent_slug": "translator",
+        },
+        headers=_HEADERS,
+    )
+
+    assert resp.status_code == 200, resp.text
+    inbound, outbound = guardrail.calls[0][1], guardrail.calls[-1][1]
+    assert inbound["caller"] == outbound["caller"] == "text.translate"
+    assert inbound["agent_slug"] == outbound["agent_slug"] == "translator"
+    assert outbound["prompt_context"] == "Patient has fever."

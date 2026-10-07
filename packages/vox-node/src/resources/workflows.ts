@@ -40,6 +40,7 @@ import { CredentialClassError, ReservedRunIdentityError, SocketUnavailableError 
 import { generateUuidV7 } from '../core/idempotency';
 import { RunHandle, type RunHandleTuning } from '../core/run-handle';
 import { reservedRunIdentityKeysIn } from '../core/run-identity';
+import { type RunGuardrailNotice, isRunGuardrailNotice } from '../core/run-protocol';
 import { runWithAudio, type RunAudio, type RunWithAudioOptions } from '../core/run-with-audio';
 import { parseSseStream } from '../core/sse';
 import { readSocketFrames, resolveSocketUrl, type SocketFrame, type WorkflowRunStreamTicket } from '../core/socket';
@@ -175,6 +176,12 @@ export interface StreamRunOptions {
    * or silently serving the transport you ruled out.
    */
   transport?: 'sse' | 'socket';
+  /**
+   * TASK-1050: called ONCE per notice id for every `guardrail.notice` frame the stream carries. Show the warning and
+   * keep reading — a warning never stops the run, and a `run.paused` frame (a block waiting for a resume) is NOT the
+   * end of the stream either: `waitForRun` keeps waiting through it.
+   */
+  onGuardrailNotice?: (notice: RunGuardrailNotice) => void;
 }
 
 function runsPath(slug: string): string {
@@ -264,9 +271,36 @@ function socketFrameToRunEvent(frame: SocketFrame): WorkflowRunEvent | null {
   return { ...(frame.data as WorkflowRunEvent), ...(frame.id === undefined ? {} : { resumeToken: frame.id }) };
 }
 
-/** `true` when this event means the run has reached a terminal state. */
+/** The guardrail notice a `guardrail.notice` frame carries — the v2 envelope's `data`, or a legacy envelope's `payload`. */
+function noticeOfEvent(event: WorkflowRunEvent): RunGuardrailNotice | undefined {
+  if (event.type !== 'guardrail.notice') return undefined;
+  const candidate = (event as unknown as { data?: unknown }).data ?? event.payload;
+  return isRunGuardrailNotice(candidate) ? candidate : undefined;
+}
+
+/** Pass `events` through, announcing each distinct guardrail notice to `onNotice` first. No-op without a callback. */
+function announceGuardrailNotices(
+  events: AsyncGenerator<WorkflowRunEvent, void, void>,
+  onNotice: ((notice: RunGuardrailNotice) => void) | undefined,
+): AsyncGenerator<WorkflowRunEvent, void, void> {
+  if (onNotice === undefined) return events;
+  return (async function* () {
+    const seen = new Set<string>();
+    for await (const event of events) {
+      const notice = noticeOfEvent(event);
+      if (notice !== undefined && !seen.has(notice.noticeId)) {
+        seen.add(notice.noticeId);
+        onNotice(notice);
+      }
+      yield event;
+    }
+  })();
+}
+
+/** `true` when this event means the run has reached a terminal state. `run.paused` and `guardrail.notice` never are. */
 function isTerminalEvent(event: WorkflowRunEvent): boolean {
   if (event.type === 'workflow.run.completed') return true;
+  if (event.type === 'run.paused' || event.type === 'guardrail.notice') return false;
   const status = (event.payload as WorkflowRunEventPayload | undefined)?.status;
   return typeof status === 'string' && isTerminalRunStatus(status);
 }
@@ -745,8 +779,8 @@ export class WorkflowsResource extends WorkflowInvocationBase {
     body: StartWorkflowRunRequest,
     options: StartRunOptions & StreamRunOptions = {},
   ): AsyncGenerator<WorkflowRunEvent, void, void> {
-    if (options.transport === 'socket') return this.startRunThenSocket(slug, body, options);
-    return this.startRunStreaming(slug, body, options);
+    const events = options.transport === 'socket' ? this.startRunThenSocket(slug, body, options) : this.startRunStreaming(slug, body, options);
+    return announceGuardrailNotices(events, options.onGuardrailNotice);
   }
 
   /**
@@ -793,12 +827,12 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * @deprecated Superseded by {@link attach}: `hope.workflows.attach(slug, runId).events()` yields protocol-v2 events and resumes by `seq`. Not removed in 5.x.
    */
   streamRun(slug: string, runId: string, options: StreamRunOptions = {}): AsyncGenerator<WorkflowRunEvent, void, void> {
-    if (options.transport === 'socket') return this.streamRunOverSocket(slug, runId, options);
+    if (options.transport === 'socket') return announceGuardrailNotices(this.streamRunOverSocket(slug, runId, options), options.onGuardrailNotice);
     const state: ResumeState = { lastEventId: options.lastEventId, terminal: false, runId };
     // One connection for the initial connect, plus the resume budget on top —
     // `autoResume: false` spends the first and buys none.
     const resumes = options.autoResume === false ? 0 : (options.maxResumeAttempts ?? DEFAULT_MAX_RESUME_ATTEMPTS);
-    return this.resumeRunStream(slug, runId, state, options, resumes + 1);
+    return announceGuardrailNotices(this.resumeRunStream(slug, runId, state, options, resumes + 1), options.onGuardrailNotice);
   }
 
   /**
@@ -930,6 +964,6 @@ export class ConsultationWorkflowsResource extends WorkflowInvocationBase {
     body: StartWorkflowRunRequest,
     options: StartRunOptions & StreamRunOptions = {},
   ): AsyncGenerator<WorkflowRunEvent, void, void> {
-    return this.startRunStreaming(slug, body, options, consultationId);
+    return announceGuardrailNotices(this.startRunStreaming(slug, body, options, consultationId), options.onGuardrailNotice);
   }
 }

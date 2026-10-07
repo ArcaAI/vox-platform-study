@@ -259,9 +259,14 @@ export function planTick(input: PlanTickInput): EngineDecision[] {
     .sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
 
   for (const m of toPlace) {
-    // A footprint nobody has measured yet is admitted against the headroom
-    // alone; the load itself measures it and the next tick uses the number.
-    const need = m.bytes ?? 0;
+    // TASK-1051 review (F8) — no size at all (never measured, no catalogue size): the
+    // footprint is unknown, so it is never placed against 0 bytes. The admission is
+    // rejected (the service meters it as `no_size`), as an operator's un-forced load is.
+    if (m.bytes === null) {
+      decisions.push({ action: 'load', service: m.service, modelRef: m.modelRef, reason: 'admission_rejected', devices: m.devices, bytes: null });
+      continue;
+    }
+    const need = m.bytes;
     const residents = models.filter((r) => r.resident && !evicted.has(keyOf(r)));
     const plan = planMakeRoom(need, m.devices, devices, residents, settings, usable);
 

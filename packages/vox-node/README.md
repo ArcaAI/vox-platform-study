@@ -443,6 +443,45 @@ failures, exponential backoff with full jitter, `Retry-After` honored on 429, de
 `generateAsync`/`generatePreSummaryAsync` auto-generate one, which also makes them safely
 retryable.
 
+### Guardrail notices, holds and the one-call approve (TASK-1050)
+
+A safety check never fails silently: it warns, blocks, or says it could not run. All three reach you as ONE standard
+message, `GuardrailNotice` v1 (no content, no judge reasoning; localise on `messageKey`, `defaultMessage` is a fixed
+English label). Results carry `guardrailNotices` and `guardrailEvaluationIds` (read them as `?? []`).
+
+```ts
+import { GuardrailBlockedError, EgressRedactionUnavailableError, isGuardrailHoldReason } from '@arcaai/vox-node';
+
+// Run stream: warnings -> popup, keep going. A block pauses the run; paused is NOT the end.
+const run = await hope.workflows.run('note-writer', { note });
+for await (const event of run.events({ onGuardrailNotice: (n) => showPopup(n.defaultMessage) })) { /* ... */ }
+const outcome = await run.wait({ onGuardrailNotice: showPopup }); // waits THROUGH run.paused
+run.guardrailNotices; run.paused; // every notice seen; { noticeId, nodeId } while held
+
+// Synchronous call: a block is a typed error, a privacy hold is retryable.
+try { await hope.workflows.runAndWait('note-writer', { input }); }
+catch (e) {
+  if (e instanceof GuardrailBlockedError) showTermination(e.notice?.defaultMessage); // e.code keeps the legacy CONTENT_BLOCKED*
+  else if (e instanceof EgressRedactionUnavailableError) retryLater(e.retryAfterMs);   // e.retryable === true
+}
+
+// Consultation: a block is a HOLD (status PAUSED, processingReason GUARDRAIL_HOLD), never a dead end.
+const visit = await hope.consultations.attach(id);
+visit.on('guardrail-notice', (n) => showNotice(n));           // each noticeId once; read by id when a hold appears
+visit.on('status', (e) => e.processingReason);                // GUARDRAIL_HOLD | EGRESS_REDACTION_UNAVAILABLE
+const notices = await visit.guardrailNotices();               // GET consultations/:id/guardrail-notices
+await visit.acknowledgeNotice(noticeId);                      // If-Match: the version the handle last saw
+await visit.resumeHold({ noticeId, resolution: 'item_excluded' }); // 'item_excluded' | 'item_edited' | 'acknowledged'
+await visit.approve({ acknowledgeGuardrailNotices: true });   // acknowledge every outstanding warning in the approve
+await visit.approve({ resolveHold: { noticeId, resolution: 'item_excluded' } }); // resolve an inbound hold and approve
+```
+
+- **Warning**: show it (a popup), carry on. Approve is never refused because of warnings; `acknowledgeGuardrailNotices`
+  acknowledges them atomically and the response lists `acknowledgedNotices`.
+- **Block**: show the termination message (`notice.defaultMessage`) and, when `notice.resumable`, offer Resume. The locked
+  medical check offers no `acknowledged` override.
+- `isNoteReady` is false while `processingReason` is a hold reason: a held note was blocked or withheld, not finished.
+
 ## Gotchas
 
 - **`NotFoundError` can mean "not yours".** HOPE's tenancy posture is 404-over-403: a cross-tenant

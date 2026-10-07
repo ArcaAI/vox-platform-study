@@ -44,6 +44,12 @@ export const AI_TASK_KEYS = [
   'guardrail.groundedness',
   'guardrail.pii',
   'guardrail.pii.spans',
+  // TASK-1050 (README §12.2) — the model per safety-judge lane, mirroring `GUARDRAIL_JUDGE_TASK_KEYS`
+  // (`@arcaai/types`). A binding is valid only for a model whose `_metadata.judge` declares the lane.
+  'guardrail.judge.injection',
+  'guardrail.judge.unsafe_content',
+  'guardrail.judge.clinical_safety',
+  'guardrail.judge.leakage',
   'nlp.ner',
   'nlp.classification',
   'nlp.diagnosis',
@@ -83,6 +89,11 @@ export const AI_TASK_KIND_BY_TASK_KEY: Record<AiTaskKey, AiTaskKind> = {
   // is a PHI control with platform-shared (never BYO) selection.
   'guardrail.pii': AiTaskKind.PII_DETECTION,
   'guardrail.pii.spans': AiTaskKind.PII_DETECTION,
+  // TASK-1050 — the four safety-judge lanes are content-safety moderation, like `guardrail.validate`.
+  'guardrail.judge.injection': AiTaskKind.CONTENT_SAFETY,
+  'guardrail.judge.unsafe_content': AiTaskKind.CONTENT_SAFETY,
+  'guardrail.judge.clinical_safety': AiTaskKind.CONTENT_SAFETY,
+  'guardrail.judge.leakage': AiTaskKind.CONTENT_SAFETY,
   'nlp.ner': AiTaskKind.NAMED_ENTITY_RECOGNITION,
   // The four keys served by the same generic `/classify/text` path.
   'nlp.classification': AiTaskKind.TEXT_CLASSIFICATION,
@@ -139,6 +150,12 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, readonly ModelTaskType[
   // PII SPAN extraction — a span offset is a token-level output.
   'guardrail.pii': [ModelTaskType.TOKEN_CLASSIFICATION],
   'guardrail.pii.spans': [ModelTaskType.TOKEN_CLASSIFICATION],
+  // TASK-1050 — a guardian checkpoint (granite) or a generative guard (Qwen3Guard-Gen). The task type is a
+  // coarse first gate; the real one is the lane declared in `_metadata.judge` (`assertModelSupportsLane`).
+  'guardrail.judge.injection': [ModelTaskType.GUARDRAIL, ModelTaskType.TEXT_GENERATION],
+  'guardrail.judge.unsafe_content': [ModelTaskType.GUARDRAIL, ModelTaskType.TEXT_GENERATION],
+  'guardrail.judge.clinical_safety': [ModelTaskType.GUARDRAIL, ModelTaskType.TEXT_GENERATION],
+  'guardrail.judge.leakage': [ModelTaskType.GUARDRAIL, ModelTaskType.TEXT_GENERATION],
   'nlp.ner': [ModelTaskType.TOKEN_CLASSIFICATION],
   // The four keys served by the same generic `/classify/text` path.
   'nlp.classification': [ModelTaskType.TEXT_CLASSIFICATION],
@@ -185,6 +202,14 @@ export function resolveAiTaskKind(taskKey: string): AiTaskKind | null {
  * had before TASK-876 moved text selection onto the agent.
  */
 export const SUPER_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.', 'guardrail.'] as const;
+
+/**
+ * TASK-1050 (OD-39) — `managedBy` on a listed routing row whose selection is owned by `/guardrails/control`
+ * (every `guardrail.*` key). `/ai-providers` renders such a row read-only with a deep link: one authoritative
+ * editor per backend resource (rule 13).
+ */
+export const GUARDRAIL_CONTROL_MANAGED_BY = 'guardrail-control' as const;
+export const GUARDRAIL_CONTROL_TASK_PREFIX = 'guardrail.';
 
 /**
  * SUPER_ADMIN-only task keys that do NOT follow a locked PREFIX.

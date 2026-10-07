@@ -38,7 +38,7 @@ from text.core.metrics import (
     TOKENS_TOTAL,
     TTFT_SECONDS,
 )
-from text.models.requests import GenerateRequest
+from text.models.requests import GenerateRequest, item_refs_wire
 from text.models.stats import build_generation_stats
 from text.models.stream import StreamChunk
 from text.models.task import TaskStatus
@@ -168,6 +168,12 @@ async def run_generation_producer(
             where="streaming.run_generation_producer",
             locality=active_egress.locality,
             outcome=active_egress.guardrail,
+            # TASK-1050 (W2a2 wire). `request_body` is what the provider received.
+            caller="text.generate",
+            agent_slug=request_body.agent_slug,
+            response_items=item_refs_wire(request_body.response_items),
+            prompt_context=request_body.prompt,
+            provider_overrides=request_body.provider_overrides,
         )
 
     gate: StreamGate | None = (

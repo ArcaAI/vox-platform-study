@@ -71,7 +71,7 @@ from text.core.metrics import (
 )
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import set_generation_span_attributes
-from text.models.requests import GenerateRequest, region_items_wire
+from text.models.requests import GenerateRequest, item_refs_wire, region_items_wire
 from text.models.responses import (
     ErrorResponse,
     GenerateResponse,
@@ -421,6 +421,8 @@ async def generate(
         medical_exempt=request_body.medical_exempt,
         locality=locality,
         region_items=region_items,
+        caller="text.generate",
+        agent_slug=request_body.agent_slug,
     )
     guardrail_usage: UsageDetail | None = inbound.guardrail_usage
     # On cloud the provider receives tokens.
@@ -763,6 +765,12 @@ async def generate(
             where="generate.post_receive_gate",
             locality=egress.locality,
             outcome=egress.guardrail,
+            caller="text.generate",
+            agent_slug=request_body.agent_slug,
+            response_items=item_refs_wire(request_body.response_items),
+            # What the provider was asked (tokens on cloud, like the response screened).
+            prompt_context=provider_request.prompt,
+            provider_overrides=request_body.provider_overrides,
         )
         # Re-identify BEFORE the task is completed, returned or cached: nothing
         # downstream of this line ever sees a token.

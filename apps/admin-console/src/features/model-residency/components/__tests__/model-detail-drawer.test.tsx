@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { toast } from 'sonner';
@@ -65,7 +65,7 @@ describe('ModelDetailDrawer', () => {
     renderDrawer(model);
     expect(screen.getByText('Pipeline stage')).toBeTruthy();
     expect(screen.getByText('Workflow node')).toBeTruthy();
-    expect(screen.getByText(/why it is pinned/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Who uses it' })).toBeTruthy();
     expect(screen.getByText('4')).toBeTruthy();
     expect(screen.getByText(/Load budget/i)).toBeTruthy();
   });
@@ -127,6 +127,89 @@ describe('ModelDetailDrawer', () => {
     const unload = screen.getByRole('button', { name: /^unload/i }) as HTMLButtonElement;
     expect(unload.disabled).toBe(true);
     expect(screen.getAllByText(/pinned by a live path/i).length).toBeGreaterThan(0);
+  });
+
+  it('re-seeds an unedited keep-policy draft when the server policy changes, but keeps an edited one', () => {
+    const base = makeLoaded();
+    const withTtl = (minutes: number, version: number) =>
+      makeLoaded({ keepPolicy: { ...base.keepPolicy, policyVersion: version, idleTtlSeconds: minutes * 60 } });
+    const view = (model: ReturnType<typeof makeLoaded>) => (
+      <ModelDetailDrawer
+        open
+        onOpenChange={vi.fn()}
+        service={makeService(model)}
+        model={model}
+        devices={[DEVICE]}
+        actionPending={false}
+        onReload={vi.fn()}
+        onLink={vi.fn()}
+        onUnload={vi.fn()}
+        onLoad={vi.fn()}
+      />
+    );
+    const { rerender } = renderDrawer(withTtl(10, 1));
+    expect((screen.getByLabelText('Idle minutes') as HTMLInputElement).value).toBe('10');
+    rerender(view(withTtl(20, 2)));
+    expect((screen.getByLabelText('Idle minutes') as HTMLInputElement).value).toBe('20');
+    fireEvent.change(screen.getByLabelText('Idle minutes'), { target: { value: '45' } });
+    rerender(view(withTtl(30, 3)));
+    expect((screen.getByLabelText('Idle minutes') as HTMLInputElement).value).toBe('45');
+  });
+
+  it('the 412 Reload action resets the draft to the server values', () => {
+    saveMutate.mockImplementation((_vars, opts) => opts.onError(new GatewayError(412, 'drift')));
+    renderDrawer();
+    fireEvent.change(screen.getByLabelText('Idle minutes'), { target: { value: '99' } });
+    fireEvent.click(screen.getByRole('button', { name: /save keep policy/i }));
+    const action = (vi.mocked(toast.error).mock.calls[0]![1] as unknown as { action: { onClick: () => void } }).action;
+    act(() => action.onClick());
+    expect((screen.getByLabelText('Idle minutes') as HTMLInputElement).value).toBe('');
+  });
+
+  it('validates idle minutes inline and does not save an invalid value', () => {
+    renderDrawer();
+    fireEvent.change(screen.getByLabelText('Idle minutes'), { target: { value: '1.5' } });
+    expect(screen.getByText(/whole minutes/i)).toBeTruthy();
+    expect((screen.getByRole('button', { name: /save keep policy/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('surfaces the server message on a 400 save', () => {
+    saveMutate.mockImplementation((_vars, opts) => opts.onError(new GatewayError(400, 'idle TTL out of range')));
+    renderDrawer();
+    fireEvent.click(screen.getByRole('button', { name: /save keep policy/i }));
+    expect(String(vi.mocked(toast.error).mock.calls[0]![0])).toMatch(/idle TTL out of range/);
+  });
+
+  it('labels the keep-policy radio group and disables On demand while a live path uses the model', () => {
+    const model = makeLoaded({ usage: { ...makeLoaded().usage, liveConsultation: true } });
+    renderDrawer(model);
+    expect(screen.getByRole('radiogroup', { name: 'Keep policy' })).toBeTruthy();
+    expect((screen.getByRole('radio', { name: /Load when needed/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/live-consultation path uses this model/i)).toBeTruthy();
+  });
+
+  it('Reload sends flashAttention only when the user touched it', () => {
+    const model = makeLoaded({ actions: ['reload', 'edit_policy'] });
+    const onReload = vi.fn();
+    const props = { onLink: vi.fn(), onUnload: vi.fn(), onLoad: vi.fn() };
+    renderWithProviders(
+      <ModelDetailDrawer
+        open
+        onOpenChange={vi.fn()}
+        service={makeService(model, { service: 'lm-studio' })}
+        model={model}
+        devices={[DEVICE]}
+        actionPending={false}
+        onReload={onReload}
+        {...props}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Context length'), { target: { value: '4096' } });
+    fireEvent.click(screen.getByRole('button', { name: /reload with options/i }));
+    expect(onReload.mock.calls[0]![2]).toEqual({ contextLength: 4096 });
+    fireEvent.click(screen.getByRole('checkbox', { name: /flash attention/i }));
+    fireEvent.click(screen.getByRole('button', { name: /reload with options/i }));
+    expect(onReload.mock.calls[1]![2]).toEqual({ contextLength: 4096, flashAttention: true });
   });
 
   it('remote rows offer no load/unload/pin and say not applicable', () => {

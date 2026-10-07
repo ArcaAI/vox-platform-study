@@ -21,7 +21,7 @@ export const RESIDENCY_ADMISSION_REJECTIONS_TOTAL = 'residency_admission_rejecti
  *  - `over_budget`         — an operator load exceeded the budget without `force` + `reason` (409 `OVER_BUDGET`);
  *  - `gpu_busy`            — another load held the card past `residency.admission.maxWaitMs` (or, for an operator, at all).
  */
-export type ResidencyRejectionReason = 'insufficient_memory' | 'over_budget' | 'gpu_busy';
+export type ResidencyRejectionReason = 'insufficient_memory' | 'over_budget' | 'gpu_busy' | 'no_size';
 
 export const residencyDecisionsTotal: Counter<'action' | 'mode'> =
   (register.getSingleMetric(RESIDENCY_DECISIONS_TOTAL) as Counter<'action' | 'mode'> | undefined) ??

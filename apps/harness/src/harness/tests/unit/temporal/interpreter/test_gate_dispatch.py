@@ -283,12 +283,15 @@ class TestNoGate:
 
 
 class TestSignalSurface:
-    def test_the_interpreter_still_accepts_only_cancel(self):
+    def test_the_interpreter_accepts_only_cancel_and_the_guardrail_resolution(self):
         # v1 refuses a durable-wait signal surface, and Phase B must not widen it
         # for every palette. The gate's `approval` belongs to the CHILD type, not this one.
+        # TASK-1050 W2f adds exactly ONE run-level signal, `guardrail_resolution`: like `cancel`
+        # it is palette-agnostic (any run whose node generates text can be held — README §9.8.1),
+        # it is admitted only for a hold the walk is parked on, and it is never a sign-off.
         definition = temporal_workflow._Definition.from_class(WorkflowInterpreter)  # noqa: SLF001
         assert definition is not None
-        assert set(definition.signals) == {"cancel"}
+        assert set(definition.signals) == {"cancel", "guardrail_resolution"}
 
     def test_the_gate_child_owns_approval(self):
         definition = temporal_workflow._Definition.from_class(

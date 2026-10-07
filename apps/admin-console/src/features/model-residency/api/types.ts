@@ -273,7 +273,7 @@ export interface ModelResidencyLoadPreview {
   unattributedBytes: number | null;
   shortfallBytes: number;
   fits: boolean;
-  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | null;
+  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | 'LOAD_IN_PROGRESS' | 'IN_FLIGHT' | null;
   /** ON_DEMAND resident models on the same device, largest first. */
   evictable: ResidencyPreviewModel[];
   /** Pinned resident models on the same device — shown, never offered. */

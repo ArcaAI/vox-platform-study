@@ -4,6 +4,7 @@ import {
   AgentModelFallbackRepository,
   AgentRepository,
   AgentTask,
+  AiDeploymentKind,
   AiModelRepository,
   AiRoutingPolicyRepository,
   AiRoutingPolicyStatus,
@@ -91,6 +92,12 @@ export interface LivePathModel {
   service: ResidencyControlledService;
   modelRef: string;
   aiModelId: string;
+  /**
+   * TASK-1051 review — EVERY SYSTEM catalogue id the service holds under this `(service, modelRef)`
+   * key (`aiModelId` first). Classify matches on this, so a row sharing the key with the first one
+   * is PINNED exactly when its usage says live.
+   */
+  aiModelIds: readonly string[];
   /** The (first) consumer that put it on the live path — for the stt load spec and for the audit trail. */
   tenantId: string;
   /**
@@ -189,6 +196,7 @@ interface ModelRow {
   servedBy: string;
   provider?: string | null;
   wireModelId?: string | null;
+  deploymentKind?: string | null;
   metaData?: unknown;
 }
 interface AgentNode {
@@ -260,6 +268,9 @@ function stageSlugsOf(agent: AgentRow): Array<{ stage: string; slug: string }> {
 export class ImplicitLivePathReader {
   private readonly logger = new Logger(ImplicitLivePathReader.name);
   private cached: ModelConsumerSnapshot | null = null;
+  /** TASK-1051 review — the last refresh error (cleared by the next good one), and the live assignments that snapshot saw. */
+  private lastError: string | null = null;
+  private lastLiveAssignments = 0;
 
   constructor(
     private readonly assignments: AgentAssignmentRepository,
@@ -294,8 +305,10 @@ export class ImplicitLivePathReader {
     if (this.cached && now - this.cached.at < MODEL_CONSUMER_CACHE_MS) return this.cached;
     try {
       this.cached = await this.load(now);
+      this.lastError = null;
       return this.cached;
     } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
       if (!this.cached) throw error;
       this.logger.warn({
         message: 'residency.consumers.refresh_failed — serving the last snapshot',
@@ -303,6 +316,21 @@ export class ImplicitLivePathReader {
       });
       return this.cached;
     }
+  }
+
+  /**
+   * TASK-1051 review — whether the snapshot behind the pin set and the usage index can be trusted:
+   * when it was taken (`null` = none held), the last refresh error (`null` once a refresh succeeds),
+   * how many live assignments (agent + workflow) it saw, and how many models it found consumers for.
+   * The readiness checklist's `usage_complete` reads it.
+   */
+  status(): { at: number | null; error: string | null; liveAssignments: number; consumers: number } {
+    return {
+      at: this.cached?.at ?? null,
+      error: this.lastError,
+      liveAssignments: this.cached ? this.lastLiveAssignments : 0,
+      consumers: this.cached?.uses.size ?? 0,
+    };
   }
 
   /** Drop the cache (an admin changed an assignment and wants the view to follow now). */
@@ -470,7 +498,9 @@ export class ImplicitLivePathReader {
       .sort((a, b) => ROLE_ORDER[a.role as LivePathModel['role']] - ROLE_ORDER[b.role as LivePathModel['role']]);
     for (const use of liveUses) {
       const model = modelById.get(use.modelId);
-      if (!model) continue;
+      // Only the platform's own SELF_HOSTED catalogue rows are held by the residency runtimes: a tenant's
+      // BYO row is served through that tenant's connection and must never pin, or trigger a load, here.
+      if (!model || model.tenantId !== SYSTEM_TENANT_ID || model.deploymentKind !== AiDeploymentKind.SELF_HOSTED) continue;
       const service = use.asr ? 'stt' : residencyServiceOf(model);
       if (!service || !CONTROLLED.has(service)) continue;
       const modelRef = refFor(service, model);
@@ -478,11 +508,15 @@ export class ImplicitLivePathReader {
       pinnedModelIds.add(model.id);
       if (use.role === 'primary' && use.agentSlug) liveAgentKeys.add(agentKey(use.tenantId, use.agentSlug));
       const key = `${service}|${modelRef}`;
-      if (!livePath.has(key)) {
+      const existing = livePath.get(key);
+      if (existing) {
+        if (!existing.aiModelIds.includes(model.id)) (existing.aiModelIds as string[]).push(model.id);
+      } else {
         livePath.set(key, {
           service: service as ResidencyControlledService,
           modelRef,
           aiModelId: model.id,
+          aiModelIds: [model.id],
           tenantId: use.tenantId,
           agentSlug: use.agentSlug ?? use.task,
           role: use.role as LivePathModel['role'],
@@ -501,6 +535,7 @@ export class ImplicitLivePathReader {
       uses.set(modelId, list);
     }
 
+    this.lastLiveAssignments = assignmentRows.length + workflowAssignmentRows.length;
     return { at: now, uses, livePath: [...livePath.values()], pinnedModelIds, liveAgentKeys };
   }
 }

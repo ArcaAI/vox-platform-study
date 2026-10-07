@@ -56,16 +56,18 @@ from harness.temporal.interpreter.models import (
 from harness.temporal.interpreter.nodes._shared import MISSING, resolve_dotted_path
 from harness.temporal.interpreter.nodes.core import CORE_ACTIVITIES
 from harness.temporal.interpreter.run_events import (
+    EVENT_GUARDRAIL_NOTICE,
     EVENT_NODE_COMPLETED,
     EVENT_NODE_FAILED,
     EVENT_NODE_STARTED,
     EVENT_RUN_COMPLETED,
+    EVENT_RUN_PAUSED,
     EVENT_RUN_STARTED,
     RunEventProducer,
     v2_node_key,
     v2_run_key,
 )
-from harness.temporal.interpreter.run_protocol import run_error
+from harness.temporal.interpreter.run_protocol import guardrail_notice_problems, run_error
 
 # ---------------------------------------------------------------------------
 # Seed node activities (Task 4/6's tests dispatch against these; adds
@@ -741,6 +743,8 @@ def run_error_code_of(reason: str | None) -> str:
     in the admin-trace ``error.detail``.
     """
     text = reason or ""
+    if text.startswith("GUARDRAIL_BLOCKED"):
+        return "GUARDRAIL_BLOCKED"
     if text.startswith("PAYLOAD_TOO_LARGE"):
         return "PAYLOAD_TOO_LARGE"
     if text.startswith("CONSULTATION_READ_FAILED"):
@@ -790,7 +794,10 @@ async def _append_spec(
         )
         return
     if spec.event_type == EVENT_NODE_STARTED:
-        data: dict[str, Any] = {"kind": spec.node_type or "node", "attempt": 1}
+        # TASK-1050 W2f — a node RE-RUN after a guardrail hold is a later attempt, so a client
+        # drops the refused attempt's partial outputs (protocol-v2.md §3).
+        attempt = max(1, spec.attempt or 1)
+        data: dict[str, Any] = {"kind": spec.node_type or "node", "attempt": attempt}
         if spec.label:
             data["label"] = spec.label
         await producer.append(
@@ -798,8 +805,11 @@ async def _append_spec(
             type="node.started",
             node_id=node_id,
             data=data,
-            dedupe_key=v2_node_key(run_id, node_id, 1, "started"),
+            dedupe_key=v2_node_key(run_id, node_id, attempt, "started"),
         )
+        return
+    if spec.event_type in (EVENT_GUARDRAIL_NOTICE, EVENT_RUN_PAUSED):
+        await _append_hold(producer, run_id, spec)
         return
     if spec.event_type in (EVENT_NODE_COMPLETED, EVENT_NODE_FAILED):
         for field_name, value in (spec.outputs or {}).items():
@@ -848,6 +858,30 @@ async def _append_spec(
     # `workflow.loop.iteration` and any other legacy-only fact have no v2 type: not stored.
 
 
+async def _append_hold(producer: RunEventProducer, run_id: str, spec: RunEventSpec) -> None:
+    """TASK-1050 W2f — the hold's two public facts. Deduped on the NOTICE, so a retried emit (or
+    a replay that re-runs the activity) writes each once."""
+    notice = spec.notice
+    notice_id = notice.get("noticeId") if isinstance(notice, dict) else None
+    if not isinstance(notice, dict) or not isinstance(notice_id, str):
+        return
+    if spec.event_type == EVENT_GUARDRAIL_NOTICE:
+        await producer.append(
+            run_id=run_id,
+            type="guardrail.notice",
+            node_id=spec.node_id or None,
+            data=notice,
+            dedupe_key=v2_run_key(run_id, f"notice:{notice_id}"),
+        )
+        return
+    await producer.append(
+        run_id=run_id,
+        type="run.paused",
+        data={"reason": "guardrail_hold", "noticeId": notice_id, "nodeId": spec.node_id or ""},
+        dedupe_key=v2_run_key(run_id, f"paused:{notice_id}"),
+    )
+
+
 async def _append_terminal(
     producer: RunEventProducer, batch: RunEventBatch, spec: RunEventSpec, duration: int
 ) -> None:
@@ -876,6 +910,11 @@ async def _append_terminal(
                 data["result"] = result
         if status == "DEGRADED":
             data["degraded"] = True
+        notices = [n for n in spec.guardrail_notices or [] if not guardrail_notice_problems(n)]
+        if notices:
+            # TASK-1050 — filtered again here: one non-conforming notice would make the whole
+            # terminal event non-conforming, and the sequencer would refuse it.
+            data["guardrailNotices"] = notices
         await producer.append(run_id=run_id, type="run.completed", data=data, **terminal)
         return
     if status == "CANCELLED":

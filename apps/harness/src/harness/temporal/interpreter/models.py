@@ -110,6 +110,28 @@ class NodeActivityInput(BaseModel):
     event_scope: str | None = None
     #: TASK-1038 — the run's node-output claim-check threshold, when the gateway injected one.
     output_offload_min_bytes: int | None = None
+    #: TASK-1050 W2f — set ONLY on a node RE-RUN after a guardrail hold resolved `acknowledged`:
+    #: the notice id the text service receives as `X-Hope-Guardrail-Override` (proceed once, at
+    #: warn weight, for exactly that notice — README §9.7.5 / §9.8.1). `None` everywhere else.
+    guardrail_override: str | None = None
+
+
+class GuardrailHold(BaseModel):
+    """TASK-1050 W2f — a node activity's report that its generation was REFUSED by guardrail.
+
+    ``kind`` is ``blocked`` (a ``block`` verdict) or ``redaction_unavailable`` (the cloud
+    pseudonymiser was down: a privacy hold, never overridable). ``notice`` is the
+    ``GuardrailNotice`` v1 the walk publishes with ``run.paused`` — always conforming (the
+    activity fills ``runId`` / ``nodeId`` and mints one when the text service sent none).
+    ``evaluation_ids`` are the gap-detection keys of the refused call (README §9.8.2).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["blocked", "redaction_unavailable"]
+    notice: dict[str, Any]
+    evaluation_ids: list[str] = Field(default_factory=list)
+    error_code: str | None = None
 
 
 class NodeActivityResult(BaseModel):
@@ -142,6 +164,15 @@ class NodeActivityResult(BaseModel):
     # NOT duplicated here: they are a projection of `output` (`data_contract.outputs_view`), so
     # a large note is never carried twice in history.
     io: dict[str, Any] | None = None
+    # TASK-1050 W2f, additive-optional. The warn / unverified `GuardrailNotice`s this node raised
+    # (already emitted as public `guardrail.notice` events, and conforming); the walk collects them
+    # into `run.completed.guardrailNotices`. `None` when there were none.
+    guardrail_notices: list[dict[str, Any]] | None = None
+    # TASK-1050 W2f, additive-optional. Set when the generation was refused by guardrail: the walk
+    # pauses the run at this node (`task-1050-guardrail-hold`). `None` on every other result, and
+    # on every result recorded before this field existed — which is what keeps those replays from
+    # ever consulting the marker.
+    guardrail_hold: GuardrailHold | None = None
 
 
 class ConsultationReadRequest(BaseModel):
@@ -284,6 +315,13 @@ class RunLimits(BaseModel):
         default=None, alias="nodeOutputClaimCheckMinBytes", gt=0
     )
     result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
+    #: TASK-1050 W2f — how long a node parked on a guardrail hold waits for a resolution before
+    #: the run fails `GUARDRAIL_BLOCKED` (the platform setting `guardrail.hold.timeoutSeconds`,
+    #: resolved and injected by the gateway — lane W2h). Absent: the wait is bounded by the run's
+    #: own `execution_timeout` backstop (less its grace), else `caps.GUARDRAIL_HOLD_MAX_WAIT_SECONDS`.
+    guardrail_hold_timeout_seconds: int | None = Field(
+        default=None, alias="guardrailHoldTimeoutSeconds", gt=0
+    )
 
 
 class LiveAudioBinding(BaseModel):
@@ -367,6 +405,36 @@ class CancelSignal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str | None = None
+
+
+#: TASK-1050 — `@arcaai/types` `GUARDRAIL_HOLD_RESOLUTIONS` (README §9.7.5).
+HoldResolution = Literal["item_excluded", "item_edited", "acknowledged"]
+
+
+class GuardrailResolutionSignal(BaseModel):
+    """TASK-1050 W2f — the ``guardrail_resolution`` signal: how a guardrail hold was resolved.
+
+    Sent by ``POST /api/v1/internal/workflow-runs/{runId}/guardrail-resolution`` (the gateway's
+    `guardrail-hold/resume`, after its own If-Match / audit / role checks). The walk accepts it only
+    for a hold it is parked on (`notice_id`); it then re-executes ONLY that node. ``by`` is the
+    actor the gateway authorised (a user id), carried for the record.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    notice_id: str = Field(alias="noticeId", min_length=1, max_length=255)
+    resolution: HoldResolution
+    by: str = Field(min_length=1, max_length=255)
+
+
+class GuardrailHoldState(BaseModel):
+    """One hold the walk is parked on (the ``guardrail_holds`` query)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    notice_id: str = Field(alias="noticeId")
+    node_id: str = Field(alias="nodeId")
+    kind: Literal["blocked", "redaction_unavailable"]
 
 
 # ---------------------------------------------------------------------------
@@ -587,6 +655,13 @@ class RunEventSpec(BaseModel):
     #: A node the workflow ran itself (a review child, a loop child): its declared outputs, for
     #: the admin trace's per-node ``output.data`` (protocol-v2.md §5).
     outputs: dict[str, Any] | None = None
+    #: TASK-1050 W2f, additive-optional on this ACTIVITY INPUT. ``workflow.node.started`` of a node
+    #: RE-RUN after a guardrail hold carries ``attempt > 1`` (clients drop the blocked attempt's
+    #: partial outputs); ``workflow.guardrail.notice`` / ``workflow.run.paused`` carry the notice;
+    #: ``workflow.run.completed`` carries every warn / unverified notice the run raised.
+    attempt: int | None = None
+    notice: dict[str, Any] | None = None
+    guardrail_notices: list[dict[str, Any]] | None = None
 
 
 class RunEventBatch(BaseModel):

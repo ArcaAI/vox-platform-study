@@ -208,6 +208,29 @@ Each item stays readable for **one release** after the TASK-1036 programme ships
 | Text agent input field `text` | `AGENT_IO_DEFAULTS`, agent invocation | **deprecated alias** of `message` (OD-8) |
 | Node-level `documentTemplate*` and `dna` on `core.agent` | `node-config-schemas.ts` | **deprecated**. The agent's `instruction.documentTemplate` / `parameters.dna` take over (OD-7); node fields act as overrides for one release. |
 
+### TASK-1050 — drain in-flight harness workflows before deploy (guardrail hold patch) (2026-10-07)
+
+The interpreter walk gained a node-level **guardrail hold** behind
+`workflow.patched("task-1050-guardrail-hold")` (`apps/harness/src/harness/temporal/interpreter/workflow.py`,
+README §9.8.1 of TASK-1050). A node whose generation guardrail refused (a `block` verdict, or
+`EGRESS_REDACTION_UNAVAILABLE`) no longer just degrades: the walk emits `guardrail.notice` + `run.paused`,
+waits on the `guardrail_resolution` signal (bounded by `limits.guardrailHoldTimeoutSeconds`), and re-executes
+that node. Those are NEW commands (two `emit_run_events`, a timer, a second node activity).
+
+The gate is cheap-operand-first — it is consulted only when a recorded node result CARRIES a
+`guardrail_hold`, a field no result recorded before the change can have — so a history recorded before it
+replays without the marker. The new fixtures `interpreter_task1050_guardrail_hold_{resumed,timed_out}_history`
+are the forward guard (`test_task1050_guardrail_hold_replay.py`). Even so, the precondition is operational:
+
+> **Drain in-flight harness workflows before deploying the TASK-1050 harness image.** A run that is mid-node
+> when the worker swaps can execute its next node activity on the new worker (which reports holds) and take
+> the hold path half-way through a walk that started on the old one. Let in-flight interpreter runs complete
+> (or terminate them) first, then deploy. Order: drain → `apps/harness` → gateway. The harness goes FIRST:
+> its run-start `limits` refuses unknown keys (`extra="forbid"`), so a gateway that already injects
+> `guardrailHoldTimeoutSeconds` (W2h) would 422 every start against the old harness, and W2e's
+> `guardrail-hold/resume` calls `POST internal/workflow-runs/{runId}/guardrail-resolution`, which only the new
+> harness serves.
+
 ## Environment variables (TASK-940, TASK-870 item 12)
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |

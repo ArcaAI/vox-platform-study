@@ -109,6 +109,13 @@ export const CONSULTATION_ENDPOINTS = {
   STOP: (id: string) => `/consultations/${encodeURIComponent(id)}/stop`,
   /** Approve the consultation as a whole. `@RequiresIfMatch()`. */
   APPROVE: (id: string) => `/consultations/${encodeURIComponent(id)}/approve`,
+  /** TASK-1050: every guardrail notice the consultation raised. */
+  GUARDRAIL_NOTICES: (id: string) => `/consultations/${encodeURIComponent(id)}/guardrail-notices`,
+  /** TASK-1050: acknowledge one notice. `@RequiresIfMatch()`. */
+  GUARDRAIL_NOTICE_ACK: (id: string, noticeId: string) =>
+    `/consultations/${encodeURIComponent(id)}/guardrail-notices/${encodeURIComponent(noticeId)}/ack`,
+  /** TASK-1050: resolve the guardrail hold and continue. `@RequiresIfMatch()`. */
+  GUARDRAIL_HOLD_RESUME: (id: string) => `/consultations/${encodeURIComponent(id)}/guardrail-hold/resume`,
   /** Latest-by-default activity feed (business plane). */
   HISTORY: (id: string) => `/consultations/${encodeURIComponent(id)}/history`,
   /** Display-only recap of one encounter. */

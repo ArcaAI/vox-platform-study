@@ -402,10 +402,13 @@ export class AiModelService extends BaseService implements IAiModelService {
   private mergeServingFacts(metaData: Record<string, unknown> | undefined, serving: ModelServingFactsRequest): Record<string, unknown> {
     const current = metaData?.serving;
     const stored = current !== null && typeof current === 'object' && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
-    // `derived: true` marks the registration-time ESTIMATE of `vramGiB`. A PATCH always states
-    // `vramGiB` (the DTO requires it), so it replaces the estimate and the flag must not survive.
+    // `derived: true` marks the registration-time ESTIMATE of `vramGiB`. A PATCH that states
+    // `vramGiB` replaces the estimate, so the flag must not survive it. TASK-1050 (OD-37): an LM Studio-only
+    // PATCH (`contextLength`, `parallel`, `flashAttention`, `kvCacheQuant`, `gpuSplit`) leaves `vramGiB` — and
+    // whether it is an estimate — alone. A nested block (`kvCacheQuant`, `gpuSplit`) replaces the stored one whole.
     const { derived: _estimate, ...kept } = stored;
-    return { ...(metaData ?? {}), serving: { ...kept, ...JSON.parse(JSON.stringify(serving)) } };
+    const base = serving.vramGiB === undefined ? stored : kept;
+    return { ...(metaData ?? {}), serving: { ...base, ...JSON.parse(JSON.stringify(serving)) } };
   }
 
   private mergeAsrProfile(

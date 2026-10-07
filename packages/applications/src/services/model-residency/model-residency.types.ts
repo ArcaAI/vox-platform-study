@@ -38,7 +38,13 @@ export type ResidencyErrorCode =
   | 'NO_SIZE'
   | 'OPTIONS_UNSUPPORTED'
   | 'OVER_BUDGET'
-  | 'SERVICE_UNREACHABLE';
+  // TASK-1051 review — a runtime key another catalogue row already answers to (its ref, or a confirmed link).
+  | 'RUNTIME_KEY_TAKEN'
+  // TASK-1051 — `POST links` names a service the catalogue row is not served by.
+  | 'SERVICE_MISMATCH'
+  | 'SERVICE_UNREACHABLE'
+  // TASK-1051 — `POST suggestions/:id/dismiss` with an id no standing (shadow) recommendation has.
+  | 'SUGGESTION_UNKNOWN';
 export type ResidencyOperationStatus = 'running' | 'succeeded' | 'failed';
 
 /** Why a load failed (TASK-1019). `at` is null when the source (the stt-worker gauge) carries no time. */

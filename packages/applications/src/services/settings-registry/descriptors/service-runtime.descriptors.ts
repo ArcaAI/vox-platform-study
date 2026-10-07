@@ -97,6 +97,9 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.ner.maxRequestChars': 200000,
   'nlp.ner.windowChars': 2000,
   'nlp.ner.windowOverlapChars': 256,
+  // TASK-1049 F10 — the tenant-keyed NER result cache (`nlp/services/ner_result_cache.py`); `0` disables it.
+  'nlp.ner.resultCacheTtlSeconds': 600,
+  'nlp.ner.resultCacheMaxEntries': 1024,
 
   // ── the remaining in-process caches ───────────────────────────
   // The `<svc>.modelCache.<knob>` grammar originally served stt only,
@@ -352,6 +355,16 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
       'Nominal window length when `/classify/tokens` splits a text longer than `nlp.inference.maxInputChars`. ' +
       'Cuts prefer whitespace in the last 10% of the window. `windowChars + windowOverlapChars` must stay at or ' +
       'below `nlp.inference.maxInputChars`; a pair that does not is ignored (the defaults apply, with a warning).',
+  },
+  'nlp.ner.resultCacheTtlSeconds': {
+    label: 'NLP NER result cache TTL (s)',
+    description:
+      'Lifetime of a cached `/classify/tokens` result in the tenant-keyed NER result cache (the key includes the tenant, ' +
+      'the model and the text hash, so one tenant never reads another`s spans). 0 disables the cache.',
+  },
+  'nlp.ner.resultCacheMaxEntries': {
+    label: 'NLP NER result cache size (entries)',
+    description: 'Most results the NER result cache holds per nlp process before evicting the least recently used. 0 disables the cache.',
   },
   'nlp.ner.windowOverlapChars': {
     label: 'NLP NER window overlap (characters)',

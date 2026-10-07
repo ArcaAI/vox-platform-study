@@ -324,15 +324,16 @@ describe('ModelResidencyService (TASK-1005)', () => {
       expect(h.lmStudio.unload).not.toHaveBeenCalled();
 
       const view = await h.service.getView();
-      // TASK-1051 F4: the live-path ASR is already classified PINNED, so "pin it" is already satisfied and not recorded in shadow.
+      // TASK-1051 review finding 4: classifying the live-path ASR PINNED is the reason to pin it, not proof the runtime
+      // holds it pinned — the agent reports it unpinned, so shadow records "pin it" (as enforce would send it).
       expect(view.recommendations.map((r) => [r.action, r.modelRef, r.reason, r.mode, r.applied])).toEqual(
         expect.arrayContaining([
           ['unload', NER, 'idle_ttl_expired', 'shadow', false],
           ['load', GEMMA, 'live_path_pin', 'shadow', false],
+          ['pin', LIVE_ASR, 'live_path_pin', 'shadow', false],
         ]),
       );
-      expect(view.recommendations.some((r) => r.action === 'pin')).toBe(false);
-      expect(await decisionCount({ mode: 'shadow' })).toBe(before + 2);
+      expect(await decisionCount({ mode: 'shadow' })).toBe(before + 3);
     });
 
     it('a repeated shadow recommendation is not logged again every tick', async () => {

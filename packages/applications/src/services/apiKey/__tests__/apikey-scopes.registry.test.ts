@@ -285,7 +285,7 @@ describe('API Key Scope Registry', () => {
     // with the `admin/audio/pipelines` and `admin/stt-config` surfaces they gated.
     it('marks all 53 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
       const admin = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:'));
-      expect(admin.length).toBe(53);
+      expect(admin.length).toBe(54);
       // `admin:*` sits OUTSIDE the contiguous admin block in the source file.
       // Enumerating by line range instead of by KEY would leave the single most
       // dangerous string in the family grantable.
@@ -323,7 +323,7 @@ describe('API Key Scope Registry', () => {
       // 57 -> 58 (TASK-1005): `admin:model-residency:manage` (55 admin + 3 webhook);
       // 58 -> 56 (TASK-1006): `admin:audio-pipeline:manage` + `admin:tenant-stt-config:manage`
       // retired with the pipeline and TenantSttConfig surfaces (53 admin + 3 webhook).
-      expect(reservedKeys().length).toBe(56);
+      expect(reservedKeys().length).toBe(57);
     });
 
     it('isReservedScope answers for members and is false for unknown strings', () => {

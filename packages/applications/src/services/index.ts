@@ -6,6 +6,7 @@ export * from './audit-retention';
 export * from './auth';
 export * from './baseServices';
 export * from './guardrail-availability';
+export * from './guardrail-policy';
 export * from './serviceAccount';
 export * from './sysEvent';
 export * from './globalSetting';

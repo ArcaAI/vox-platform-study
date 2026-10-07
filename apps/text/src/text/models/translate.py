@@ -35,6 +35,8 @@ class TranslateRequest(BaseModel):
     medical_exempt: Literal["internal"] | None = None
     # TASK-1050 — as on `/generate`; the texts are screened as region ``user``.
     region_items: dict[str, list[RegionItemRef]] | None = Field(default=None, max_length=256)
+    agent_slug: str | None = Field(default=None, max_length=200)
+    response_items: list[RegionItemRef] | None = Field(default=None, max_length=64)
 
 
 class TranslateResponse(BaseModel):

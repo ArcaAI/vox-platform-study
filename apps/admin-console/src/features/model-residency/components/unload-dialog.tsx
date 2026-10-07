@@ -76,6 +76,11 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
                   ? `${model.name} is serving ${inFlight} request${inFlight === 1 ? '' : 's'}. Unloading it now will interrupt them.`
                   : 'The model is unloaded from the service. It reloads on demand if something asks for it.'}
               </p>
+              {serverInFlight !== null ? (
+                <p role="alert" className="text-destructive text-sm">
+                  The service reports {serverInFlight} request{serverInFlight === 1 ? '' : 's'} still in flight. Enter a reason to unload anyway.
+                </p>
+              ) : null}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="unload-reason">
                   {force ? (
@@ -87,7 +92,14 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
                     'Reason (optional)'
                   )}
                 </Label>
-                <Textarea id="unload-reason" rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={pending} />
+                <Textarea
+                  id="unload-reason"
+                  rows={2}
+                  aria-required={force ? 'true' : undefined}
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  disabled={pending}
+                />
               </div>
             </>
           )}

@@ -35,6 +35,7 @@ __all__ = [
     "GUARDRAIL_BLOCKED_PROBLEM_TYPE",
     "GUARDRAIL_BLOCKED_TITLE",
     "GUARDRAIL_CORRELATION_HEADERS",
+    "GUARDRAIL_OVERRIDE_HEADER",
     "INBOUND_SCREEN_CHECKS",
     "MEDICAL_CHECKS",
     "NOTICE_SCHEMA_VERSION",
@@ -141,6 +142,16 @@ GUARDRAIL_CORRELATION_HEADERS: Mapping[str, str] = MappingProxyType(
     }
 )
 
+#: Re-run of a node after an `acknowledged` hold resolution; the value is the noticeId.
+#: Internal only (the gateway strips every `X-Hope-*` header on the business plane) and
+#: guardrail VERIFIES it before honouring it — TEXT only forwards what it received.
+GUARDRAIL_OVERRIDE_HEADER = "X-Hope-Guardrail-Override"
+
+#: Everything TEXT forwards to guardrail from the incoming request, by field name.
+_FORWARDED_HEADERS: Mapping[str, str] = MappingProxyType(
+    {**GUARDRAIL_CORRELATION_HEADERS, "guardrailOverride": GUARDRAIL_OVERRIDE_HEADER}
+)
+
 # ── correlation ──────────────────────────────────────────────────────────────
 
 _CORRELATION: ContextVar[Mapping[str, str]] = ContextVar(
@@ -149,11 +160,12 @@ _CORRELATION: ContextVar[Mapping[str, str]] = ContextVar(
 
 
 def bind_guardrail_correlation(headers: Mapping[str, str]) -> Token[Mapping[str, str]]:
-    """Bind the ``X-Hope-*`` correlation values of the incoming request (case-insensitive)."""
+    """Bind the ``X-Hope-*`` correlation values (and the override claim) of the incoming
+    request, case-insensitively."""
     lowered = {str(name).lower(): value for name, value in headers.items()}
     fields = {
         name: str(lowered[header.lower()]).strip()
-        for name, header in GUARDRAIL_CORRELATION_HEADERS.items()
+        for name, header in _FORWARDED_HEADERS.items()
         if str(lowered.get(header.lower()) or "").strip()
     }
     return _CORRELATION.set(MappingProxyType(fields))
@@ -164,16 +176,14 @@ def reset_guardrail_correlation(token: Token[Mapping[str, str]]) -> None:
 
 
 def guardrail_correlation() -> Mapping[str, str]:
-    """The bound correlation, by contract field (``consultationId``, ``runId``, …)."""
+    """The bound correlation, by contract field (``consultationId``, ``runId``, …;
+    ``guardrailOverride`` for the override claim)."""
     return _CORRELATION.get()
 
 
 def correlation_headers() -> dict[str, str]:
-    """The bound correlation as the canonical header names, to forward to guardrail."""
-    return {
-        GUARDRAIL_CORRELATION_HEADERS[name]: value
-        for name, value in guardrail_correlation().items()
-    }
+    """The bound correlation (+ override) as the canonical header names, to forward."""
+    return {_FORWARDED_HEADERS[name]: value for name, value in guardrail_correlation().items()}
 
 
 # ── notices ──────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@
  * configured (that is `hope.admin.agent.*`, generated from the admin plane).
  */
 
+import type { GuardrailResultFields } from './guardrail';
 import type { LanguageModeId, LanguageResolution } from './language';
 import type { WorkflowRunEvent } from './workflow';
 import type { AsrSessionWarning } from './stt';
@@ -54,7 +55,7 @@ export interface InvokeAgentRequest {
  * the envelope is otherwise forwarded as the gateway sends it (TASK-863 owns
  * the exact shape — extra fields are preserved, never dropped).
  */
-export interface AgentInvocationResult<TOutput = Record<string, unknown>> {
+export interface AgentInvocationResult<TOutput = Record<string, unknown>> extends GuardrailResultFields {
   output: TOutput;
   [extra: string]: unknown;
 }

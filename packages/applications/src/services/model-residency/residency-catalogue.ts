@@ -34,7 +34,7 @@ import {
   residencyServiceOf,
 } from './model-residency.types';
 import { budgetFor } from './residency-budget';
-import { matchesRuntimeKey, rankRuntimeKeyCandidates, runtimeKeysFor } from './runtime-key';
+import { rankRuntimeKeyCandidates, resolveRuntimeKey, runtimeKeysFor } from './runtime-key';
 import type { ModelResidencyUsageIndex } from './model-usage-index';
 
 /**
@@ -126,7 +126,9 @@ export interface CatalogueBuildInput {
   observedBytes(service: string, modelRef: string, model: CatalogueModelRow | undefined): number | undefined;
   observedLoadSeconds(service: string, modelRef: string, model: CatalogueModelRow | undefined): number | null;
   /** Standing, non-dismissed recommendations (TASK-1051 F4); `firstSeenAt` / `repeats` fall back to `at` / 1 when absent. */
-  recommendations: Array<Omit<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'> & Partial<Pick<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'>>>;
+  recommendations: Array<
+    Omit<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'> & Partial<Pick<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'>>
+  >;
 }
 
 const SERVICE_META: Record<(typeof CATALOGUE_SERVICES)[number], { label: string; runsOn: CatalogueRunsOn }> = {
@@ -176,13 +178,20 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
   const catalogueById = new Map(input.catalogue.map((m) => [m.id, m]));
   const entryModel = new Map<CatalogueResidentEntry, CatalogueModelRow | undefined>();
 
+  // Rows per service — a reported key resolves among its own service's rows only (exact → confirmed → unique normalised).
+  const rowsByService = new Map<ResidencyServiceName, CatalogueModelRow[]>();
+  for (const m of input.catalogue) {
+    const s = residencyServiceOf(m);
+    if (s) rowsByService.set(s, [...(rowsByService.get(s) ?? []), m]);
+  }
+
   // 1. Every catalogue model, under the workload that runs it.
   for (const model of input.catalogue) {
     const service = residencyServiceOf(model);
     if (!service || !groups.has(service)) continue;
     const modelRef = refFor(service, model);
     const claims = (r: { aiModelId: string | null; modelRef: string }): boolean =>
-      (r.aiModelId !== null && r.aiModelId === model.id) || matchesRuntimeKey(service, model, r.modelRef);
+      r.aiModelId !== null ? r.aiModelId === model.id : resolveRuntimeKey(service, r.modelRef, rowsByService.get(service) ?? [])?.row.id === model.id;
     const entries = input.entries.filter((e) => e.service === service && claims(e));
     for (const e of entries) {
       consumed.add(e);
@@ -383,7 +392,8 @@ function modelRow(
   const kind = modelKind(model, entries, failure);
   const identity = identityFor(input, service, model, modelRef, primary);
   if (kind !== 'resident') {
-    const reason = kind === 'remote' ? 'Cloud API — nothing to hold in memory' : `Built into ${model?.libraryName ?? 'its library'} — nothing to load`;
+    const reason =
+      kind === 'remote' ? 'Cloud API — nothing to hold in memory' : `Built into ${model?.libraryName ?? 'its library'} — nothing to load`;
     return {
       aiModelId,
       name: model?.name ?? failure?.aiModelName ?? modelRef ?? 'Unnamed model',
@@ -399,7 +409,15 @@ function modelRow(
       loadSeconds: null,
       residency: null,
       usage: aiModelId ? input.usage.get(aiModelId) : EMPTY_USAGE,
-      keepPolicy: { kind: 'on_demand', label: 'Not applicable', reason, source: 'default', policyId: null, policyVersion: null, idleTtlSeconds: null },
+      keepPolicy: {
+        kind: 'on_demand',
+        label: 'Not applicable',
+        reason,
+        source: 'default',
+        policyId: null,
+        policyVersion: null,
+        idleTtlSeconds: null,
+      },
       actions: [],
     };
   }

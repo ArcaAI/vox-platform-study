@@ -16,7 +16,7 @@ from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
-from temporalio.client import Client
+from temporalio.client import Client, WorkflowQueryFailedError
 from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
@@ -79,6 +79,11 @@ class StartRunLimits(BaseModel):
     )
     result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
     activity_input_max_bytes: int | None = Field(default=None, alias="activityInputMaxBytes", gt=0)
+    # TASK-1050 W2f (gateway side: lane W2h) — the platform setting `guardrail.hold.timeoutSeconds`.
+    # No harness fallback setting: absent, the hold is bounded by the run's execution backstop.
+    guardrail_hold_timeout_seconds: int | None = Field(
+        default=None, alias="guardrailHoldTimeoutSeconds", gt=0
+    )
 
 
 def _run_limits(settings: Settings, injected: StartRunLimits | None) -> RunLimits:
@@ -94,6 +99,7 @@ def _run_limits(settings: Settings, injected: StartRunLimits | None) -> RunLimit
         nodeOutputClaimCheckMinBytes=given.node_output_claim_check_min_bytes
         or claim_check.node_output_min_bytes,
         resultInlineMaxBytes=given.result_inline_max_bytes or claim_check.result_inline_max_bytes,
+        guardrailHoldTimeoutSeconds=given.guardrail_hold_timeout_seconds,
     )
 
 
@@ -140,6 +146,7 @@ async def _execution_timeout(
     consultation_bound: bool,
     run_id: str,
     live_audio_seconds: int | None = None,
+    guardrail_hold_seconds: int | None = None,
 ) -> timedelta | None:
     """TASK-1038 D-B — the run's ``execution_timeout`` backstop, from its compiled ``caps``.
 
@@ -161,7 +168,10 @@ async def _execution_timeout(
         )
         return None
     seconds = caps.execution_timeout_seconds(
-        config, consultation_bound=consultation_bound, live_audio_seconds=live_audio_seconds
+        config,
+        consultation_bound=consultation_bound,
+        live_audio_seconds=live_audio_seconds,
+        guardrail_hold_seconds=guardrail_hold_seconds,
     )
     return timedelta(seconds=seconds) if seconds is not None else None
 
@@ -218,6 +228,9 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         consultation_bound=body.subject is not None or bool(payload.get("consultationId")),
         run_id=body.run_id,
         live_audio_seconds=live_audio.max_wait_seconds if live_audio is not None else None,
+        guardrail_hold_seconds=(
+            body.limits.guardrail_hold_timeout_seconds if body.limits is not None else None
+        ),
     )
     start_options: dict[str, Any] = {}
     if execution_timeout is not None:
@@ -395,7 +408,7 @@ async def approve_workflow_run_gate(
     """Release the run's HITL gate with a clinician decision.
 
     Signals the GATE CHILD workflow, not the interpreter: the interpreter's own signal surface
-    is deliberately cancel-only, and the durable wait lives in
+    is deliberately run-level only (``cancel``, ``guardrail_resolution``), and the durable wait lives in
     ``ConsultationGateWorkflow`` — see its module docstring. The child id is derived from the run
     id alone (`gate_workflow_id`), which is what lets this route address it without reading run
     state. Like ``:cancel``, the signal is a code allow-list, never a caller-supplied
@@ -458,7 +471,7 @@ async def decide_workflow_run_review(
     """Release a `core.humanReview` node with a decision (TASK-864 §3.3).
 
     Signals the REVIEW CHILD workflow (`ReviewGateWorkflow`), never the interpreter, whose own
-    signal surface stays cancel-only. The child id is derived from the run id and the node id
+    signal surface stays run-level only. The child id is derived from the run id and the node id
     alone, so a graph may carry several reviews and the gateway addresses each without reading
     run state. A missing or already-decided review surfaces the Temporal RPC error rather than
     reporting a decision that reached nothing. The signal is a code allow-list.
@@ -517,6 +530,89 @@ def review_gate_workflow_id_for(run_id: str, node_id: str) -> str:
     from harness.temporal.interpreter.review_workflow import review_gate_workflow_id
 
     return review_gate_workflow_id(run_id, node_id)
+
+
+class GuardrailResolutionRequest(BaseModel):
+    """Body for ``POST /workflow-runs/{run_id}/guardrail-resolution`` (TASK-1050 W2f).
+
+    The gateway sends it from ``POST consultations/:id/guardrail-hold/resume`` (and the one-action
+    approve's ``resolveHold``) AFTER its own If-Match, role and audit checks; this route only checks
+    that the run is parked on that notice.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    notice_id: str = Field(alias="noticeId", min_length=1, max_length=255)
+    resolution: Literal["item_excluded", "item_edited", "acknowledged"]
+    by: str = Field(min_length=1, max_length=255)
+
+
+@router.post(
+    "/workflow-runs/{run_id}/guardrail-resolution",
+    status_code=202,
+    dependencies=[Depends(require_service_token)],
+)
+async def resolve_workflow_run_guardrail_hold(
+    run_id: str, body: GuardrailResolutionRequest, request: Request
+) -> dict[str, Any]:
+    """Resume a run parked on a guardrail hold: signal ``guardrail_resolution`` (README §9.8.1).
+
+    * 404 — no such run.
+    * 409 — the run is not parked on ``noticeId``: it has closed (the hold timed out and the run
+      failed ``GUARDRAIL_BLOCKED`` — the gateway then resumes by SUPERSEDE), it is parked on another
+      notice or none, or its worker predates the hold (no ``guardrail_holds`` query).
+    * 202 — signalled; the walk re-executes ONLY the held node. The signal is a code allow-list,
+      never a caller-supplied name (F-09). A signal racing the hold's own timeout is dropped by the
+      workflow, which admits a resolution only for a hold it is still parked on.
+    """
+    from harness.temporal.interpreter.models import GuardrailResolutionSignal
+    from harness.temporal.interpreter.workflow import WorkflowInterpreter, interpreter_workflow_id
+
+    client = await _temporal_client_or_503(request)
+    handle = client.get_workflow_handle(interpreter_workflow_id(run_id))
+    try:
+        description = await handle.describe()
+    except RPCError as exc:
+        raise _rpc_error_response(exc, action="describe") from exc
+    status = description.status.name if description.status else "UNKNOWN"
+    if status != "RUNNING":
+        raise HTTPException(status_code=409, detail=f"run is not paused (status {status})")
+    try:
+        holds = await handle.query(WorkflowInterpreter.guardrail_holds)
+    except WorkflowQueryFailedError as exc:
+        # A worker that predates the hold has no such query: it cannot be parked on one.
+        raise HTTPException(
+            status_code=409, detail="run is not paused on a guardrail hold"
+        ) from exc
+    except RPCError as exc:
+        raise _rpc_error_response(exc, action="guardrail-holds") from exc
+    held = next((h for h in holds or [] if h.notice_id == body.notice_id), None)
+    if held is None:
+        raise HTTPException(status_code=409, detail="run is not paused on that notice")
+    try:
+        await handle.signal(
+            WorkflowInterpreter.guardrail_resolution,
+            GuardrailResolutionSignal(
+                noticeId=body.notice_id, resolution=body.resolution, by=body.by
+            ),
+        )
+    except RPCError as exc:
+        raise _rpc_error_response(exc, action="guardrail-resolution") from exc
+
+    logger.info(
+        "harness.interpreter.run.guardrail_resolved",
+        run_id=run_id,
+        notice_id=body.notice_id,
+        node_id=held.node_id,
+        resolution=body.resolution,
+    )
+    return {
+        "runId": run_id,
+        "noticeId": body.notice_id,
+        "nodeId": held.node_id,
+        "resolution": body.resolution,
+        "signaled": True,
+    }
 
 
 @router.post(

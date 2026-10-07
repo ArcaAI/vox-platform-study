@@ -13,6 +13,9 @@
  * SDK ships zero runtime dependencies.
  */
 
+import type { GuardrailNotice } from '@arcaai/types';
+
+
 /** One entry of the workflow catalogue (either plane). */
 export interface WorkflowSummary {
   /** The public URL segment — what you pass as `slug` to start a run. */
@@ -142,6 +145,10 @@ export function isTerminalRunStatus(status: string): boolean {
 
 /** Live run status — also the `mode=blocking` 200 body. */
 export interface WorkflowRunStatus {
+  /** TASK-1050: every warn / unverified guardrail notice the operation raised. Absent on a gateway that predates it. */
+  guardrailNotices?: readonly GuardrailNotice[];
+  /** TASK-1050: the guardrail evaluation ids of the request (one per request x direction). */
+  guardrailEvaluationIds?: readonly string[];
   runId: string;
   slug: string;
   workflowVersionNumber: number;

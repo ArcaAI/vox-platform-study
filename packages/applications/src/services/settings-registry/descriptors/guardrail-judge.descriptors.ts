@@ -32,9 +32,47 @@ import { SettingDescriptor } from '../registry.types';
 /** The key `apps/guardrail` reads off the effective-config `settings` map. */
 export const GUARDRAIL_JUDGE_TIMEOUT_KEY = 'guardrail.judge.timeoutSeconds';
 
-/** Code default, mirrored by `DEFAULT_JUDGE_TIMEOUT_S` in the guardrail pull client. */
+/**
+ * TASK-1050 (README §9.8.1) — how long a workflow node held on a guardrail `block` waits durably for a resolution
+ * before the run ends `run.failed GUARDRAIL_BLOCKED` (the consultation stays held; a later resume supersedes).
+ * Read by the GATEWAY and injected on every harness run start (`resolveRunStartLimits`), never read by the harness
+ * from env.
+ */
+export const GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY = 'guardrail.hold.timeoutSeconds';
+
+/**
+ * TASK-1050 (README §9.8.2) — the evaluation-gap reconciler: an evaluation id a run reported is "missing" once it is
+ * older than the grace and still has no `GuardrailEvaluation` row; ids older than the lookback are not scanned.
+ */
+export const GUARDRAIL_EVALUATION_RECONCILE_GRACE_MINUTES_KEY = 'guardrail.evaluations.reconcileGraceMinutes';
+export const GUARDRAIL_EVALUATION_RECONCILE_LOOKBACK_HOURS_KEY = 'guardrail.evaluations.reconcileLookbackHours';
+
+/** Code defaults. The timeout is mirrored by `DEFAULT_JUDGE_TIMEOUT_S` in the guardrail pull client. */
 export const GUARDRAIL_JUDGE_DEFAULTS = {
   [GUARDRAIL_JUDGE_TIMEOUT_KEY]: 60,
+  [GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY]: 86_400,
+  [GUARDRAIL_EVALUATION_RECONCILE_GRACE_MINUTES_KEY]: 10,
+  [GUARDRAIL_EVALUATION_RECONCILE_LOOKBACK_HOURS_KEY]: 24,
+} as const;
+
+function wholeNumberBetween(min: number, max: number): (value: unknown) => string | undefined {
+  return (value: unknown): string | undefined => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < min) return `Must be a whole number of at least ${min}.`;
+    if (value > max) return `Must not exceed ${max}.`;
+    return undefined;
+  };
+}
+
+/** Platform-only, open-to-default, read by the gateway (no pull-route consumer). */
+const GATEWAY_GUARDRAIL_KNOB = {
+  tier: 'global-kv',
+  dataType: 'number',
+  sensitivity: 'internal',
+  maxScope: 'system',
+  editableBy: 'all',
+  globalOnly: true,
+  failMode: 'open-to-default',
+  category: 'Guardrail Policy',
 } as const;
 
 export const GUARDRAIL_JUDGE_SETTINGS: SettingDescriptor[] = [
@@ -61,5 +99,36 @@ export const GUARDRAIL_JUDGE_SETTINGS: SettingDescriptor[] = [
       'admission wait, so raising this means raising that first. Lowering it below the guardian’s real ' +
       'p99 (measured 50.6 s) turns healthy judgements into 503s, which fail CLOSED and block generation.',
     default: GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_JUDGE_TIMEOUT_KEY],
+  },
+  {
+    ...GATEWAY_GUARDRAIL_KNOB,
+    key: GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY,
+    label: 'Guardrail hold timeout (s)',
+    description:
+      'How long a workflow node held on a guardrail BLOCK waits for the clinician`s resolution (exclude, edit, or acknowledge) ' +
+      'before the run ends `GUARDRAIL_BLOCKED`. The consultation stays held either way and a later resume re-runs by ' +
+      'supersede, so the hold is never a dead end. Injected on every harness run start; a running hold keeps the value ' +
+      'it started with. 60 s to 7 days.',
+    default: GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY],
+    validate: wholeNumberBetween(60, 7 * 86_400),
+  },
+  {
+    ...GATEWAY_GUARDRAIL_KNOB,
+    key: GUARDRAIL_EVALUATION_RECONCILE_GRACE_MINUTES_KEY,
+    label: 'Guardrail evaluation reconcile grace (min)',
+    description:
+      'An evaluation id a run reported (TEXT `guardrailEvaluationIds`, stored on the trajectory step / activity run) counts ' +
+      'as MISSING once it is older than this and still has no GuardrailEvaluation row. Guardrail`s outbox drains ' +
+      'at-least-once, so the grace absorbs normal redrive delay. Exported as `guardrail_evaluation_missing_total`.',
+    default: GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_EVALUATION_RECONCILE_GRACE_MINUTES_KEY],
+    validate: wholeNumberBetween(1, 1440),
+  },
+  {
+    ...GATEWAY_GUARDRAIL_KNOB,
+    key: GUARDRAIL_EVALUATION_RECONCILE_LOOKBACK_HOURS_KEY,
+    label: 'Guardrail evaluation reconcile lookback (h)',
+    description: 'How far back the evaluation-gap reconciler scans reported evaluation ids. Older ids are not counted.',
+    default: GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_EVALUATION_RECONCILE_LOOKBACK_HOURS_KEY],
+    validate: wholeNumberBetween(1, 168),
   },
 ];
