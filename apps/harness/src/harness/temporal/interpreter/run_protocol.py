@@ -41,6 +41,10 @@ PUBLIC_RUN_EVENT_TYPES: tuple[str, ...] = (
     "output.audio.delta",
     "output.data",
     "ping",
+    # TASK-1050 (README §9.7.3, §9.8.1): the guardrail hold pauses the run at the blocked node, and
+    # every warn / block / unverified reaches the client as ONE standard notice.
+    "run.paused",
+    "guardrail.notice",
 )
 ADMIN_RUN_EVENT_TYPES: tuple[str, ...] = (
     "input.validated",
@@ -65,7 +69,9 @@ RUN_EVENT_VISIBILITY: dict[str, str] = {
 def _scope_of(type_: str) -> str:
     if type_.startswith("run.") or type_ in ("ping", "input.validated"):
         return "forbidden"
-    if type_.startswith("transcript."):
+    # TASK-1050: a node's screen names the node; a consultation-level notice has none. `run.paused`
+    # is run-level (above), so the paused node rides in `data.nodeId`.
+    if type_.startswith("transcript.") or type_ == "guardrail.notice":
         return "optional"
     return "required"
 
@@ -98,6 +104,80 @@ RUN_RESYNC_REASONS = ("gap", "expired", "cursor_invalid", "unavailable")
 
 def run_error_message(code: str) -> str:
     return RUN_ERROR_MESSAGES.get(code, RUN_ERROR_FALLBACK_MESSAGE)
+
+
+# ---------------------------------------------------------------------------------------------
+# TASK-1050 — the guardrail vocabulary the run protocol names (README §9.7.3, §9.8.1)
+# ---------------------------------------------------------------------------------------------
+
+#: `ALLOW` / `REDACT` / `BLOCK` are TASK-1036's; `WARN` (the run continued) and `IGNORE`
+#: (recorded only) are TASK-1050's.
+RUN_GUARDRAIL_EVENT_ACTIONS: tuple[str, ...] = ("ALLOW", "REDACT", "BLOCK", "WARN", "IGNORE")
+#: Why a run paused. Only the guardrail hold today.
+RUN_PAUSED_REASONS: tuple[str, ...] = ("guardrail_hold",)
+#: The check ids a notice may name (`@arcaai/types` `GUARDRAIL_CHECK_IDS`).
+RUN_GUARDRAIL_CHECK_IDS: tuple[str, ...] = (
+    "jailbreak_detection",
+    "prompt_safety",
+    "prompt_toxicity",
+    "response_safety",
+    "response_toxicity",
+    "response_refusal",
+    "pii_leak",
+    "containment_echo",
+    "medical_validation",
+    "injection_judge",
+    "unsafe_content_judge",
+    "clinical_safety_judge",
+    "leakage_judge",
+)
+#: The ONE action each notice type carries.
+RUN_GUARDRAIL_NOTICE_TYPE_ACTION: dict[str, str] = {
+    "guardrail.warning": "warn",
+    "guardrail.blocked": "block",
+    "guardrail.unverified": "warn",
+}
+#: The fixed label of every notice `messageKey`. A notice's `defaultMessage` must be EXACTLY its
+#: key's label, so nothing a producer interpolates (PHI, the injection, judge reasoning) reaches a
+#: client.
+RUN_GUARDRAIL_NOTICE_MESSAGES: dict[str, str] = {
+    "guardrail.warning.generic": (
+        "A safety check flagged this content. Review it before you rely on it."
+    ),
+    "guardrail.blocked.inbound": (
+        "A safety check stopped this request. Review the flagged input to continue."
+    ),
+    "guardrail.blocked.outbound": (
+        "A safety check withheld the generated content. Review it to continue."
+    ),
+    "guardrail.blocked.not_medical": (
+        "This content is outside clinical documentation, so it was not processed. "
+        "Review the flagged input to continue."
+    ),
+    "guardrail.blocked.redaction_unavailable": (
+        "Patient details could not be protected before sending to an external model, "
+        "so processing is paused. Retry to continue."
+    ),
+    "guardrail.unverified.generic": (
+        "A safety check could not run, so this content was not verified. "
+        "Review it before you rely on it."
+    ),
+}
+#: Correlation headers a caller forwards beside `X-Tenant-Id` / `X-Request-Id`
+#: (`@arcaai/types` `GUARDRAIL_CORRELATION_HEADERS`).
+GUARDRAIL_CORRELATION_HEADERS: dict[str, str] = {
+    "consultationId": "X-Hope-Consultation-Id",
+    "runId": "X-Hope-Run-Id",
+    "itemId": "X-Hope-Item-Id",
+    "runKey": "X-Hope-Run-Key",
+    "nodeId": "X-Hope-Node-Id",
+}
+#: TASK-1050 W2f — the header a node RE-RUN after an `acknowledged` hold resolution carries to the
+#: text service: proceed once, at warn weight, for exactly this notice (README §9.7.5 / §9.8.1).
+#: PROPOSED to the frozen contract by this lane; the orchestrator adds it to `@arcaai/types`.
+GUARDRAIL_OVERRIDE_HEADER = "X-Hope-Guardrail-Override"
+#: RFC 9457 `type` of a text-service guardrail block (`GUARDRAIL_BLOCKED_PROBLEM_TYPE`).
+GUARDRAIL_BLOCKED_PROBLEM_TYPE = "urn:hope:problem:guardrail-blocked"
 
 
 def run_error(
@@ -171,15 +251,78 @@ _RESULT = {
         ),
     ]
 }
+_UNIT = {"type": "number", "minimum": 0}
+_GUARDRAIL_CHECK = _closed(
+    {
+        "checkId": _STR1,
+        "verdict": _enum("pass", "flag", "undetermined", "skipped"),
+        "actionTaken": _enum("none", "ignore", "warn", "block", "unverified"),
+        "category": _STR1,
+        "score": _UNIT,
+        "confidence": _UNIT,
+        "model": _STR1,
+        "latencyMs": _NUM0,
+    },
+    ["checkId", "verdict", "actionTaken"],
+)
 _GUARDRAIL = _closed(
     {
-        "action": _enum("ALLOW", "REDACT", "BLOCK"),
+        "action": _enum(*RUN_GUARDRAIL_EVENT_ACTIONS),
         "detected": _INT0,
         "categories": _STRINGS,
         "mode": _enum("detect", "redact"),
         "latencyMs": _NUM0,
+        # TASK-1050: per-check outcomes. Absent on a producer that predates it.
+        "checks": {"type": "array", "items": _GUARDRAIL_CHECK},
     },
     ["action", "detected"],
+)
+_ISO_DATE_TIME = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
+#: `GuardrailNotice` v1 (README §9.7.3) — no content, no reasoning.
+_NOTICE = _closed(
+    {
+        "schemaVersion": {"const": 1},
+        "noticeId": _STR1,
+        "type": _enum(*RUN_GUARDRAIL_NOTICE_TYPE_ACTION),
+        "direction": _enum("inbound", "outbound"),
+        "action": _enum("warn", "block"),
+        "checks": {
+            "type": "array",
+            "items": _closed(
+                {
+                    "checkId": _enum(*RUN_GUARDRAIL_CHECK_IDS),
+                    "category": _STR1,
+                    "severity": _enum("low", "medium", "high"),
+                },
+                ["checkId", "severity"],
+            ),
+        },
+        "consultationId": _STR1,
+        "runId": _STR1,
+        "nodeId": _STR1,
+        "itemIds": {"type": "array", "items": _STR1},
+        "messageKey": _enum(*RUN_GUARDRAIL_NOTICE_MESSAGES),
+        "defaultMessage": _STR,
+        "requiresAcknowledgement": _BOOL,
+        "resumable": _BOOL,
+        "policyVersion": _STR1,
+        "occurredAt": {"type": "string", "pattern": _ISO_DATE_TIME},
+    },
+    [
+        "schemaVersion",
+        "noticeId",
+        "type",
+        "direction",
+        "action",
+        "checks",
+        "itemIds",
+        "messageKey",
+        "defaultMessage",
+        "requiresAcknowledgement",
+        "resumable",
+        "policyVersion",
+        "occurredAt",
+    ],
 )
 _BASE64 = r"^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
 
@@ -200,6 +343,8 @@ RUN_EVENT_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
             "tokens": _TOKENS,
             "result": _RESULT,
             "degraded": _BOOL,
+            # TASK-1050: every warn / unverified notice the run raised.
+            "guardrailNotices": {"type": "array", "items": _NOTICE},
         },
         ["status", "durationMs", "tokens"],
     ),
@@ -251,6 +396,13 @@ RUN_EVENT_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
         },
         ["reason", "snapshot"],
     ),
+    # TASK-1050: the run waits durably at `nodeId` for a hold resolution (README §9.8.1).
+    "run.paused": _closed(
+        {"reason": _enum(*RUN_PAUSED_REASONS), "noticeId": _STR1, "nodeId": _STR1},
+        ["reason", "noticeId", "nodeId"],
+    ),
+    # TASK-1050: the standard client message (`GuardrailNotice` v1).
+    "guardrail.notice": _NOTICE,
     "node.started": _closed({"kind": _STR1, "label": _STR, "attempt": _INT1}, ["kind"]),
     "node.completed": _closed(
         {
@@ -583,11 +735,58 @@ def run_event_problems(
                 problems.append(
                     "data.error.detail is admin-trace only and never reaches the public plane"
                 )
+        for index, notice in enumerate(_notices_of(str(type_), data)):
+            path = "data" if type_ == "guardrail.notice" else f"data.guardrailNotices[{index}]"
+            problems.extend(_notice_cross_field_problems(notice, path))
         if plane == "public" and run_event_audience(value) != "public":
             problems.append(
                 f"{type_} with this audience is admin-trace only and never reaches the public plane"
             )
     return problems
+
+
+def _notices_of(type_: str, data: Mapping[str, Any]) -> list[Any]:
+    """The notices an event carries: `guardrail.notice`'s payload, or
+    `run.completed.guardrailNotices`."""
+    if type_ == "guardrail.notice":
+        return [data]
+    notices = data.get("guardrailNotices")
+    if type_ == "run.completed" and isinstance(notices, list):
+        return notices
+    return []
+
+
+def _notice_cross_field_problems(notice: Any, path: str) -> list[str]:
+    """The rules the schema subset cannot state (mirrors ``noticeProblems``): ``action`` is the
+    type's one action, ``messageKey`` belongs to the type, ``defaultMessage`` is the fixed label."""
+    if not isinstance(notice, dict) or not isinstance(notice.get("type"), str):
+        return []
+    type_ = notice["type"]
+    if type_ not in RUN_GUARDRAIL_NOTICE_TYPE_ACTION:
+        return []
+    problems: list[str] = []
+    action = RUN_GUARDRAIL_NOTICE_TYPE_ACTION[type_]
+    if notice.get("action") != action:
+        problems.append(f"{path}.action must be {_js(action)} on a {type_} notice")
+    key = notice.get("messageKey")
+    if isinstance(key, str):
+        if not key.startswith(f"{type_}."):
+            problems.append(f"{path}.messageKey must be a {type_}.* key")
+        label = RUN_GUARDRAIL_NOTICE_MESSAGES.get(key)
+        if label is not None and notice.get("defaultMessage") != label:
+            problems.append(
+                f"{path}.defaultMessage must be the fixed label of {key} ({_js(label)}); "
+                "never free text"
+            )
+    return problems
+
+
+def guardrail_notice_problems(notice: Any) -> list[str]:
+    """Every problem with one ``GuardrailNotice`` v1 (schema + cross-field rules); ``[]`` =
+    conforms. A producer filters on this BEFORE a notice joins ``run.completed``: one bad notice
+    there would make the whole terminal event non-conforming."""
+    problems = _schema_problems(_NOTICE, notice, "notice")
+    return [*problems, *_notice_cross_field_problems(notice, "notice")]
 
 
 class RunProtocolError(ValueError):

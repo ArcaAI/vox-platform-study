@@ -45,10 +45,12 @@ from harness.services.api_client import ApiClientError, ApiServiceError
 from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpServiceError
 from harness.services.note_plan.executor import (
+    REPAIR_STEP_OFFSET,
     NoteCallRequest,
     NoteCallResult,
     NotePlanCallFailed,
     NotePlanEmptyNote,
+    call_step_offset,
     execute_plan,
     note_run_stats,
     stop_reason_of,
@@ -61,7 +63,11 @@ from harness.services.system_governance import (
     PolicyVersionProbe,
     build_system_governance,
 )
-from harness.services.text_client import TextServiceError, usage_detail_counters
+from harness.services.text_client import (
+    TextGuardrailBlocked,
+    TextServiceError,
+    usage_detail_counters,
+)
 from harness.temporal.activities import (
     STEP_NODE,
     FailedAttempt,
@@ -83,10 +89,12 @@ from harness.temporal.interpreter.compose_messages import (
 )
 from harness.temporal.interpreter.data_contract import outputs_view
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
+from harness.temporal.interpreter.guardrail_hold import hold_notice, run_notices
 from harness.temporal.interpreter.models import (
     RESERVED_RUN_IDENTITY_KEYS,
     EvaluateExpressionInput,
     EvaluateExpressionResult,
+    GuardrailHold,
     NodeActivityInput,
     NodeActivityResult,
     ResolvedAgent,
@@ -1133,7 +1141,113 @@ def _generation_stats(
     # spend inside a workflow was structurally unbillable. Copied only when present — an absent
     # count stays absent rather than becoming a zero the rater would price.
     stats.update(usage_detail_counters(getattr(result, "usage_detail", None)))
+    # TASK-1050 (README §9.8.2) — the guardrail evaluations of THIS call, so the reconciler can
+    # find a generation whose evaluation row never arrived. Ids only; absent when none.
+    evaluation_ids = getattr(result, "guardrail_evaluation_ids", None)
+    if isinstance(evaluation_ids, list) and evaluation_ids:
+        stats["guardrail_evaluation_ids"] = list(evaluation_ids)
     return stats
+
+
+# ---------------------------------------------------------------------------------------------
+# TASK-1050 W2f — guardrail correlation, notices and the hold, for every text generation here.
+# ---------------------------------------------------------------------------------------------
+
+#: The trajectory step offset of a `core.agent`'s billed LLM_CALL (`record_generation_and_flush`).
+_LLM_CALL_STEP_OFFSET = 1
+
+
+def _temporal_identity() -> tuple[str, str] | None:
+    """``(workflow_id, workflow_run_id)`` of the running activity, or ``None`` outside one."""
+    if not activity.in_activity():
+        return None
+    info = activity.info()
+    return str(info.workflow_id), str(info.workflow_run_id)
+
+
+def _guardrail_correlation(payload: NodeActivityInput, *, step_offset: int) -> dict[str, str]:
+    """What a guardrail evaluation of this node's call is correlated by (README §9.8.2).
+
+    ``runKey`` is the ``AiActivityRun.runKey`` of the trajectory step the call is recorded on —
+    ``trajectory:<sessionId>:<runId>:<seq>`` (``activity-run.mapper.ts``), the Temporal workflow /
+    run ids and the step's own seq. Only what is known is sent.
+    """
+    correlation: dict[str, str] = {}
+    if payload.run_id:
+        correlation["runId"] = payload.run_id
+    correlation["nodeId"] = payload.node_id
+    consultation_id = run_identity(payload.run_payload).consultation_id
+    if consultation_id:
+        correlation["consultationId"] = consultation_id
+    identity = _temporal_identity()
+    if identity is not None and payload.trajectory is not None:
+        workflow_id, workflow_run_id = identity
+        correlation["runKey"] = (
+            f"trajectory:{workflow_id}:{workflow_run_id}:{payload.trajectory.seq + step_offset}"
+        )
+    return correlation
+
+
+def _notice_scope(payload: NodeActivityInput) -> dict[str, str | None]:
+    return {
+        "run_id": payload.run_id or None,
+        "node_id": payload.node_id,
+        "consultation_id": run_identity(payload.run_payload).consultation_id,
+    }
+
+
+async def _emit_guardrail_notices(payload: NodeActivityInput, raw: Any) -> list[dict[str, Any]]:
+    """The conforming warn / unverified notices of a generation, each emitted as a PUBLIC
+    ``guardrail.notice`` (run protocol v2; best-effort) and returned for the activity result."""
+    notices = run_notices(raw if isinstance(raw, list) else [], **_notice_scope(payload))
+    for notice in notices:
+        await _admin_event(payload, "guardrail.notice", notice, f"notice:{notice['noticeId']}")
+    return notices
+
+
+async def _guardrail_hold_result(
+    payload: NodeActivityInput,
+    started: Any,
+    refused: TextGuardrailBlocked,
+    *,
+    failed_attempts: list[FailedAttempt] | None = None,
+) -> NodeActivityResult:
+    """A generation guardrail REFUSED (a block, or the cloud pseudonymiser being down).
+
+    DEGRADED with a ``guardrail_hold``: the walk pauses the run at this node and re-executes it
+    once the hold is resolved (``task-1050-guardrail-hold``). Never a raise — Temporal would retry
+    the same refused call — and never a walk to the next candidate: a block is a policy verdict
+    the next model is screened against too, and a privacy outage is not the model's fault. The
+    consultation is NOT told the note failed: the hold is resumable.
+    """
+    code = (
+        "egress_redaction_unavailable"
+        if refused.kind == "redaction_unavailable"
+        else "guardrail_blocked"
+    )
+    await record_and_flush(
+        payload,
+        status=STATUS_DEGRADED,
+        started=started,
+        error_code=code,
+        stats=(
+            {"guardrail_evaluation_ids": list(refused.evaluation_ids)}
+            if refused.evaluation_ids
+            else None
+        ),
+        failed_attempts=failed_attempts or None,
+    )
+    notice = hold_notice(refused.kind, refused.notice, **_notice_scope(payload))
+    return NodeActivityResult(
+        status="DEGRADED",
+        reason=f"GUARDRAIL_BLOCKED: core.agent: {code} (notice {notice['noticeId']})",
+        guardrail_hold=GuardrailHold(
+            kind="redaction_unavailable" if refused.kind == "redaction_unavailable" else "blocked",
+            notice=notice,
+            evaluation_ids=list(refused.evaluation_ids),
+            error_code=refused.error_code,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1855,6 +1969,17 @@ async def _run_note_plan_finalizer(
             # The agent's reasoning posture: a model that reasons unasked spends the section
             # budget on thinking and the answer is cut off.
             reasoning=generation.get("reasoning"),
+            # TASK-1050 — correlated to THIS call's own LLM_CALL step, and the resolved hold's
+            # override when the walk re-runs the node.
+            correlation=_guardrail_correlation(
+                payload,
+                step_offset=(
+                    call_step_offset(request.call_index - 1)
+                    if request.call_index is not None
+                    else REPAIR_STEP_OFFSET
+                ),
+            ),
+            guardrail_override=payload.guardrail_override,
         )
         composed_prompt_recorder.record_composed_prompt(
             tenant_id=payload.tenant_id,
@@ -1900,8 +2025,21 @@ async def _run_note_plan_finalizer(
             ),
             preserved_sections=envelope.preserved_sections,
             allow_repair=budget.allows_another,
+            # TASK-1049 F9 — one lead call fills guardrail's window cache for the shared prefix.
+            prime_shared_prefix=True,
         )
     except NotePlanCallFailed as exc:
+        refused = next(
+            (r.error for r in exc.records if isinstance(r.error, TextGuardrailBlocked)), None
+        )
+        if refused is not None:
+            # TASK-1050 §9.8.1 — a refused plan call holds the node (resumable), and the
+            # consultation is NOT told its note failed. The calls that ran are still recorded.
+            record_note_plan_steps(
+                batch, plan, exc.records, provider=provider, model=model, extra_stats=agent_stats
+            )
+            await batch.flush()
+            return await _guardrail_hold_result(payload, started, refused)
         # No note is stored — not a cut-off one, not an empty one — and the consultation is told
         # why, instead of reading the run's later `OUTPUT_INVALID`.
         code = (
@@ -2239,6 +2377,15 @@ async def _run_text_generation(
                 provider_override=candidate.provider_override,
                 # THIS candidate's reasoning posture (`parameters.generation.reasoning`).
                 reasoning=generation.get("reasoning"),
+                # TASK-1050 — the evaluation record's correlation, and a resolved hold's one-shot
+                # override (set by the walk only on the node's re-run).
+                correlation=_guardrail_correlation(payload, step_offset=_LLM_CALL_STEP_OFFSET),
+                guardrail_override=payload.guardrail_override,
+            )
+        except TextGuardrailBlocked as refused:
+            # TASK-1050 §9.8.1 — a hold, never a switch (see `_guardrail_hold_result`).
+            return await _guardrail_hold_result(
+                payload, started, refused, failed_attempts=failed_attempts
             )
         except TextServiceError as exc:
             # A provider outage: switch to the next resolved candidate (a DIFFERENT engine —
@@ -2275,6 +2422,8 @@ async def _run_text_generation(
 
         if trace is not None:
             await trace.guardrails(result, index)
+        # TASK-1050 — warn / unverified notices: public now, collected by the walk.
+        notices = await _emit_guardrail_notices(payload, getattr(result, "guardrail_notices", None))
         output: dict[str, Any] = {
             "text": result.content,
             "provider": result.provider or provider,
@@ -2351,12 +2500,14 @@ async def _run_text_generation(
                     output=output,
                     prompt_fragments=prompt_fragments,
                     io=_streamed_io(streaming),
+                    guardrail_notices=notices or None,
                 )
         return NodeActivityResult(
             status="SUCCEEDED",
             output=output,
             prompt_fragments=prompt_fragments,
             io=_streamed_io(streaming),
+            guardrail_notices=notices or None,
         )
 
     if exhausted:
