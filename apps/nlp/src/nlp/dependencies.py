@@ -290,6 +290,8 @@ _CACHE_GLOBALS = (
     "_entailment_scorer_cache_instance",
     # TASK-1049 R2 — the sequence-classification guard runtime.
     "_seq_cls_guard_cache_instance",
+    # TASK-1050 §12 — the generative guard judge (qwen3guard_native).
+    "_judge_guard_cache_instance",
 )
 
 
@@ -577,6 +579,26 @@ async def _create_seq_cls_guard(cache_key: str) -> Any:
     return service
 
 
+async def _create_judge_guard(cache_key: str) -> Any:
+    """The generative guard judge (TASK-1050 §12, `qwen3guard_native`).
+
+    Fail-closed reference resolution, exactly as the other guard runtimes.
+    """
+    from nlp.core.config import settings
+    from nlp.core.device import resolve_inference_device
+    from nlp.core.guard_model_reference import resolve_guard_weights_source
+    from nlp.services.qwen3guard_judge import Qwen3GuardJudgeService
+
+    model_name, model_path = _split_cache_key(cache_key)
+    service = Qwen3GuardJudgeService(
+        weights_source=resolve_guard_weights_source(model_name, model_path),
+        model_id=model_name,
+        device=resolve_inference_device(settings.service.inference_device),
+    )
+    await asyncio.to_thread(service.load)
+    return service
+
+
 #: `cache_key -> EntailmentCalibration` for the load currently being requested.
 #: The cache factory receives only the slot key, but the calibration is part of
 #: the slot's IDENTITY (it is folded into the key by `_entailment_cache_key`), so
@@ -620,6 +642,14 @@ def _seq_cls_guard_cache() -> ModelCache[Any]:
     return cast("ModelCache[Any]", globals()["_seq_cls_guard_cache_instance"])
 
 
+def _judge_guard_cache() -> ModelCache[Any]:
+    if globals().get("_judge_guard_cache_instance") is None:
+        globals()["_judge_guard_cache_instance"] = ModelCache(
+            factory=_create_judge_guard, name="nlp_judge_guard", **_retention_kwargs()
+        )
+    return cast("ModelCache[Any]", globals()["_judge_guard_cache_instance"])
+
+
 def _entailment_scorer_cache() -> ModelCache[Any]:
     if globals().get("_entailment_scorer_cache_instance") is None:
         globals()["_entailment_scorer_cache_instance"] = ModelCache(
@@ -653,6 +683,22 @@ async def pinned_seq_cls_guard(
     """Resolve + lazily load + pin the sequence-classification guard for one request."""
     key = _model_cache_key(model_name, model_path)
     cache = _seq_cls_guard_cache()
+    await cache.pin(key)
+    try:
+        try:
+            service = await cache.get(key)
+        except Exception as e:
+            raise ModelUnavailableError(str(e)) from e
+        yield service
+    finally:
+        await cache.unpin(key)
+
+
+@asynccontextmanager
+async def pinned_judge_guard(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
+    """Resolve + lazily load + pin the generative guard judge for one request."""
+    key = _model_cache_key(model_name, model_path)
+    cache = _judge_guard_cache()
     await cache.pin(key)
     try:
         try:

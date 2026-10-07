@@ -11,7 +11,9 @@ Three routes, one contract each way:
 * ``POST /guard/classify``   — GLiNER2 multi-task safety moderation, or a
   sequence classifier when the row's ``libraryName`` is ``transformers``
   (TASK-1049 R2, :mod:`nlp.services.seq_cls_guard`);
-* ``POST /guard/entailment`` — MiniCheck NLI, raw support probabilities back.
+* ``POST /guard/entailment`` — MiniCheck NLI, raw support probabilities back;
+* ``POST /guard/judge``      — a generative guard judge on its own chat template
+  (protocol ``qwen3guard_native``, TASK-1050 §12), native fields back raw.
 
 Every one receives its model id AND its taxonomy from the caller. Fail posture,
 declared per rule 06: a MISSING selection or taxonomy is 503 (fail-closed,
@@ -38,6 +40,7 @@ from nlp.dependencies import (
     get_inference_bound,
     pinned_entailment_scorer,
     pinned_gliner2_guard,
+    pinned_judge_guard,
     pinned_seq_cls_guard,
 )
 from nlp.schemas.common import DeviceLabel
@@ -47,6 +50,8 @@ from nlp.schemas.guard import (
     GuardEntailmentRequest,
     GuardEntailmentResponse,
     GuardEntity,
+    GuardJudgeRequest,
+    GuardJudgeResponse,
     GuardPiiRequest,
     GuardPiiResponse,
 )
@@ -59,6 +64,7 @@ from nlp.services.guard_dispatch import (
     pii_group_key,
 )
 from nlp.services.model_cache import ModelUnavailableError
+from nlp.services.qwen3guard_judge import QWEN3GUARD_NATIVE
 from nlp.services.seq_cls_guard import GLINER2_LIBRARY, SEQ_CLS_LIBRARY
 
 logger = get_logger(__name__)
@@ -133,6 +139,12 @@ def _classify_runtime(library_name: str | None) -> str:
             ),
         )
     return library
+
+
+@asynccontextmanager
+async def _acquire_judge(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
+    async with pinned_judge_guard(model_name, model_path) as judge:
+        yield judge
 
 
 @asynccontextmanager
@@ -464,6 +476,71 @@ async def guard_classify(
         scores=scores,
         model_version=model_name,
         inference_ms=inference_ms,
+        device=device,
+    )
+
+
+@router.post("/judge", response_model=GuardJudgeResponse)
+async def guard_judge(
+    request: GuardJudgeRequest,
+    http_request: Request,
+    inference_bound: ResizableSemaphore = Depends(get_inference_bound),
+) -> GuardJudgeResponse:
+    """Moderate a prompt (or prompt + response) on a generative guard (TASK-1050 §12).
+
+    ``X-Tenant-Id`` is MANDATORY here (owner directive 2026-08-16; this route is
+    new, so it has no caller that predates the header). A body ``tenant_id``, if
+    sent, must agree with it. The native fields go back raw: which lane a
+    category feeds and what a tier means are guardrail's config.
+    """
+    header_tenant = http_request.headers.get(TENANT_HEADER)
+    if not (header_tenant or "").strip():
+        raise HTTPException(
+            status_code=428,
+            detail=f"{TENANT_HEADER} is required for tenant-scoped guardrail inference.",
+        )
+    model_name = _require(
+        request.model_name, request.tenant_id or header_tenant, "judge", header_tenant
+    )
+    if request.protocol != QWEN3GUARD_NATIVE:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"/guard/judge has no runtime for judge protocol {request.protocol!r} "
+                f"(served: {QWEN3GUARD_NATIVE}) — fail-closed."
+            ),
+        )
+    enforce_input_cap("guard_judge", request.prompt, request.response or "")
+
+    device: DeviceLabel = "cpu"
+    try:
+        async with _acquire_judge(model_name, request.model_path) as judge:
+            device = getattr(judge, "device", "cpu")
+            async with inference_bound:
+                verdict = await judge.judge(
+                    mode=request.mode,
+                    prompt=request.prompt,
+                    response=request.response,
+                    max_new_tokens=request.max_new_tokens,
+                    temperature=request.temperature,
+                )
+    except ModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Never a fabricated verdict: an unjudged text must not read back as Safe.
+        logger.error(f"nlp.guard.judge.failed error={type(exc).__name__}")
+        raise HTTPException(status_code=503, detail="guard judge failed") from exc
+
+    return GuardJudgeResponse(
+        tier=verdict.tier,
+        categories=list(verdict.categories),
+        refusal=verdict.refusal,
+        undetermined_reason=verdict.reason,
+        latency_ms=verdict.latency_ms,
+        inference_ms=verdict.latency_ms,
+        model_version=model_name,
         device=device,
     )
 
