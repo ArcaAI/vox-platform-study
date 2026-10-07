@@ -74,6 +74,8 @@ export class GuardrailPromptScreenClient {
           kind: 'prompt',
           wrap: false,
           include_pii_spans: true,
+          // TASK-1050: recorded under its own caller; guardrail raises no client notice for it.
+          caller: 'governed_prompt',
         },
         {
           timeout,

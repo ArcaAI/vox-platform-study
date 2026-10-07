@@ -441,6 +441,42 @@ async def test_inbound_route_writes_the_record_before_answering(monkeypatch: Any
 
 
 @pytest.mark.asyncio
+async def test_an_authoring_screen_is_recorded_but_raises_no_client_notice(monkeypatch: Any) -> None:
+    """The governed-prompt registry screens authored text with no client waiting on it:
+    the evaluation is recorded under its own caller, the verdict is unchanged, and no
+    notice is raised (a notice is a CLIENT message — nobody could ever see or resolve it)."""
+    import guardrail.api.endpoints.screen as screen_mod
+    from guardrail.api.endpoints.screen import InboundScreenRequest, screen_inbound
+
+    outbox = _RecordingOutbox([])
+
+    async def _build(app_state: Any, tenant_id: str, **_: Any) -> Screener:
+        return Screener(
+            analyzer=_Analyzer("BAD", only=("prompt_safety",)),
+            tenant_id=tenant_id,
+            availability=GuardrailAvailability.from_tiers(
+                system_blob={"checks": {"prompt_safety": {"enabled": True, "action": "block"}}},
+                tenant_blob=None,
+            ),
+            policy_version="pv-9",
+        )
+
+    monkeypatch.setattr(screen_mod, "build_screener", _build)
+    body = InboundScreenRequest(
+        regions=[{"key": "piece-1", "text": "BAD words"}],
+        caller="governed_prompt",
+    )
+    response = await screen_inbound(body, _request(outbox, {"X-Tenant-Id": TENANT}))  # type: ignore[arg-type]
+
+    (record,) = outbox.records
+    assert response.decision == "block"
+    assert record["caller"] == "governed_prompt"
+    assert record["decision"] == "block"
+    assert response.notices == []
+    assert record["noticeIds"] == []
+
+
+@pytest.mark.asyncio
 async def test_outbound_route_withholds_the_response_on_a_block(monkeypatch: Any) -> None:
     import guardrail.api.endpoints.screen as screen_mod
     from guardrail.api.endpoints.screen import OutboundScreenRequest, screen_outbound

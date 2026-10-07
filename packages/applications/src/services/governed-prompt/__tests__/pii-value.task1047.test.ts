@@ -83,6 +83,15 @@ describe('GuardrailPromptScreenClient — only VALUE spans become PII findings',
     { key: 'b', text: 'Contact jane.doe@example.com for the record.' },
   ];
 
+  it('TASK-1050: the authoring screen names itself as the governed_prompt caller', async () => {
+    const post = vi.fn(async () => ({ data: { decision: 'allow', reasons: [], checks: [], pii_spans: [] } }));
+    const http = { axiosRef: { post, get: vi.fn() } };
+    const config = { get: vi.fn(() => 'http://guardrail:8863') };
+    const secrets = { getSecretOptional: vi.fn(async () => 'svc-token') };
+    await new GuardrailPromptScreenClient(http as never, config as never, secrets as never).screenRegions('t', regions);
+    expect((post.mock.calls[0] as unknown[])[1]).toMatchObject({ caller: 'governed_prompt' });
+  });
+
   it('a category word ("email") in instruction text is not a PII region', async () => {
     const at = regions[0]!.text.indexOf('email');
     const outcome = await client([{ region: 'a', label: 'email', start: at, end: at + 5, score: 0.968 }]).screenRegions('t', regions);

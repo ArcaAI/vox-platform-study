@@ -63,6 +63,9 @@ router = APIRouter()
 CallerLiteral = Literal[
     "text.generate", "text.translate", "harness.guardrail_check", "playground", "governed_prompt"
 ]
+#: Callers with no client waiting on the answer: recorded, but a notice (a CLIENT message)
+#: would be one nobody could ever see or resolve.
+_NOTICELESS_CALLERS: frozenset[str] = frozenset({"governed_prompt"})
 
 
 class ItemRefModel(BaseModel):
@@ -372,12 +375,16 @@ async def _capture(
     )
     occurred_at = _now_iso()
     policy_version = getattr(decision, "policy_version", "") or "unavailable"
-    notices = build_notices(
-        decision,
-        tenant_id=tenant_id,
-        correlation=correlation,
-        policy_version=policy_version,
-        occurred_at=occurred_at,
+    notices = (
+        []
+        if caller in _NOTICELESS_CALLERS
+        else build_notices(
+            decision,
+            tenant_id=tenant_id,
+            correlation=correlation,
+            policy_version=policy_version,
+            occurred_at=occurred_at,
+        )
     )
     record = build_evaluation_record(
         decision,

@@ -453,6 +453,7 @@ describe('GuardrailPromptScreenClient', () => {
         kind: 'prompt',
         wrap: false,
         include_pii_spans: true,
+        caller: 'governed_prompt',
       },
       expect.objectContaining({ headers: expect.objectContaining({ 'X-Service-Token': 'svc-token', 'X-Tenant-Id': TENANT }) }),
     );
