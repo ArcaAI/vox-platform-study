@@ -17,7 +17,9 @@ import {
 import { HarnessGatewayService } from '../../consultation/harness/harness-gateway.service';
 import { resolveRunStartLimits } from '../run-start-limits';
 
-const settingsWith = (values: Record<string, unknown>) => ({ resolvePlatform: vi.fn((key: string) => ({ key, value: values[key], source: 'system' })) });
+const settingsWith = (values: Record<string, unknown>) => ({
+  resolvePlatform: vi.fn((key: string) => ({ key, value: values[key], source: 'system' })),
+});
 
 describe('the three payload-limit descriptors', () => {
   it.each([
@@ -47,21 +49,35 @@ describe('resolveRunStartLimits', () => {
     });
     expect(resolveRunStartLimits(settings as never)).toEqual({
       retentionSeconds: 7200,
-      limits: { nodeOutputClaimCheckMinBytes: 4096, resultInlineMaxBytes: 32768, activityInputMaxBytes: 1000000 },
-      // TASK-1050 — the guardrail hold timeout rides the same body (its own test: run-start-limits.task1050).
-      guardrailHoldTimeoutSeconds: 86_400,
+      // TASK-1050 — the guardrail hold timeout rides INSIDE `limits` (the harness body is extra="forbid").
+      limits: {
+        nodeOutputClaimCheckMinBytes: 4096,
+        resultInlineMaxBytes: 32768,
+        activityInputMaxBytes: 1000000,
+        guardrailHoldTimeoutSeconds: 86_400,
+      },
     });
   });
 
   it('fails open to the defaults (absent resolver, unset or invalid value, a resolver that throws)', () => {
     const expected = {
       retentionSeconds: WORKFLOW_RUNS_DEFAULTS.eventRetentionHours * 3600,
-      limits: { nodeOutputClaimCheckMinBytes: 20480, resultInlineMaxBytes: 65536, activityInputMaxBytes: 1572864 },
-      guardrailHoldTimeoutSeconds: 86_400,
+      limits: {
+        nodeOutputClaimCheckMinBytes: 20480,
+        resultInlineMaxBytes: 65536,
+        activityInputMaxBytes: 1572864,
+        guardrailHoldTimeoutSeconds: 86_400,
+      },
     };
     expect(resolveRunStartLimits(undefined)).toEqual(expected);
     expect(resolveRunStartLimits(settingsWith({ [WORKFLOW_RUNS_RESULT_INLINE_MAX_BYTES_KEY]: 'x' }) as never)).toEqual(expected);
-    expect(resolveRunStartLimits({ resolvePlatform: () => { throw new Error('boom'); } } as never)).toEqual(expected);
+    expect(
+      resolveRunStartLimits({
+        resolvePlatform: () => {
+          throw new Error('boom');
+        },
+      } as never),
+    ).toEqual(expected);
   });
 });
 
@@ -77,6 +93,11 @@ describe('HarnessGatewayService.startWorkflowRun carries them on EVERY start', (
     await service.startWorkflowRun({ runId: 'r', sessionId: 's', workflowVersionId: 'v', tenantId: 't', configRef: {} as never });
     const [, body] = post.mock.calls[0];
     expect(body.retentionSeconds).toBe(3600);
-    expect(body.limits).toEqual({ nodeOutputClaimCheckMinBytes: 20480, resultInlineMaxBytes: 65536, activityInputMaxBytes: 1572864 });
+    expect(body.limits).toEqual({
+      nodeOutputClaimCheckMinBytes: 20480,
+      resultInlineMaxBytes: 65536,
+      activityInputMaxBytes: 1572864,
+      guardrailHoldTimeoutSeconds: 86_400,
+    });
   });
 });

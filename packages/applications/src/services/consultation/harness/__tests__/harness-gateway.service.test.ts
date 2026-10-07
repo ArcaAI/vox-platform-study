@@ -378,9 +378,18 @@ describe('HarnessGatewayService', () => {
 
   describe('startWorkflowRun ', () => {
     it('POSTs to /workflow-runs:start with the runId/sessionId/tenantId/configRef body and the service-token header', async () => {
-      mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-1', workflowId: 'workflow-interpreter-run-1', temporalRunId: 't-1', status: 'started' } });
+      mockHttpService.axiosRef.post.mockResolvedValue({
+        data: { runId: 'run-1', workflowId: 'workflow-interpreter-run-1', temporalRunId: 't-1', status: 'started' },
+      });
       const service = build('http://harness:8866', 'tok');
-      const configRef = { store: 's3', bucket: 'harness-claim-check', key: 'abc123', size: 42, sha256: 'a'.repeat(64), content_type: 'text/plain; charset=utf-8' };
+      const configRef = {
+        store: 's3',
+        bucket: 'harness-claim-check',
+        key: 'abc123',
+        size: 42,
+        sha256: 'a'.repeat(64),
+        content_type: 'text/plain; charset=utf-8',
+      };
 
       const result = await service.startWorkflowRun({
         runId: 'run-1',
@@ -403,7 +412,12 @@ describe('HarnessGatewayService', () => {
         payload: {},
         // TASK-1038 B3a — every start carries the retention + payload limits (defaults here: no settings resolver).
         retentionSeconds: 24 * 3600,
-        limits: { nodeOutputClaimCheckMinBytes: 20480, resultInlineMaxBytes: 65536, activityInputMaxBytes: 1572864 },
+        limits: {
+          nodeOutputClaimCheckMinBytes: 20480,
+          resultInlineMaxBytes: 65536,
+          activityInputMaxBytes: 1572864,
+          guardrailHoldTimeoutSeconds: 86_400,
+        },
       });
       // The nested ClaimCheckRef keeps `content_type` (snake_case) — the Python
       // model carries no alias of its own.
@@ -414,9 +428,18 @@ describe('HarnessGatewayService', () => {
     });
 
     it('forwards a sandbox flag and payload verbatim (Workbench)', async () => {
-      mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-2', workflowId: 'workflow-interpreter-run-2', temporalRunId: 't-2', status: 'started' } });
+      mockHttpService.axiosRef.post.mockResolvedValue({
+        data: { runId: 'run-2', workflowId: 'workflow-interpreter-run-2', temporalRunId: 't-2', status: 'started' },
+      });
       const service = build('http://harness:8866', 'tok');
-      const configRef = { store: 's3', bucket: 'harness-claim-check', key: 'abc123', size: 42, sha256: 'a'.repeat(64), content_type: 'text/plain; charset=utf-8' };
+      const configRef = {
+        store: 's3',
+        bucket: 'harness-claim-check',
+        key: 'abc123',
+        size: 42,
+        sha256: 'a'.repeat(64),
+        content_type: 'text/plain; charset=utf-8',
+      };
 
       await service.startWorkflowRun({
         runId: 'run-2',
@@ -436,7 +459,9 @@ describe('HarnessGatewayService', () => {
 
   describe('getWorkflowRun ', () => {
     it('GETs /workflow-runs/{runId} with the service-token header', async () => {
-      mockHttpService.axiosRef.get.mockResolvedValue({ data: { runId: 'run-1', status: 'RUNNING', stages: [], startedAt: '2026-08-16T00:00:00Z', endedAt: null } });
+      mockHttpService.axiosRef.get.mockResolvedValue({
+        data: { runId: 'run-1', status: 'RUNNING', stages: [], startedAt: '2026-08-16T00:00:00Z', endedAt: null },
+      });
       const service = build('http://harness:8866', 'tok');
 
       const result = await service.getWorkflowRun('run-1');
