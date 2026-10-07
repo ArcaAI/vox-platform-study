@@ -1983,6 +1983,8 @@ async def _run_note_plan_finalizer(
                 ),
             ),
             guardrail_override=payload.guardrail_override,
+            # Round 2 — the agent whose composition this plan call sends.
+            agent_slug=candidate.slug,
         )
         composed_prompt_recorder.record_composed_prompt(
             tenant_id=payload.tenant_id,
@@ -2401,6 +2403,10 @@ async def _run_text_generation(
                 # override (set by the walk only on the node's re-run).
                 correlation=_guardrail_correlation(payload, step_offset=_LLM_CALL_STEP_OFFSET),
                 guardrail_override=payload.guardrail_override,
+                # Round 2 — the agent THIS candidate runs (a fallback names its own). The item the
+                # output becomes is not known here (it is persisted later, if at all), so no
+                # `response_items` is guessed.
+                agent_slug=candidate.slug,
             )
         except TextGuardrailBlocked as refused:
             # TASK-1050 §9.8.1 — a hold, never a switch (see `_guardrail_hold_result`).

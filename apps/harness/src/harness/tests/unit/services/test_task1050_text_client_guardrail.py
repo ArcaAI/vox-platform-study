@@ -276,3 +276,57 @@ class TestStream:
 
         with pytest.raises(TextGuardrailBlocked):
             await client.generate_stream(tenant_id=_TENANT, prompt="p", on_delta=on_delta)
+
+
+class TestAttribution:
+    """Round 2 (W2c `agent_slug` / `response_items`): attribution rides the BODY, only when given."""
+
+    @pytest.mark.asyncio
+    async def test_agent_slug_and_response_items_reach_the_body(self) -> None:
+        seen: list[httpx.Request] = []
+        client = TextClient("http://text", transport=_transport(200, _ok(), seen))
+        await client.generate(
+            tenant_id=_TENANT,
+            prompt="p",
+            agent_slug="clinic-summarizer",
+            response_items=[{"itemId": "item-1", "itemVersion": 3}],
+        )
+        body = json.loads(seen[0].content)
+        assert body["agent_slug"] == "clinic-summarizer"
+        assert body["response_items"] == [{"itemId": "item-1", "itemVersion": 3}]
+
+    @pytest.mark.asyncio
+    async def test_nothing_is_sent_when_unknown(self) -> None:
+        seen: list[httpx.Request] = []
+        client = TextClient("http://text", transport=_transport(200, _ok(), seen))
+        await client.generate(tenant_id=_TENANT, prompt="p")
+        body = json.loads(seen[0].content)
+        assert "agent_slug" not in body
+        assert "response_items" not in body
+
+    @pytest.mark.asyncio
+    async def test_an_over_long_slug_is_omitted_rather_than_cut(self) -> None:
+        seen: list[httpx.Request] = []
+        client = TextClient("http://text", transport=_transport(200, _ok(), seen))
+        await client.generate(tenant_id=_TENANT, prompt="p", agent_slug="x" * 201)
+        assert "agent_slug" not in json.loads(seen[0].content)
+
+    @pytest.mark.asyncio
+    async def test_the_stream_lane_sends_them_too(self) -> None:
+        seen: list[dict[str, Any]] = []
+        body = _sse(("done", {"type": "done", "data": {"finish_reason": "stop"}}))
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(json.loads(request.content))
+            return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+        client = TextClient("http://text", transport=httpx.MockTransport(handler))
+
+        async def on_delta(text: str) -> None:
+            return None
+
+        await client.generate_stream(
+            tenant_id=_TENANT, prompt="p", on_delta=on_delta, agent_slug="a1"
+        )
+        assert seen[0]["agent_slug"] == "a1"
+        assert "response_items" not in seen[0]
