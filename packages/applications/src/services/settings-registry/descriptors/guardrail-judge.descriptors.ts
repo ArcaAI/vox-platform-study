@@ -48,11 +48,15 @@ export const GUARDRAIL_EVALUATION_RECONCILE_GRACE_MINUTES_KEY = 'guardrail.evalu
 export const GUARDRAIL_EVALUATION_RECONCILE_LOOKBACK_HOURS_KEY = 'guardrail.evaluations.reconcileLookbackHours';
 
 /** Code defaults. The timeout is mirrored by `DEFAULT_JUDGE_TIMEOUT_S` in the guardrail pull client. */
+/** TASK-1050 — the admin "Test my rules" screen call (`POST admin/guardrail/screen`). */
+export const GUARDRAIL_PLAYGROUND_SCREEN_TIMEOUT_MS_KEY = 'guardrail.playground.screenTimeoutMs';
+
 export const GUARDRAIL_JUDGE_DEFAULTS = {
   [GUARDRAIL_JUDGE_TIMEOUT_KEY]: 60,
   [GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY]: 86_400,
   [GUARDRAIL_EVALUATION_RECONCILE_GRACE_MINUTES_KEY]: 10,
   [GUARDRAIL_EVALUATION_RECONCILE_LOOKBACK_HOURS_KEY]: 24,
+  [GUARDRAIL_PLAYGROUND_SCREEN_TIMEOUT_MS_KEY]: 60_000,
 } as const;
 
 function wholeNumberBetween(min: number, max: number): (value: unknown) => string | undefined {
@@ -130,5 +134,15 @@ export const GUARDRAIL_JUDGE_SETTINGS: SettingDescriptor[] = [
     description: 'How far back the evaluation-gap reconciler scans reported evaluation ids. Older ids are not counted.',
     default: GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_EVALUATION_RECONCILE_LOOKBACK_HOURS_KEY],
     validate: wholeNumberBetween(1, 168),
+  },
+  {
+    ...GATEWAY_GUARDRAIL_KNOB,
+    key: GUARDRAIL_PLAYGROUND_SCREEN_TIMEOUT_MS_KEY,
+    label: 'Guardrail "Test my rules" timeout (ms)',
+    description:
+      'How long the admin console`s "Test my rules" call (`POST admin/guardrail/screen`) waits for guardrail before ' +
+      'answering 503. A playground knob only: production screening timeouts live in `apps/text`. 5–120 s.',
+    default: GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_PLAYGROUND_SCREEN_TIMEOUT_MS_KEY],
+    validate: wholeNumberBetween(5_000, 120_000),
   },
 ];

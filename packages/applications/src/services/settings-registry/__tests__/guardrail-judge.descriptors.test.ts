@@ -21,6 +21,7 @@ describe('guardrail.judge.timeoutSeconds', () => {
       'guardrail.hold.timeoutSeconds',
       'guardrail.evaluations.reconcileGraceMinutes',
       'guardrail.evaluations.reconcileLookbackHours',
+      'guardrail.playground.screenTimeoutMs',
     ]);
     expect(descriptor()).toBeDefined();
   });
