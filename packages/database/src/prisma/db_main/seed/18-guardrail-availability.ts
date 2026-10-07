@@ -29,6 +29,12 @@
  * Idempotent. CREATE-ONLY: an existing row is left untouched, because after the
  * first boot it is the platform admin's to edit and a re-seed must never
  * silently revert a deliberate narrowing of a customer's safety posture.
+ *
+ * TASK-1050: a COLD database gets the v2 shape below (`directions` + `checks`, with each check's action).
+ * An EXISTING database keeps its row as it is — typically the legacy flat shape, without the five new
+ * checks. Both normalizers read that as v2, and an absent check takes its catalogue default, which is the
+ * same value this seed states (judges off, medical validation locked on), so no reseed is needed for the
+ * runtime to agree with this file.
  */
 import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
@@ -37,24 +43,63 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 export const PLATFORM_GUARDRAIL_AVAILABILITY_ID = '00000000-0000-0000-0018-000000000001';
 
 /**
- * The platform default set: every check the screener declares, ON — except
- * `response_refusal` (see the header).
- *
- * MIRRORS `PLATFORM_DEFAULT_GUARDRAIL_POLICIES` in
- * `packages/applications/src/services/guardrail-availability/policy-catalogue.ts`,
- * whose ids are in turn pinned against
- * `apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json`.
+ * One check's platform-default entry in the v2 shape (`GuardrailCheckPolicy` of `@arcaai/types`). Type aliases,
+ * not interfaces, so both keep an implicit index signature and stay assignable to Prisma's `InputJsonValue`.
  */
-export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: Record<string, { enabled: boolean; minScore?: number }> = {
-  jailbreak_detection: { enabled: true },
-  prompt_safety: { enabled: true },
-  prompt_toxicity: { enabled: true },
-  response_safety: { enabled: true },
-  response_toxicity: { enabled: true },
-  // A refusal is not unsafe content, so it is the one check that ships off.
-  response_refusal: { enabled: false },
-  pii_leak: { enabled: true, minScore: 0.5 },
-  containment_echo: { enabled: true },
+export type PlatformGuardrailCheckSeed = {
+  enabled: boolean;
+  action: 'ignore' | 'warn' | 'block';
+  /** Set on the catalogue-locked check only (medical validation, OD-9). */
+  locked?: boolean;
+  minScore?: number;
+  /** Inbound checks that screen BOTH trusts: what a flag on a DATA region does (FC-5b, OD-12). */
+  dataRegionAction?: 'ignore' | 'warn' | 'block';
+};
+
+/** The v2 `TenantGuardrailPolicy.policies` blob (`TenantGuardrailPolicyV2` of `@arcaai/types`). */
+export type PlatformGuardrailAvailabilitySeed = {
+  directions: { inbound: { enabled: boolean }; outbound: { enabled: boolean } };
+  checks: Record<string, PlatformGuardrailCheckSeed>;
+};
+
+/**
+ * The platform default set, in the TASK-1050 v2 shape (`directions` + `checks`, read by
+ * `normalizeTenantGuardrailPolicy` in `@arcaai/types` and `normalize_tenant_guardrail_policy` in
+ * `apps/guardrail/.../core/availability.py`). Every value is the catalogue default, stated explicitly so
+ * the row is self-describing and a platform admin's edit is a diff against it:
+ *
+ *   - both directions on (no monitor-only direction);
+ *   - the eight classifier checks ON at `block` — except `response_refusal` (see the header) — and the
+ *     three inbound ones record-only on DATA regions (`dataRegionAction: 'ignore'`, TASK-1047 FC-5b);
+ *   - `medical_validation` ON at `block` and LOCKED (OD-9: the platform is for medical use only);
+ *   - the four judges OFF (OD-6), at their catalogue actions, so a deploy makes zero judge calls until a
+ *     platform admin turns one on.
+ *
+ * MIRRORS `PLATFORM_DEFAULT_GUARDRAIL_POLICIES` / `GUARDRAIL_CHECK_DEFAULTS` in
+ * `packages/applications/src/services/guardrail-availability/policy-catalogue.ts`, whose ids are in turn
+ * pinned against `apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json` — which is
+ * what the seed tests pin THIS against.
+ */
+export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: PlatformGuardrailAvailabilitySeed = {
+  directions: { inbound: { enabled: true }, outbound: { enabled: true } },
+  checks: {
+    jailbreak_detection: { enabled: true, action: 'block', dataRegionAction: 'ignore' },
+    prompt_safety: { enabled: true, action: 'block', dataRegionAction: 'ignore' },
+    prompt_toxicity: { enabled: true, action: 'block', dataRegionAction: 'ignore' },
+    response_safety: { enabled: true, action: 'block' },
+    response_toxicity: { enabled: true, action: 'block' },
+    // A refusal is not unsafe content, so it is the one classifier check that ships off.
+    response_refusal: { enabled: false, action: 'block' },
+    pii_leak: { enabled: true, action: 'block', minScore: 0.5 },
+    containment_echo: { enabled: true, action: 'block' },
+    // TASK-1050: locked on, always block.
+    medical_validation: { enabled: true, action: 'block', locked: true },
+    // TASK-1050: the four judges ship OFF (OD-6).
+    injection_judge: { enabled: false, action: 'ignore' },
+    unsafe_content_judge: { enabled: false, action: 'warn' },
+    clinical_safety_judge: { enabled: false, action: 'warn' },
+    leakage_judge: { enabled: false, action: 'block' },
+  },
 };
 
 export const seedGuardrailAvailability = async (client: CorePrismaClient): Promise<void> => {
@@ -75,7 +120,7 @@ export const seedGuardrailAvailability = async (client: CorePrismaClient): Promi
         tenantId: SYSTEM_TENANT_ID,
         policies: PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY,
         reason:
-          'Platform default: every declared screening check applies to the request and the response, except response_refusal (a refusal is not unsafe content).',
+          'Platform default: every declared screening check applies to the request and the response, except response_refusal (a refusal is not unsafe content); medical validation is locked on; the four safety judges ship off.',
         createdBy: SYSTEM_USER_ID,
         updatedBy: SYSTEM_USER_ID,
       },

@@ -10,7 +10,14 @@
  * the governance predicate the SYSTEM-only readers pin with.
  */
 import { describe, expect, it } from 'vitest';
-import { AI_TASK_KEYS, AI_TASK_KIND_BY_TASK_KEY, isSuperAdminOnlyTaskKey, SUPER_ADMIN_ONLY_TASK_PREFIXES } from '../constants';
+import { AiTaskKind, ModelTaskType } from '@arcaai/domains';
+import {
+  AI_TASK_KEYS,
+  AI_TASK_KIND_BY_TASK_KEY,
+  AI_TASK_MODEL_TASK_TYPES,
+  isSuperAdminOnlyTaskKey,
+  SUPER_ADMIN_ONLY_TASK_PREFIXES,
+} from '../constants';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 
 const RETIRED_TEXT_KEYS = ['text.live', 'text.finalize', 'text.test', 'text.live.fallback', 'text.finalize.fallback'] as const;
@@ -39,6 +46,8 @@ describe('AI_TASK_KEYS — the routing-policy vocabulary', () => {
         'guardrail.groundedness',
         'guardrail.pii',
         'guardrail.pii.spans',
+        // TASK-1049 R1 / TASK-1050 §10.3 — the injection classifier (`jailbreak_detection` → Prompt Guard 2 86M).
+        'guardrail.injection',
         // TASK-1050 (README §12.2) — the model per safety-judge lane.
         'guardrail.judge.injection',
         'guardrail.judge.unsafe_content',
@@ -77,7 +86,7 @@ describe('governance — who may write, and which tier the runtime reads', () =>
     expect([...SUPER_ADMIN_ONLY_TASK_PREFIXES].sort()).toEqual(['guardrail.', 'harness.', 'nlp.']);
   });
 
-  it.each(['guardrail.validate', 'guardrail.safety', 'guardrail.groundedness', 'guardrail.pii', 'guardrail.pii.spans'])(
+  it.each(['guardrail.validate', 'guardrail.safety', 'guardrail.injection', 'guardrail.groundedness', 'guardrail.pii', 'guardrail.pii.spans'])(
     '%s — the whole guardrail prefix is super-admin-only, PII keys included',
     (key) => {
       expect(isSuperAdminOnlyTaskKey(key)).toBe(true);
@@ -93,6 +102,15 @@ describe('governance — who may write, and which tier the runtime reads', () =>
 
   it('vlm.extract is the one unlocked key — TEXT-plane governance, no owner decision on a model yet', () => {
     expect(isSuperAdminOnlyTaskKey('vlm.extract')).toBe(false);
+  });
+});
+
+describe('guardrail.injection (TASK-1049 R1, TASK-1050 W4)', () => {
+  it('is content-safety moderation served by a sequence classifier', () => {
+    expect(AI_TASK_KIND_BY_TASK_KEY['guardrail.injection']).toBe(AiTaskKind.CONTENT_SAFETY);
+    // Prompt Guard 2 86M is a seq-cls head (`ModelTaskType.TEXT_CLASSIFICATION`); a span extractor or a
+    // generation model cannot answer `jailbreak_detection` with a score.
+    expect(AI_TASK_MODEL_TASK_TYPES['guardrail.injection']).toEqual([ModelTaskType.TEXT_CLASSIFICATION]);
   });
 });
 

@@ -28,9 +28,13 @@
  *      so a clone's `metaData.policy` is never consulted for `guardrail.validate`.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi } from 'vitest';
+import { GUARDRAIL_JUDGE_UNTRUSTED_DATA_CLAUSE } from '@arcaai/types';
 
 import { SYSTEM_TENANT_ID } from '../00-constants';
+import { SYSTEM_TASK_DEFAULT_ROUTING } from '../16-ai-routing-policy';
 import { LLM_AI_MODELS } from '../ai-models/llm';
 import { DEFAULT_AI_MODELS, seedAiModels, retireCustomerTenantAiModels } from '../06-ai-models';
 
@@ -39,6 +43,19 @@ import { DEFAULT_AI_MODELS, seedAiModels, retireCustomerTenantAiModels } from '.
 const RECOVERED_MEDICAL_VALIDATION_CRITERIA =
   'You are a medical context validator. Your task is to determine if the provided text is related to medical documentation, clinical notes, patient care, or healthcare services. Analyze the text and respond ONLY with a JSON object in this exact format:\n{"is_medical": true/false, "confidence": 0.0-1.0, "context_type": "clinical/administrative/general", "reasoning": "brief explanation"}\n\nMedical context includes: patient records, clinical notes, diagnoses, treatments, medications, symptoms, medical procedures, healthcare consultations, referrals, prescriptions, vital signs, medical history, physical examinations, lab results, imaging reports, care plans, discharge summaries.\n\nNon-medical context includes: general conversation, business documents, technical documentation, entertainment content, personal communications unrelated to healthcare.';
 
+// TASK-1050 OD-5 (a) — the recovered text plus the README §3.2 untrusted-data clause, and nothing else.
+const SEEDED_MEDICAL_VALIDATION_CRITERIA = `${RECOVERED_MEDICAL_VALIDATION_CRITERIA}\n\n${GUARDRAIL_JUDGE_UNTRUSTED_DATA_CLAUSE}`;
+
+/** The governed key catalogue guardrail exports from `core/policy.py::_SPECS` (TASK-1050 §11.3 A). */
+const POLICY_KEYS = (
+  JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL('../../../../../../../apps/guardrail/src/guardrail/tests/contracts/policy-keys.json', import.meta.url)),
+      'utf8',
+    ),
+  ) as { keys: { key: string; failMode: string; taskKey: string }[] }
+).keys;
+
 function findGraniteRow() {
   const row = LLM_AI_MODELS.find((m) => m.slug === 'granite-guardian-4.1-8b' && m.tenantId === SYSTEM_TENANT_ID);
   if (!row) throw new Error('granite-guardian-4.1-8b SYSTEM row not found in LLM_AI_MODELS');
@@ -46,9 +63,9 @@ function findGraniteRow() {
 }
 
 describe('SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob', () => {
-  it('sets metaData.policy.medicalValidationCriteria to the recovered text, verbatim', () => {
+  it('sets metaData.policy.medicalValidationCriteria to the recovered text verbatim, plus only the TASK-1050 untrusted-data clause', () => {
     const row = findGraniteRow();
-    expect(row.metaData?.policy?.medicalValidationCriteria).toBe(RECOVERED_MEDICAL_VALIDATION_CRITERIA);
+    expect(row.metaData?.policy?.medicalValidationCriteria).toBe(SEEDED_MEDICAL_VALIDATION_CRITERIA);
   });
 
   // TASK-886 removed `injectionScreeningCriteria` from `core/policy.py::_SPECS`
@@ -85,12 +102,42 @@ describe('SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob',
     expect(policy.judgeMaxTokens).toBeLessThanOrEqual(100_000);
   });
 
-  it('only the judge row and the guardrail.safety row carry a policy blob (no accidental spread onto other rows)', () => {
+  it('only the judge rows and the guardrail.safety row carry a policy blob (no accidental spread onto other rows)', () => {
     const withPolicy = DEFAULT_AI_MODELS.filter((m) => m.metaData?.policy !== undefined);
     // TASK-1047: guardrail reads `outboundRecordOnlyChecks` from the guardrail.safety row's policy (gliguard).
+    // TASK-1050: the Qwen3Guard judge row carries its own model-coupled judge hyperparameters.
     expect(withPolicy.map((m) => `${m.tenantId}::${m.slug}`).sort()).toEqual(
-      [`${SYSTEM_TENANT_ID}::gliguard-llm-guardrails-300m`, `${SYSTEM_TENANT_ID}::granite-guardian-4.1-8b`].sort(),
+      [
+        `${SYSTEM_TENANT_ID}::gliguard-llm-guardrails-300m`,
+        `${SYSTEM_TENANT_ID}::granite-guardian-4.1-8b`,
+        `${SYSTEM_TENANT_ID}::qwen3guard-gen-0.6b`,
+      ].sort(),
     );
+  });
+
+  // TASK-1050 (README §5 step 7): every FAIL_CLOSED key `_SPECS` declares has a reader in apps/guardrail
+  // (the membership rule), so an unseeded one is a permanent 503 / undetermined on that lane. Each must be
+  // seeded on the SYSTEM row its task key elects, and the judge hyperparameters on EVERY judge row (they
+  // are read off whichever row a lane elects).
+  it('seeds every FAIL_CLOSED policy key on the SYSTEM row its task key elects', () => {
+    const elected = new Map(SYSTEM_TASK_DEFAULT_ROUTING.map((r) => [r.taskKey, r.modelSlug]));
+    const closed = POLICY_KEYS.filter((k) => k.failMode === 'closed');
+    expect(closed.length).toBeGreaterThan(0);
+    for (const spec of closed) {
+      const slug = elected.get(spec.taskKey);
+      expect(slug, `${spec.key}: ${spec.taskKey} has no SYSTEM election`).toBeDefined();
+      const policy = DEFAULT_AI_MODELS.find((m) => m.slug === slug && m.tenantId === SYSTEM_TENANT_ID)?.metaData?.policy;
+      expect(policy?.[spec.key], `${spec.key} on ${slug}`).toBeDefined();
+    }
+  });
+
+  it('seeds judgeTemperature and judgeMaxTokens on every row that declares a judge', () => {
+    const judges = DEFAULT_AI_MODELS.filter((m) => m.metaData?.judge !== undefined);
+    expect(judges.map((m) => m.slug).sort()).toEqual(['granite-guardian-4.1-8b', 'qwen3guard-gen-0.6b']);
+    for (const m of judges) {
+      expect(typeof m.metaData!.policy!.judgeTemperature, m.slug).toBe('number');
+      expect(typeof m.metaData!.policy!.judgeMaxTokens, m.slug).toBe('number');
+    }
   });
 });
 
@@ -138,7 +185,7 @@ describe('seedAiModels propagates the policy blob to an existing AiModel row', (
     // the policy itself must still travel verbatim.
     expect(update!.data.metaData).toMatchObject({
       policy: {
-        medicalValidationCriteria: RECOVERED_MEDICAL_VALIDATION_CRITERIA,
+        medicalValidationCriteria: SEEDED_MEDICAL_VALIDATION_CRITERIA,
         // TASK-878: the judge hyperparameters ride the SAME full-column write —
         // a `db:seed` re-run against a dev DB that already has this row must
         // propagate them, or the validate route 503s on an existing install.

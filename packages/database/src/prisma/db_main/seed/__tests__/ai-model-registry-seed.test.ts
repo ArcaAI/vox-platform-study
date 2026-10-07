@@ -5,8 +5,9 @@
  * following the conventions of `seed.test.ts` (this dir). Locks the owner's
  * catalogue (README §3.6):
  *
- *   1. `DEFAULT_AI_MODELS` is EXACTLY the 34 catalogue slugs of the owner
- *      catalogue (33 + TASK-1010's vLLM serving row) — ids/slugs
+ *   1. `DEFAULT_AI_MODELS` is EXACTLY the 36 catalogue slugs of the owner
+ *      catalogue (33 + TASK-1010's vLLM serving row + TASK-1050's two
+ *      guardrail-plane rows) — ids/slugs
  *      unique, every row SYSTEM-owned, every row carrying a `libraryName` /
  *      `servedBy` / `deploymentKind` from the closed vocabularies, cloud rows
  *      NOT_APPLICABLE with a wire id, and the `metaData` payloads worth
@@ -80,8 +81,12 @@ const CATALOGUE_SLUGS = [
   'symps-disease-bert-v3-c41',
   'gliguard-llm-guardrails-300m',
   'minicheck-flan-t5-large',
+  // TASK-1049 R1 / TASK-1050 — the injection classifier `guardrail.injection` elects.
+  'llama-prompt-guard-2-86m',
   // text-generation
   'granite-guardian-4.1-8b',
+  // TASK-1050 §12 — the platform-admin-selectable generative guard judge.
+  'qwen3guard-gen-0.6b',
   'lms-gemma-4-e2b-it-qat',
   'lms-gemma-4-e4b',
   'azure-gpt-5.4-mini',
@@ -124,10 +129,10 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // 1. Catalogue shape
 // =============================================================================
 
-describe('the platform model catalogue (34 SYSTEM rows)', () => {
-  it('is exactly the 34 slugs of the owner catalogue', () => {
+describe('the platform model catalogue (36 SYSTEM rows)', () => {
+  it('is exactly the 36 slugs of the owner catalogue', () => {
     expect([...catalog.map((m) => m.slug)].sort()).toEqual([...CATALOGUE_SLUGS].sort());
-    expect(catalog).toHaveLength(34);
+    expect(catalog).toHaveLength(36);
   });
 
   it('has unique ids and unique slugs', () => {
@@ -420,7 +425,7 @@ describe('seedAiModels upsert', () => {
     await seedAiModels(client as never);
 
     expect(creates).toHaveLength(0);
-    expect(updates).toHaveLength(34);
+    expect(updates).toHaveLength(36);
     const kokoro = updates.find((u) => u.where.id === 'existing-kokoro')!;
     expect(kokoro.data.libraryName).toBe('kokoro');
     expect(kokoro.data.servedBy).toBe('tts');
@@ -453,7 +458,7 @@ describe('seedAiModels upsert', () => {
       },
     };
     await seedAiModels(client as never);
-    expect(creates).toHaveLength(34);
+    expect(creates).toHaveLength(36);
     expect(client.aiModel.update).not.toHaveBeenCalled();
     creates.forEach(({ data }) => expect(data.tenantId).toBe(SYSTEM_TENANT_ID));
   });
