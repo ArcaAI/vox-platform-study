@@ -47,7 +47,7 @@ afterEach(() => {
 function frame(name: string) {
   const found = OVERLAY.examples.find((entry) => entry.name === name);
   if (!found) throw new Error(name);
-  return found.event as { type: string } & Record<string, unknown>;
+  return found.event as unknown as { type: string } & Record<string, unknown>;
 }
 
 describe('RunGuardrailPanel', () => {

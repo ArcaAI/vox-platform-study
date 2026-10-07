@@ -71,7 +71,7 @@ export interface ItemGuardrailCounts {
  * the current version is unmarked (e.g. edited and re-screened), so no badge at all.
  */
 function guardrailStatusOf(entry: ActivityItemEntry): string | undefined {
-  const status = (entry as ActivityItemEntry & { guardrailStatus?: unknown }).guardrailStatus;
+  const status: unknown = (entry as { guardrailStatus?: unknown }).guardrailStatus;
   return typeof status === 'string' && status !== '' ? status.toLowerCase() : undefined;
 }
 

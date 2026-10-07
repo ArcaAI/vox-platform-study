@@ -43,12 +43,12 @@ describe('activity item guardrail badge', () => {
 
 describe('activity item guardrail badge — the gateway marker wins (W2e round 4)', () => {
   it('a CLEAN marker means no badge, even when derived counts exist (the item was edited and re-screened)', () => {
-    const { container } = render(<ItemBody entry={{ ...ITEM, guardrailStatus: 'clean' } as ActivityItemEntry} guardrail={{ warn: 1, block: 0 }} />);
+    const { container } = render(<ItemBody entry={{ ...ITEM, guardrailStatus: 'CLEAN' } as ActivityItemEntry} guardrail={{ warn: 1, block: 0 }} />);
     expect(container.textContent).not.toMatch(/guardrail/i);
   });
 
   it('a WARNED marker labels the badge, with the counts as detail', () => {
-    render(<ItemBody entry={{ ...ITEM, guardrailStatus: 'warned' } as ActivityItemEntry} guardrail={{ warn: 2, block: 0 }} />);
+    render(<ItemBody entry={{ ...ITEM, guardrailStatus: 'WARNED' } as ActivityItemEntry} guardrail={{ warn: 2, block: 0 }} />);
     expect(screen.getByText('Guardrail warning · 2 warnings')).toBeDefined();
   });
 });
