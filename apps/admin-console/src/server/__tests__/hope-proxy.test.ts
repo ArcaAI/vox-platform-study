@@ -182,6 +182,22 @@ describe('handleProxy', () => {
     expect(calls[2].headers.get('x-tenant-id')).toBe('50000000-0000-0000-0000-000000000000');
   });
 
+  // Platform guardrail control is platform-wide (TASK-1050 §11): the gateway refuses
+  // those routes under a working tenant. The per-tenant availability route and the
+  // tenant's own `admin/guardrail/policy` keep the working tenant.
+  it('never sends the working tenant to platform guardrail control, but keeps it for tenant guardrail routes', async () => {
+    await seedSession({ ...baseSession, workingTenantId: '50000000-0000-0000-0000-000000000000' });
+    const calls = installFetchMock(() => Response.json({}));
+    for (const tail of [['policy-keys'], ['judge-models', 'm1', 'judge-meta'], ['judge-lanes'], ['dry-run'], ['metrics', 'activity']]) {
+      await handleProxy(new Request(`http://console.local/api/hope/admin/guardrail/${tail.join('/')}`), ['admin', 'guardrail', ...tail]);
+    }
+    await handleProxy(new Request('http://console.local/api/hope/admin/guardrail/policy'), ['admin', 'guardrail', 'policy']);
+    await handleProxy(new Request('http://console.local/api/hope/admin/guardrail/availability/t1'), ['admin', 'guardrail', 'availability', 't1']);
+    for (const call of calls.slice(0, 5)) expect(call.headers.get('x-tenant-id')).toBeNull();
+    expect(calls[5].headers.get('x-tenant-id')).toBe('50000000-0000-0000-0000-000000000000');
+    expect(calls[6].headers.get('x-tenant-id')).toBe('50000000-0000-0000-0000-000000000000');
+  });
+
   // The model registry is platform-wide too (TASK-1019 D-11): its operations
   // refuse a working tenant. The one exception is the tenant-scoped
   // `admin/ai-models/catalogue` read, which the agent model picker issues FOR

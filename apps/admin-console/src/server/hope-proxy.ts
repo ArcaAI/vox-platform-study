@@ -36,6 +36,14 @@ const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
 const PLATFORM_WIDE_PREFIXES: readonly (readonly string[])[] = [
   ['admin', 'model-residency'],
   ['admin', 'ai-models'],
+  // TASK-1050 — platform guardrail control: super admin in a tenant-less context only.
+  // `admin/guardrail/availability` (super admin, per tenant) and the tenant route
+  // `admin/guardrail/policy` deliberately keep the working tenant.
+  ['admin', 'guardrail', 'policy-keys'],
+  ['admin', 'guardrail', 'judge-models'],
+  ['admin', 'guardrail', 'judge-lanes'],
+  ['admin', 'guardrail', 'dry-run'],
+  ['admin', 'guardrail', 'metrics'],
 ];
 
 /**
