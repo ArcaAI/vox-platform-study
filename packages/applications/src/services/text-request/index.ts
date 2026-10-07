@@ -5,3 +5,4 @@ export * from './known-phi';
 export * from './known-phi.service';
 export * from './provider-locality';
 export * from './compose-assembled-prompt';
+export * from './guardrail-correlation';

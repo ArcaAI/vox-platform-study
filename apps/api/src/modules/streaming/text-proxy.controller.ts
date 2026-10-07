@@ -82,6 +82,14 @@ import { recordUsageEmissionFailure } from '../../observability/usage-emission-m
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { markSystemPromptDeprecated, stripCallerGovernance } from './system-prompt-deprecation';
+import {
+  GUARDRAIL_CONSULTATION_HEADER,
+  GuardrailSseRelay,
+  guardrailErrorExtensions,
+  materializeStreamedErrorBody,
+  withCamelGuardrailAdditions,
+  withoutHopeInternalHeaders,
+} from './text-proxy.guardrail-relay';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 
@@ -249,7 +257,17 @@ const RELAYABLE_ERROR_PHRASES: Readonly<Record<string, string>> = {
   RATE_LIMITED: 'The AI provider is rate limiting this request. Retry after the interval given in the Retry-After header.',
   PROVIDER_INVALID_REQUEST: 'The AI provider rejected the request as invalid.',
   CONTEXT_WINDOW_EXCEEDED: "The request exceeds the selected model's context window.",
+  // TASK-1050 — a CLOUD call whose PII spans could not be computed is refused before anything is sent
+  // (privacy, not a safety verdict): a distinct, RETRYABLE 503 that is also the consultation's
+  // processing reason. The relay adds `processingReason` + `retryable` and the notice.
+  EGRESS_REDACTION_UNAVAILABLE: 'Patient details could not be protected before sending to an external model, so processing is paused. Retry to continue.',
 };
+
+/** TASK-1050 — what the gateway knows about one TEXT call from its OWN reads (never the caller's). */
+interface ProxyEgressContext {
+  consultationId?: string | null;
+  regionItems?: Record<string, Array<{ itemId: string; itemVersion: number }>>;
+}
 
 /**
  * Upper bound on a relayed `Retry-After`, in seconds (TASK-993 lane F).
@@ -427,13 +445,19 @@ export class TextProxyController {
    *   - model pinned, no provider → fill the PROVIDER only, model untouched;
    *   - provider pinned + model pinned → nothing is resolved or overwritten.
    */
-  private async applyTextModelSelection<T extends { provider?: string; model?: string; agentSlug?: string }>(target: T): Promise<T> {
+  private async applyTextModelSelection<T extends { provider?: string; model?: string; agentSlug?: string }>(
+    target: T,
+    egress: ProxyEgressContext = {},
+  ): Promise<T> {
     // A SELECTOR for this gateway, never forwarded: TEXT receives the resolved pair.
     const agentSlug = target.agentSlug;
     delete target.agentSlug;
     // The serving row's `deploymentKind`, known only when this gateway resolved the pair; a
     // caller-pinned pair falls back to the provider-name rule (unknown => cloud in `apps/text`).
     let deploymentKind: string | undefined;
+    // TASK-1050 — `agent_slug` attribution only for an agent the resolver VERIFIED for this tenant (an
+    // explicit slug it resolved); the assignment cascade does not name its agent back, so it is omitted.
+    let verifiedAgentSlug: string | undefined;
     if (!target.model && this.harnessPolicyService) {
       const tenantId = this.clsService.get('tenantId');
       // TASK-1012 L-3 — an explicit TEXT_GENERATION agent, else the assignment cascade.
@@ -441,6 +465,7 @@ export class TextProxyController {
       target.provider = selection.provider;
       target.model = selection.model;
       deploymentKind = selection.deploymentKind;
+      if (agentSlug) verifiedAgentSlug = agentSlug;
     } else if (!target.provider && this.harnessPolicyService) {
       // Selection is `failMode: closed`, so an unresolvable tenant surfaces an
       // error here rather than inheriting TEXT's literal further downstream.
@@ -468,7 +493,14 @@ export class TextProxyController {
     await this.textRequestEnrichment.applyTextRuntimeProfile(target);
     // Then fold in the caller tenant's BYO cloud credential, if any — and the egress statements
     // (`provider_locality`, no client-supplied opt-out or medical exemption survives).
-    return this.textRequestEnrichment.applyTenantProviderOverrides(target, { deploymentKind: deploymentKind ?? null, phase: 'proxy' });
+    // TASK-1050 — guardrail attribution (`region_items`, `agent_slug`) from this gateway's own reads only;
+    // the enrichment discards any caller-supplied copy.
+    return this.textRequestEnrichment.applyTenantProviderOverrides(target, {
+      deploymentKind: deploymentKind ?? null,
+      phase: 'proxy',
+      ...(verifiedAgentSlug ? { agentSlug: verifiedAgentSlug } : {}),
+      ...(egress.regionItems ? { regionItems: egress.regionItems } : {}),
+    } as Parameters<TextRequestEnrichmentService['applyTenantProviderOverrides']>[1]);
   }
 
   // The TEXT base URL resolves through the
@@ -499,16 +531,20 @@ export class TextProxyController {
    * deployed everywhere. The lookup is the SYNC cache read warmed at bootstrap,
    * preserving the existing fail-open-on-miss behaviour.
    */
-  private getForwardHeaders(): Record<string, string> {
+  private getForwardHeaders(egress: ProxyEgressContext = {}): Record<string, string> {
     const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
-    const headers: Record<string, string> = {
+    // TASK-1050: every `x-hope-*` name is INTERNAL (TEXT forwards them to guardrail, and
+    // `X-Hope-Guardrail-Override` re-runs a block as warn). These headers are built here and never copied
+    // from the caller; the strip is defence in depth before the gateway adds its OWN correlation.
+    const headers: Record<string, string> = withoutHopeInternalHeaders({
       'Content-Type': 'application/json',
       [TENANT_ID_HEADER]: tenantHeaderValue(this.clsService?.get('tenantId'), TENANTLESS.PLATFORM_OPERATOR),
       ...requestIdHeader(),
-    };
+    });
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }
+    if (egress.consultationId) headers[GUARDRAIL_CONSULTATION_HEADER] = egress.consultationId;
     return headers;
   }
 
@@ -604,7 +640,9 @@ export class TextProxyController {
 
     if (typeof status === 'number') {
       if (relayedMessage !== undefined) {
-        return new HttpException({ detail: relayedMessage, error_code: errorCode }, status);
+        // TASK-1050: a guardrail block / redaction hold also carries its PHI-free notice and evaluation
+        // ids — validated against the frozen schema, at the top level where both SDKs read them.
+        return new HttpException({ detail: relayedMessage, error_code: errorCode, ...guardrailErrorExtensions(errorCode, payload) }, status);
       }
       return new HttpException({ detail: fallbackMessage }, status);
     }
@@ -783,6 +821,8 @@ export class TextProxyController {
     try {
       return await this.postTextGenerate(base, body, 'TEXT generate');
     } catch (err) {
+      // A streaming request's error body arrives as a stream; read it so its code and notice can cross.
+      await materializeStreamedErrorBody(err);
       const upstreamStatus = (err as AxiosError)?.response?.status;
       this.logger.error({
         message: 'Failed to proxy generate request to TEXT',
@@ -814,12 +854,12 @@ export class TextProxyController {
    * — no gap, and this gateway holds no state.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async postTextGenerate(base: string, payload: TextGenerateRequest, label: string): Promise<any> {
+  private async postTextGenerate(base: string, payload: TextGenerateRequest, label: string, egress: ProxyEgressContext = {}): Promise<any> {
     const streaming = payload.stream === true;
     const response = await this.withRetry(
       () =>
         this.httpService.axiosRef.post(`${base}/api/v1/generate`, payload, {
-          headers: streaming ? { ...this.getForwardHeaders(), Accept: 'text/event-stream' } : this.getForwardHeaders(),
+          headers: streaming ? { ...this.getForwardHeaders(egress), Accept: 'text/event-stream' } : this.getForwardHeaders(egress),
           ...(streaming ? { responseType: 'stream' as const, timeout: STREAM_READ_TIMEOUT_MS } : { timeout: 120_000 }),
         }),
       label,
@@ -837,7 +877,8 @@ export class TextProxyController {
     // second chance to double-bill the same task id.
     if (!streaming) {
       this.emitSyncGenerationUsage(response.data);
-      return response.data;
+      // TASK-1050: TEXT's snake guardrail lists, as the frozen camelCase `GuardrailResponseAdditions`.
+      return withCamelGuardrailAdditions(response.data);
     }
 
     const taskId = await readGenerationId(response.data as Readable);
@@ -1061,6 +1102,9 @@ export class TextProxyController {
     // same way and a second copy of this is a second place for a dropped tail
     // to become lost revenue.
     const collector = new LlmStreamUsageCollector();
+    // TASK-1050 — `guardrail.notice` frames and the guardrail lists on done/error, in the gateway's
+    // contract; every other frame is forwarded byte for byte. Metering still reads the RAW upstream bytes.
+    const relay = new GuardrailSseRelay();
 
     // Teardown fires from three places (`end`, `error`, client `close`) and can
     // fire more than once. Emission is idempotent at the ledger anyway — the
@@ -1139,13 +1183,16 @@ export class TextProxyController {
       }, SSE_HEARTBEAT_INTERVAL_MS);
 
       stream.on('data', (chunk: Buffer) => {
-        res.write(chunk);
+        const relayed = relay.push(chunk);
+        if (relayed.length > 0) res.write(relayed);
         collector.observe(chunk);
       });
 
       stream.on('end', () => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         emitUsageOnce();
+        const rest = relay.end();
+        if (rest.length > 0 && !res.writableEnded) res.write(rest);
         res.end();
       });
 
@@ -1241,7 +1288,7 @@ export class TextProxyController {
     // `generate()`): a refused allowance must reach the caller as its own 429.
     await this.assertLlmAllowance();
 
-    const { prompt, systemPrompt, resolvedMeta } = await this.assemblePrompt(body);
+    const { prompt, systemPrompt, resolvedMeta, egress } = await this.assemblePrompt(body);
 
     const textPayload: TextGenerateRequest = {
       prompt,
@@ -1253,13 +1300,13 @@ export class TextProxyController {
       max_tokens: body.max_tokens,
       stream: body.stream ?? false,
     };
-    await this.applyTextModelSelection(textPayload);
+    await this.applyTextModelSelection(textPayload, egress);
 
     const base = this.getTextBaseUrl();
 
     try {
       // Same single-call contract and same single-delivery retry as `generate()`.
-      const data = await this.postTextGenerate(base, textPayload, 'TEXT assembled generate');
+      const data = await this.postTextGenerate(base, textPayload, 'TEXT assembled generate', egress);
 
       return {
         ...data,
@@ -1276,6 +1323,7 @@ export class TextProxyController {
         },
       };
     } catch (err) {
+      await materializeStreamedErrorBody(err);
       const upstreamStatus = (err as AxiosError)?.response?.status;
       this.logger.error({
         message: 'Failed to proxy assembled generate request to TEXT',
@@ -1344,6 +1392,7 @@ export class TextProxyController {
       promptTemplateName?: string;
       dnaStyleId?: string;
     };
+    egress: ProxyEgressContext;
   }> {
     // Each context item becomes ONE delimited data block: a stable key (`^[a-z0-9_]+$`) and the
     // label the model reads.
@@ -1361,6 +1410,11 @@ export class TextProxyController {
     const callerTenantId = this.clsService.get('tenantId');
 
     const contentBlocks: AssembledPromptBlock[] = [];
+    // TASK-1050 — guardrail correlation from the rows THIS route read and ownership-checked: each data
+    // block's key is the region key TEXT screens it under, so the items behind it ride as `region_items`;
+    // the consultation header is set only when every item belongs to the same one.
+    const regionItems: Record<string, Array<{ itemId: string; itemVersion: number }>> = {};
+    const consultationIds = new Set<string>();
     if (body.context_item_ids) {
       for (const id of body.context_item_ids) {
         const contextItem = await this.contextItemRepository.findById(id);
@@ -1385,6 +1439,10 @@ export class TextProxyController {
           throw new NotFoundException(`Context item ${id} not found`);
         }
         const block = TYPE_BLOCK_MAP[contextItem.type] ?? { key: 'context', label: 'Context' };
+        const consultationId = (contextItem as { consultationId?: string | null }).consultationId;
+        if (consultationId) consultationIds.add(consultationId);
+        const itemVersion = (contextItem as { version?: number }).version;
+        if (Number.isInteger(itemVersion)) (regionItems[block.key] ??= []).push({ itemId: contextItem.id, itemVersion: itemVersion as number });
         if (contextItem.content) {
           contentBlocks.push({ ...block, content: contextItem.content });
         }
@@ -1526,6 +1584,10 @@ export class TextProxyController {
         promptTemplateId,
         promptTemplateName,
         dnaStyleId: body.dna_writing_style_id,
+      },
+      egress: {
+        ...(consultationIds.size === 1 ? { consultationId: [...consultationIds][0] } : {}),
+        ...(Object.keys(regionItems).length > 0 ? { regionItems } : {}),
       },
     };
   }

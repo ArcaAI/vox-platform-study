@@ -1,4 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { GuardrailCheckStateResponse, GuardrailDirectionsResponse } from './tenant-guardrail-policy.response';
+
+/** TASK-1050 — the v2 policy in force: per direction and per check, field by field (tenant → SYSTEM → catalogue). */
+export class GuardrailEffectivePolicyResponse {
+  @ApiProperty({ type: GuardrailDirectionsResponse })
+  directions!: GuardrailDirectionsResponse;
+
+  @ApiProperty({ type: [GuardrailCheckStateResponse] })
+  checks!: GuardrailCheckStateResponse[];
+}
 
 export class GuardrailAvailabilityResponse {
   @ApiProperty({ description: 'The tenant this availability row governs.' })
@@ -19,11 +29,18 @@ export class GuardrailAvailabilityResponse {
   policies!: Record<string, unknown>;
 
   @ApiProperty({
-    description: 'What ACTUALLY applies to this tenant after the two-tier `request tenant → SYSTEM` cascade.',
+    description:
+      'What ACTUALLY applies to this tenant, in the legacy flat shape `{ <checkId>: { enabled, minScore? } }` (every catalogue check). Read `effectivePolicy` for actions, locks and directions.',
     type: 'object',
     additionalProperties: true,
   })
   effective!: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'the v2 policy in force, field by field (platform default → SYSTEM row → tenant row), as guardrail resolves it.',
+    type: GuardrailEffectivePolicyResponse,
+  })
+  effectivePolicy?: GuardrailEffectivePolicyResponse;
 
   @ApiProperty({
     description:
@@ -61,4 +78,19 @@ export class GuardrailPolicyCatalogueEntryResponse {
     nullable: true,
   })
   threshold!: Record<string, unknown> | null;
+
+  @ApiProperty({ description: 'the actions a platform admin may set.', type: [String], enum: ['ignore', 'warn', 'block'] })
+  allowedActions!: string[];
+
+  @ApiProperty({ description: 'the action when no tier sets one.', enum: ['ignore', 'warn', 'block'] })
+  platformDefaultAction!: string;
+
+  @ApiProperty({ description: 'catalogue lock: always on at its default action, editable by nobody.' })
+  locked!: boolean;
+
+  @ApiProperty({ description: 'the platform default on/off.' })
+  defaultEnabled!: boolean;
+
+  @ApiPropertyOptional({ description: 'inbound DATA-region action default (OD-12); null where it does not apply.', nullable: true })
+  platformDefaultDataRegionAction!: string | null;
 }

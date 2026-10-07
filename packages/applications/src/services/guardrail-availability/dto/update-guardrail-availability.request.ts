@@ -12,7 +12,7 @@ export class UpdateGuardrailAvailabilityRequest {
    */
   @ApiProperty({
     description:
-      'Selected policies, keyed by policy id: `{ "pii_leak": { "enabled": true, "minScore": 0.2 } }`. Unknown ids are REFUSED (400). An empty object means "no opinion" and inherits the SYSTEM set — it is not an off switch.',
+      'The tenant\'s whole guardrail policy row (v2): `{ "directions": { "inbound": { "enabled": true } }, "checks": { "<id>": { "enabled", "action", "locked", "minScore", "dataRegionAction" } } }` — every field optional (an absent field follows SYSTEM, then the catalogue). The legacy flat shape `{ "pii_leak": { "enabled": true, "minScore": 0.2 } }` is still accepted and stored as v2. Unknown ids are REFUSED (400). `{}` means "no opinion".',
     type: 'object',
     additionalProperties: true,
   })
