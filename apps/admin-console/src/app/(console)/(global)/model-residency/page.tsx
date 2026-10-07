@@ -5,9 +5,9 @@ export const metadata: Metadata = { title: 'Model residency' };
 
 /**
  * Model residency (tier 10-19, platform-admin only — D-11, reconfirmed
- * 2026-09-25). Catalogue-first, grouped by service: every self-hosted model
- * for stt, stt-worker, LM Studio and nlp, loaded or not, with who uses it,
- * its keep policy, and load/unload/reload control (TASK-1005 §13).
+ * 2026-09-25). One table of every model each service can run, loaded or not,
+ * grouped by service, with what needs attention, GPU memory and the
+ * shadow-mode recommendations (TASK-1005 §13, TASK-1051 artboard 01).
  */
 export default function ModelResidencyPage() {
   return <ModelResidencyScreen />;
