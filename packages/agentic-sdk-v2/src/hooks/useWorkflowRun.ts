@@ -44,6 +44,7 @@ import type {
   WorkflowSummary,
 } from '../types/workflowRun';
 import { isTerminalRunStatus } from '../types/workflowRun';
+import { isGuardrailNotice, type GuardrailNotice } from '../core/guardrail';
 
 /**
  * The keys the interpreter reads as RUN IDENTITY, which the server stamps
@@ -135,6 +136,11 @@ export interface UseWorkflowRunOptions {
   skipInitialLoad?: boolean;
   /** How many frames to keep in {@link UseWorkflowRunReturn.events}. Default `500`. */
   maxEvents?: number;
+  /**
+   * TASK-1050: called ONCE per notice id for each `guardrail.notice` frame. Show the warning and carry on; a
+   * `run.paused` frame (a block waiting for a resume) does NOT end the run or close the stream.
+   */
+  onGuardrailNotice?: (notice: GuardrailNotice) => void;
 }
 
 export interface UseWorkflowRunReturn {
@@ -195,6 +201,9 @@ const STREAM_EVENT_TYPES: readonly string[] = Object.freeze([
   'workflow.loop.iteration',
   'workflow.guardrail.verdict',
   'workflow.token.delta',
+  // TASK-1050: protocol-v2 guardrail frames, when the gateway sends them on this stream.
+  'guardrail.notice',
+  'run.paused',
 ]);
 
 /**
@@ -205,7 +214,7 @@ const STREAM_EVENT_TYPES: readonly string[] = Object.freeze([
  * removed with the legacy frame shapes (OD-23).
  */
 export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflowRunReturn {
-  const { consultationId, skipInitialLoad = false, maxEvents = DEFAULT_MAX_EVENTS, transport = 'sse' } = options;
+  const { consultationId, skipInitialLoad = false, maxEvents = DEFAULT_MAX_EVENTS, transport = 'sse', onGuardrailNotice } = options;
   const { execute, isLoading, error, apiClient, logger } = useApiOperation('useWorkflowRun');
 
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
@@ -215,6 +224,9 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
   const [isRunning, setIsRunning] = useState(false);
   const [lastEventId, setLastEventId] = useState<string | null>(null);
 
+  const noticeHandler = useRef(onGuardrailNotice);
+  noticeHandler.current = onGuardrailNotice;
+  const announcedNotices = useRef<Set<string>>(new Set());
   const sseRef = useRef<SSEClient | null>(null);
   const socketRef = useRef<WorkflowRunSocketClient | null>(null);
 
@@ -297,6 +309,13 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
   const applyFrame = useCallback(
     (envelope: WorkflowRunEvent, cursor: string | null, slug: string, runId: string): void => {
       setLastEventId(cursor);
+      if (envelope.type === 'guardrail.notice') {
+        const candidate = (envelope as unknown as { data?: unknown }).data ?? envelope.payload;
+        if (isGuardrailNotice(candidate) && !announcedNotices.current.has(candidate.noticeId)) {
+          announcedNotices.current.add(candidate.noticeId);
+          noticeHandler.current?.(candidate);
+        }
+      }
       setEvents((prev) => {
         const next = [...prev, { ...envelope, ...(cursor === null ? {} : { resumeToken: cursor }) }];
         return next.length > maxEvents ? next.slice(next.length - maxEvents) : next;
@@ -416,6 +435,7 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
         // the run; re-POSTing would start a second run).
       });
 
+      announcedNotices.current = new Set();
       setHandle(started);
       setEvents([]);
       setLastEventId(null);

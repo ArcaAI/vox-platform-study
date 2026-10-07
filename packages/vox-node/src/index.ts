@@ -159,7 +159,12 @@ export {
   BadRequestError,
   CredentialClassError,
   DnaIngestJobTimeoutError,
+  EGRESS_REDACTION_UNAVAILABLE_CODE,
+  EgressRedactionUnavailableError,
+  GUARDRAIL_BLOCKED_PROBLEM_TYPE,
   GatewayTimeoutError,
+  GuardrailBlockedError,
+  GuardrailHoldError,
   HopeAPIError,
   HopeStreamError,
   NotFoundError,
@@ -175,7 +180,7 @@ export {
   TranscriptionJobTimeoutError,
   VersionConflictError,
 } from './core/errors';
-export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';
+export type { GuardrailErrorInit, HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';
 
 /**
  * The run handle (TASK-1039): what `hope.workflows.run()` and `hope.agents.run()` return, and the
@@ -191,12 +196,16 @@ export type {
   RunEventsOptions,
   RunHandleTuning,
   RunOutcome,
+  RunPausedState,
   RunResultOptions,
   RunTextOptions,
   RunWaitOptions,
 } from './core/run-handle';
-export { RUN_PROTOCOL_VERSION } from './core/run-protocol';
+export { RUN_PROTOCOL_VERSION, guardrailNoticeProblems, isRunGuardrailNotice } from './core/run-protocol';
 export type {
+  RunGuardrailNotice,
+  RunGuardrailNotice as GuardrailNotice,
+  RunPausedReason,
   RunError,
   RunEventDataMap,
   RunEventType,
@@ -209,6 +218,21 @@ export type {
 } from './core/run-protocol';
 
 export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
+
+/** Guardrail notices, holds and the one-call approve (TASK-1050). */
+export { GUARDRAIL_HOLD_PROCESSING_REASONS, isGuardrailHoldReason } from './types';
+export type {
+  ApproveGuardrailOptions,
+  GuardrailAcknowledgementVia,
+  GuardrailApproveRequestAdditions,
+  GuardrailApproveResponseAdditions,
+  GuardrailHoldProcessingReason,
+  GuardrailHoldResolution,
+  GuardrailNoticeAcknowledgement,
+  GuardrailNoticesResponse,
+  GuardrailResultFields,
+  HoldResolution,
+} from './types';
 
 /** ASR degradation vocabulary (TASK-1048): the runtime `degraded` reasons and the status-frame guard. */
 export { ASR_RUNTIME_DEGRADED_REASONS, isSttDegradedStatus } from './types';

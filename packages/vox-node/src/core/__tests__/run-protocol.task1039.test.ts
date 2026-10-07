@@ -52,7 +52,12 @@ describe('run-protocol copy — parity with the committed fixture', () => {
   });
 
   it('knows exactly the fixture event types, in order', () => {
-    expect([...RUN_EVENT_TYPES]).toEqual(Object.keys(FIXTURE.visibility));
+    // TASK-1050: the guardrail overlay (`guardrail-run-events.fixture.json`) adds public types; its parity test lives in
+    // `run-protocol.guardrail.task1050.test.ts`. The base fixture's own types keep their order.
+    const overlay = Object.keys(
+      (JSON.parse(readFileSync(resolve(__dirname, '../../../../../tests/contracts/guardrail-run-events.fixture.json'), 'utf8')) as { visibility: Record<string, string> }).visibility,
+    );
+    expect([...RUN_EVENT_TYPES].filter((type) => !overlay.includes(type))).toEqual(Object.keys(FIXTURE.visibility));
   });
 
   it('carries the fixed error labels and the fallback', () => {

@@ -46,7 +46,7 @@ import { RUN_ENDPOINTS, type RunKind } from '../core/constants';
 import { createEventSourceConnector, createFetchConnector, followRun, type RunConnector, type RunCursor } from '../core/run/RunStreamClient';
 import { fetchRunResult } from '../core/run/fetchRunResult';
 import { INITIAL_RUN_STATE, runReducer, type RunEvent, type RunState } from '../core/run/runState';
-import type { RunStatus } from '../core/run/run-protocol';
+import type { RunGuardrailNotice, RunStatus } from '../core/run/run-protocol';
 import { ReservedRunIdentityError, reservedRunIdentityKeysIn } from './useWorkflowRun';
 
 /** Options for {@link useRun}. Exactly one of `workflow` / `agent` is required. */
@@ -65,6 +65,13 @@ export interface UseRunOptions {
   maxReconnects?: number;
   /** First reconnect delay in ms (doubles per consecutive failure, capped at 5 s). Default `250`. */
   reconnectDelayMs?: number;
+  /**
+   * TASK-1050: called ONCE per notice id when a `guardrail.notice` event (or `run.completed.guardrailNotices`) arrives.
+   * Show a warning popup and carry on; a `guardrail.blocked` notice is followed by `run.paused` (resumable) or a
+   * `GUARDRAIL_BLOCKED` failure — show `notice.defaultMessage` as the termination message and offer Resume when
+   * `notice.resumable`. Keep the reference stable (a ref or `useCallback`), or the latest one is read at call time.
+   */
+  onGuardrailNotice?: (notice: RunGuardrailNotice) => void;
 }
 
 /** Options for {@link UseRunReturn.start}. */
@@ -95,6 +102,10 @@ export interface UseRunReturn<TInput = Record<string, unknown>, TOutput = unknow
   /** `null` until a run exists. */
   status: RunStatus | null;
   runId: string | null;
+  /** Every guardrail notice the run raised, one per `noticeId` (TASK-1050). Empty when nothing was flagged. */
+  guardrailNotices: readonly RunGuardrailNotice[];
+  /** Set while the run waits at a guardrail hold (`run.paused`). The run is NOT finished: `status` stays `RUNNING`. */
+  paused: { readonly noticeId: string; readonly nodeId: string; readonly reason: string } | null;
   /** The highest `seq` reached — persist it with `runId` and pass both back to resume after a reload. */
   lastSeq: number;
   /** Ask the run to stop. Idempotent; resolves once the signal is SENT (watch `status` for the end). A run already seen finished sends nothing. */
@@ -128,7 +139,7 @@ interface RunStreamTicket {
 }
 
 export function useRun<TInput = Record<string, unknown>, TOutput = unknown>(options: UseRunOptions): UseRunReturn<TInput, TOutput> {
-  const { workflow, agent, runId: attachRunId, after: attachAfter, maxEvents = 500, maxReconnects, reconnectDelayMs } = options;
+  const { workflow, agent, runId: attachRunId, after: attachAfter, maxEvents = 500, maxReconnects, reconnectDelayMs, onGuardrailNotice } = options;
   if ((workflow === undefined) === (agent === undefined)) {
     throw new Error('useRun needs exactly one of `workflow` or `agent` (a slug).');
   }
@@ -144,6 +155,10 @@ export function useRun<TInput = Record<string, unknown>, TOutput = unknown>(opti
   const currentRunId = useRef<string | null>(null);
   const finished = useRef(false);
   const cancelRequest = useRef<Promise<void> | null>(null);
+  // The latest callback, read at call time, so a new closure each render does not re-open the stream.
+  const noticeHandler = useRef(onGuardrailNotice);
+  noticeHandler.current = onGuardrailNotice;
+  const announcedNotices = useRef<Set<string>>(new Set());
 
   const stopFollowing = useCallback((): void => {
     // Disconnect ONLY. Never a cancel: the run is a durable execution.
@@ -162,6 +177,7 @@ export function useRun<TInput = Record<string, unknown>, TOutput = unknown>(opti
       currentRunId.current = runId;
       finished.current = false;
       cancelRequest.current = null;
+      announcedNotices.current = new Set();
 
       const connector: RunConnector =
         kind === 'workflow'
@@ -193,6 +209,13 @@ export function useRun<TInput = Record<string, unknown>, TOutput = unknown>(opti
         reconnectDelayMs,
         onEvent: (event, info) => {
           dispatch({ type: 'event', event: event as RunEvent, reset: info.reset, protocol: info.protocol, maxEvents });
+          const notices: readonly RunGuardrailNotice[] =
+            event.type === 'guardrail.notice' ? [event.data] : event.type === 'run.completed' ? (event.data.guardrailNotices ?? []) : [];
+          for (const notice of notices) {
+            if (announcedNotices.current.has(notice.noticeId)) continue;
+            announcedNotices.current.add(notice.noticeId);
+            noticeHandler.current?.(notice);
+          }
           const ended = event.type === 'run.completed' || event.type === 'run.failed' || event.type === 'run.cancelled';
           const resyncedToEnd = event.type === 'run.resync' && ['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT'].includes(event.data.snapshot.status);
           if (ended || resyncedToEnd) finished.current = true;
@@ -271,6 +294,8 @@ export function useRun<TInput = Record<string, unknown>, TOutput = unknown>(opti
     result: state.result,
     status: state.status,
     runId: state.runId,
+    guardrailNotices: state.guardrailNotices,
+    paused: state.paused,
     lastSeq: state.lastSeq,
     cancel,
     error: state.error,

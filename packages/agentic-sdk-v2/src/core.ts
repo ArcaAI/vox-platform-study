@@ -284,9 +284,32 @@ export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 // TASK-1039 — `useRun`'s types, and the errors it reports by name.
 export type { StartRunOptions, UseRunOptions, UseRunReturn } from './hooks';
 export type { RunEvent } from './core/run/runState';
-export type { RunStatus, RunResult, RunError, RunEventV2, RunEventType } from './core/run/run-protocol';
+export type { RunStatus, RunResult, RunError, RunEventV2, RunEventType, RunGuardrailNotice } from './core/run/run-protocol';
+export { guardrailNoticeProblems, isRunGuardrailNotice } from './core/run/run-protocol';
 export { RunFailedError, RunResultError, RunResultIntegrityError } from './core/run/errors';
 export { RunStreamInterruptedError } from './core/run/RunStreamClient';
+
+// TASK-1050 — guardrail notices, the typed 422 / 503 errors, and the hold helpers.
+export type { GuardrailNotice } from './core/guardrail';
+export {
+  EGRESS_REDACTION_UNAVAILABLE_CODE,
+  EgressRedactionUnavailableError,
+  GUARDRAIL_BLOCKED_PROBLEM_TYPE,
+  GUARDRAIL_HOLD_PROCESSING_REASONS,
+  GuardrailBlockedError,
+  GuardrailHoldError,
+  isGuardrailHoldReason,
+  isGuardrailNotice,
+  mergeGuardrailNotices,
+} from './core/guardrail';
+export type {
+  GuardrailAcknowledgementVia,
+  GuardrailApproveRequestAdditions,
+  GuardrailApproveResponseAdditions,
+  GuardrailHoldResolution,
+  GuardrailNoticeAcknowledgement,
+  HoldResolution,
+} from '@arcaai/types';
 
 
 /**
