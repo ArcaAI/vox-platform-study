@@ -49,6 +49,14 @@ const REGION_KEY_CHARS = 16;
 /** The boot backfill's bounded concurrency (sources in flight at once). */
 /** One source at a time: a boot backfill must not saturate NLP (TASK-1047 validation: 2 parallel sources tripped guardrail's breaker). */
 const BACKFILL_CONCURRENCY = 1;
+/**
+ * TASK-1049 F2 — a policy-change re-screen: bounded concurrency greater than one (the boot pass's single
+ * lane is for a cold NLP), and a short delay so guardrail has dropped its cached config (the gateway
+ * publishes `guardrail:config:invalidate` first) before the new policy version is read. Code defaults;
+ * `governedPrompt.rescreenConcurrency` / `governedPrompt.rescreenDelayMs` override them.
+ */
+const DEFAULT_RESCREEN_CONCURRENCY = 3;
+const DEFAULT_RESCREEN_DELAY_MS = 2_000;
 /** Backfill retry backoff (code defaults; `governedPrompt.backfillRetry{Min,Max}Ms` override them). */
 const DEFAULT_BACKFILL_RETRY_MIN_MS = 30_000;
 const DEFAULT_BACKFILL_RETRY_MAX_MS = 900_000;
@@ -144,6 +152,8 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retryAttempt = 0;
   private destroyed = false;
+  /** F2 — tenants with a re-screen scheduled but not yet started (a burst of writes coalesces into one). */
+  private readonly rescreenPending = new Set<string>();
   /** The last SYSTEM policy version actually read (a failed read never overwrites it). */
   private lastSystemPolicyVersion: string | null = null;
 
@@ -248,6 +258,77 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
       });
     this.track(work);
     await work;
+  }
+
+  /**
+   * TASK-1049 F11 — screen authored text that has no governed-piece row type (a workflow node's prompt
+   * variables and binding templates, a DNA_ANALYSIS template before use) WITHOUT registering it.
+   * Fail-closed exactly like {@link screenAndRegister}: an unknown policy version or an unavailable screen
+   * is `PROMPT_SCREENING_UNAVAILABLE`, which never passes.
+   */
+  async validateAuthoredPieces(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult> {
+    const digests = pieces.map((piece) => pieceDigest(piece.text));
+    const policyVersion = await this.currentPolicyVersion(tenantId);
+    if (pieces.length === 0) return { passed: true, policyVersion, digests, findings: [] };
+    const distinct = this.distinct(pieces);
+    if (policyVersion === null) {
+      return { passed: false, policyVersion, digests, findings: distinct.map((one) => this.unavailable(one, 'guardrail policy version unknown')) };
+    }
+    let perPiece: Map<string, PieceCode[] | 'unavailable'>;
+    try {
+      perPiece = await this.screen(tenantId, distinct);
+    } catch (error) {
+      if (!(error instanceof PromptScreeningUnavailableError)) throw error;
+      return { passed: false, policyVersion, digests, findings: distinct.map((one) => this.unavailable(one, 'guardrail screening unavailable')) };
+    }
+    const findings: GovernedPieceFinding[] = [];
+    for (const one of distinct) {
+      const verdict = perPiece.get(one.digest) ?? [];
+      if (verdict === 'unavailable') findings.push(this.unavailable(one, 'a guardrail check could not run'));
+      else findings.push(...verdict.map((entry) => this.finding(one, entry)));
+    }
+    return { passed: !findings.some(isBlockingPromptFinding), policyVersion, digests, findings };
+  }
+
+  // ============================================================
+  // Policy change (TASK-1049 F2)
+  // ============================================================
+
+  /**
+   * `tenantId`'s guardrail policy changed (the gateway's `TenantGuardrailPolicy` write): its policy
+   * version moved, so every verdict it held is void and its governed sources would be screened at CALL
+   * time until re-registered. Re-screen them in the background — after `governedPrompt.rescreenDelayMs`,
+   * with `governedPrompt.rescreenConcurrency` (> 1) sources in flight — under the freshly read version.
+   * SYSTEM is every tenant's fallback tier, so a SYSTEM change re-screens every tenant. A burst of writes
+   * for one tenant coalesces into one pass. Never throws; UNAVAILABLE sources take the backfill's retry.
+   */
+  scheduleTenantRescreen(tenantId: string): void {
+    if (this.destroyed || this.rescreenPending.has(tenantId) || this.rescreenPending.has(SYSTEM_TENANT_ID)) return;
+    this.rescreenPending.add(tenantId);
+    const delayMs = this.settingMsAllowZero('governedPrompt.rescreenDelayMs', DEFAULT_RESCREEN_DELAY_MS);
+    const work = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, delayMs);
+      timer.unref?.();
+    })
+      .then(() => {
+        this.rescreenPending.delete(tenantId);
+        if (this.destroyed) return undefined;
+        // Forget the version the change voided, so the pass (and every later call) reads the new one.
+        if (tenantId === SYSTEM_TENANT_ID) this.policyVersions.clear();
+        else this.policyVersions.delete(tenantId);
+        const concurrency = Math.max(2, Math.floor(this.settingMs('governedPrompt.rescreenConcurrency', DEFAULT_RESCREEN_CONCURRENCY)));
+        return this.clsService.run(() =>
+          this.runBackfill(undefined, { tenantId: tenantId === SYSTEM_TENANT_ID ? undefined : tenantId, concurrency }),
+        );
+      })
+      .then((summary) => {
+        if (summary) this.scheduleRetryIfNeeded(summary);
+      })
+      .catch((error: unknown) => {
+        this.rescreenPending.delete(tenantId);
+        this.logger.warn({ message: 'governed-prompt.rescreen.failed', tenantId, error: error instanceof Error ? error.message : 'unknown' });
+      });
+    this.track(work);
   }
 
   // ============================================================
@@ -385,6 +466,11 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     this.retryTimer = null;
   }
 
+  private settingMsAllowZero(key: string, fallback: number): number {
+    const value = this.appSettings?.getValueWithDefault<number>(key, fallback) ?? fallback;
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
   private settingMs(key: string, fallback: number): number {
     const value = this.appSettings?.getValueWithDefault<number>(key, fallback) ?? fallback;
     return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -407,7 +493,10 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
    * under its tenant's current policy version (SYSTEM's version is the availability probe). Bounded concurrency; failures are LISTED for the owner and
    * nothing is unpublished — until a source is screened, its calls take the full-screening path.
    */
-  async runBackfill(only?: ReadonlySet<string>): Promise<GovernedBackfillSummary> {
+  async runBackfill(
+    only?: ReadonlySet<string>,
+    options: { readonly tenantId?: string; readonly concurrency?: number } = {},
+  ): Promise<GovernedBackfillSummary> {
     const policyVersion = await this.currentPolicyVersion();
     const empty = { sources: 0, alreadyGoverned: 0, screened: 0, passed: 0, failed: 0, unavailable: 0, failures: [] };
     if (policyVersion === null) {
@@ -432,7 +521,12 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
         sourceId: version.promptTemplateId,
         pieces: version.content ? templateBodyPieces(version.content, version.promptTemplateId) : [],
       })),
-    ].filter((source) => source.pieces.length > 0 && (!only || only.has(this.sourceKey(source.tenantId, source.sourceType, source.sourceId))));
+    ].filter(
+      (source) =>
+        source.pieces.length > 0 &&
+        (!options.tenantId || source.tenantId === options.tenantId) &&
+        (!only || only.has(this.sourceKey(source.tenantId, source.sourceType, source.sourceId))),
+    );
 
     const counts = { alreadyGoverned: 0, screened: 0, passed: 0, failed: 0, unavailable: 0 };
     const failures: GovernedBackfillFailure[] = [];
@@ -462,7 +556,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
         failures.push({ sourceType: source.sourceType, sourceId: source.sourceId, tenantId: source.tenantId, codes });
       }
     };
-    await Promise.all(Array.from({ length: Math.min(BACKFILL_CONCURRENCY, sources.length) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(options.concurrency ?? BACKFILL_CONCURRENCY, sources.length) }, () => worker()));
 
     const summary: GovernedBackfillSummary = { policyVersion, sources: sources.length, ...counts, failures };
     if (failures.length > 0) this.logger.warn({ message: 'governed-prompt.backfill.failures', policyVersion, failures });

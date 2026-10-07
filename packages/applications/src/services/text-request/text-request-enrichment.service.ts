@@ -20,6 +20,16 @@ import { ComposedPromptRecorder } from '../composed-prompt/composed-prompt.recor
 import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
 import type { GovernedPieceInput } from '../governed-prompt/IGovernedPromptRegistry';
 import { governedSystemWire, type SystemGovernanceHint } from './system-governance';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { governedPromptPlatformRegistrationTotal, type GovernedPlatformRegistrationOutcome } from '../governed-prompt/governed-prompt.metrics';
+import { guardrailCorrelationHeaders, regionItemsWire, type GuardrailCorrelation, type GuardrailRegionItems } from './guardrail-correlation';
+
+/**
+ * TASK-1049 F1 — how long one call waits for its platform pieces to register before it proceeds as it
+ * did before F1 (screened as untrusted). Code default; `governedPrompt.platformRegistrationWaitMs`
+ * overrides it. A registration that outlives the wait still finishes in the background.
+ */
+const DEFAULT_PLATFORM_REGISTRATION_WAIT_MS = 3_000;
 
 /**
  * What a caller knows about ONE outgoing `/generate` call that the egress statements need: the
@@ -41,7 +51,29 @@ export interface TextEgressHints extends ProviderLocalityHints {
    * `system_governance` rides this call (see {@link TextRequestEnrichmentService.applyEgressSafety}).
    */
   systemGovernance?: SystemGovernanceHint | null;
+  /**
+   * TASK-1050 — the context items behind each guardrail region, keyed by region key (the
+   * `EXTERNAL_DATA` section name the composer gave the block). Stated as `region_items` only from here;
+   * a caller-supplied body copy is discarded.
+   */
+  regionItems?: GuardrailRegionItems | null;
+  /**
+   * TASK-1050 — correlation the CALLER knows (item, run key, run, node); `consultationId` above fills
+   * the consultation. Rendered by {@link TextRequestEnrichmentService.correlationHeaders} as the trusted
+   * `X-Hope-*` headers the caller sets on its own request to TEXT.
+   */
+  correlation?: Omit<GuardrailCorrelation, 'consultationId'> | null;
+  /**
+   * TASK-1050 — the context item(s) this call's OUTPUT becomes, at the version it will be written as,
+   * when the caller knows them. Stated as `response_items` (attribution of an outbound verdict) only from
+   * here; a caller-supplied body copy is discarded. `agentSlug` above is likewise stated as `agent_slug`.
+   */
+  responseItems?: ReadonlyArray<{ readonly itemId: string; readonly itemVersion: number }> | null;
 }
+
+/** TEXT's bounds on the attribution fields (`GenerateRequest.agent_slug` / `.response_items`). */
+const AGENT_SLUG_MAX = 200;
+const RESPONSE_ITEMS_MAX = 64;
 
 /** `guardrail_policy` keys a caller may no longer state: screening is not the caller's to switch off. */
 const RETIRED_GUARDRAIL_POLICY_KEYS = ['enabled', 'require_medical', 'opted_out'] as const;
@@ -95,7 +127,21 @@ export class TextRequestEnrichmentService {
     @Optional()
     @Inject(IGovernedPromptRegistry)
     private readonly governedPrompts?: IGovernedPromptRegistry,
+    // TASK-1049 F1 — the bound on the awaited platform-piece registration. @Optional and trailing for
+    // the same reason as the five above; unwired, the code default applies.
+    @Optional()
+    @Inject(IAppSettingsService)
+    private readonly appSettings?: IAppSettingsService,
   ) {}
+
+  /**
+   * TASK-1050 — the trusted `X-Hope-*` correlation headers for a gateway → TEXT call, from the caller's
+   * own context (never from an inbound request's headers, which are stripped — see
+   * `stripHopeInternalHeaders`). The caller merges them into the headers of its TEXT request.
+   */
+  correlationHeaders(hints: TextEgressHints = {}): Record<string, string> {
+    return guardrailCorrelationHeaders({ ...(hints.correlation ?? {}), consultationId: hints.consultationId ?? null });
+  }
 
   /**
    * The EGRESS statements on an outgoing `/generate` body. Runs inside
@@ -113,6 +159,9 @@ export class TextRequestEnrichmentService {
    *   - `system_governance` (TASK-1047 FC-4) only from the composer's own governance, never from the
    *     body: a client-supplied value is discarded, and the field is attached only when the registry
    *     vouches for every piece of the system prompt actually on the body.
+    *   - TASK-1050 guardrail attribution — `region_items`, `agent_slug`, `response_items` — only from
+   *     the hints (the gateway's own context); a body copy is always discarded. The matching `X-Hope-*`
+   *     headers come from {@link correlationHeaders}.
    */
   async applyEgressSafety<T extends object>(target: T, hints: TextEgressHints = {}): Promise<T> {
     const body = target as Record<string, unknown>;
@@ -120,6 +169,17 @@ export class TextRequestEnrichmentService {
 
     delete body.system_governance;
     await this.attachSystemGovernance(body, hints.systemGovernance ?? null);
+
+    // TASK-1050 — guardrail ATTRIBUTION is stated from the gateway's own context only, never passed
+    // through from a caller: a forged item or agent would mark (or exonerate) someone else's content.
+    delete body.region_items;
+    const regionItems = regionItemsWire(hints.regionItems);
+    if (regionItems) body.region_items = regionItems;
+    delete body.agent_slug;
+    if (typeof hints.agentSlug === 'string' && hints.agentSlug.length > 0 && hints.agentSlug.length <= AGENT_SLUG_MAX) body.agent_slug = hints.agentSlug;
+    delete body.response_items;
+    const responseItems = regionItemsWire({ response: hints.responseItems ?? [] })?.response;
+    if (responseItems) body.response_items = responseItems.slice(0, RESPONSE_ITEMS_MAX);
 
     delete body.medical_exempt;
     if (isPlainObject(body.guardrail_policy)) {
@@ -156,16 +216,16 @@ export class TextRequestEnrichmentService {
    * changed system prompt, a "no", an unknown policy version, a registry error — omits the field,
    * and `apps/text` then screens the system prompt as untrusted data. Never throws.
    *
-   * The PLATFORM / LANGUAGE / CONTRACT pieces the composer emitted are offered to the registry
-   * first, fire-and-forget: registration screens in the background, so this call is unaffected and
-   * a later one finds them governed.
+   * The PLATFORM / LANGUAGE / CONTRACT pieces the composer emitted are offered to the registry FIRST
+   * and awaited with a bound (TASK-1049 F1), so this very call can find them governed; past the bound
+   * the screen continues in the background and a later call finds them.
    */
   private async attachSystemGovernance(body: Record<string, unknown>, hint: SystemGovernanceHint | null): Promise<void> {
     const registry = this.governedPrompts;
     if (!hint || !registry) return;
     // The REQUEST tenant: guardrail's policy version — and so every verdict — is per tenant.
     const tenantId = hint.tenantId ?? this.clsService.get('tenantId') ?? undefined;
-    if (hint.platformPieces && hint.platformPieces.length > 0) this.registerPlatformPieces(registry, hint.platformPieces, tenantId);
+    if (hint.platformPieces && hint.platformPieces.length > 0) await this.registerPlatformPieces(registry, hint.platformPieces, tenantId);
 
     const governance = hint.governance;
     const system = body.system_prompt;
@@ -183,19 +243,51 @@ export class TextRequestEnrichmentService {
     }
   }
 
-  /** Fire-and-forget platform-piece registration: neither a rejection nor a throw reaches the call. */
-  private registerPlatformPieces(registry: IGovernedPromptRegistry, pieces: readonly GovernedPieceInput[], tenantId: string | undefined): void {
-    const report = (error: unknown) =>
-      this.logger.warn({
-        message: 'Platform prompt-piece registration failed; those pieces stay ungoverned until a later call registers them',
-        pieces: pieces.length,
-        error: error instanceof Error ? error.name : 'unknown',
-      });
+  /**
+   * TASK-1049 F1 — platform-piece registration, AWAITED with a bound, so the first call of a new piece
+   * set (and the first after a policy-version change) can already be governed instead of sending an
+   * ungoverned system prompt that is screened as instruction. Past the bound, or on any failure, the
+   * call proceeds exactly as before F1; the registration keeps running in the background. Never throws.
+   */
+  private async registerPlatformPieces(registry: IGovernedPromptRegistry, pieces: readonly GovernedPieceInput[], tenantId: string | undefined): Promise<void> {
+    const waitMs = this.platformRegistrationWaitMs();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<GovernedPlatformRegistrationOutcome>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), waitMs);
+      timer.unref?.();
+    });
+    let registration: Promise<GovernedPlatformRegistrationOutcome>;
     try {
-      void Promise.resolve(registry.registerPlatformPieces(pieces, tenantId)).catch(report);
+      registration = Promise.resolve(registry.registerPlatformPieces(pieces, tenantId)).then(
+        () => 'registered' as const,
+        (error: unknown) => {
+          this.reportRegistrationFailure(pieces, error);
+          return 'failed' as const;
+        },
+      );
     } catch (error) {
-      report(error);
+      this.reportRegistrationFailure(pieces, error);
+      registration = Promise.resolve('failed' as const);
     }
+    const outcome = await Promise.race([registration, timeout]);
+    if (timer) clearTimeout(timer);
+    governedPromptPlatformRegistrationTotal.inc({ outcome });
+    if (outcome === 'timeout') {
+      this.logger.warn({ message: 'Platform prompt-piece registration exceeded its wait; this call is screened as untrusted', pieces: pieces.length, waitMs });
+    }
+  }
+
+  private reportRegistrationFailure(pieces: readonly GovernedPieceInput[], error: unknown): void {
+    this.logger.warn({
+      message: 'Platform prompt-piece registration failed; those pieces stay ungoverned until a later call registers them',
+      pieces: pieces.length,
+      error: error instanceof Error ? error.name : 'unknown',
+    });
+  }
+
+  private platformRegistrationWaitMs(): number {
+    const value = this.appSettings?.getValueWithDefault<number>('governedPrompt.platformRegistrationWaitMs', DEFAULT_PLATFORM_REGISTRATION_WAIT_MS);
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : DEFAULT_PLATFORM_REGISTRATION_WAIT_MS;
   }
 
   /**

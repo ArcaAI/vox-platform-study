@@ -1,12 +1,14 @@
 import type { TenantGuardrailPolicyEntity } from '@arcaai/domains';
 import { GUARDRAIL_POLICY_CATALOGUE, type GuardrailPolicySelectionSet, type ResolvedGuardrailAvailability } from './policy-catalogue';
-import type { GuardrailAvailabilityResponse, GuardrailPolicyCatalogueEntryResponse } from './dto';
+import { effectiveGuardrailPolicy, type EffectiveGuardrailPolicy, type GuardrailPolicyViewer } from './policy-v2';
+import type { GuardrailAvailabilityResponse, GuardrailPolicyCatalogueEntryResponse, TenantGuardrailPolicyResponse } from './dto';
 
 export class GuardrailAvailabilityDtoMapper {
   static toResponse(
     tenantId: string,
     row: TenantGuardrailPolicyEntity | null,
     effective: ResolvedGuardrailAvailability,
+    effectivePolicy?: EffectiveGuardrailPolicy,
   ): GuardrailAvailabilityResponse {
     return {
       tenantId,
@@ -18,7 +20,26 @@ export class GuardrailAvailabilityDtoMapper {
       policies: (row?.policies ?? {}) as Record<string, unknown>,
       effective: effective.policies as unknown as Record<string, unknown>,
       effectiveSourceTenantId: effective.sourceTenantId,
+      ...(effectivePolicy ? { effectivePolicy: { directions: effectivePolicy.directions, checks: effectivePolicy.checks } } : {}),
       reason: row?.reason ?? null,
+      updatedAt: row?.updatedAt ? new Date(row.updatedAt).toISOString() : null,
+      updatedBy: row?.updatedBy ?? null,
+    };
+  }
+
+  /** TASK-1050 — the caller tenant's rules, as `admin/guardrail/policy` answers them. */
+  static toTenantPolicyResponse(
+    tenantId: string,
+    row: TenantGuardrailPolicyEntity | null,
+    systemRow: TenantGuardrailPolicyEntity | null,
+    viewer: GuardrailPolicyViewer,
+  ): TenantGuardrailPolicyResponse {
+    const view = effectiveGuardrailPolicy(systemRow?.policies ?? null, row?.policies ?? null, viewer);
+    return {
+      tenantId,
+      version: row ? row.version : 0,
+      directions: view.directions,
+      checks: view.checks,
       updatedAt: row?.updatedAt ? new Date(row.updatedAt).toISOString() : null,
       updatedBy: row?.updatedBy ?? null,
     };
@@ -31,6 +52,11 @@ export class GuardrailAvailabilityDtoMapper {
       description: policy.description,
       directions: [...policy.directions],
       threshold: policy.threshold ? { ...policy.threshold } : null,
+      allowedActions: [...policy.allowedActions],
+      platformDefaultAction: policy.platformDefaultAction,
+      locked: policy.locked,
+      defaultEnabled: policy.defaultEnabled,
+      platformDefaultDataRegionAction: policy.platformDefaultDataRegionAction ?? null,
     }));
   }
 

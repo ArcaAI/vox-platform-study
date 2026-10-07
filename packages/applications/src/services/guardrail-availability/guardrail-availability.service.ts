@@ -8,63 +8,67 @@ import {
   TenantGuardrailPolicyRepository,
 } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { forbiddenGuardrailPolicyChanges, type GuardrailCheckDefaults } from '@arcaai/types';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import type { GuardrailAvailabilityResponse, GuardrailPolicyCatalogueEntryResponse, UpdateGuardrailAvailabilityRequest } from './dto';
 import { GuardrailAvailabilityDtoMapper } from './guardrail-availability.dto.mapper';
+import { GuardrailPolicyChangePublisher } from './guardrail-policy-change.publisher';
 import type { IGuardrailAvailabilityService } from './IGuardrailAvailabilityService';
 import {
+  GUARDRAIL_CHECK_DEFAULTS,
   GuardrailPolicySelectionError,
-  assertBothDirectionsCovered,
   assertSelectionTightensOnly,
-  normalizeSelection,
-  resolveAvailability,
   type GuardrailPolicySelectionSet,
+  type ResolvedGuardrailAvailability,
 } from './policy-catalogue';
+import {
+  GUARDRAIL_CHECK_LOCKED,
+  assertGuardrailPolicyCoversBothDirections,
+  effectiveGuardrailPolicy,
+  guardrailFlatSelection,
+  parsePlatformGuardrailPolicyWrite,
+  stampPlatformGuardrailPolicyWrite,
+  toStoredGuardrailPolicyV2,
+  type StoredGuardrailPolicyV2,
+} from './policy-v2';
+
+const DEFAULTS = GUARDRAIL_CHECK_DEFAULTS as unknown as GuardrailCheckDefaults;
 
 /**
- * Per-tenant guardrail AVAILABILITY — WHICH safety policies apply to a tenant.
+ * Per-tenant guardrail AVAILABILITY — the PLATFORM plane of `TenantGuardrailPolicy` (README §11.1).
  *
- * ─── The owner's decision (TASK-870 target model #5, decision #3) ────────────
+ * ─── What this plane may set (TASK-1050) ─────────────────────────────────────
  *
- * "Guardrail is built-in and platform-only … No tenant admin manages any
- * guardrail setting." Availability is POLICY SELECTION, never gate removal:
- * every request is still screened before send and every response after receive.
- * The three places that guarantee it:
+ * A platform admin controls the DETAIL, per tenant and on the SYSTEM row: on/off, the action a violation
+ * takes (`ignore` | `warn` | `block`), a LOCK (the tenant may then not change that check), the inbound
+ * data-region action (OD-12) and thresholds. The tenant's own on/off flags live on the same row and are
+ * written through `GuardrailTenantPolicyService` (`admin/guardrail/policy`). Rows are stored as v2 with
+ * only the fields their writer stated, so the runtime cascades FIELD by field (platform default → SYSTEM
+ * → tenant); a legacy flat row normalises on read and is rewritten as v2 on its first write.
  *
- *   1. `resolveAvailability` widens to the SYSTEM set on ABSENCE — and an empty
- *      or all-disabled selection COUNTS as absence, so "off" is not expressible;
- *   2. even an unseeded SYSTEM row resolves to the built-in
- *      `PLATFORM_DEFAULT_GUARDRAIL_POLICIES`, so a cold database still screens;
- *   3. `apps/guardrail`'s screener records a de-selected check as `skipped` on
- *      the decision rather than dropping it, and always composes a verdict.
+ * What is still never expressible: an unscreened direction. Every write keeps at least one check per
+ * direction on (OD-8; a direction OFF is monitor only), and the catalogue-locked medical check is
+ * editable by nobody (403 `GUARDRAIL_CHECK_LOCKED`).
  *
  * ─── AUTH-NOTE: SUPER_ADMIN-only, imperatively ──────────────────────────────
  *
- * Every method here calls {@link assertSuperAdmin}. The permission decorators
- * express `action + subject` and cannot express "super admins only", and a
- * tenant admin legitimately holds `manage:Tenant` for its own tenant — so the
- * controller's decorators UNDERSTATE the real gate (rule 05 §Imperative
- * Privilege Checks). This is a 403 PRIVILEGE boundary, deliberately NOT the
- * 404-over-403 cross-tenant posture: the caller is being told it may not
- * administer guardrail at all, including for its own tenant, and hiding that
- * behind a 404 would misdescribe it as "no such tenant".
- *
- * Because the gate is privilege-first, there is no tenant-ownership branch to
- * order after an existence lookup — the split-gate ordering rule (resolve
- * existence, then privilege) does not apply: no caller ever gets past
- * `assertSuperAdmin`, so no id-space oracle exists.
+ * Every method here calls {@link assertSuperAdmin}. The permission decorators express `action + subject`
+ * and cannot express "super admins only", and a tenant admin legitimately holds `manage:Tenant` for its
+ * own tenant — so the controller's decorators UNDERSTATE the real gate (rule 05 §Imperative Privilege
+ * Checks). This is a 403 PRIVILEGE boundary, deliberately NOT the 404-over-403 cross-tenant posture.
+ * The gate is row-independent, so it runs first: every non-platform-admin gets the same 403 for any id.
  *
  * ─── Tighten-only ───────────────────────────────────────────────────────────
  *
- * A tenant's set may NARROW which policies run — that is the surface's purpose,
- * and only a platform admin can do it. What may never loosen is a policy's
- * STRICTNESS: a threshold weaker than the SYSTEM row's is REFUSED with 403,
- * never silently clamped, through the settings registry's own
- * `assertTightenOnlyFloor`.
+ * A threshold weaker than the SYSTEM row's is REFUSED with 403, never silently clamped, through the
+ * settings registry's own `assertTightenOnlyFloor`.
+ *
+ * After every committed write `GuardrailPolicyChangePublisher` publishes `guardrail:config:invalidate`
+ * and schedules the governed-prompt re-screen (fail-open).
  */
 @Injectable()
 export class GuardrailAvailabilityService extends BaseService implements IGuardrailAvailabilityService {
@@ -74,6 +78,10 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
     private readonly repository: TenantGuardrailPolicyRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1050 OD-11 / TASK-1049 F2: invalidation + governed re-screen after a committed write.
+    // @Optional and trailing so every positional fixture keeps its arity; unwired, a write still
+    // converges on guardrail's TTL.
+    @Optional() @Inject(GuardrailPolicyChangePublisher) private readonly changes?: GuardrailPolicyChangePublisher,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantGuardrailPolicy);
   }
@@ -87,7 +95,7 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
     this.assertSuperAdmin('list guardrail availability');
 
     const rows = (await this.repository.findAll({ filters: { resourceStatus: ResourceStatusType.ENABLED } })) as TenantGuardrailPolicyEntity[];
-    const systemPolicies = GuardrailAvailabilityDtoMapper.asSelectionSet(rows.find((row) => row.tenantId === SYSTEM_TENANT_ID) ?? null);
+    const systemRow = rows.find((row) => row.tenantId === SYSTEM_TENANT_ID) ?? null;
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { count: rows.length } });
 
@@ -95,90 +103,99 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
       rows
         // SYSTEM first: it is the tier every other row is read against.
         .sort((a, b) => (a.tenantId === SYSTEM_TENANT_ID ? -1 : b.tenantId === SYSTEM_TENANT_ID ? 1 : a.tenantId.localeCompare(b.tenantId)))
-        .map((row) =>
-          GuardrailAvailabilityDtoMapper.toResponse(
-            row.tenantId,
-            row,
-            resolveAvailability(GuardrailAvailabilityDtoMapper.asSelectionSet(row), systemPolicies, row.tenantId),
-          ),
-        )
+        .map((row) => this.toResponse(row.tenantId, row, systemRow))
     );
   }
 
   async getForTenant(tenantId: string): Promise<GuardrailAvailabilityResponse> {
     this.assertSuperAdmin('read guardrail availability');
-    const { row, effective } = await this.load(tenantId);
+    const row = await this.repository.findByTenantId(tenantId);
+    const systemRow = tenantId === SYSTEM_TENANT_ID ? row : await this.repository.findByTenantId(SYSTEM_TENANT_ID);
+    const response = this.toResponse(tenantId, row, systemRow);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: row?.id,
-      data: { targetTenantId: tenantId, effectiveSourceTenantId: effective.sourceTenantId },
+      data: { targetTenantId: tenantId, effectiveSourceTenantId: response.effectiveSourceTenantId },
     });
 
-    return GuardrailAvailabilityDtoMapper.toResponse(tenantId, row, effective);
+    return response;
   }
 
   async putForTenant(tenantId: string, request: UpdateGuardrailAvailabilityRequest): Promise<GuardrailAvailabilityResponse> {
     this.assertSuperAdmin('change guardrail availability');
 
-    let policies: GuardrailPolicySelectionSet;
+    let requested: StoredGuardrailPolicyV2;
     try {
-      policies = normalizeSelection(request.policies);
-      assertBothDirectionsCovered(policies);
+      requested = parsePlatformGuardrailPolicyWrite(request.policies);
     } catch (error) {
       if (error instanceof GuardrailPolicySelectionError) throw new BadRequestException(error.message);
       throw error;
     }
 
-    const systemRow = tenantId === SYSTEM_TENANT_ID ? null : await this.repository.findByTenantId(SYSTEM_TENANT_ID);
-    if (systemRow) {
-      // The SYSTEM row is the floor for every OTHER tenant; it is not its own
-      // floor, so writing SYSTEM skips this entirely (a platform admin editing
-      // the platform default is the act that MOVES the floor).
-      assertSelectionTightensOnly(policies, GuardrailAvailabilityDtoMapper.asSelectionSet(systemRow) ?? {});
+    const isSystem = tenantId === SYSTEM_TENANT_ID;
+    const existing = await this.repository.findByTenantId(tenantId);
+    const systemRow = isSystem ? existing : await this.repository.findByTenantId(SYSTEM_TENANT_ID);
+
+    if (!existing && request.expectedVersion !== 0) {
+      // No row yet — a create. `If-Match: "0"` declares that intent, exactly as the platform
+      // storage-default path does.
+      throw new OptimisticConcurrencyException('TenantGuardrailPolicy', tenantId, { expectedVersion: request.expectedVersion, currentVersion: 0 });
+    }
+    // OCC precondition BEFORE the content checks: a stale client gets 412 whatever it sent (RFC 9110
+    // evaluates preconditions independently of the payload).
+    if (existing) this.assertExpectedVersion(existing, request.expectedVersion);
+
+    // AUTH-NOTE: the catalogue-locked check (medical validation, OD-9) is editable by NOBODY — this is the
+    // frozen field guard at platform-admin strength, and the only thing it can refuse here.
+    const stored = toStoredGuardrailPolicyV2(existing?.policies ?? null);
+    const lockedChanges = forbiddenGuardrailPolicyChanges('platform_admin', stored, requested, DEFAULTS);
+    if (lockedChanges.length > 0) {
+      throw new ForbiddenException({
+        message: 'Medical-domain validation is locked by the platform: always on, always block. Nobody can change it.',
+        code: GUARDRAIL_CHECK_LOCKED,
+        fields: lockedChanges,
+      });
     }
 
-    const existing =
-      tenantId === SYSTEM_TENANT_ID
-        ? (systemRow ?? (await this.repository.findByTenantId(SYSTEM_TENANT_ID)))
-        : await this.repository.findByTenantId(tenantId);
+    const next = stampPlatformGuardrailPolicyWrite(stored, requested);
+    try {
+      assertGuardrailPolicyCoversBothDirections(isSystem ? next : (systemRow?.policies ?? null), isSystem ? null : next);
+    } catch (error) {
+      if (error instanceof GuardrailPolicySelectionError) throw new BadRequestException(error.message);
+      throw error;
+    }
+    if (!isSystem) {
+      // The SYSTEM row is the floor for every OTHER tenant; it is not its own floor, so writing SYSTEM
+      // skips this (a platform admin editing the platform default is the act that MOVES the floor).
+      assertSelectionTightensOnly(statedThresholds(next), guardrailFlatSelection(effectiveGuardrailPolicy(systemRow?.policies ?? null, null)));
+    }
 
     if (!existing) {
-      if (request.expectedVersion !== 0) {
-        // No row yet — a create. `If-Match: "0"` declares that intent, exactly
-        // as the platform storage-default path does.
-        throw new OptimisticConcurrencyException('TenantGuardrailPolicy', tenantId, {
-          expectedVersion: request.expectedVersion,
-          currentVersion: 0,
-        });
-      }
       const created = await this.repository.create(
         TenantGuardrailPolicyFactory.CreateTenantGuardrailPolicy({
           tenantId,
-          policies: policies as unknown as Record<string, unknown>,
+          policies: next as unknown as Record<string, unknown>,
           reason: request.reason ?? null,
           createdBy: this.requestUserId ?? undefined,
         }),
       );
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: created.id,
-        data: { targetTenantId: tenantId, policies, reason: request.reason ?? null },
+        data: { targetTenantId: tenantId, policies: next, reason: request.reason ?? null, plane: 'platform' },
       });
-      return GuardrailAvailabilityDtoMapper.toResponse(tenantId, created, await this.effectiveFor(tenantId, created));
+      await this.changes?.policyChanged(tenantId);
+      return this.toResponse(tenantId, created, isSystem ? created : systemRow);
     }
 
-    // OCC precondition BEFORE the no-changes short-circuit: a stale client gets
-    // 412 even when the payload would change nothing (RFC 7232 evaluates
-    // preconditions independently of the payload).
-    this.assertExpectedVersion(existing, request.expectedVersion);
-
     const previousVersion = existing.version;
-    existing.policies = policies as unknown as Record<string, unknown>;
+    // A legacy row is rewritten as v2 on its first write, even when its meaning is unchanged.
+    if (JSON.stringify(existing.policies ?? {}) !== JSON.stringify(next)) existing.policies = next as unknown as Record<string, unknown>;
     if (request.reason !== undefined) existing.reason = request.reason;
 
     if (!existing.hasChanges) {
       // PUT is idempotent (RFC 9110 §9.2.2): re-sending the stored value yields
       // the same representation, with no version bump and no phantom event.
-      return GuardrailAvailabilityDtoMapper.toResponse(tenantId, existing, await this.effectiveFor(tenantId, existing));
+      return this.toResponse(tenantId, existing, isSystem ? existing : systemRow);
     }
 
     existing.updatedBy = this.requestUserId ?? undefined;
@@ -186,26 +203,33 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: existing.id,
-      data: { targetTenantId: tenantId, policies, reason: request.reason ?? existing.reason ?? null, previousVersion, newVersion: saved.version },
+      data: {
+        targetTenantId: tenantId,
+        policies: next,
+        reason: request.reason ?? existing.reason ?? null,
+        plane: 'platform',
+        previousVersion,
+        newVersion: saved.version,
+      },
     });
+    await this.changes?.policyChanged(tenantId);
 
-    return GuardrailAvailabilityDtoMapper.toResponse(tenantId, saved, await this.effectiveFor(tenantId, saved));
+    return this.toResponse(tenantId, saved, isSystem ? saved : systemRow);
   }
 
   // -- internals ------------------------------------------------------------
 
-  private async load(tenantId: string): Promise<{ row: TenantGuardrailPolicyEntity | null; effective: ReturnType<typeof resolveAvailability> }> {
-    const row = await this.repository.findByTenantId(tenantId);
-    return { row, effective: await this.effectiveFor(tenantId, row) };
-  }
-
-  private async effectiveFor(tenantId: string, row: TenantGuardrailPolicyEntity | null): Promise<ReturnType<typeof resolveAvailability>> {
-    const systemRow = tenantId === SYSTEM_TENANT_ID ? row : await this.repository.findByTenantId(SYSTEM_TENANT_ID);
-    return resolveAvailability(
-      GuardrailAvailabilityDtoMapper.asSelectionSet(row),
-      GuardrailAvailabilityDtoMapper.asSelectionSet(systemRow),
-      tenantId,
-    );
+  /**
+   * The response for one row: the raw stored blob, the v2 effective view (field by field, as guardrail
+   * resolves it) and its legacy flat projection. The tier is attributed to the tenant when its row states
+   * anything, otherwise to SYSTEM.
+   */
+  private toResponse(tenantId: string, row: TenantGuardrailPolicyEntity | null, systemRow: TenantGuardrailPolicyEntity | null): GuardrailAvailabilityResponse {
+    const isSystem = tenantId === SYSTEM_TENANT_ID;
+    const view = effectiveGuardrailPolicy(isSystem ? (row?.policies ?? null) : (systemRow?.policies ?? null), isSystem ? null : (row?.policies ?? null), 'platform_admin');
+    const ownsOpinion = !isSystem && Object.keys(toStoredGuardrailPolicyV2(row?.policies ?? null).checks).length + Object.keys(toStoredGuardrailPolicyV2(row?.policies ?? null).directions).length > 0;
+    const effective: ResolvedGuardrailAvailability = { policies: guardrailFlatSelection(view), sourceTenantId: ownsOpinion ? tenantId : SYSTEM_TENANT_ID };
+    return GuardrailAvailabilityDtoMapper.toResponse(tenantId, row, effective, view);
   }
 
   /**
@@ -219,4 +243,13 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
       );
     }
   }
+}
+
+/** The thresholds a row STATES, in the selection shape `assertSelectionTightensOnly` reads. */
+function statedThresholds(policy: StoredGuardrailPolicyV2): GuardrailPolicySelectionSet {
+  const out: Record<string, { enabled: boolean; minScore: number }> = {};
+  for (const [id, entry] of Object.entries(policy.checks)) {
+    if (typeof entry.minScore === 'number') out[id] = { enabled: entry.enabled ?? true, minScore: entry.minScore };
+  }
+  return out;
 }

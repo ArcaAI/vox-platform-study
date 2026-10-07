@@ -70,6 +70,18 @@ export interface IGovernedPromptRegistry {
    * registered under it too. (`tenantId` added additively by L3 after L5.)
    */
   registerPlatformPieces(pieces: readonly GovernedPieceInput[], tenantId?: string): Promise<void>;
+  /**
+   * TASK-1050 / TASK-1049 F2 — `tenantId`'s guardrail policy changed, so its policy version moved and
+   * every verdict under the old one is void. Re-screen that tenant's governed sources in the background
+   * (bounded concurrency > 1); SYSTEM re-screens every tenant. Coalesced and never throws.
+   * Optional so a test double of the original four methods still satisfies the contract.
+   */
+  scheduleTenantRescreen?(tenantId: string): void;
+  /**
+   * TASK-1049 F11 — screen authored text WITHOUT registering it (a source with no governed-piece row
+   * type, such as a workflow node's binding template). Fail-closed like `screenAndRegister`.
+   */
+  validateAuthoredPieces?(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult>;
 }
 
 /**

@@ -129,3 +129,56 @@ export function templateBodyPieces(content: string, promptTemplateId: string): G
     text,
   }));
 }
+
+/**
+ * TASK-1049 F11 — a DNA_ANALYSIS template's body, in the same pointer mode as any approved template
+ * body. The DNA job sends it as the SYSTEM prompt; screening it before use is what makes it authored
+ * text rather than call-time instruction.
+ */
+export function dnaAnalysisTemplatePieces(content: string, promptTemplateId: string): GovernedPieceInput[] {
+  return content.length === 0 ? [] : templateBodyPieces(content, promptTemplateId);
+}
+
+/** The minimal graph shape the authoring check reads (structurally `WorkflowGraph`). */
+export interface AuthoredWorkflowGraph {
+  readonly nodes: ReadonlyArray<{ readonly id: string; readonly type: string; readonly config?: Record<string, unknown> | null }>;
+}
+
+/**
+ * TASK-1049 F11 — the TENANT-AUTHORED text a workflow definition carries into a prompt: each
+ * `core.agent` node's `overrides.promptVariables` values, and every `{ template }` binding anywhere in a
+ * node's config. Both are authored once and rendered into every run, so they are screened at publish
+ * like any instruction. `{ from }` / `{ firstOf }` read run data, `{ value }` literals are values, and a
+ * `core.note` is never compiled — none of those is a prompt. `sourceKey` names the node and the path.
+ * There is no governed-piece row type for a workflow definition, so these are VALIDATED
+ * (`IGovernedPromptRegistry.validateAuthoredPieces`), never registered.
+ */
+export function workflowGraphPromptPieces(graph: AuthoredWorkflowGraph, workflowDefinitionId: string): GovernedPieceInput[] {
+  const pieces: GovernedPieceInput[] = [];
+  // `sourceType` is required by the piece type; there is no WORKFLOW_DEFINITION row type, and these pieces
+  // are validated only, never registered, so the nearest kind (a node runs an agent) is used.
+  const add = (sourceKey: string, text: string) => {
+    if (text.trim().length > 0) pieces.push({ kind: 'FRAGMENT', sourceType: 'AGENT', sourceId: workflowDefinitionId, sourceKey, text });
+  };
+  for (const node of graph.nodes ?? []) {
+    if (node.type === 'core.note' || !asRecord(node.config)) continue;
+    const config = node.config as Record<string, unknown>;
+    const variables = asRecord(asRecord(config.overrides)?.promptVariables);
+    for (const [name, value] of Object.entries(variables ?? {})) if (typeof value === 'string') add(`${node.id}.promptVariables.${name}`, value);
+    const walk = (value: unknown, path: string[]): void => {
+      const record = asRecord(value);
+      if (record) {
+        const keys = Object.keys(record);
+        if (keys.length === 1 && keys[0] === 'template' && typeof record.template === 'string') {
+          add(`${node.id}.${[...path, 'template'].join('.')}`, record.template);
+          return;
+        }
+        for (const [key, child] of Object.entries(record)) if (!(path.length === 0 && key === 'overrides')) walk(child, [...path, key]);
+        return;
+      }
+      if (Array.isArray(value)) value.forEach((child, index) => walk(child, [...path, String(index)]));
+    };
+    walk(config, []);
+  }
+  return pieces;
+}
