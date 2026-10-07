@@ -1,6 +1,6 @@
 import type { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
 import type { AiModelCapabilityFlags } from './capabilities';
-import type { AiModelAsrProfile, AiModelEngineServingFacts, AiModelServingProfile } from '@arcaai/types';
+import type { AiModelAsrProfile, AiModelEngineServingFacts, AiModelServingProfile, GuardrailJudgeLane, JudgeProtocol } from '@arcaai/types';
 
 /**
  * Shared enum mirrors + row shape for the AI-model seed catalog.
@@ -324,6 +324,30 @@ export type LabelTaxonomyTask = {
   labels: string[];
   multi_label?: boolean;
   cls_threshold?: number;
+  /** TASK-1049 R2 — a seq-cls task's "clean" classes (`apps/nlp` `seq_cls_guard.py` refuses a task without them). */
+  benign_labels?: string[];
+};
+
+/**
+ * TASK-1050 — the per-check borderline band `{checkId: {low, high}}` (`judgeBands`, README §3.1 / OD-42),
+ * the one object-valued guardrail policy key. `low === high` is an EMPTY band: the judge is never consulted.
+ */
+export type GuardrailJudgeBandsSeed = Record<string, { low: number; high: number }>;
+
+/** One `metaData.policy` value: criteria text, a number, a string list, or the band map. */
+export type GuardrailPolicySeedValue = string | number | readonly string[] | GuardrailJudgeBandsSeed;
+
+/**
+ * `AiModel._metadata.judge` as the seed writes it — structurally `AiModelJudgeMetadata` of
+ * `@arcaai/types` (a type alias, not that interface, so it keeps an implicit index signature and stays
+ * assignable to Prisma's `InputJsonValue`, like `AiModelCapabilityFlags`). The seed tests run
+ * `judgeMetadataProblems` over every seeded value, so the two cannot drift.
+ */
+export type AiModelJudgeSeed = {
+  protocol: JudgeProtocol;
+  lanes: GuardrailJudgeLane[];
+  categoryMap?: Record<string, { lane: GuardrailJudgeLane; category: string }>;
+  tiers?: { Safe: 'pass'; Controversial: 'pass' | 'warn' | 'block'; Unsafe: 'flag' };
 };
 
 /**
@@ -504,7 +528,21 @@ export interface AiModelSeed {
     voices?: TtsVoiceBinding[];
     azureDeployment?: string;
     ttsProvider?: string;
-    policy?: Record<string, string | number | readonly string[]>;
+    policy?: Record<string, GuardrailPolicySeedValue>;
+    /**
+     * TASK-1050 (README §11.3 C, OD-33) — the FACTORY DEFAULT of every `policy` key, seed-owned and
+     * never written by the API. `POST admin/guardrail/policy-keys/:key/reset` copies default → current.
+     * Always an equal, separate object beside `policy` on the rows the seed ships one for.
+     */
+    policyDefaults?: Record<string, GuardrailPolicySeedValue>;
+    /**
+     * TASK-1050 (README §12.2) — the judge capability declaration (`AiModelJudgeMetadata` of
+     * `@arcaai/types`, validated by `judgeMetadataProblems`): which judge protocol the row speaks,
+     * which lanes it may be selected for and, for a native guard, how its verdict maps onto ours.
+     */
+    judge?: AiModelJudgeSeed;
+    /** TASK-1050 — the factory default of `judge`, the same contract as `policyDefaults`. */
+    judgeDefaults?: AiModelJudgeSeed;
     languages?: string[];
     /**
      * Two shapes share this key, by row: the NLP verb array (`extract_entities` / `classify_text`,

@@ -64,6 +64,13 @@ describe('SYSTEM routing-election seed', () => {
     // TASK-1016 (OD-1a) — the open-taxonomy labels NLP delegates to `text` are LLM generations.
     'nlp.topic': 'TEXT_GENERATION',
     'nlp.intent': 'TEXT_GENERATION',
+    // TASK-1049 R1 — the injection classifier is a sequence classifier (Prompt Guard 2 86M).
+    'guardrail.injection': 'TEXT_CLASSIFICATION',
+    // TASK-1050 §12.2 — every judge lane's seeded default is the granite guardian.
+    'guardrail.judge.injection': ModelTaskType.GUARDRAIL,
+    'guardrail.judge.unsafe_content': ModelTaskType.GUARDRAIL,
+    'guardrail.judge.clinical_safety': ModelTaskType.GUARDRAIL,
+    'guardrail.judge.leakage': ModelTaskType.GUARDRAIL,
   };
 
   // TASK-862: the SYSTEM task defaults are seeded as ELECTED `AiRoutingPolicy`
@@ -79,10 +86,11 @@ describe('SYSTEM routing-election seed', () => {
       seedAiRoutingPolicy: (client: unknown) => Promise<{ created: number; skipped: number; unresolved: number }>;
     }>;
 
-  it('seeds exactly the eleven SYSTEM elections with deterministic ids — no text.* key (TASK-881)', async () => {
+  it('seeds exactly the sixteen SYSTEM elections with deterministic ids — no text.* key (TASK-881)', async () => {
     const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((r) => [r.taskKey, r]));
-    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(11);
+    // Eleven, plus TASK-1050's `guardrail.injection` and four `guardrail.judge.*` lanes.
+    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(16);
     expect(byKey.get('guardrail.validate')?.modelSlug).toBe('granite-guardian-4.1-8b');
     expect(byKey.get('nlp.ner')?.modelSlug).toBe('medical-ner');
     // nlp.classification is the doc-type classifier (fail-closed
@@ -110,11 +118,16 @@ describe('SYSTEM routing-election seed', () => {
     // TASK-1016 (OD-1a) — the delegated topic/intent labels run on the same platform text model.
     expect(byKey.get('nlp.topic')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(byKey.get('nlp.intent')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    // TASK-1049 R1 — `jailbreak_detection` on Prompt Guard 2 86M; TASK-1050 — every judge lane on granite.
+    expect(byKey.get('guardrail.injection')?.modelSlug).toBe('llama-prompt-guard-2-86m');
+    for (const key of ['guardrail.judge.injection', 'guardrail.judge.unsafe_content', 'guardrail.judge.clinical_safety', 'guardrail.judge.leakage']) {
+      expect(byKey.get(key)?.modelSlug, key).toBe('granite-guardian-4.1-8b');
+    }
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
-    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(11);
+    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(16);
   });
 
   it('references catalog slugs whose taskType matches the task key', async () => {
@@ -146,7 +159,7 @@ describe('SYSTEM routing-election seed', () => {
     };
     const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(0);
-    expect(result.skipped).toBe(11);
+    expect(result.skipped).toBe(16);
     expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
     expect(client.aiRoutingPolicy.update).not.toHaveBeenCalled();
     expect(client.aiModel.findFirst).not.toHaveBeenCalled();
@@ -166,7 +179,7 @@ describe('SYSTEM routing-election seed', () => {
       aiModel: { findFirst: vi.fn(async ({ where }: { where: { slug: string } }) => ({ id: `model:${where.slug}`, slug: where.slug })) },
     };
     const result = await seedAiRoutingPolicy(client as never);
-    expect(result.created).toBe(11);
+    expect(result.created).toBe(16);
     expect(result.unresolved).toBe(0);
     created.forEach(({ data }) => {
       expect(data.tenantId).toBe(SYSTEM_TENANT_ID);
@@ -187,7 +200,7 @@ describe('SYSTEM routing-election seed', () => {
     };
     const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(0);
-    expect(result.unresolved).toBe(11);
+    expect(result.unresolved).toBe(16);
     expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
   });
 });

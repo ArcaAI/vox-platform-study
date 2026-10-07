@@ -1,5 +1,71 @@
 import { SYSTEM_TENANT_ID } from '../00-constants';
-import { AiDeploymentKind, AiModelFormat, AiModelSource, AiTaskKind, ModelCategory, ModelTaskType, ModelType, type AiModelSeed } from './shared';
+import {
+  AiDeploymentKind,
+  AiModelFormat,
+  AiModelSource,
+  AiTaskKind,
+  ModelCategory,
+  ModelTaskType,
+  ModelType,
+  type AiModelJudgeSeed,
+  type AiModelSeed,
+  type GuardrailPolicySeedValue,
+} from './shared';
+
+/**
+ * The SYSTEM GLiGuard (`guardrail.safety`) row's governed policy blob (`apps/guardrail/.../core/policy.py::_SPECS`).
+ *
+ * `outboundRecordOnlyChecks` — TASK-1047 (owner approved 2026-10-06): this classifier false-flags clinical
+ * notes, so its outbound checks are RECORDED (guardrail `data_findings`), not refusing, until a
+ * better-calibrated model is approved. pii_leak, containment echo, response_refusal and any undetermined
+ * check still block.
+ *
+ * `judgeBands` — TASK-1050 (README §3.1, OD-3 (b), OD-42): the per-check borderline band over this model's
+ * score. FAIL-CLOSED with no code default, so it must be seeded. Every band is EMPTY (`low === high`): below
+ * 0.5 passes, at/above 0.5 the classifier verdict stands, and the judge is never consulted on a band —
+ * behaviour-neutral until Track S (TASK-1049 S-5) calibrates real bands. The outbound judges only run in
+ * band (OD-3 (b)), and the four judges ship OFF anyway (`18-guardrail-availability.ts`, OD-6).
+ */
+const GLIGUARD_JUDGE_BAND_CHECKS = ['prompt_safety', 'prompt_toxicity', 'jailbreak_detection', 'response_safety'] as const;
+// Built from the check list rather than written as `<check>: {…}` literals: `apps/nlp/tests/test_task1049_models.py`
+// locates GLiGuard's label taxonomy below by the first `<task>: {` in this file.
+const GLIGUARD_POLICY: Record<string, GuardrailPolicySeedValue> = {
+  outboundRecordOnlyChecks: ['jailbreak_detection', 'response_safety', 'response_toxicity'],
+  judgeBands: Object.fromEntries(GLIGUARD_JUDGE_BAND_CHECKS.map((check) => [check, { low: 0.5, high: 0.5 }])),
+};
+
+/**
+ * TASK-1050 (README §12.2, §12.2a) — Qwen3Guard-Gen-0.6B's judge declaration. The parser is code
+ * (`qwen3guard_native`, apps/nlp `POST /guard/judge`); every mapping here is configuration a platform admin
+ * edits on `/guardrails/control` (and resets to `judgeDefaults`).
+ *
+ * Mapped: `Jailbreak` → injection; the harmful-intent categories → unsafe content (`Non-violent Illegal
+ * Acts` → `criminal_planning`, OD-43). NOT mapped, deliberately (§12.2a): `PII` (clinical text is full of
+ * PII by design, so it would flag nearly every window), `Politically Sensitive Topics` and `Copyright
+ * Violation` (no lane). An unmapped native category is ignored and recorded as an info label.
+ * `Controversial` → `warn` (OD-41).
+ */
+const QWEN3GUARD_JUDGE: AiModelJudgeSeed = {
+  protocol: 'qwen3guard_native',
+  lanes: ['injection_judge', 'unsafe_content_judge'],
+  categoryMap: {
+    Jailbreak: { lane: 'injection_judge', category: 'instruction_override' },
+    Violent: { lane: 'unsafe_content_judge', category: 'violence' },
+    'Non-violent Illegal Acts': { lane: 'unsafe_content_judge', category: 'criminal_planning' },
+    'Suicide & Self-Harm': { lane: 'unsafe_content_judge', category: 'self_harm_instructions' },
+    // pending Track S confirmation
+    'Sexual Content or Sexual Acts': { lane: 'unsafe_content_judge', category: 'abuse' },
+    // pending Track S confirmation
+    'Unethical Acts': { lane: 'unsafe_content_judge', category: 'hate_harassment' },
+  },
+  tiers: { Safe: 'pass', Controversial: 'warn', Unsafe: 'flag' },
+};
+
+/** Qwen3Guard-Gen-0.6B's model-coupled judge hyperparameters (README §12.2). */
+const QWEN3GUARD_POLICY: Record<string, GuardrailPolicySeedValue> = {
+  judgeTemperature: 0,
+  judgeMaxTokens: 32,
+};
 
 /**
  * NLP task-model catalogue (TASK-860 — the owner's catalogue, exactly): the
@@ -7,7 +73,9 @@ import { AiDeploymentKind, AiModelFormat, AiModelSource, AiTaskKind, ModelCatego
  * the three GLiNER2 guardrail-plane models and the MiniCheck groundedness
  * fact-checker — all `servedBy: nlp`. The DISABLED doc-type-classifier
  * placeholder is retired (see `retired.ts`); a missing selection fails closed
- * exactly the way the DISABLED row did.
+ * exactly the way the DISABLED row did. TASK-1050 adds two more guardrail-plane
+ * rows: the Qwen3Guard-Gen-0.6B judge and the Prompt Guard 2 86M injection
+ * classifier (TASK-1049 R1).
  */
 export const NLP_AI_MODELS: AiModelSeed[] = [
   {
@@ -734,10 +802,10 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
       // "scanned, found nothing". Selecting this row for `guardrail.pii` would
       // therefore silently disable redaction. Never do it.
       capabilities: ['classify_text'],
-      // TASK-1047 (owner approved 2026-10-06): this classifier false-flags clinical notes, so its outbound checks are
-      // RECORDED (guardrail `data_findings`), not refusing, until a better-calibrated model is approved.
-      // pii_leak, containment echo, response_refusal and any undetermined check still block.
-      policy: { outboundRecordOnlyChecks: ['jailbreak_detection', 'response_safety', 'response_toxicity'] },
+      // TASK-1047 `outboundRecordOnlyChecks` + TASK-1050 `judgeBands` — see `GLIGUARD_POLICY` above.
+      policy: GLIGUARD_POLICY,
+      // TASK-1050 (README §11.3 C) — the factory defaults Reset copies back; a separate equal object.
+      policyDefaults: structuredClone(GLIGUARD_POLICY),
       labelTaxonomy: {
         threshold: 0.4,
         // Labels that mean "clean" and must never be reported as an issue. `regulated_advice` is medical advice —
@@ -811,6 +879,102 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
             cls_threshold: 0.4,
           },
           response_refusal: { labels: ['refusal', 'compliance'], multi_label: false },
+        },
+      },
+    },
+  },
+  // ── TASK-1050 / TASK-1049: two more guardrail-plane models, both RUNNING IN `apps/nlp` ──
+  //
+  // Neither is a platform-default election (`isPlatformDefaultFor` stays on GLiGuard for CONTENT_SAFETY,
+  // at most one row per task), and neither is preloaded: each serves only the routing key that names it.
+  //
+  //   - `qwen3guard-gen-0.6b` — a generative guard JUDGE (protocol `qwen3guard_native`), selectable by a
+  //     platform admin per inbound judge lane (`guardrail.judge.*`) beside granite. The seed elects granite
+  //     for every lane (behaviour-neutral); this row is the alternative.
+  //   - `llama-prompt-guard-2-86m` — the injection CLASSIFIER `guardrail.injection` elects (TASK-1049 R1):
+  //     guardrail sends `jailbreak_detection` there; prompt safety/toxicity stay on GLiGuard.
+  {
+    id: '80000000-0000-0000-0007-000000000027',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'Qwen3Guard-Gen 0.6B',
+    slug: 'qwen3guard-gen-0.6b',
+    description:
+      'Qwen/Qwen3Guard-Gen-0.6B — generative safety guard served by apps/nlp (transformers, CPU, pinned official safetensors). A platform-admin-selectable judge for the inbound injection and unsafe-content lanes, beside granite-guardian-4.1-8b.',
+    category: ModelCategory.NLP,
+    taskType: ModelTaskType.GUARDRAIL,
+    modelType: ModelType.FINETUNED_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'Qwen/Qwen3Guard-Gen-0.6B',
+    // TASK-1049 §14.2 (Track S): Apache-2.0, not gated, no remote code. Pinned — the 9 categories and the
+    // policy are embedded in this revision's chat template, so a moving `main` would move the verdict.
+    sourceRevision: 'fada3b2f655b89601929198343c94cd2f64d93cc',
+    format: AiModelFormat.SAFETENSOR,
+    libraryName: 'transformers',
+    // OD-40 → `servedBy: nlp`: there is no official GGUF (third-party only), so not LM Studio.
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    license: 'apache-2.0',
+    baseModel: 'Qwen/Qwen3-0.6B',
+    languages: ['en'],
+    provider: 'built-in',
+    architecture: 'qwen3',
+    // ~0.75B parameters loaded at float32 by `nlp.services.qwen3guard_judge` (`dtype=torch.float32`).
+    memorySizeMb: 3072,
+    computeType: 'float32',
+    tags: ['guardrail', 'safety', 'judge', 'qwen3guard'],
+    metaData: {
+      languages: ['en'],
+      judge: QWEN3GUARD_JUDGE,
+      judgeDefaults: structuredClone(QWEN3GUARD_JUDGE),
+      // Model-coupled judge hyperparameters (README §12.2): deterministic decoding, and a budget that covers
+      // the `Safety:` / `Categories:` / `Refusal:` answer. `judgeMinConfidence` does not apply to a
+      // tier-only model, so it is not seeded.
+      policy: QWEN3GUARD_POLICY,
+      policyDefaults: structuredClone(QWEN3GUARD_POLICY),
+    },
+  },
+  {
+    id: '80000000-0000-0000-0007-000000000028',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'Llama Prompt Guard 2 86M',
+    slug: 'llama-prompt-guard-2-86m',
+    description:
+      'meta-llama/Llama-Prompt-Guard-2-86M — prompt-injection / jailbreak sequence classifier served by apps/nlp (transformers seq-cls, CPU). Platform default for guardrail.injection (jailbreak_detection, record-only on data regions). Built with Llama.',
+    category: ModelCategory.NLP,
+    taskType: ModelTaskType.TEXT_CLASSIFICATION,
+    modelType: ModelType.FINETUNED_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'meta-llama/Llama-Prompt-Guard-2-86M',
+    sourceRevision: 'a8ded8e697ce7c355e395a0df51f94adb4a2fd27',
+    format: AiModelFormat.SAFETENSOR,
+    // TASK-1049 R2: the seq-cls runtime behind `/guard/classify`, tokenizer from the repo's own
+    // `tokenizer.json` (transformers' AutoTokenizer drops PG2's anti-obfuscation normaliser).
+    libraryName: 'transformers',
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    // Llama 4 Community Licence (Hub `llama4`). Its attribution duty ("Built with Llama") is carried in the
+    // description above. OWNER / LEGAL CONFIRMATION PENDING before production (TASK-1049 OD-7, R2).
+    license: 'llama4',
+    // meta-llama repos are click-through: the publisher needs the SYSTEM Hub token.
+    gated: true,
+    baseModel: 'microsoft/mdeberta-v3-base',
+    languages: ['en'],
+    provider: 'built-in',
+    architecture: 'deberta-v2',
+    // ~279M parameters (mDeBERTa-v3-base backbone + embeddings) at float32 (`seq_cls_guard.py`).
+    memorySizeMb: 1200,
+    computeType: 'float32',
+    tags: ['guardrail', 'injection', 'jailbreak', 'prompt-guard'],
+    metaData: {
+      languages: ['en'],
+      // TASK-1049 R1, verbatim (Track R): one task, two classes, BENIGN is clean. `cls_threshold` and
+      // `benign_labels` are what the seq-cls runtime reads per task; `threshold` / `benignLabels` are what
+      // guardrail reads for the row.
+      labelTaxonomy: {
+        threshold: 0.5,
+        benignLabels: ['BENIGN'],
+        tasks: {
+          jailbreak_detection: { labels: ['BENIGN', 'MALICIOUS'], multi_label: false, cls_threshold: 0.5, benign_labels: ['BENIGN'] },
         },
       },
     },

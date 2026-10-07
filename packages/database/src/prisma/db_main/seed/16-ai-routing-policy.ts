@@ -52,6 +52,12 @@ const AI_TASK_KIND_BY_SEEDED_TASK_KEY: Record<string, AiTaskKind> = {
   'guardrail.groundedness': 'GROUNDEDNESS',
   'guardrail.pii': 'PII_DETECTION',
   'guardrail.pii.spans': 'PII_DETECTION',
+  // TASK-1049 R1 / TASK-1050 — the injection classifier and the four safety-judge lanes.
+  'guardrail.injection': 'CONTENT_SAFETY',
+  'guardrail.judge.injection': 'CONTENT_SAFETY',
+  'guardrail.judge.unsafe_content': 'CONTENT_SAFETY',
+  'guardrail.judge.clinical_safety': 'CONTENT_SAFETY',
+  'guardrail.judge.leakage': 'CONTENT_SAFETY',
 };
 
 export interface TaskDefaultRoutingSeed {
@@ -75,8 +81,9 @@ export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
 };
 
 /**
- * The eleven SYSTEM elected defaults — the retired seed's twelve minus the three `text.*`
- * elections (TASK-881), plus `nlp.topic` / `nlp.intent` (TASK-1016, owner decision OD-1a).
+ * The sixteen SYSTEM elected defaults — the retired seed's twelve minus the three `text.*`
+ * elections (TASK-881), plus `nlp.topic` / `nlp.intent` (TASK-1016, owner decision OD-1a), plus
+ * `guardrail.injection` and the four `guardrail.judge.*` lanes (TASK-1049 R1 / TASK-1050 §12.2).
  */
 export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   { id: '89000000-0000-0000-0000-000000000001', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' },
@@ -100,6 +107,18 @@ export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   // directive 2026-09-03: every text-generation task on LM Studio `gemma-4-e2b-it-qat`).
   { id: '89000000-0000-0000-0000-000000000013', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.topic', modelSlug: 'lms-gemma-4-e2b-it-qat' },
   { id: '89000000-0000-0000-0000-000000000014', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.intent', modelSlug: 'lms-gemma-4-e2b-it-qat' },
+  // TASK-1049 R1 (owner-approved via TASK-1050 OD-32) — guardrail sends `jailbreak_detection` to Prompt Guard
+  // 2 86M instead of GLiGuard; prompt safety/toxicity stay on `guardrail.safety`. Record-only on data
+  // regions (FC-5b) is unchanged.
+  { id: '89000000-0000-0000-0000-000000000015', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.injection', modelSlug: 'llama-prompt-guard-2-86m' },
+  // TASK-1050 README §12.2 — the model per safety-judge lane. Every lane → granite, so the seeded default is
+  // behaviour-neutral (and the four judges ship OFF, `18-guardrail-availability.ts`). A platform admin
+  // switches a lane (e.g. to `qwen3guard-gen-0.6b`) on `/guardrails/control`; a model that does not declare
+  // the lane in `_metadata.judge` is refused 400 JUDGE_LANE_UNSUPPORTED.
+  { id: '89000000-0000-0000-0000-000000000016', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.injection', modelSlug: 'granite-guardian-4.1-8b' },
+  { id: '89000000-0000-0000-0000-000000000017', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.unsafe_content', modelSlug: 'granite-guardian-4.1-8b' },
+  { id: '89000000-0000-0000-0000-000000000018', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.clinical_safety', modelSlug: 'granite-guardian-4.1-8b' },
+  { id: '89000000-0000-0000-0000-000000000019', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.leakage', modelSlug: 'granite-guardian-4.1-8b' },
 ];
 
 export const seedAiRoutingPolicy = async (

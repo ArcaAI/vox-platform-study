@@ -22,6 +22,8 @@ import { AiTaskKind, ModelTaskType } from '@arcaai/domains';
  * Per key:
  *   - `guardrail.validate` — the guardian LLM (medical validation screen).
  *   - `guardrail.safety` — the GLiGuard content-safety detector.
+ *   - `guardrail.injection` — the prompt-injection classifier guardrail sends
+ *     `jailbreak_detection` to (TASK-1049 R1: Prompt Guard 2 86M).
  *   - `guardrail.groundedness` — the MiniCheck NLI fact-checker.
  *   - `guardrail.pii` / `guardrail.pii.spans` — the PII redaction selections
  *     guardrail's own SQL resolves (`core/tenant_config.py`).
@@ -44,6 +46,8 @@ export const AI_TASK_KEYS = [
   'guardrail.groundedness',
   'guardrail.pii',
   'guardrail.pii.spans',
+  // TASK-1049 R1 / TASK-1050 §10.3 — the injection classifier (`jailbreak_detection`).
+  'guardrail.injection',
   // TASK-1050 (README §12.2) — the model per safety-judge lane, mirroring `GUARDRAIL_JUDGE_TASK_KEYS`
   // (`@arcaai/types`). A binding is valid only for a model whose `_metadata.judge` declares the lane.
   'guardrail.judge.injection',
@@ -81,6 +85,8 @@ export const AI_TASK_KIND_BY_TASK_KEY: Record<AiTaskKey, AiTaskKind> = {
   // `guardrail.safety` the GLiGuard moderation head. Same task, two models.
   'guardrail.validate': AiTaskKind.CONTENT_SAFETY,
   'guardrail.safety': AiTaskKind.CONTENT_SAFETY,
+  // TASK-1049 R1 — prompt-injection detection is content-safety moderation too, on its own model.
+  'guardrail.injection': AiTaskKind.CONTENT_SAFETY,
   // NLI/entailment fact-checking is its own task, not a generic classification:
   // it scores a claim AGAINST a source, and no other key does that.
   'guardrail.groundedness': AiTaskKind.GROUNDEDNESS,
@@ -145,6 +151,9 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, readonly ModelTaskType[
   'guardrail.validate': [ModelTaskType.GUARDRAIL],
   // Content-safety moderation, served by either head shape (see above).
   'guardrail.safety': [ModelTaskType.TEXT_CLASSIFICATION, ModelTaskType.TOKEN_CLASSIFICATION],
+  // TASK-1049 R1 — a SEQUENCE classifier scoring `jailbreak_detection` (`llama-prompt-guard-2-86m`, seq-cls
+  // on `apps/nlp`'s transformers runtime). A span extractor or a generation model cannot answer it.
+  'guardrail.injection': [ModelTaskType.TEXT_CLASSIFICATION],
   // NLI entailment: scores a claim against a source. `minicheck-flan-t5-large`.
   'guardrail.groundedness': [ModelTaskType.TEXT_CLASSIFICATION],
   // PII SPAN extraction — a span offset is a token-level output.

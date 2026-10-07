@@ -42,9 +42,10 @@ const RECLASSIFIED_SINCE_SQL: Record<string, string> = {
 
 /**
  * Keys registered AFTER the task_843 backfill. No row could carry them when it ran, so the SQL has no arm
- * for them and no data migration follows. TASK-1050 (README §12.2): the four safety-judge lanes.
+ * for them and no data migration follows. TASK-1050 (README §12.2): the four safety-judge lanes, and
+ * `guardrail.injection` (TASK-1049 R1, §10.3).
  */
-const ADDED_SINCE_SQL = ['guardrail.judge.injection', 'guardrail.judge.unsafe_content', 'guardrail.judge.clinical_safety', 'guardrail.judge.leakage'] as const;
+const ADDED_SINCE_SQL = ['guardrail.injection', 'guardrail.judge.injection', 'guardrail.judge.unsafe_content', 'guardrail.judge.clinical_safety', 'guardrail.judge.leakage'] as const;
 
 /**
  * Reads the `CASE` arms of the migration's first backfill UPDATE back into a
