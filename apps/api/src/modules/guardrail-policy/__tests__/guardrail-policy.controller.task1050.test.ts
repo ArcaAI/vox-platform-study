@@ -107,11 +107,33 @@ describe('GuardrailPolicyController — the declarative layer', () => {
     }
   });
 
+  it('threads ?taskKey= (the row of a label threshold) to every single-key operation', async () => {
+    const service = {
+      getPolicyKey: vi.fn().mockResolvedValue({}),
+      updatePolicyKey: vi.fn().mockResolvedValue({}),
+      resetPolicyKey: vi.fn().mockResolvedValue({}),
+      listRevisions: vi.fn().mockResolvedValue({}),
+      restoreRevision: vi.fn().mockResolvedValue({}),
+    };
+    const controller = new GuardrailPolicyController(service as never);
+    const key = 'labelTaxonomy.threshold';
+    await controller.get(key, 'guardrail.safety');
+    await controller.update(key, { value: 0.6 }, 5, 'guardrail.safety');
+    await controller.reset(key, 'guardrail.safety');
+    await controller.revisions(key, 10, 'guardrail.safety');
+    await controller.restore(key, 'rev-1', 'guardrail.safety');
+    expect(service.getPolicyKey).toHaveBeenCalledWith(key, 'guardrail.safety');
+    expect(service.updatePolicyKey).toHaveBeenCalledWith(key, { value: 0.6, expectedVersion: 5 }, 'guardrail.safety');
+    expect(service.resetPolicyKey).toHaveBeenCalledWith(key, 'guardrail.safety');
+    expect(service.listRevisions).toHaveBeenCalledWith(key, 10, 'guardrail.safety');
+    expect(service.restoreRevision).toHaveBeenCalledWith(key, 'rev-1', 'guardrail.safety');
+  });
+
   it('If-Match wins over a body version', async () => {
     const service = { updatePolicyKey: vi.fn().mockResolvedValue({}), updateJudgeMeta: vi.fn().mockResolvedValue({}) };
     const controller = new GuardrailPolicyController(service as never);
     await controller.update('judgeTemperature', { value: 0.1, expectedVersion: 3 }, 7);
-    expect(service.updatePolicyKey).toHaveBeenCalledWith('judgeTemperature', { value: 0.1, expectedVersion: 7 });
+    expect(service.updatePolicyKey).toHaveBeenCalledWith('judgeTemperature', { value: 0.1, expectedVersion: 7 }, undefined);
     await controller.updateJudgeMeta('m', { tiers: {}, expectedVersion: 1 }, 2);
     expect(service.updateJudgeMeta).toHaveBeenCalledWith('m', { tiers: {}, expectedVersion: 2 });
   });

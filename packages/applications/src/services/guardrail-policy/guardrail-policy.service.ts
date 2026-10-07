@@ -17,6 +17,7 @@ import {
   CoreUnitOfWorkService,
   GuardrailPolicyRevisionFactory,
   GuardrailPolicyRevisionRepository,
+  ModelTaskType,
   ResourceStatusType,
   ResourceType,
   SYSTEM_TENANT_ID,
@@ -24,12 +25,8 @@ import {
 } from '@arcaai/domains';
 import type { AiModelEntity, GuardrailPolicyRevisionEntity } from '@arcaai/domains';
 import {
-  GUARDRAIL_JUDGE_CHECK_IDS,
   GUARDRAIL_JUDGE_LANES,
   GUARDRAIL_JUDGE_TASK_KEYS,
-  JUDGE_LANE_UNSUPPORTED,
-  JudgeLaneUnsupportedError,
-  assertModelSupportsLane,
   guardrailJudgeLaneTaskKey,
   isAiModelJudgeMetadata,
   judgeMetadataProblems,
@@ -41,6 +38,7 @@ import { BaseService } from '../../common/base.service';
 import type { IActiveUserContext } from '../../interfaces';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
 import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
+import { assertRoutingModelServesJudgeLane } from '../ai-routing-policy/judge-lane-capability';
 import { IModelResidencyService } from '../model-residency/IModelResidencyService';
 import type { ModelResidencyStateSnapshot } from '../model-residency/model-residency.service';
 import {
@@ -104,18 +102,95 @@ const JUDGE_LANE_BY_TASK_KEY: Readonly<Record<string, GuardrailJudgeCheckId>> = 
   Object.fromEntries(Object.entries(GUARDRAIL_JUDGE_TASK_KEYS).map(([lane, taskKey]) => [taskKey, lane as GuardrailJudgeCheckId])),
 );
 
-/** Which `_metadata` blob a write targets. */
-interface MetaSlot {
-  readonly current: 'policy' | 'judge';
-  readonly defaults: 'policyDefaults' | 'judgeDefaults';
+/** The `_metadata` blobs of the catalogue keys. */
+const POLICY_SLOT = { current: 'policy', defaults: 'policyDefaults' } as const;
+
+/**
+ * TASK-1050 (round 2) — the rows whose classifier thresholds inside `_metadata.labelTaxonomy` are editable here:
+ * the top-level `threshold` and each task's `cls_threshold`. Labels, the task set, `benignLabels` / `benign_labels`
+ * and `multi_label` are NOT: a label-set change is a model-version change, made through the registry (§11.3 D).
+ */
+export const GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS = ['guardrail.safety', 'guardrail.injection', 'guardrail.pii', 'guardrail.pii.spans'] as const;
+export const GUARDRAIL_LABEL_TAXONOMY_KEY_PREFIX = 'labelTaxonomy.';
+/** A classifier threshold is a probability. */
+const LABEL_THRESHOLD_MIN = 0;
+const LABEL_THRESHOLD_MAX = 1;
+const CLS_THRESHOLD_KEY = /^tasks\.([^.]+)\.cls_threshold$/;
+
+/** `labelTaxonomy.threshold` → `['threshold']`; `labelTaxonomy.tasks.<t>.cls_threshold` → its path; another `labelTaxonomy.*` → `'not-editable'`; else `null`. */
+export function guardrailLabelThresholdPath(key: string): string[] | 'not-editable' | null {
+  if (!key.startsWith(GUARDRAIL_LABEL_TAXONOMY_KEY_PREFIX)) return null;
+  const rest = key.slice(GUARDRAIL_LABEL_TAXONOMY_KEY_PREFIX.length);
+  if (rest === 'threshold') return ['threshold'];
+  const match = CLS_THRESHOLD_KEY.exec(rest);
+  return match ? ['tasks', match[1] as string, 'cls_threshold'] : 'not-editable';
 }
 
-const POLICY_SLOT: MetaSlot = { current: 'policy', defaults: 'policyDefaults' };
+function getPath(root: unknown, path: readonly string[]): unknown {
+  let node: unknown = root;
+  for (const segment of path) {
+    if (!isRec(node) || !Object.prototype.hasOwnProperty.call(node, segment)) return undefined;
+    node = node[segment];
+  }
+  return node;
+}
+
+/** Copy-on-write set; every ancestor on `path` must already be an object (a threshold is only edited where it exists). */
+function setPath(root: Rec, path: readonly string[], value: unknown): Rec {
+  const [head, ...rest] = path as [string, ...string[]];
+  return { ...root, [head]: rest.length === 0 ? value : setPath(isRec(root[head]) ? (root[head] as Rec) : {}, rest, value) };
+}
+
+function labelThresholdKeysOf(model: AiModelEntity): string[] {
+  const taxonomy = (model.metaData as Rec | undefined)?.labelTaxonomy;
+  if (!isRec(taxonomy)) return [];
+  const keys = typeof taxonomy.threshold === 'number' ? [`${GUARDRAIL_LABEL_TAXONOMY_KEY_PREFIX}threshold`] : [];
+  if (isRec(taxonomy.tasks)) {
+    for (const [task, entry] of Object.entries(taxonomy.tasks)) {
+      if (isRec(entry) && typeof entry.cls_threshold === 'number') keys.push(`${GUARDRAIL_LABEL_TAXONOMY_KEY_PREFIX}tasks.${task}.cls_threshold`);
+    }
+  }
+  return keys;
+}
+
+/** The entry spec of a label threshold. Not in `policy-keys.json` (that is `_metadata.policy` only); bounds are a probability's. */
+function labelThresholdSpec(key: string, taskKey: string): GuardrailPolicyKeySpec {
+  return {
+    key,
+    kind: 'threshold',
+    type: 'number',
+    min: LABEL_THRESHOLD_MIN,
+    max: LABEL_THRESHOLD_MAX,
+    failMode: 'open-to-default',
+    taskKey,
+    // `labelTaxonomy` is hashed into guardrail's policy version (`core/policy_version.py`): a change re-screens.
+    inPolicyVersion: true,
+    editable: true,
+  };
+}
+
+/** A resolved key: a catalogue key (`path` null → `_metadata.policy[key]`) or a label threshold (`path` inside `labelTaxonomy`). */
+interface KeyRef {
+  readonly spec: GuardrailPolicyKeySpec;
+  readonly path: readonly string[] | null;
+}
 
 /** One key change inside a single model-row write. */
 interface KeyChange {
   readonly key: string;
   readonly value: unknown;
+  /** Label-threshold path inside `labelTaxonomy`; absent for a catalogue key. */
+  readonly path?: readonly string[] | null;
+}
+
+/** Apply key changes to a `_metadata` copy. */
+function applyChanges(meta: Rec, changes: readonly KeyChange[]): Rec {
+  let next = { ...meta };
+  for (const change of changes) {
+    if (change.path) next = { ...next, labelTaxonomy: setPath(isRec(next.labelTaxonomy) ? next.labelTaxonomy : {}, change.path, change.value) };
+    else next = { ...next, policy: { ...(isRec(next.policy) ? next.policy : {}), [change.key]: change.value } };
+  }
+  return next;
 }
 
 /**
@@ -151,15 +226,19 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
 
   async listPolicyKeys(): Promise<GuardrailPolicyKeysResponse> {
     this.assertPlatformAdmin('read the guardrail policy keys');
-    if (!this.catalogue.available) return { catalogueAvailable: false, groups: [] };
-
     const byTask = new Map<string, GuardrailPolicyKeySpec[]>();
-    for (const spec of this.catalogue.specs) byTask.set(spec.taskKey, [...(byTask.get(spec.taskKey) ?? []), spec]);
+    if (this.catalogue.available) for (const spec of this.catalogue.specs) byTask.set(spec.taskKey, [...(byTask.get(spec.taskKey) ?? []), spec]);
+    for (const taskKey of GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS) if (!byTask.has(taskKey)) byTask.set(taskKey, []);
 
     const groups: GuardrailPolicyKeyGroupResponse[] = [];
     for (const [taskKey, specs] of byTask) {
       const model = await this.resolveModel(taskKey);
-      const keys = await Promise.all(specs.map(async (spec) => this.toEntry(spec, model, model ? await this.revisions.findLatestByKey(model.id, spec.key) : null)));
+      const refs: KeyRef[] = specs.map((spec) => ({ spec, path: null }));
+      if (model && (GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS as readonly string[]).includes(taskKey)) {
+        for (const key of labelThresholdKeysOf(model)) refs.push({ spec: labelThresholdSpec(key, taskKey), path: guardrailLabelThresholdPath(key) as string[] });
+      }
+      if (refs.length === 0) continue;
+      const keys = await Promise.all(refs.map(async (ref) => this.toEntry(ref, model, model ? await this.revisions.findLatestByKey(model.id, ref.spec.key) : null)));
       groups.push({
         taskKey,
         lane: JUDGE_LANE_BY_TASK_KEY[taskKey] ?? (taskKey === guardrailJudgeLaneTaskKey('medical_validation') ? 'medical_validation' : null),
@@ -170,27 +249,25 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
         keys,
       });
     }
-    return { catalogueAvailable: true, groups };
+    return { catalogueAvailable: this.catalogue.available, groups };
   }
 
-  async getPolicyKey(key: string): Promise<GuardrailPolicyKeyResponse> {
+  async getPolicyKey(key: string, taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
     this.assertPlatformAdmin('read a guardrail policy key');
-    const spec = this.requireSpec(key);
-    const model = await this.resolveModel(spec.taskKey);
-    if (!model) throw this.modelUnresolved(spec);
-    const latest = await this.revisions.findLatestByKey(model.id, spec.key);
-    return { ...this.toEntry(spec, model, latest), version: model.version };
+    const { ref, model } = await this.resolveRef(key, taskKey, 'read');
+    if (!model) throw this.modelUnresolved(ref.spec);
+    const latest = await this.revisions.findLatestByKey(model.id, ref.spec.key);
+    return { ...this.toEntry(ref, model, latest), version: model.version };
   }
 
-  async listRevisions(key: string, limit?: number): Promise<GuardrailPolicyRevisionsResponse> {
+  async listRevisions(key: string, limit?: number, taskKey?: string): Promise<GuardrailPolicyRevisionsResponse> {
     this.assertPlatformAdmin('read guardrail policy history');
-    const spec = this.requireSpec(key);
-    const model = await this.resolveModel(spec.taskKey);
-    if (!model) return { key: spec.key, modelId: null, revisions: [] };
+    const { ref, model } = await this.resolveRef(key, taskKey, 'read');
+    if (!model) return { key: ref.spec.key, modelId: null, revisions: [] };
     const take = Math.min(Math.max(1, Math.trunc(limit ?? REVISIONS_DEFAULT_LIMIT)), REVISIONS_MAX_LIMIT);
-    const rows = await this.revisions.listByKey(model.id, spec.key, take);
+    const rows = await this.revisions.listByKey(model.id, ref.spec.key, take);
     return {
-      key: spec.key,
+      key: ref.spec.key,
       modelId: model.id,
       revisions: rows.map((row) => ({
         ...toRevisionSummary(row),
@@ -204,74 +281,74 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
 
   // ── policy-key writes ────────────────────────────────────────────────────
 
-  async updatePolicyKey(key: string, request: UpdateGuardrailPolicyKeyRequest): Promise<GuardrailPolicyKeyResponse> {
+  async updatePolicyKey(key: string, request: UpdateGuardrailPolicyKeyRequest, taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
     this.assertPlatformAdmin('change a guardrail policy key');
-    const spec = this.requireEditableSpec(key);
-    this.assertValidValue(spec, request.value);
-    const model = await this.requireWritableModel(spec);
+    const { ref, model } = await this.resolveRef(key, taskKey, 'write', { value: request.value });
     if (request.expectedVersion === undefined || request.expectedVersion !== model.version) {
       // RFC 7232: the precondition is evaluated before the payload. `@RequiresIfMatch()` 428s an absent header
       // at the HTTP layer, so `undefined` here is a non-HTTP caller skipping the precondition.
       throw new OptimisticConcurrencyException(String(ResourceType.AiModel), model.id, { expectedVersion: request.expectedVersion, currentVersion: model.version });
     }
-    return this.writeKey(spec, model, request.value, 'edit');
+    return this.writeKey(ref, model, request.value, 'edit');
   }
 
-  async resetPolicyKey(key: string): Promise<GuardrailPolicyKeyResponse> {
+  async resetPolicyKey(key: string, taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
     this.assertPlatformAdmin('reset a guardrail policy key');
-    const spec = this.requireEditableSpec(key);
-    const model = await this.requireWritableModel(spec);
-    const defaults = slotOf(model, POLICY_SLOT.defaults);
-    if (!Object.prototype.hasOwnProperty.call(defaults, spec.key)) {
+    const { ref, model } = await this.resolveRef(key, taskKey, 'write');
+    const fallback = this.defaultOf(ref, model);
+    if (!fallback.has) {
       throw new ConflictException({
         code: 'GUARDRAIL_POLICY_DEFAULT_MISSING',
-        message: `The seed ships no default for '${spec.key}' on model '${model.slug}', so there is nothing to reset to.`,
+        message: `The seed ships no default for '${ref.spec.key}' on model '${model.slug}', so there is nothing to reset to.`,
       });
     }
-    return this.writeKey(spec, model, defaults[spec.key], 'reset');
+    return this.writeKey(ref, model, fallback.value, 'reset');
   }
 
   async resetLane(lane: string): Promise<GuardrailPolicyLaneResetResponse> {
     this.assertPlatformAdmin('reset a guardrail lane');
-    this.requireCatalogue();
     const taskKey = (GUARDRAIL_JUDGE_LANES as readonly string[]).includes(lane) ? guardrailJudgeLaneTaskKey(lane as GuardrailJudgeLane) : lane;
-    const specs = this.catalogue.specs.filter((spec) => spec.taskKey === taskKey);
-    if (specs.length === 0) throw new NotFoundException(`No guardrail policy keys live on '${lane}'.`);
+    const hasLabelThresholds = (GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS as readonly string[]).includes(taskKey);
+    if (!hasLabelThresholds) this.requireCatalogue();
+    const specs = this.catalogue.available ? this.catalogue.specs.filter((spec) => spec.taskKey === taskKey) : [];
+    if (specs.length === 0 && !hasLabelThresholds) throw new NotFoundException(`No guardrail policy keys live on '${lane}'.`);
 
     const model = await this.resolveModel(taskKey);
-    if (!model) throw this.modelUnresolved(specs[0] as GuardrailPolicyKeySpec);
-    const current = slotOf(model, POLICY_SLOT.current);
-    const defaults = slotOf(model, POLICY_SLOT.defaults);
+    if (!model) throw this.modelUnresolved(specs[0] ?? labelThresholdSpec(`${GUARDRAIL_LABEL_TAXONOMY_KEY_PREFIX}threshold`, taskKey));
+    const refs: KeyRef[] = specs.map((spec) => ({ spec, path: null }));
+    if (hasLabelThresholds) for (const key of labelThresholdKeysOf(model)) refs.push({ spec: labelThresholdSpec(key, taskKey), path: guardrailLabelThresholdPath(key) as string[] });
+    if (refs.length === 0) throw new NotFoundException(`No guardrail policy keys live on '${lane}'.`);
+
     const changes: KeyChange[] = [];
     const skippedKeys: string[] = [];
-    for (const spec of specs) {
-      const hasDefault = Object.prototype.hasOwnProperty.call(defaults, spec.key);
-      if (!spec.editable || !hasDefault || sameValue(current[spec.key], defaults[spec.key]) || this.criteriaNotApplicable(spec, model)) {
-        skippedKeys.push(spec.key);
+    for (const ref of refs) {
+      const fallback = this.defaultOf(ref, model);
+      if (!ref.spec.editable || !fallback.has || sameValue(this.currentOf(ref, model).value, fallback.value) || this.criteriaNotApplicable(ref.spec, model)) {
+        skippedKeys.push(ref.spec.key);
         continue;
       }
-      changes.push({ key: spec.key, value: defaults[spec.key] });
+      changes.push({ key: ref.spec.key, value: fallback.value, path: ref.path });
     }
     if (changes.length === 0) return { taskKey, version: model.version, resetKeys: [], skippedKeys };
 
-    const { saved } = await this.commit(model, POLICY_SLOT, changes, 'reset', null, taskKey);
+    const { saved } = await this.commit(model, (meta) => applyChanges(meta, changes), changes, 'reset', null, taskKey);
     return { taskKey, version: saved.version, resetKeys: changes.map((change) => change.key), skippedKeys };
   }
 
-  async restoreRevision(key: string, revisionId: string): Promise<GuardrailPolicyKeyResponse> {
+  async restoreRevision(key: string, revisionId: string, taskKey?: string): Promise<GuardrailPolicyKeyResponse> {
     this.assertPlatformAdmin('restore a guardrail policy revision');
-    const spec = this.requireEditableSpec(key);
+    if (guardrailLabelThresholdPath(key) === null) this.requireEditableSpec(key);
     const revision = await this.revisions.findById(revisionId).catch(() => null);
-    if (!revision || revision.policyKey !== spec.key) throw new NotFoundException(`Revision '${revisionId}' of '${spec.key}' not found.`);
-    const model = await this.requireWritableModel(spec);
+    if (!revision || revision.policyKey !== key) throw new NotFoundException(`Revision '${revisionId}' of '${key}' not found.`);
+    const { ref, model } = await this.resolveRef(key, taskKey, 'write');
     if (revision.aiModelId !== model.id) {
       throw new ConflictException({
         code: 'GUARDRAIL_POLICY_REVISION_MODEL_MISMATCH',
-        message: `Revision '${revisionId}' was written on another model row; '${spec.taskKey}' now elects '${model.slug}'. A value is model-coupled and is not carried across a model switch.`,
+        message: `Revision '${revisionId}' was written on another model row; '${ref.spec.taskKey}' now elects '${model.slug}'. A value is model-coupled and is not carried across a model switch.`,
       });
     }
-    this.assertValidValue(spec, revision.value);
-    return this.writeKey(spec, model, revision.value, 'restore', revision.id);
+    this.assertValidValue(ref.spec, revision.value);
+    return this.writeKey(ref, model, revision.value, 'restore', revision.id);
   }
 
   // ── _metadata.judge ──────────────────────────────────────────────────────
@@ -312,23 +389,19 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
   async updateJudgeLanes(request: UpdateGuardrailJudgeLanesRequest): Promise<GuardrailJudgeLanesResponse> {
     this.assertPlatformAdmin('select a judge model per lane');
     // Validate EVERY selection before writing any, so one bad lane does not leave a half-applied change.
-    const plan: Array<{ lane: GuardrailJudgeCheckId; taskKey: string; model: AiModelEntity }> = [];
+    const plan: Array<{ lane: GuardrailJudgeLane; taskKey: string; model: AiModelEntity }> = [];
     for (const selection of request.selections) {
-      const lane = selection.lane as GuardrailJudgeCheckId;
-      if (!(GUARDRAIL_JUDGE_CHECK_IDS as readonly string[]).includes(lane)) throw new BadRequestException(`Unknown judge lane '${selection.lane}'.`);
+      const lane = selection.lane as GuardrailJudgeLane;
+      if (!(GUARDRAIL_JUDGE_LANES as readonly string[]).includes(lane)) throw new BadRequestException(`Unknown judge lane '${selection.lane}'.`);
       const model = await this.aiModels.findByIdOrNull(selection.modelId);
       if (!model || model.tenantId !== SYSTEM_TENANT_ID || model.resourceStatus === ResourceStatusType.DELETED) {
         throw new NotFoundException(`AiModel '${selection.modelId}' was not found in the platform catalogue.`);
       }
-      try {
-        assertModelSupportsLane((model.metaData as Rec | undefined)?.judge, lane);
-      } catch (error) {
-        if (error instanceof JudgeLaneUnsupportedError) {
-          throw new BadRequestException({ code: JUDGE_LANE_UNSUPPORTED, message: error.message, lane, modelId: model.id, problems: error.problems });
-        }
-        throw error;
-      }
-      plan.push({ lane, taskKey: GUARDRAIL_JUDGE_TASK_KEYS[lane], model });
+      const taskKey = guardrailJudgeLaneTaskKey(lane);
+      // The same rule the routing write path applies (`guardrail.validate`: a declared judge must name
+      // `medical_validation`; an undeclared legacy guardian row is allowed).
+      assertRoutingModelServesJudgeLane(taskKey, model);
+      plan.push({ lane, taskKey, model });
     }
 
     const changed: string[] = [];
@@ -525,19 +598,20 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
   }
 
   private async writeKey(
-    spec: GuardrailPolicyKeySpec,
+    ref: KeyRef,
     model: AiModelEntity,
     value: unknown,
     reason: 'edit' | 'reset' | 'restore',
     restoredFromRevisionId: string | null = null,
   ): Promise<GuardrailPolicyKeyResponse> {
-    if (sameValue(slotOf(model, POLICY_SLOT.current)[spec.key], value)) {
-      const latest = await this.revisions.findLatestByKey(model.id, spec.key);
-      return { ...this.toEntry(spec, model, latest), version: model.version, changed: false, revisionId: null };
+    if (sameValue(this.currentOf(ref, model).value, value)) {
+      const latest = await this.revisions.findLatestByKey(model.id, ref.spec.key);
+      return { ...this.toEntry(ref, model, latest), version: model.version, changed: false, revisionId: null };
     }
-    const { saved, revisions } = await this.commit(model, POLICY_SLOT, [{ key: spec.key, value }], reason, restoredFromRevisionId, spec.taskKey);
+    const changes: KeyChange[] = [{ key: ref.spec.key, value, path: ref.path }];
+    const { saved, revisions } = await this.commit(model, (meta) => applyChanges(meta, changes), changes, reason, restoredFromRevisionId, ref.spec.taskKey);
     const revision = revisions[0] ?? null;
-    return { ...this.toEntry(spec, saved, revision), version: saved.version, changed: true, revisionId: revision?.id ?? null };
+    return { ...this.toEntry(ref, saved, revision), version: saved.version, changed: true, revisionId: revision?.id ?? null };
   }
 
   private async writeJudge(model: AiModelEntity, next: Rec, reason: 'edit' | 'reset'): Promise<GuardrailJudgeMetaResponse> {
@@ -548,7 +622,7 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     const meta = (model.metaData ?? {}) as Rec;
     if (sameValue(meta.judge, next)) return toJudgeMeta(model, false);
     const taskKeys = laneTaskKeysOf(next);
-    const { saved } = await this.commit(model, { current: 'judge', defaults: 'judgeDefaults' }, [{ key: GUARDRAIL_JUDGE_META_REVISION_KEY, value: next }], reason, null, taskKeys);
+    const { saved } = await this.commit(model, (current) => ({ ...current, judge: next }), [{ key: GUARDRAIL_JUDGE_META_REVISION_KEY, value: next }], reason, null, taskKeys);
     return toJudgeMeta(saved, true);
   }
 
@@ -558,20 +632,13 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
    */
   private async commit(
     model: AiModelEntity,
-    slot: MetaSlot,
+    mutate: (meta: Rec) => Rec,
     changes: readonly KeyChange[],
     reason: 'edit' | 'reset' | 'restore',
     restoredFromRevisionId: string | null,
     taskKeys: string | readonly string[],
   ): Promise<{ saved: AiModelEntity; revisions: GuardrailPolicyRevisionEntity[] }> {
-    const meta = { ...((model.metaData ?? {}) as Rec) };
-    if (slot.current === 'judge') {
-      meta.judge = changes[0]?.value;
-    } else {
-      const policy = { ...slotOf(model, 'policy') };
-      for (const change of changes) policy[change.key] = change.value;
-      meta.policy = policy;
-    }
+    const meta = mutate({ ...((model.metaData ?? {}) as Rec) });
     const previousVersion = model.version;
     const actorId = this.requestUserId ?? 'unknown';
     model.metaData = meta as AiModelEntity['metaData'];
@@ -647,12 +714,16 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     ]);
     const judges = catalogue.filter((model) => model.tenantId === SYSTEM_TENANT_ID && isAiModelJudgeMetadata((model.metaData as Rec | undefined)?.judge));
     const lanes = [];
-    for (const lane of GUARDRAIL_JUDGE_CHECK_IDS) {
-      const taskKey = GUARDRAIL_JUDGE_TASK_KEYS[lane];
+    for (const lane of GUARDRAIL_JUDGE_LANES) {
+      const taskKey = guardrailJudgeLaneTaskKey(lane);
       const resolved = await this.routing.resolveDefault(SYSTEM_TENANT_ID, taskKey, { systemOnly: true }).catch(() => null);
-      const candidates = judges
-        .filter((model) => ((model.metaData as Rec).judge as { lanes: readonly string[] }).lanes.includes(lane))
-        .map((model) => toCandidate(model, states));
+      const declared = judges.filter((model) => ((model.metaData as Rec).judge as { lanes: readonly string[] }).lanes.includes(lane));
+      // The medical judge also accepts the legacy guardian rows that declare no judge capability at all.
+      const legacy =
+        lane === 'medical_validation'
+          ? catalogue.filter((model) => model.tenantId === SYSTEM_TENANT_ID && model.taskType === ModelTaskType.GUARDRAIL && !isRec((model.metaData as Rec | undefined)?.judge))
+          : [];
+      const candidates = [...declared, ...legacy].map((model) => toCandidate(model, states));
       const selectedId = resolved?.model?.id ?? resolved?.policy?.modelId ?? null;
       const selectedModel = selectedId ? (catalogue.find((model) => model.id === selectedId) ?? null) : null;
       lanes.push({
@@ -666,11 +737,75 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     return { lanes };
   }
 
-  private toEntry(spec: GuardrailPolicyKeySpec, model: AiModelEntity | null, latest: GuardrailPolicyRevisionEntity | null): GuardrailPolicyKeyEntryResponse {
-    const current = model ? slotOf(model, POLICY_SLOT.current) : {};
-    const defaults = model ? slotOf(model, POLICY_SLOT.defaults) : {};
-    const currentValue = Object.prototype.hasOwnProperty.call(current, spec.key) ? current[spec.key] : null;
-    const defaultValue = Object.prototype.hasOwnProperty.call(defaults, spec.key) ? defaults[spec.key] : null;
+  /** The key's current value on the row. */
+  private currentOf(ref: KeyRef, model: AiModelEntity): { has: boolean; value: unknown } {
+    if (ref.path) {
+      const value = getPath((model.metaData as Rec | undefined)?.labelTaxonomy, ref.path);
+      return { has: value !== undefined, value: value ?? null };
+    }
+    const current = slotOf(model, POLICY_SLOT.current);
+    const has = Object.prototype.hasOwnProperty.call(current, ref.spec.key);
+    return { has, value: has ? current[ref.spec.key] : null };
+  }
+
+  /**
+   * The key's default: `_metadata.policyDefaults[key]` for a catalogue key; for a label threshold
+   * `_metadata.labelTaxonomyDefaults` at the same path when the seed ships one, otherwise the CURRENT value
+   * (`source: 'current'` — reported, so the editor can say "no seeded default yet").
+   */
+  private defaultOf(ref: KeyRef, model: AiModelEntity): { has: boolean; value: unknown; source: 'seed' | 'current' | null } {
+    if (ref.path) {
+      const seeded = getPath((model.metaData as Rec | undefined)?.labelTaxonomyDefaults, ref.path);
+      if (seeded !== undefined) return { has: true, value: seeded, source: 'seed' };
+      const current = this.currentOf(ref, model);
+      return current.has ? { has: true, value: current.value, source: 'current' } : { has: false, value: null, source: null };
+    }
+    const defaults = slotOf(model, POLICY_SLOT.defaults);
+    const has = Object.prototype.hasOwnProperty.call(defaults, ref.spec.key);
+    return { has, value: has ? defaults[ref.spec.key] : null, source: has ? 'seed' : null };
+  }
+
+  /**
+   * A catalogue key, or a label threshold (`labelTaxonomy.threshold` / `labelTaxonomy.tasks.<task>.cls_threshold`
+   * on one of {@link GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS}, named by `taskKey`). A write also validates `value`
+   * BEFORE the model row is read, so a bad value is a 400 whatever the row says.
+   */
+  private async resolveRef(key: string, taskKey: string | undefined, mode: 'read'): Promise<{ ref: KeyRef; model: AiModelEntity | null }>;
+  private async resolveRef(key: string, taskKey: string | undefined, mode: 'write', check?: { value: unknown }): Promise<{ ref: KeyRef; model: AiModelEntity }>;
+  private async resolveRef(key: string, taskKey: string | undefined, mode: 'read' | 'write', check?: { value: unknown }): Promise<{ ref: KeyRef; model: AiModelEntity | null }> {
+    const path = guardrailLabelThresholdPath(key);
+    if (path === null) {
+      const spec = mode === 'write' ? this.requireEditableSpec(key) : this.requireSpec(key);
+      if (check) this.assertValidValue(spec, check.value);
+      const model = mode === 'write' ? await this.requireWritableModel(spec) : await this.resolveModel(spec.taskKey);
+      return { ref: { spec, path: null }, model };
+    }
+    if (path === 'not-editable') {
+      throw new BadRequestException({
+        code: 'GUARDRAIL_POLICY_KEY_NOT_EDITABLE',
+        message: `'${key}' is not editable: only labelTaxonomy.threshold and labelTaxonomy.tasks.<task>.cls_threshold are. Labels, the task set and benign labels are a model-version change (the model registry).`,
+      });
+    }
+    if (!taskKey || !(GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS as readonly string[]).includes(taskKey)) {
+      throw new BadRequestException({
+        code: 'GUARDRAIL_LABEL_THRESHOLD_TASK_KEY_REQUIRED',
+        message: `'${key}' lives on several model rows: name one with ?taskKey= (${GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS.join(', ')}).`,
+      });
+    }
+    const spec = labelThresholdSpec(key, taskKey);
+    if (check) this.assertValidValue(spec, check.value);
+    const model = await this.resolveModel(taskKey);
+    if (!model) throw this.modelUnresolved(spec);
+    if (typeof getPath((model.metaData as Rec | undefined)?.labelTaxonomy, path) !== 'number') {
+      throw new NotFoundException(`'${key}' is not a threshold of '${model.slug}'s label taxonomy.`);
+    }
+    return { ref: { spec, path }, model };
+  }
+
+  private toEntry(ref: KeyRef, model: AiModelEntity | null, latest: GuardrailPolicyRevisionEntity | null): GuardrailPolicyKeyEntryResponse {
+    const { spec } = ref;
+    const currentValue = model ? this.currentOf(ref, model).value : null;
+    const fallback = model ? this.defaultOf(ref, model) : { has: false, value: null, source: null };
     return {
       key: spec.key,
       kind: spec.kind,
@@ -686,8 +821,9 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       modelSlug: model?.slug ?? null,
       modelVersion: model?.version ?? null,
       currentValue,
-      defaultValue,
-      isDefault: sameValue(currentValue, defaultValue),
+      defaultValue: fallback.value,
+      defaultSource: fallback.source,
+      isDefault: sameValue(currentValue, fallback.value),
       lastRevision: latest ? toRevisionSummary(latest) : null,
     };
   }
@@ -736,7 +872,8 @@ function toCandidate(model: AiModelEntity, states: ModelResidencyStateSnapshot |
     modelId: model.id,
     slug: model.slug,
     name: (model as unknown as { name?: string | null }).name ?? null,
-    protocol: typeof judge?.protocol === 'string' ? judge.protocol : 'unknown',
+    // `undeclared`: a legacy guardian row with no `_metadata.judge` (served as criteria_json on the medical lane).
+    protocol: typeof judge?.protocol === 'string' ? judge.protocol : 'undeclared',
     servedBy: typeof servedBy === 'string' ? servedBy : null,
     residency: residencyOf(states, model.id),
   };

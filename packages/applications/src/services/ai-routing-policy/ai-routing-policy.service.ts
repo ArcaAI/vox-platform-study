@@ -31,7 +31,7 @@ import {
   GUARDRAIL_CONTROL_MANAGED_BY,
   GUARDRAIL_CONTROL_TASK_PREFIX,
 } from './constants';
-import { GUARDRAIL_JUDGE_TASK_KEYS, JUDGE_LANE_UNSUPPORTED, JudgeLaneUnsupportedError, assertModelSupportsLane, type GuardrailJudgeCheckId } from '@arcaai/types';
+import { assertRoutingModelServesJudgeLane } from './judge-lane-capability';
 import { IProviderConnectionService, ProviderService } from '../ai-provider-connection/IProviderConnectionService';
 import {
   GenerationCapabilitySelector,
@@ -85,11 +85,6 @@ const ROUTING_CONNECTION_SERVICE: ProviderService = 'llm';
  * in memory, so the two must agree on what "live" means or the veto would fire
  * on rows the database would have served.
  */
-/** TASK-1050 — routing task key → the safety-judge lane it selects a model for. */
-const JUDGE_LANE_BY_TASK_KEY: ReadonlyMap<string, GuardrailJudgeCheckId> = new Map(
-  Object.entries(GUARDRAIL_JUDGE_TASK_KEYS).map(([lane, taskKey]) => [taskKey, lane as GuardrailJudgeCheckId]),
-);
-
 function isLiveRow(row: AiRoutingPolicyEntity): boolean {
   return row.resourceStatus === ResourceStatusType.ENABLED && row.enabled === true;
 }
@@ -1387,20 +1382,14 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * TASK-1050 (README §12.2) — a safety-judge lane key may bind only a model whose `_metadata.judge` declares
-   * that lane (a missing or invalid declaration supports none). Enforced HERE, on the routing write path, so
+   * TASK-1050 (README §12.2) — a judge-lane key may bind only a model capable of that lane
+   * (`assertRoutingModelServesJudgeLane`: the four safety-judge keys need the lane declared; `guardrail.validate`
+   * refuses a model that declares a judge capability WITHOUT `medical_validation`). Enforced HERE, on the routing write path, so
    * no caller — `/guardrails/control`, `/ai-providers`, an import — can elect a judge for a lane it cannot
    * answer. 400 `JUDGE_LANE_UNSUPPORTED`: the request names an incapable model, which is a bad request.
    */
   private assertModelDeclaresJudgeLane(taskKey: string, model: { id: string; slug: string; metaData?: unknown }): void {
-    const lane = JUDGE_LANE_BY_TASK_KEY.get(taskKey);
-    if (!lane) return;
-    try {
-      assertModelSupportsLane((model.metaData as { judge?: unknown } | null | undefined)?.judge, lane);
-    } catch (error) {
-      if (!(error instanceof JudgeLaneUnsupportedError)) throw error;
-      throw new BadRequestException({ code: JUDGE_LANE_UNSUPPORTED, message: error.message, lane, modelId: model.id, problems: error.problems });
-    }
+    assertRoutingModelServesJudgeLane(taskKey, model);
   }
 
   private assertBindingUsable(dto: { modelId?: string | null; modelRef?: string | null; candidates?: unknown }): void {

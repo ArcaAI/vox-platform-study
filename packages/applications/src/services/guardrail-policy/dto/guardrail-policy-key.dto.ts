@@ -21,7 +21,11 @@ export class GuardrailPolicyRevisionSummaryResponse {
 
 /** One governed key, as the platform editor needs it. Bounds are echoed from the catalogue artifact. */
 export class GuardrailPolicyKeyEntryResponse {
-  @ApiProperty({ example: 'judgeTemperature' })
+  @ApiProperty({
+    example: 'judgeTemperature',
+    description:
+      'A catalogue key (`_metadata.policy`), or a classifier threshold inside `_metadata.labelTaxonomy`: `labelTaxonomy.threshold` / `labelTaxonomy.tasks.<task>.cls_threshold` (single-key routes then need `?taskKey=`).',
+  })
   key!: string;
 
   @ApiProperty({ description: '`criteria` | `hyperparameter` | `threshold` | `geometry` | `operational`.' })
@@ -65,6 +69,14 @@ export class GuardrailPolicyKeyEntryResponse {
 
   @ApiProperty({ nullable: true, description: '`_metadata.policyDefaults[key]` (seed-owned, never written by the API); `null` when the seed ships none.' })
   defaultValue!: unknown;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: ['seed', 'current'],
+    description:
+      '`seed`: the default is seed-owned (`policyDefaults` / `labelTaxonomyDefaults`). `current`: a label threshold with no seeded default yet — the current value is reported as the default. `null`: none.',
+  })
+  defaultSource?: 'seed' | 'current' | null;
 
   @ApiProperty({ description: 'The current value equals the default (both absent counts as equal).' })
   isDefault!: boolean;

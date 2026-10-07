@@ -25,15 +25,19 @@ export const IGuardrailPolicyService = Symbol('IGuardrailPolicyService');
  */
 export interface IGuardrailPolicyService {
   listPolicyKeys(): Promise<GuardrailPolicyKeysResponse>;
-  getPolicyKey(key: string): Promise<GuardrailPolicyKeyResponse>;
+  /**
+   * `taskKey` names the model row of a label threshold (`labelTaxonomy.threshold`,
+   * `labelTaxonomy.tasks.<task>.cls_threshold`), which several rows carry; it is ignored for a catalogue key.
+   */
+  getPolicyKey(key: string, taskKey?: string): Promise<GuardrailPolicyKeyResponse>;
   /** CAS on the model row `_version` (`expectedVersion`); 412 on drift, refused without one. */
-  updatePolicyKey(key: string, request: UpdateGuardrailPolicyKeyRequest): Promise<GuardrailPolicyKeyResponse>;
+  updatePolicyKey(key: string, request: UpdateGuardrailPolicyKeyRequest, taskKey?: string): Promise<GuardrailPolicyKeyResponse>;
   /** Default → current (reason `reset`). No `If-Match`: "whatever it says now, put the default back". */
-  resetPolicyKey(key: string): Promise<GuardrailPolicyKeyResponse>;
+  resetPolicyKey(key: string, taskKey?: string): Promise<GuardrailPolicyKeyResponse>;
   /** Every editable key of one model row (a task key, or a judge lane id) → its default. */
   resetLane(lane: string): Promise<GuardrailPolicyLaneResetResponse>;
-  listRevisions(key: string, limit?: number): Promise<GuardrailPolicyRevisionsResponse>;
-  restoreRevision(key: string, revisionId: string): Promise<GuardrailPolicyKeyResponse>;
+  listRevisions(key: string, limit?: number, taskKey?: string): Promise<GuardrailPolicyRevisionsResponse>;
+  restoreRevision(key: string, revisionId: string, taskKey?: string): Promise<GuardrailPolicyKeyResponse>;
   updateJudgeMeta(modelId: string, request: UpdateGuardrailJudgeMetaRequest): Promise<GuardrailJudgeMetaResponse>;
   resetJudgeMeta(modelId: string): Promise<GuardrailJudgeMetaResponse>;
   getJudgeLanes(): Promise<GuardrailJudgeLanesResponse>;

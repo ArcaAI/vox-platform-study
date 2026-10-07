@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsIn, IsInt, IsObject, IsOptional, IsString, IsNotEmpty, Min, ValidateNested } from 'class-validator';
-import { GUARDRAIL_JUDGE_CHECK_IDS } from '@arcaai/types';
+import { GUARDRAIL_JUDGE_LANES } from '@arcaai/types';
 
 /**
  * `PUT admin/guardrail/judge-models/:modelId/judge-meta` — the editable half of `_metadata.judge` (README §12.2):
@@ -67,7 +67,7 @@ export class GuardrailJudgeLaneCandidateResponse {
   @ApiProperty({ nullable: true, type: String })
   name!: string | null;
 
-  @ApiProperty({ description: '`criteria_json` | `qwen3guard_native`.' })
+  @ApiProperty({ description: '`criteria_json` | `qwen3guard_native` | `undeclared` (a legacy guardian row, medical lane only).' })
   protocol!: string;
 
   @ApiProperty({ nullable: true, type: String, description: 'Which service serves it (`servedBy`).' })
@@ -80,10 +80,10 @@ export class GuardrailJudgeLaneCandidateResponse {
 }
 
 export class GuardrailJudgeLaneResponse {
-  @ApiProperty({ enum: GUARDRAIL_JUDGE_CHECK_IDS })
+  @ApiProperty({ enum: GUARDRAIL_JUDGE_LANES })
   lane!: string;
 
-  @ApiProperty({ example: 'guardrail.judge.injection' })
+  @ApiProperty({ example: 'guardrail.judge.injection', description: '`guardrail.validate` for the medical judge.' })
   taskKey!: string;
 
   @ApiProperty({ nullable: true, type: String, description: 'The SYSTEM `AiRoutingPolicy` row currently elected for the lane.' })
@@ -102,11 +102,14 @@ export class GuardrailJudgeLanesResponse {
 }
 
 export class GuardrailJudgeLaneSelection {
-  @ApiProperty({ enum: GUARDRAIL_JUDGE_CHECK_IDS })
-  @IsIn(GUARDRAIL_JUDGE_CHECK_IDS as unknown as string[])
+  @ApiProperty({ enum: GUARDRAIL_JUDGE_LANES })
+  @IsIn(GUARDRAIL_JUDGE_LANES as unknown as string[])
   lane!: string;
 
-  @ApiProperty({ description: 'A SYSTEM `AiModel.id` whose `_metadata.judge` declares the lane (else 400 `JUDGE_LANE_UNSUPPORTED`).' })
+  @ApiProperty({
+    description:
+      'A SYSTEM `AiModel.id` whose `_metadata.judge` declares the lane (else 400 `JUDGE_LANE_UNSUPPORTED`). For `medical_validation` a model with NO declaration (a legacy guardian row) is also accepted.',
+  })
   @IsString()
   @IsNotEmpty()
   modelId!: string;
@@ -118,6 +121,6 @@ export class UpdateGuardrailJudgeLanesRequest {
   @ValidateNested({ each: true })
   @Type(() => GuardrailJudgeLaneSelection)
   @ArrayMinSize(1)
-  @ArrayMaxSize(GUARDRAIL_JUDGE_CHECK_IDS.length)
+  @ArrayMaxSize(GUARDRAIL_JUDGE_LANES.length)
   selections!: GuardrailJudgeLaneSelection[];
 }
