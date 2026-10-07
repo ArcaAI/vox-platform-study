@@ -265,3 +265,56 @@ async def test_text_the_service_composes_itself_can_be_screened_as_data() -> Non
 
     (region,) = client.screen_inbound.await_args.kwargs["regions"]
     assert region["trust"] == TRUST_DATA
+
+
+# ── Q3 (orchestrator): a malformed verdict degrades like an outage ───────────
+
+_MALFORMED = {"allowed": False, "reason": "malformed_verdict", "pii_spans": []}
+
+
+async def test_a_malformed_screen_verdict_on_a_local_provider_degrades_to_unverified() -> None:
+    result = await _gate(_client(_MALFORMED), locality="local")
+
+    (notice,) = result.outcome.notices
+    assert notice["type"] == "guardrail.unverified"
+    assert [c["checkId"] for c in notice["checks"]] == list(gn.INBOUND_SCREEN_CHECKS)
+
+
+async def test_a_malformed_screen_verdict_on_a_cloud_provider_is_the_redaction_hold() -> None:
+    with pytest.raises(EgressRedactionUnavailableError) as raised:
+        await _gate(_client(_MALFORMED), locality="cloud")
+
+    assert raised.value.error_code == gn.EGRESS_REDACTION_UNAVAILABLE
+
+
+async def test_an_unreadable_payload_from_the_real_client_degrades_end_to_end() -> None:
+    from types import SimpleNamespace
+
+    from text.core.guardrail_posture import GuardrailPosture
+    from text.services.external_guardrail import ExternalGuardrailClient
+
+    class _Resp:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class _Http:
+        async def post(self, url, json=None, headers=None, timeout=None):  # noqa: ANN001
+            keys = [r["key"] for r in (json.get("regions") or [])]
+            if url.endswith("/screen/inbound"):
+                return _Resp({"decision": "maybe?", "screened_regions": keys})
+            return _Resp({"is_medical": True, "screened_regions": keys})
+
+    state = SimpleNamespace(guardrail_posture=GuardrailPosture(retry_backoff_ms=0), redis=None)
+    client = ExternalGuardrailClient(
+        base_url="http://g", http_client=_Http(), service_token="s", app_state=state
+    )
+
+    result = await _gate(client, locality="local")
+
+    assert [n["type"] for n in result.outcome.notices] == ["guardrail.unverified"]

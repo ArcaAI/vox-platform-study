@@ -154,3 +154,17 @@ async def test_a_cloud_pii_leak_block_keeps_its_code_and_names_the_check() -> No
     assert error.extra_body["guardrailNotice"]["checks"] == [
         {"checkId": "pii_leak", "severity": "high"}
     ]
+
+
+# ── Q3 (orchestrator): a malformed verdict degrades like an outage ───────────
+
+
+async def test_a_malformed_outbound_verdict_degrades_to_unverified_and_releases() -> None:
+    outcome = gn.GuardrailOutcome()
+    client = _client({"allowed": False, "reason": "malformed_verdict", "raw": {"decision": "?"}})
+
+    assert await _gate(client, outcome) is None
+
+    (notice,) = outcome.notices
+    assert notice["type"] == "guardrail.unverified"
+    assert notice["direction"] == "outbound"

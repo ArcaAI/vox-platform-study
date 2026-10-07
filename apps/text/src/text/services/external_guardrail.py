@@ -29,6 +29,17 @@ logger = get_logger(__name__)
 # which refuses with `EGRESS_REDACTION_UNAVAILABLE` (README §9.8.1).
 GUARDRAIL_UNAVAILABLE_REASON = "external_guardrail_unavailable"
 
+# The verdict's ``reason`` when guardrail answered but the payload is unreadable (no
+# recognisable ``decision``, no ``pii_spans`` list). Nothing was judged that TEXT can
+# read, so since TASK-1050 Q3 the gates treat it exactly like
+# ``GUARDRAIL_UNAVAILABLE_REASON``: a `guardrail.unverified` notice, never a 422 (and
+# the cloud redaction hold for the inbound screen off LOCAL).
+GUARDRAIL_MALFORMED_REASON = "malformed_verdict"
+
+#: The verdict reasons under which no decision was reached: an outage or an unreadable
+#: answer. The gates degrade on both (README §9.8.1).
+GUARDRAIL_NO_VERDICT_REASONS = frozenset({GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON})
+
 # The verdict's ``error`` when the call was shed by the open circuit without being
 # sent. The REASON stays ``GUARDRAIL_UNAVAILABLE_REASON`` so the gates map it to the
 # same retryable 503; only the cause differs.
@@ -366,7 +377,8 @@ class ExternalGuardrailClient:
         the same keys: ``allowed`` (``decision == "allow"``), ``reason`` (the first
         of guardrail's ``reasons[]`` — check names and labels only, never text) and
         ``raw``. A payload with no recognisable ``decision`` is
-        ``allowed: False, reason: "malformed_verdict"`` — guardrail answered, so
+        ``allowed: False, reason: "malformed_verdict"`` (the gates degrade on it like an
+        outage since TASK-1050 Q3) — guardrail answered, so
         this is a rejection rather than an outage. Transport and HTTP failures ride
         the same retry rules and breaker as the input gate and exhaust to the same
         ``GUARDRAIL_UNAVAILABLE_REASON``. ``tenant_policy`` is accepted for symmetry
@@ -386,7 +398,7 @@ class ExternalGuardrailClient:
                     }
             decision = payload.get("decision")
             if decision not in _DECISIONS:
-                return {"allowed": False, "reason": "malformed_verdict", "raw": payload}
+                return {"allowed": False, "reason": GUARDRAIL_MALFORMED_REASON, "raw": payload}
             reasons = payload.get("reasons")
             first = reasons[0] if isinstance(reasons, list) and reasons else None
             allowed = decision != "block"
@@ -472,7 +484,7 @@ class ExternalGuardrailClient:
             if decision not in _DECISIONS or not isinstance(spans, list):
                 return {
                     "allowed": False,
-                    "reason": "malformed_verdict",
+                    "reason": GUARDRAIL_MALFORMED_REASON,
                     "pii_spans": [],
                     "data_findings": [],
                 }

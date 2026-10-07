@@ -47,7 +47,7 @@ from text.models.responses import DataFinding, EgressSummary
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.data_blocks import keyed_ranges
 from text.services.external_guardrail import (
-    GUARDRAIL_UNAVAILABLE_REASON,
+    GUARDRAIL_NO_VERDICT_REASONS,
     OUTBOUND_FINDING_REGION,
 )
 from text.services.guardrail_notices import (
@@ -422,9 +422,10 @@ def _count_findings(findings: list[dict[str, Any]]) -> None:
 
 
 def _unavailable(verdict: Any) -> bool:
-    """No verdict was reached: an outage, a shed call, or a coverage gap."""
+    """No verdict was reached: an outage, a shed call, a coverage gap, or an unreadable
+    (malformed) answer — all degrade alike (TASK-1050 Q3, README §9.8.1)."""
     return not isinstance(verdict, dict) or (
-        not verdict.get("allowed", False) and verdict.get("reason") == GUARDRAIL_UNAVAILABLE_REASON
+        not verdict.get("allowed", False) and verdict.get("reason") in GUARDRAIL_NO_VERDICT_REASONS
     )
 
 
@@ -466,7 +467,7 @@ def _block_error(
             checks = blocked_checks(raw if isinstance(raw, dict) else verdict) or blocked_checks(
                 {"reasons": [verdict.get("reason")]}
             )
-            # Guardrail named no check id (a malformed verdict): the screen as a whole.
+            # Guardrail blocked but named no check id: the screen as a whole.
             checks = checks or [
                 {"checkId": check, "severity": "high"} for check in INBOUND_SCREEN_CHECKS
             ]

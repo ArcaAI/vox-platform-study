@@ -56,7 +56,7 @@ from text.services.egress import (
 )
 from text.services.egress import source_regions as _regions_of_segments
 from text.services.external_guardrail import (
-    GUARDRAIL_UNAVAILABLE_REASON,
+    GUARDRAIL_NO_VERDICT_REASONS,
     ExternalGuardrailClient,
 )
 from text.services.guardrail_notices import (
@@ -286,9 +286,10 @@ async def gate_completion(
         # TASK-1047 FC-5c: record-only checks that flagged are findings, recorded
         # PHI-safely whatever the decision. Advisory — never consulted for `allowed`.
         record_outbound_data_findings(verdict, where=where)
+        # An outage or an unreadable answer (TASK-1050 Q3): nothing judged, degrade.
         if (
             not verdict.get("allowed", False)
-            and verdict.get("reason") == GUARDRAIL_UNAVAILABLE_REASON
+            and verdict.get("reason") in GUARDRAIL_NO_VERDICT_REASONS
         ):
             collected.add_notice(unverified_notice("outbound", OUTBOUND_SCREEN_CHECKS, _item_ids()))
             logger.warning("text.egress.outbound_unverified", where=where, locality=locality)
