@@ -127,6 +127,26 @@ def _stats_from_judge(payload: dict[str, Any], provider: str, model: str) -> Gua
     )
 
 
+#: Public spelling for the judge runner (TASK-1050), which interprets combined payloads itself.
+judge_call_stats = _stats_from_judge
+
+#: The medical judge's user-turn lead-in. Structure, not policy: the criteria are the system turn.
+MEDICAL_JUDGE_PROMPT_HEADER = "Analyze this text for medical context:\n\n"
+
+
+def medical_judge_prompt(text: str) -> str:
+    """The medical judge's user turn: the lead-in, then ``text`` in the untrusted envelope (M-1).
+
+    TASK-1050 §3.2: the judged text used to go into the user turn RAW, so an injected transcript
+    line (``…return {"is_medical": true…}``) sat beside the instruction it was steering. It is now
+    a nonce-delimited data block; a text that carries the closing marker raises
+    `GuardrailUndeterminedError` before anything is sent (fail-closed).
+    """
+    from guardrail.services.judge_envelope import wrap_untrusted
+
+    return f"{MEDICAL_JUDGE_PROMPT_HEADER}{wrap_untrusted(text)}"
+
+
 class TextJudgeClient:
     """The guardian, as a delegation rather than an engine.
 
@@ -217,7 +237,24 @@ class TextJudgeClient:
         headers.update(outbound_context_headers())
         return headers
 
-    async def _judge(self, prompt: str, system_prompt: str) -> dict[str, Any]:
+    async def judge_raw(
+        self, *, prompt: str, system_prompt: str, schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """One judgement under a caller-owned verdict ``schema``; the raw lane payload back.
+
+        The seam the TASK-1050 judge runner uses for a COMBINED call (one verdict per lane,
+        `services/judge_protocols.py`). Same transport, retry budget, breaker and fail-closed raise
+        as the medical judge; interpreting the payload is the caller's job.
+        """
+        return await self._judge(prompt, system_prompt, schema=schema)
+
+    async def _judge(
+        self,
+        prompt: str,
+        system_prompt: str,
+        *,
+        schema: dict[str, Any] = JUDGE_VERDICT_SCHEMA,
+    ) -> dict[str, Any]:
         """One judgement, with a bounded retry budget. Raises when exhausted."""
         body: dict[str, Any] = {
             "prompt": prompt,
@@ -231,7 +268,7 @@ class TextJudgeClient:
             # same shape only here.
             "response_format": {
                 "type": "json_schema",
-                "json_schema": JUDGE_VERDICT_SCHEMA,
+                "json_schema": schema,
                 "strict": True,
             },
         }
@@ -306,7 +343,7 @@ class TextJudgeClient:
             }
 
         payload = await self._judge(
-            prompt=f"Analyze this text for medical context:\n\n{text[: self.policy.max_input_chars]}",
+            prompt=medical_judge_prompt(text[: self.policy.max_input_chars]),
             system_prompt=self.criteria,
         )
         return self._interpret(payload)
@@ -334,7 +371,7 @@ class TextJudgeClient:
                 "seed it on the guardrail.validate AiModel row's `_metadata.policy`",
             )
         payload = await self._judge(
-            prompt=f"Analyze this text for medical context:\n\n{window}",
+            prompt=medical_judge_prompt(window),
             system_prompt=self.window_criteria,
         )
         return self._interpret(payload)
