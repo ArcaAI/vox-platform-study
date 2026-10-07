@@ -601,6 +601,28 @@ class Screener:
         labels = getattr(policy, "benign_labels", None)
         return labels if isinstance(labels, frozenset) and labels else _DEFAULT_BENIGN
 
+    def _benign_for(self, task: str) -> frozenset[str]:
+        """``task``'s benign labels, read off the model that answers it (TASK-1049 R1:
+        `jailbreak_detection` may be the `guardrail.injection` model's, not GLiGuard's)."""
+        getter = getattr(self._analyzer, "benign_labels_for", None)
+        if callable(getter):
+            labels = getter(task)
+            if isinstance(labels, frozenset) and labels:
+                return labels
+        return self._benign()
+
+    def _route_groups(self, tasks: tuple[str, ...]) -> list[tuple[str, ...]]:
+        """``tasks`` split by the model that answers them (one group when the analyzer
+        routes nothing). Each group is its own classify call, window-cache entry and
+        outage: a `guardrail.injection` failure leaves the GLiGuard checks decided."""
+        getter = getattr(self._analyzer, "route_groups", None)
+        if not callable(getter):
+            return [tasks]
+        groups = [tuple(group) for group in getter(tasks) if group]
+        if sorted(name for group in groups for name in group) != sorted(tasks):
+            return [tasks]
+        return groups or [tasks]
+
     def _usage_detail(self) -> dict[str, Any] | None:
         """The delegated executor's own per-call usage, if it reported one."""
         getter = getattr(self._analyzer, "usage_detail", None)
@@ -659,7 +681,6 @@ class Screener:
         if not windows:
             owners, windows = [0], [""]
         model = self._model(selected[0])
-        benign = self._benign()
         scored = self._scored_seam()
 
         async def _compute(window_text: str) -> dict[str, Any]:
@@ -683,7 +704,7 @@ class Screener:
                 task_scores = (
                     scores_by_task.get(name) if isinstance(scores_by_task, Mapping) else None
                 )
-                score = _unsafe_score(task_labels, task_scores, benign)
+                score = _unsafe_score(task_labels, task_scores, self._benign_for(name))
                 if score is not None:
                     scores[name] = score
             return {"labels": labels, "scores": scores}
@@ -728,6 +749,17 @@ class Screener:
         run.latency_ms = int((time.monotonic() - started) * 1000)
         return run
 
+    async def _run_classifiers(
+        self, tasks: tuple[str, ...], indices: tuple[int, ...], texts: Sequence[str]
+    ) -> list[_ClassifierRun]:
+        """One `_run_classifier` per model group, concurrently (TASK-1049 R1)."""
+        groups = self._route_groups(tasks)
+        if len(groups) == 1:
+            return [await self._run_classifier(groups[0], indices, texts)]
+        return list(
+            await asyncio.gather(*(self._run_classifier(group, indices, texts) for group in groups))
+        )
+
     async def _classify(
         self,
         task_names: tuple[str, ...],
@@ -771,8 +803,8 @@ class Screener:
         item_map = items or {}
         runs: list[_ClassifierRun] = []
         if data_tasks is None or not any(mask):
-            runs.append(
-                await self._run_classifier(tuple(selected), tuple(range(len(texts))), texts)
+            runs.extend(
+                await self._run_classifiers(tuple(selected), tuple(range(len(texts))), texts)
             )
         else:
             instruction = tuple(i for i, is_data in enumerate(mask) if not is_data)
@@ -780,12 +812,11 @@ class Screener:
             data_selected = tuple(t for t in selected if t in data_tasks)
             jobs = []
             if instruction:
-                jobs.append(self._run_classifier(tuple(selected), instruction, texts))
+                jobs.append(self._run_classifiers(tuple(selected), instruction, texts))
             if data_selected and data:
-                jobs.append(self._run_classifier(data_selected, data, texts))
-            runs = list(await asyncio.gather(*jobs)) if jobs else []
+                jobs.append(self._run_classifiers(data_selected, data, texts))
+            runs = [run for group in await asyncio.gather(*jobs) for run in group] if jobs else []
 
-        benign = self._benign()
         outcomes: list[CheckOutcome] = []
         for name in task_names:
             if name not in selected:
@@ -832,6 +863,7 @@ class Screener:
                 continue
             instr_action = self._availability.action_for(name, direction, trust=TRUST_INSTRUCTION)
             data_action = self._availability.action_for(name, direction, trust=TRUST_DATA)
+            benign = self._benign_for(name)
             parts: list[tuple[int, str, tuple[str, ...]]] = []
             for i in covered:
                 flagged = tuple(
@@ -879,7 +911,8 @@ class Screener:
                 for name in task_names
                 if name in selected
                 and any(
-                    lbl.lower() not in benign for lbl in labels_by_text.get(index, {}).get(name, [])
+                    lbl.lower() not in self._benign_for(name)
+                    for lbl in labels_by_text.get(index, {}).get(name, [])
                 )
             )
             if reasons:
@@ -1064,7 +1097,6 @@ class Screener:
             labels, scores = await self._classify_texts(tasks, [text for _k, text in data])
         except GuardrailUndeterminedError:
             return None
-        benign = self._benign()
         flagged_keys: list[str] = []
         category: str | None = None
         undetermined = False
@@ -1077,7 +1109,9 @@ class Screener:
                 if task not in text_labels:
                     continue
                 answered = True
-                bad = [lbl for lbl in text_labels[task] if lbl.lower() not in benign]
+                bad = [
+                    lbl for lbl in text_labels[task] if lbl.lower() not in self._benign_for(task)
+                ]
                 score = text_scores.get(task)
                 if score is not None:
                     top = score if top is None else max(top, score)

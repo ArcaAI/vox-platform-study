@@ -9,8 +9,9 @@ could change:
   policy version is not governed until it is re-screened.
 
 It is a SHA-256 over a canonical JSON of, for each selection a screen can consult
-(`HASHED_TASK_KEYS`: `guardrail.safety`, `guardrail.pii`, `guardrail.pii.spans`,
-`guardrail.validate`, and since TASK-1050 the four judge-lane keys `guardrail.judge.*`), the
+(`HASHED_TASK_KEYS`: `guardrail.safety`, `guardrail.injection` (TASK-1049 R1), `guardrail.pii`,
+`guardrail.pii.spans`, `guardrail.validate`, and since TASK-1050 the four judge-lane keys
+`guardrail.judge.*`), the
 model id, the provider, the label taxonomy, the judge declaration (`_metadata.judge`), the
 serving library and the policy blob — minus `OPERATIONAL_KEYS`, which cannot change a verdict —
 plus the
@@ -47,6 +48,9 @@ SCREEN_CONTRACT_VERSION: Final = "task-1050.1"
 #: native mapping changing — re-screens and colds the window cache.
 HASHED_TASK_KEYS: Final[tuple[str, ...]] = (
     "guardrail.safety",
+    # TASK-1049 R1: `jailbreak_detection`'s own model. Absent hashes as absent, so a
+    # deploy that seeds (or vetoes, or re-points) the row re-screens and colds the cache.
+    "guardrail.injection",
     "guardrail.pii",
     "guardrail.pii.spans",
     "guardrail.validate",
