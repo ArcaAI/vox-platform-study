@@ -87,10 +87,18 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
   const [busy, setBusy] = useState(false);
 
   const { mutate: requestPreview } = preview;
+  // Fresh draft whenever the dialog opens for a (different) model — derived during render, not set in an effect.
+  const seedKey = open ? `${service.service}::${model.modelRef}` : null;
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (seededFor !== seedKey) {
+    setSeededFor(seedKey);
+    if (seedKey !== null) {
+      setSelected(new Set());
+      setReason('');
+    }
+  }
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set());
-    setReason('');
     requestPreview({ service: service.service, modelRef: model.modelRef });
   }, [open, service.service, model.modelRef, requestPreview]);
 
@@ -111,9 +119,19 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
   async function confirm() {
     if (!data) return;
     setBusy(true);
+    const unloaded: string[] = [];
     try {
       for (const e of data.evictable.filter((candidate) => selected.has(evictKey(candidate)))) {
         await unload.mutateAsync({ service: e.service, modelRef: e.modelRef, reason: `Make room for ${model.name}` });
+        unloaded.push(e.name);
+        toast.success(`Unloaded ${e.name}`);
+        setSelected((current) => {
+          const next = new Set(current);
+          next.delete(evictKey(e));
+          return next;
+        });
+        // The card changed under us: refresh the numbers before the load is sent.
+        requestPreview({ service: service.service, modelRef: model.modelRef });
       }
       const body: LoadModelResidencyRequest = { service: service.service, modelRef: model.modelRef };
       if (needsReason) {
@@ -125,7 +143,8 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
       onOpenChange(false);
     } catch (error) {
       const conflict = asModelResidencyConflict(error);
-      toast.error(conflict?.message || `Couldn't load ${model.name}.`);
+      const base = conflict?.message || `Couldn't load ${model.name}.`;
+      toast.error(unloaded.length > 0 ? `${base} Already unloaded: ${unloaded.join(', ')}.` : base);
     } finally {
       setBusy(false);
     }
@@ -167,7 +186,7 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
           <DialogDescription>{service.label}</DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {preview.isPending && !data ? (
+          {(preview.isPending || preview.isIdle) && !data ? (
             <PreviewSkeleton />
           ) : preview.isError || !data ? (
             <Callout tone="warn" title="Couldn't check placement">
@@ -275,7 +294,14 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
                     Reason <span aria-hidden>*</span>
                     <span className="sr-only">(required, audited)</span>
                   </Label>
-                  <Textarea id="lp-force-reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={2} disabled={busy} />
+                  <Textarea
+                    id="lp-force-reason"
+                    aria-required="true"
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    rows={2}
+                    disabled={busy}
+                  />
                 </section>
               ) : null}
             </div>

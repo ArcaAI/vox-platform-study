@@ -23,7 +23,14 @@ import type {
 } from '../api/types';
 import { usePinResidencyModel, useSaveResidencyPolicy } from '../api/hooks';
 import { modelResidencyKeys } from '../api/keys';
-import { deviceShortLabel, formatModelStatus, humanizeTaskLabel, keepPolicyKindToClass, primaryRowAction } from './residency-display';
+import {
+  deviceShortLabel,
+  formatModelStatus,
+  formatStateWhere,
+  humanizeTaskLabel,
+  keepPolicyKindToClass,
+  primaryRowAction,
+} from './residency-display';
 
 const EM_DASH = '—';
 
@@ -49,6 +56,10 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dd className="text-sm">{value}</dd>
     </div>
   );
+}
+
+function serverIdle(model: ResidencyCatalogueModel): string {
+  return model.keepPolicy.idleTtlSeconds === null ? '' : String(Math.round(model.keepPolicy.idleTtlSeconds / 60));
 }
 
 export interface ModelDetailDrawerProps {
@@ -89,25 +100,30 @@ export function ModelDetailDrawer({
   const pin = usePinResidencyModel();
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<ResidencyKeepPolicyKind>(model.keepPolicy.kind);
-  const [idleMinutes, setIdleMinutes] = useState(
-    model.keepPolicy.idleTtlSeconds === null ? '' : String(Math.round(model.keepPolicy.idleTtlSeconds / 60)),
-  );
+  const [idleMinutes, setIdleMinutes] = useState(serverIdle(model));
   const [contextLength, setContextLength] = useState('');
   const [flashAttention, setFlashAttention] = useState(false);
+  const [flashTouched, setFlashTouched] = useState(false);
 
-  // Re-seed the draft whenever a different model opens.
-  const [seededFor, setSeededFor] = useState(model.aiModelId);
-  if (open && seededFor !== model.aiModelId) {
-    setSeededFor(model.aiModelId);
-    setKind(model.keepPolicy.kind);
-    setIdleMinutes(model.keepPolicy.idleTtlSeconds === null ? '' : String(Math.round(model.keepPolicy.idleTtlSeconds / 60)));
+  // Re-seed the draft when a different model opens, or when the server's policy moved under an UNEDITED draft.
+  const serverSig = `${model.aiModelId}|${model.keepPolicy.policyVersion}|${model.keepPolicy.kind}|${model.keepPolicy.idleTtlSeconds}`;
+  const [seeded, setSeeded] = useState({ sig: serverSig, model: model.aiModelId, kind: model.keepPolicy.kind, idle: serverIdle(model) });
+  if (open && seeded.sig !== serverSig) {
+    const dirty = kind !== seeded.kind || idleMinutes !== seeded.idle;
+    setSeeded({ sig: serverSig, model: model.aiModelId, kind: model.keepPolicy.kind, idle: serverIdle(model) });
+    if (seeded.model !== model.aiModelId || !dirty) {
+      setKind(model.keepPolicy.kind);
+      setIdleMinutes(serverIdle(model));
+    }
   }
+
+  const idleInvalid = kind !== 'always' && idleMinutes.trim() !== '' && !/^\d+$/.test(idleMinutes.trim());
 
   function savePolicyDraft() {
     // The drawer is only opened for a model that has a catalogue entry
     // (`service-section.tsx` hides "Details" for an orphan resident model),
     // so this is a defensive guard, not an expected path.
-    if (!model.aiModelId) return;
+    if (!model.aiModelId || idleInvalid) return;
     savePolicy.mutate(
       {
         aiModelId: model.aiModelId,
@@ -115,7 +131,7 @@ export function ModelDetailDrawer({
         policyId: model.keepPolicy.policyId,
         policyVersion: model.keepPolicy.policyVersion,
         class: keepPolicyKindToClass(kind),
-        idleTtlSeconds: kind === 'always' || idleMinutes.trim() === '' ? null : Number(idleMinutes) * 60,
+        idleTtlSeconds: kind === 'always' || idleMinutes.trim() === '' ? null : Number(idleMinutes.trim()) * 60,
       },
       {
         onSuccess: () => toast.success(`Keep policy saved for ${model.name}.`),
@@ -123,11 +139,19 @@ export function ModelDetailDrawer({
           const status = (error as { status?: number } | null)?.status;
           if (status === 412 || status === 409) {
             toast.error('This policy changed since you opened it — reload to see the latest.', {
-              action: { label: 'Reload', onClick: () => void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() }) },
+              action: {
+                label: 'Reload',
+                onClick: () => {
+                  setKind(model.keepPolicy.kind);
+                  setIdleMinutes(serverIdle(model));
+                  void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() });
+                },
+              },
             });
             return;
           }
-          toast.error(`Couldn't save the keep policy for ${model.name}.`);
+          const message = status === 400 ? (error as { message?: string } | null)?.message : undefined;
+          toast.error(message || `Couldn't save the keep policy for ${model.name}.`);
         },
       },
     );
@@ -157,7 +181,13 @@ export function ModelDetailDrawer({
       open={open}
       onOpenChange={onOpenChange}
       title={model.name}
-      badges={<Badge variant="outline">{service.label}</Badge>}
+      badges={
+        <>
+          <Badge variant="outline">{service.label}</Badge>
+          {resident ? <Badge variant="secondary">{formatStateWhere(model, devices).state}</Badge> : null}
+          {pinnedByPolicy ? <Badge variant="outline">{model.usage.liveConsultation ? 'Pinned · live path' : 'Pinned'}</Badge> : null}
+        </>
+      }
       meta={<span className="font-mono">{model.slug ?? model.modelRef}</span>}
       footer={
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
@@ -194,7 +224,7 @@ export function ModelDetailDrawer({
               onClick={() =>
                 onReload(service, model, {
                   ...(contextLength !== '' ? { contextLength: Number(contextLength) } : {}),
-                  flashAttention,
+                  ...(flashTouched ? { flashAttention } : {}),
                 })
               }
             >
@@ -238,7 +268,7 @@ export function ModelDetailDrawer({
         {resident ? (
           <section className="flex flex-col gap-2" aria-labelledby="drawer-pinned-h">
             <h3 id="drawer-pinned-h" className="text-sm font-medium">
-              Why it is pinned
+              {pinnedByPolicy ? 'Why it is pinned' : 'Who uses it'}
             </h3>
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               {(
@@ -250,9 +280,9 @@ export function ModelDetailDrawer({
                   ['Fallback chains', model.usage.consumers.fallbacks],
                 ] as const
               ).map(([label, count]) => (
-                <div key={label} className="rounded-md border p-2">
-                  <dd className="text-lg font-semibold tabular-nums">{formatNumber(count)}</dd>
+                <div key={label} className="flex flex-col-reverse rounded-md border p-2">
                   <dt className="text-muted-foreground text-xs">{label}</dt>
+                  <dd className="text-lg font-semibold tabular-nums">{formatNumber(count)}</dd>
                 </div>
               ))}
             </dl>
@@ -263,7 +293,7 @@ export function ModelDetailDrawer({
         ) : null}
 
         <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">Who uses it</h3>
+          <h3 className="text-sm font-medium">Agents and tenants</h3>
           {model.usage.uses.length === 0 ? (
             <p className="text-muted-foreground text-sm">No agent uses it.</p>
           ) : (
@@ -343,14 +373,25 @@ export function ModelDetailDrawer({
 
         {resident ? (
           <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium">Keep policy</h3>
-            <RadioGroup value={kind} onValueChange={(value) => setKind(value as ResidencyKeepPolicyKind)}>
+            <h3 id="drawer-keep-policy-h" className="text-sm font-medium">
+              Keep policy
+            </h3>
+            <RadioGroup aria-labelledby="drawer-keep-policy-h" value={kind} onValueChange={(value) => setKind(value as ResidencyKeepPolicyKind)}>
               {KEEP_POLICY_OPTIONS.map((option) => (
                 <div key={option.value} className="flex items-start gap-2">
-                  <RadioGroupItem value={option.value} id={`keep-policy-${option.value}`} className="mt-0.5" />
+                  <RadioGroupItem
+                    value={option.value}
+                    id={`keep-policy-${option.value}`}
+                    className="mt-0.5"
+                    disabled={option.value === 'on_demand' && model.usage.liveConsultation}
+                  />
                   <Label htmlFor={`keep-policy-${option.value}`} className="flex flex-col gap-0.5 font-normal">
                     <span>{option.label}</span>
-                    <span className="text-muted-foreground text-xs font-normal">{option.hint}</span>
+                    <span className="text-muted-foreground text-xs font-normal">
+                      {option.value === 'on_demand' && model.usage.liveConsultation
+                        ? 'Unavailable: a live-consultation path uses this model, so it must stay loaded.'
+                        : option.hint}
+                    </span>
                   </Label>
                 </div>
               ))}
@@ -365,8 +406,15 @@ export function ModelDetailDrawer({
                   min={0}
                   value={idleMinutes}
                   onChange={(event) => setIdleMinutes(event.target.value)}
+                  aria-invalid={idleInvalid || undefined}
+                  aria-describedby={idleInvalid ? 'keep-policy-idle-error' : undefined}
                   className="w-32"
                 />
+                {idleInvalid ? (
+                  <span id="keep-policy-idle-error" className="text-destructive text-sm">
+                    Enter whole minutes, 0 or more.
+                  </span>
+                ) : null}
                 <span className="text-muted-foreground text-xs">Blank inherits the service&rsquo;s own default.</span>
               </div>
             ) : null}
@@ -374,7 +422,7 @@ export function ModelDetailDrawer({
               Currently: {model.keepPolicy.label} &mdash; {model.keepPolicy.reason}
             </p>
             <div>
-              <Button size="sm" disabled={savePolicy.isPending} onClick={savePolicyDraft}>
+              <Button size="sm" disabled={savePolicy.isPending || idleInvalid} onClick={savePolicyDraft}>
                 {savePolicy.isPending ? <Spinner /> : null}
                 Save keep policy
               </Button>
@@ -402,7 +450,14 @@ export function ModelDetailDrawer({
                 />
               </div>
               <div className="flex items-end gap-2 pb-1.5">
-                <Checkbox id="residency-drawer-flash" checked={flashAttention} onCheckedChange={(checked) => setFlashAttention(checked === true)} />
+                <Checkbox
+                  id="residency-drawer-flash"
+                  checked={flashAttention}
+                  onCheckedChange={(checked) => {
+                    setFlashTouched(true);
+                    setFlashAttention(checked === true);
+                  }}
+                />
                 <Label htmlFor="residency-drawer-flash" className="font-normal">
                   Flash attention
                 </Label>

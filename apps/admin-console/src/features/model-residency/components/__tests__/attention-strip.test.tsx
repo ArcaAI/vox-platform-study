@@ -45,6 +45,17 @@ describe('AttentionStrip', () => {
     expect(onLoad).toHaveBeenCalledWith(STT, PINNED_NOT_LOADED);
   });
 
+  it('the GPU link moves focus to the card', () => {
+    const card = document.createElement('div');
+    card.id = 'residency-gpu-gpu0';
+    card.tabIndex = -1;
+    document.body.append(card);
+    render(<AttentionStrip items={ITEMS} onLink={vi.fn()} onLoad={vi.fn()} />);
+    fireEvent.click(screen.getByRole('link', { name: 'See what is on GPU 0' }));
+    expect(document.activeElement).toBe(card);
+    card.remove();
+  });
+
   it('offers no Load button when the service has no control API', () => {
     const readOnly = makeService({ controllable: false, models: [PINNED_NOT_LOADED, LIVE_WHISPER] });
     render(<AttentionStrip items={deriveAttentionItems(makeCatalogue({ services: [readOnly] }))} onLink={vi.fn()} onLoad={vi.fn()} />);

@@ -192,7 +192,7 @@ describe('ModelsTable — rows', () => {
   it('marks a model with a pending operation busy and disables its action', () => {
     setup({ pendingKeys: new Set(['stt|whisper-large-cs']) });
     const row = within(table()).getByRole('row', { name: /Whisper Large Code-Switch/ });
-    expect(within(row).getByRole('status', { name: 'Loading' })).toBeDefined();
+    expect(within(row).getByText('Load in progress')).toBeDefined();
     expect(within(row).getByRole('button', { name: /Load…/ })).toHaveProperty('disabled', true);
   });
 

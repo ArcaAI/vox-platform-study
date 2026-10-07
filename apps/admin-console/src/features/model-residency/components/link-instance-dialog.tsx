@@ -20,11 +20,20 @@ export function LinkInstanceDialog({ open, onOpenChange, service, model, onLinke
   const [choice, setChoice] = useState<string>(() => candidates.find((c) => c.strength === 'strong')?.aiModelId ?? NONE);
   const [pending, setPending] = useState(false);
 
+  // A refreshed catalogue can change the candidates: re-pick the strong one if the current choice vanished.
+  const candidateIds = candidates.map((c) => c.aiModelId).join('|');
+  const [seenCandidates, setSeenCandidates] = useState(candidateIds);
+  if (seenCandidates !== candidateIds) {
+    setSeenCandidates(candidateIds);
+    setChoice(candidates.find((c) => c.strength === 'strong')?.aiModelId ?? NONE);
+  }
+
   const bytes = model.residency?.bytes ?? model.size.bytes;
   const picked = candidates.find((c) => c.aiModelId === choice);
 
   async function submit() {
     if (choice === NONE || !reportedKey) {
+      toast.success('Left unmatched');
       onOpenChange(false);
       return;
     }

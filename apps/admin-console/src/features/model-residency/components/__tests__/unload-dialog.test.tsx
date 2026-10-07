@@ -66,6 +66,15 @@ describe('UnloadDialog', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it('announces the IN_FLIGHT escalation as an alert and marks the reason required', async () => {
+    unloadAsync.mockRejectedValueOnce({ details: { code: 'IN_FLIGHT', message: 'serving 2 requests', inFlight: 2 } });
+    renderDialog();
+    expect(screen.getByLabelText(/reason/i).getAttribute('aria-required')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^unload/i }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/2 requests still in flight/);
+    expect(screen.getByLabelText(/reason/i).getAttribute('aria-required')).toBe('true');
+  });
+
   it('a pinned row shows the reason and no destructive button', () => {
     const model = makeLoaded({
       keepPolicy: {

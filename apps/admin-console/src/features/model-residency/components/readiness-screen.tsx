@@ -10,6 +10,12 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { ErrorState } from '@/shared/state/error-state';
 import { useModelResidencyReadiness } from '../api';
 
+/** Where an admin goes to fix a failing check, when there is a screen for it. */
+const CHECK_CTA: Partial<Record<string, { href: string; label: string }>> = {
+  instances_matched: { href: '/model-residency?show=problems', label: 'Review on overview' },
+  gpus_inside_headroom: { href: '/model-residency', label: 'See GPU memory' },
+};
+
 const HEADER = (
   <PageHeader
     title="Ready to enforce?"
@@ -110,6 +116,14 @@ export function ReadinessScreen() {
                     {check.title} <span className="sr-only">{check.passed ? '— passed' : '— blocking'}</span>
                   </div>
                   <div className="text-muted-foreground text-sm">{check.detail}</div>
+                  {!check.passed && CHECK_CTA[check.id] ? (
+                    <Link
+                      href={CHECK_CTA[check.id]!.href}
+                      className="text-primary inline-flex min-h-8 items-center text-sm underline-offset-4 hover:underline"
+                    >
+                      {CHECK_CTA[check.id]!.label}
+                    </Link>
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -123,9 +137,9 @@ export function ReadinessScreen() {
           <p className="text-muted-foreground text-sm">Shadow decisions since gateway start, {formatDateTime(data.shadow.since, 'date')}.</p>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {tiles.map(([label, value]) => (
-              <div key={label} className="rounded-md border p-3">
-                <dd className="text-2xl font-semibold tabular-nums">{formatNumber(value)}</dd>
+              <div key={label} className="flex flex-col-reverse rounded-md border p-3">
                 <dt className="text-muted-foreground text-xs">{label}</dt>
+                <dd className="text-2xl font-semibold tabular-nums">{formatNumber(value)}</dd>
               </div>
             ))}
           </dl>
@@ -140,12 +154,12 @@ export function ReadinessScreen() {
             tells you whether the checks above allow it.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <Button disabled aria-describedby="rd-enforce-why">
-              Turn on enforce
+            <Button asChild variant="outline">
+              <Link href="/settings-registry">Open the residency.enforce setting</Link>
             </Button>
-            <span id="rd-enforce-why" className="text-muted-foreground text-sm">
+            <span className="text-muted-foreground text-sm">
               {blockers === 0
-                ? 'All checks pass; change the setting in Platform settings.'
+                ? 'All checks pass; change the setting in the Settings registry.'
                 : `${blockers} ${blockers === 1 ? 'check blocks' : 'checks block'} enforce mode.`}
             </span>
           </div>

@@ -72,6 +72,13 @@ describe('LinkInstanceDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it('Keep unmatched says so', () => {
+    renderDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /none of these/i }));
+    fireEvent.click(screen.getByRole('button', { name: /keep unmatched/i }));
+    expect(toast.success).toHaveBeenCalledWith('Left unmatched');
+  });
+
   it('toasts a failure', async () => {
     linkAsync.mockRejectedValue(new Error('boom'));
     renderDialog();

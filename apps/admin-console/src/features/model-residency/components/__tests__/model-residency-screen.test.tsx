@@ -273,7 +273,7 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
 
     // op-2 fails at once; op-1 is still running and its row shows it.
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Second model did not fit.'));
-    expect(within(row(/Whisper Large Code-Switch/)).getByRole('status', { name: 'Loading' })).toBeDefined();
+    expect(within(row(/Whisper Large Code-Switch/)).getByText('Load in progress')).toBeDefined();
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Whisper Large Code-Switch loaded.'), { timeout: 4000 });
     expect(screen.queryByTestId('load-preview-dialog')).toBeNull();
@@ -310,6 +310,8 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
     });
     fireEvent.click(within(row(/Granite Guardian/)).getByRole('button', { name: /Details/ }));
     fireEvent.click(screen.getByRole('button', { name: 'drawer reload' }));
+    const confirmDialog = await screen.findByRole('dialog', { name: /Reload Granite/ });
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Granite Guardian 4.1 8B loaded.'));
     expect(calls.find((call) => call.url === `${BASE}/load`)?.body).toEqual({
       service: 'lm-studio',
@@ -317,6 +319,37 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
       replace: true,
       options: { contextLength: 8192 },
     });
+  });
+});
+
+describe('ModelResidencyScreen — lost operations, readiness header', () => {
+  it('a failing operation poll toasts, clears the busy row and refreshes the catalogue', async () => {
+    const { calls } = await renderScreen(makeCatalogue(), (call) => {
+      if (call.url === `${BASE}/operations/op-lost`) return Response.json({ message: 'gone' }, { status: 404 });
+      return undefined;
+    });
+    fireEvent.click(within(row(/Whisper Large Code-Switch/)).getByRole('button', { name: /Load…/ }));
+    const reads = calls.filter((call) => call.url === CATALOGUE_URL).length;
+    act(() => lastProps<LoadPreviewDialogProps>(spies.load).onAdmitted(accepted('op-lost', 'whisper-large-cs')));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Lost track of the load of Whisper Large Code-Switch — refreshing.'));
+    await waitFor(() => expect(within(row(/Whisper Large Code-Switch/)).queryByText('Load in progress')).toBeNull());
+    await waitFor(() => expect(calls.filter((call) => call.url === CATALOGUE_URL).length).toBeGreaterThan(reads));
+  });
+
+  it('shows the readiness count and a shadow-review warning once readiness loads', async () => {
+    await renderScreen(makeCatalogue(), (call) =>
+      call.url === `${BASE}/readiness`
+        ? {
+            mode: 'shadow',
+            passed: 5,
+            total: 8,
+            checks: [{ id: 'shadow_review_recorded', title: 'Shadow review recorded', passed: false, detail: 'none' }],
+            shadow: { since: '2026-10-01T00:00:00Z', loads: 0, unloads: 0, refusedOverBudget: 0, duplicateLoads: 0 },
+          }
+        : undefined,
+    );
+    expect(await screen.findByRole('link', { name: 'Enforce readiness · 5 of 8' })).toBeDefined();
+    expect(screen.getByText('Shadow review not recorded')).toBeDefined();
   });
 });
 

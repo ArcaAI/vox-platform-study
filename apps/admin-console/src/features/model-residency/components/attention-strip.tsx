@@ -33,7 +33,9 @@ function AttentionAction({ item, onLink, onLoad }: { item: AttentionItem } & Omi
   if (item.kind === 'over_headroom' && item.device) {
     return (
       <Button asChild variant="outline" size="sm">
-        <a href={`#residency-gpu-${item.device.id}`}>See what is on {splitDeviceLabel(item.device.label).title}</a>
+        <a href={`#residency-gpu-${item.device.id}`} onClick={() => document.getElementById(`residency-gpu-${item.device!.id}`)?.focus()}>
+          See what is on {splitDeviceLabel(item.device.label).title}
+        </a>
       </Button>
     );
   }
