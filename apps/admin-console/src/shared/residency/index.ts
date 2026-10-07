@@ -12,4 +12,4 @@ export {
   type ModelResidencyOperationError,
   type ModelResidencyOperationStatus,
 } from './api';
-export { isTerminalResidencyOperation, useModelResidencyOperation } from './use-model-residency-operation';
+export { isTerminalResidencyOperation, RESIDENCY_OPERATION_TIMEOUT_MS, useModelResidencyOperation } from './use-model-residency-operation';

@@ -25,8 +25,9 @@ function GpuCard({ device }: { device: ResidencyDevice }) {
     <Card
       id={`residency-gpu-${device.id}`}
       role="article"
+      tabIndex={-1}
       aria-labelledby={headingId}
-      className={cn('scroll-mt-4 gap-3 p-4', device.overHeadroom && 'border-destructive/60')}
+      className={cn('scroll-mt-4 gap-3 p-4 outline-none focus-visible:ring-2', device.overHeadroom && 'border-destructive/60')}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

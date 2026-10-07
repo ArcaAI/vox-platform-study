@@ -41,11 +41,23 @@ describe('ReadinessScreen', () => {
     expect(screen.getByText('41')).toBeTruthy();
     expect(screen.getByText('21')).toBeTruthy();
     expect(screen.getByText(/since gateway start/i)).toBeTruthy();
-    expect(screen.getByText(/residency\.enforce/)).toBeTruthy();
-    const enforce = screen.getByRole('button', { name: /turn on enforce/i }) as HTMLButtonElement;
-    expect(enforce.disabled).toBe(true);
+    expect(screen.getAllByText(/residency\.enforce/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /residency\.enforce setting/i }).getAttribute('href')).toBe('/settings-registry');
+    expect(screen.queryByRole('button', { name: /turn on enforce/i })).toBeNull();
     expect(screen.getByText(/1 check blocks enforce mode/i)).toBeTruthy();
     expect(screen.getByRole('link', { name: /model residency/i }).getAttribute('href')).toBe('/model-residency');
+  });
+
+  it('offers a fix link on failing checks that have a screen for it', () => {
+    q.data = makeReadiness({
+      checks: [
+        { id: 'instances_matched', title: 'Instances matched', passed: false, detail: '1 unmatched.' },
+        { id: 'gpus_inside_headroom', title: 'GPUs inside headroom', passed: false, detail: 'GPU 0 over.' },
+      ],
+    });
+    renderWithProviders(<ReadinessScreen />);
+    expect(screen.getByRole('link', { name: 'Review on overview' }).getAttribute('href')).toBe('/model-residency?show=problems');
+    expect(screen.getByRole('link', { name: 'See GPU memory' }).getAttribute('href')).toBe('/model-residency');
   });
 
   it('shows a skeleton while loading', () => {

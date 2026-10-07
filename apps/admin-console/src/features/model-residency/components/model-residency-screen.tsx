@@ -12,6 +12,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import {
   asModelResidencyConflict,
   isTerminalResidencyOperation,
+  RESIDENCY_OPERATION_TIMEOUT_MS,
   useModelResidencyOperation,
   type LmStudioResidencyLoadOptions,
   type LoadModelResidencyResponse,
@@ -21,7 +22,7 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
-import { modelResidencyKeys, useLoadResidencyModel, useModelResidencyCatalogue } from '../api';
+import { modelResidencyKeys, useLoadResidencyModel, useModelResidencyCatalogue, useModelResidencyReadiness } from '../api';
 import type { ModelResidencyCatalogueResponse, ResidencyCatalogueModel, ResidencyServiceGroup } from '../api/types';
 import { AttentionStrip } from './attention-strip';
 import { GpuSummaryPanel } from './gpu-summary-panel';
@@ -30,6 +31,7 @@ import { LoadPreviewDialog } from './load-preview-dialog';
 import { ModelDetailDrawer } from './model-detail-drawer';
 import { ModelsTable, pendingKey } from './models-table';
 import { deriveAttentionItems, formatDataAge, formatReportingServices } from './residency-display';
+import { ReloadConfirmDialog } from './reload-confirm-dialog';
 import { SuggestionsPanel } from './suggestions-panel';
 import { UnloadDialog } from './unload-dialog';
 
@@ -56,12 +58,35 @@ function toKey(service: ResidencyServiceGroup, model: ResidencyCatalogueModel): 
  * Polls ONE admitted load to a terminal state. One watcher per pending model
  * (C-a): a second load no longer overwrites the first one's operation id.
  */
-function OperationWatcher({ operationId, onTerminal }: { operationId: string; onTerminal: (operation: ModelResidencyOperation) => void }) {
+function OperationWatcher({
+  operationId,
+  onTerminal,
+  onLost,
+}: {
+  operationId: string;
+  onTerminal: (operation: ModelResidencyOperation) => void;
+  /** The poll errored (e.g. 404 after a gateway restart) or never finished within the timeout. */
+  onLost: () => void;
+}) {
   const query = useModelResidencyOperation(operationId);
   const operation = query.data;
+  const terminal = operation ? isTerminalResidencyOperation(operation.status) : false;
   useEffect(() => {
     if (operation && isTerminalResidencyOperation(operation.status)) onTerminal(operation);
   }, [operation, onTerminal]);
+  // Held in a ref so a parent re-render (the catalogue polls) never restarts the timeout.
+  const lostRef = useRef(onLost);
+  useEffect(() => {
+    lostRef.current = onLost;
+  }, [onLost]);
+  useEffect(() => {
+    if (query.isError && !terminal) lostRef.current();
+  }, [query.isError, terminal]);
+  useEffect(() => {
+    if (terminal) return;
+    const timer = setTimeout(() => lostRef.current(), RESIDENCY_OPERATION_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [terminal]);
   return null;
 }
 
@@ -121,10 +146,10 @@ export function ModelResidencySkeleton() {
   );
 }
 
-function ReadinessLink() {
+function ReadinessLink({ label }: { label: string }) {
   return (
     <Button asChild variant="outline" size="sm">
-      <Link href={READINESS_HREF}>Enforce readiness</Link>
+      <Link href={READINESS_HREF}>{label}</Link>
     </Button>
   );
 }
@@ -144,6 +169,8 @@ export function ModelResidencyScreen() {
   const catalogue = useModelResidencyCatalogue();
   const queryClient = useQueryClient();
   const reload = useLoadResidencyModel();
+  const readiness = useModelResidencyReadiness();
+  const [reloadTarget, setReloadTarget] = useState<{ key: RowKey; options: LmStudioResidencyLoadOptions } | null>(null);
 
   const [drawerKey, setDrawerKey] = useState<RowKey | null>(null);
   const [loadKey, setLoadKey] = useState<RowKey | null>(null);
@@ -173,6 +200,20 @@ export function ModelResidencyScreen() {
     [queryClient],
   );
 
+  const handleLost = useCallback(
+    (key: string, name: string, operationId: string) => {
+      if (toasted.current.has(operationId)) return;
+      toasted.current.add(operationId);
+      toast.error(`Lost track of the load of ${name} — refreshing.`);
+      setPending((current) => {
+        if (current[key]?.operationId !== operationId) return current;
+        return Object.fromEntries(Object.entries(current).filter(([candidate]) => candidate !== key));
+      });
+      void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() });
+    },
+    [queryClient],
+  );
+
   const pendingKeys = useMemo(() => new Set(Object.keys(pending)), [pending]);
 
   const openLoad = useCallback((service: ResidencyServiceGroup, model: ResidencyCatalogueModel) => setLoadKey(toKey(service, model)), []);
@@ -191,10 +232,20 @@ export function ModelResidencyScreen() {
   }
 
   function handleReload(service: ResidencyServiceGroup, model: ResidencyCatalogueModel, options: LmStudioResidencyLoadOptions) {
+    setReloadTarget({ key: toKey(service, model), options });
+  }
+
+  function confirmReload(
+    service: ResidencyServiceGroup,
+    model: ResidencyCatalogueModel,
+    options: LmStudioResidencyLoadOptions,
+    reason: string | null,
+  ) {
     reload.mutate(
-      { service: service.service, modelRef: model.modelRef, replace: true, options },
+      { service: service.service, modelRef: model.modelRef, replace: true, options, ...(reason ? { force: true, reason } : {}) },
       {
         onSuccess: (response) => {
+          setReloadTarget(null);
           if (response.outcome === 'already_loaded') {
             toast.success(`${model.name} is already resident on that profile.`);
             return;
@@ -206,7 +257,10 @@ export function ModelResidencyScreen() {
     );
   }
 
-  const header = (meta?: ReactNode) => <PageHeader title="Model residency" meta={meta} actions={<ReadinessLink />} />;
+  const readinessData = readiness.isError ? undefined : readiness.data;
+  const readinessLabel = readinessData ? `Enforce readiness · ${readinessData.passed} of ${readinessData.total}` : 'Enforce readiness';
+  const shadowReviewMissing = readinessData?.checks.some((check) => check.id === 'shadow_review_recorded' && !check.passed) ?? false;
+  const header = (meta?: ReactNode) => <PageHeader title="Model residency" meta={meta} actions={<ReadinessLink label={readinessLabel} />} />;
 
   if (catalogue.isLoading) {
     return (
@@ -240,6 +294,7 @@ export function ModelResidencyScreen() {
   const loadTarget = resolve(data, loadKey);
   const unloadTarget = resolve(data, unloadKey);
   const linkTarget = resolve(data, linkKey);
+  const reloadResolved = resolve(data, reloadTarget?.key ?? null);
 
   return (
     <>
@@ -259,6 +314,12 @@ export function ModelResidencyScreen() {
               {stale.length > 0 ? <IconAlertTriangle aria-hidden /> : null}
               {freshness}
             </Badge>
+            {shadowReviewMissing ? (
+              <Badge variant="outline" className="border-warning-strong/50 text-warning-strong">
+                <IconAlertTriangle aria-hidden />
+                Shadow review not recorded
+              </Badge>
+            ) : null}
           </>,
         )}
         statusBanner={catalogue.error ? <ErrorBanner error={catalogue.error} onRetry={() => void catalogue.refetch()} /> : undefined}
@@ -298,6 +359,7 @@ export function ModelResidencyScreen() {
           key={operation.operationId}
           operationId={operation.operationId}
           onTerminal={(result) => handleTerminal(key, operation.name, result)}
+          onLost={() => handleLost(key, operation.name, operation.operationId)}
         />
       ))}
 
@@ -315,6 +377,20 @@ export function ModelResidencyScreen() {
           onUnload={openUnload}
           onReload={handleReload}
           onLink={openLink}
+        />
+      ) : null}
+
+      {reloadTarget && reloadResolved ? (
+        <ReloadConfirmDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setReloadTarget(null);
+          }}
+          service={reloadResolved.service}
+          model={reloadResolved.model}
+          options={reloadTarget.options}
+          isPending={reload.isPending}
+          onConfirm={(reason) => confirmReload(reloadResolved.service, reloadResolved.model, reloadTarget.options, reason)}
         />
       ) : null}
 

@@ -45,6 +45,7 @@ beforeEach(() => {
   unloadAsync.mockReset().mockResolvedValue({ outcome: 'unloaded' });
   loadAsync.mockReset().mockResolvedValue({ outcome: 'accepted', operationId: 'op-1', model: {} });
   vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.success).mockClear();
 });
 afterEach(cleanup);
 
@@ -92,6 +93,35 @@ describe('LoadPreviewDialog', () => {
     expect(unloadAsync).toHaveBeenCalledWith({ service: 'nlp', modelRef: 'medical-ner', reason: 'Make room for Whisper Large' });
     expect(Math.max(...unloadAsync.mock.invocationCallOrder)).toBeLessThan(loadAsync.mock.invocationCallOrder[0]!);
     expect(loadAsync).toHaveBeenCalledWith({ service: 'stt', modelRef: 'whisper-large-gguf' });
+  });
+
+  it('treats the idle (not yet started) state as loading, never as an error', () => {
+    (state as { isIdle?: boolean }).isIdle = true;
+    renderDialog();
+    expect(screen.getByTestId('load-preview-skeleton')).toBeTruthy();
+    expect(screen.queryByText(/couldn.t check placement/i)).toBeNull();
+    (state as { isIdle?: boolean }).isIdle = false;
+  });
+
+  it('toasts each eviction, refreshes the preview, and names the evictions done when the load then fails', async () => {
+    state.data = makePreview();
+    loadAsync.mockRejectedValueOnce(new Error('boom'));
+    renderDialog();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Medical NER/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Big One/ }));
+    previewMutate.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(toast.success).toHaveBeenCalledWith('Unloaded Medical NER');
+    expect(toast.success).toHaveBeenCalledWith('Unloaded Big One');
+    expect(previewMutate).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(toast.error).mock.calls[0]![0])).toMatch(/Already unloaded: Medical NER, Big One/);
+  });
+
+  it('marks the force reason as required', () => {
+    state.data = makePreview();
+    renderDialog();
+    expect(screen.getByLabelText(/reason/i).getAttribute('aria-required')).toBe('true');
   });
 
   it('requires a reason to load anyway, then sends force with it', async () => {

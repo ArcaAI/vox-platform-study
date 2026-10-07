@@ -6,7 +6,6 @@ import { cn } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
-import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@arcaai/ui/components/shadcn/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { Toggle } from '@arcaai/ui/components/shadcn/toggle';
@@ -86,14 +85,25 @@ function RowActions({
   const action = rowActionFor(service, model);
   const busy = pending || model.status === 'loading' || model.status === 'unloading';
   const name = model.aiModelId ? model.name : model.modelRef;
+  const busyId = `busy-${pendingKey(service.service, model.modelRef)}`.replace(/[^\w-]/g, '_');
   const solid = action === 'link' || (action === 'load' && model.keepPolicy.kind === 'always');
   const handler: Record<'load' | 'unload' | 'reload' | 'link', RowHandler> = { load: onLoad, unload: onUnload, reload: onOpenDrawer, link: onLink };
 
   return (
     <span className="flex items-center justify-end gap-2">
-      {busy ? <Spinner /> : null}
+      {busy ? (
+        <span id={busyId} role="status" className="text-muted-foreground text-xs">
+          {model.status === 'unloading' ? 'Unload in progress' : 'Load in progress'}
+        </span>
+      ) : null}
       {action ? (
-        <Button size="sm" variant={solid ? 'default' : 'outline'} disabled={pending} onClick={() => handler[action](service, model)}>
+        <Button
+          size="sm"
+          variant={solid ? 'default' : 'outline'}
+          disabled={pending}
+          aria-describedby={pending ? busyId : undefined}
+          onClick={() => handler[action](service, model)}
+        >
           {primaryRowActionLabel(action)}
           <span className="sr-only"> {name}</span>
         </Button>
