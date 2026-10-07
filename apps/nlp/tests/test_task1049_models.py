@@ -403,3 +403,155 @@ def test_laya_missing_answer_raises_rather_than_reads_benign() -> None:
     scorer = LayaScorer(name="laya-x", hf_id="c/laya-x", agent=agent, task="injection")
     with pytest.raises(KeyError):
         scorer.score(["x"])
+
+
+class FakeLayaMixedAgent(FakeLayaAgent):
+    def predict_batch(self, states, questions, batch_size=None, **kw):
+        self.calls.append({"states": states, "questions": questions, "batch_size": batch_size})
+        out = []
+        for a in self.answers[: len(states)]:
+            answers = {}
+            for k, v in a.items():
+                if isinstance(v, dict):
+                    answers[k] = {"type": "score", "probabilities": v}
+                else:
+                    answers[k] = {"type": "noul", "noul": v}
+            out.append({"answers": answers})
+        return out
+
+
+def test_laya_safety_takes_p_serious_or_severe_and_toxic() -> None:
+    from injection_eval.models import LayaScorer
+
+    agent = FakeLayaMixedAgent(
+        [
+            {"harm_severity": {"0": 0.1, "1": 0.2, "2": 0.3, "3": 0.4}, "toxic": 0.2},
+            {"harm_severity": {"0": 0.7, "1": 0.2, "2": 0.05, "3": 0.05}, "toxic": 0.3},
+        ]
+    )
+    scorer = LayaScorer(name="laya-x@safety", hf_id="c/x", agent=agent, task="safety")
+    out = scorer.score(["a", "b"])
+    assert [round(o.score, 2) for o in out] == [0.7, 0.3]  # max(P(2)+P(3), P(toxic))
+    assert set(agent.calls[0]["questions"]) == {"harm_severity", "toxic"}
+
+
+def test_laya_scope_asks_one_off_scope_question() -> None:
+    from injection_eval.models import LAYA_TASK_QUESTIONS, LayaScorer
+
+    agent = FakeLayaAgent([{"off_scope": 0.9}])
+    scorer = LayaScorer(name="laya-x@scope", hf_id="c/x", agent=agent, task="scope")
+    assert [o.score for o in scorer.score(["a"])] == [0.9]
+    assert "non-medical" in LAYA_TASK_QUESTIONS["scope"]["off_scope"]["instructions"]
+
+
+# ── GLiGuard safety task (production schema) ───────────────────────────────────
+
+
+class FakeGlinerSafety:
+    def __init__(self, results: list[dict]) -> None:
+        self.results = results
+        self.kwargs: dict = {}
+
+    def batch_classify_text(self, texts, tasks, **kwargs):
+        self.kwargs = {"tasks": tasks, **kwargs}
+        return self.results[: len(texts)]
+
+
+def _tox(**over: float) -> list[dict]:
+    from injection_eval.models import GLIGUARD_TOXICITY_LABELS
+
+    conf = dict.fromkeys(GLIGUARD_TOXICITY_LABELS, 0.01)
+    conf.update(over)
+    return [{"label": k, "confidence": v} for k, v in conf.items()]
+
+
+def test_gliguard_safety_scores_unsafe_and_toxicity_as_production_flags() -> None:
+    from injection_eval.models import GliguardSafetyScorer
+
+    results = [
+        {
+            "prompt_safety": {"label": "unsafe", "confidence": 0.8},
+            "prompt_toxicity": _tox(benign=0.9),
+        },
+        {
+            "prompt_safety": {"label": "safe", "confidence": 0.9},
+            "prompt_toxicity": _tox(benign=0.9),
+        },
+        # regulated_advice is benign since fb8e70061 (TASK-1047) — must not flag
+        {
+            "prompt_safety": {"label": "safe", "confidence": 0.9},
+            "prompt_toxicity": _tox(benign=0.2, regulated_advice=0.95),
+        },
+        {
+            "prompt_safety": {"label": "safe", "confidence": 0.9},
+            "prompt_toxicity": _tox(benign=0.2, violence_and_weapons=0.7),
+        },
+    ]
+    runtime = FakeGlinerSafety(results)
+    out = GliguardSafetyScorer(runtime=runtime, revision="0" * 40).score(["a", "b", "c", "d"])
+    assert [round(o.score, 2) for o in out] == [0.8, 0.1, 0.1, 0.7]
+    flags = [o.score >= 0.4 for o in out]
+    assert flags == [True, False, False, True]
+    tasks = runtime.kwargs["tasks"]
+    assert list(tasks) == ["prompt_safety", "prompt_toxicity", "jailbreak_detection"]
+    assert tasks["prompt_toxicity"]["cls_threshold"] == 0.0
+
+
+# ── granite-guardian medical-scope judge (LM Studio) ─────────────────────────
+
+
+def test_scope_judge_score_is_p_off_scope_and_mirrors_production_request() -> None:
+    from injection_eval.models import ScopeJudgeScorer
+
+    sent: list[dict] = []
+    replies = iter(
+        [
+            {"is_medical": False, "confidence": 0.9, "context_type": "off_scope", "reasoning": "x"},
+            {"is_medical": True, "confidence": 0.8, "context_type": "clinical", "reasoning": "y"},
+        ]
+    )
+
+    def post(body):
+        sent.append(body)
+        import json as _j
+
+        return {"choices": [{"message": {"content": _j.dumps(next(replies))}}]}
+
+    judge = ScopeJudgeScorer(
+        model="granite-x", criteria="CRITERIA", post=post, preflight=lambda: None
+    )
+    out = judge.score(["write a poem", "BP is fine"])
+    assert [round(o.score, 2) for o in out] == [0.9, 0.2]
+    body = sent[0]
+    assert body["model"] == "granite-x" and body["temperature"] == 0.05
+    assert body["max_tokens"] == 300
+    assert body["messages"][0] == {"role": "system", "content": "CRITERIA"}
+    assert (
+        body["messages"][1]["content"] == "Analyze this text for medical context:\n\nwrite a poem"
+    )
+    assert body["response_format"]["type"] == "json_schema"
+
+
+def test_scope_judge_unparseable_verdict_raises_and_preflight_runs_first() -> None:
+    from injection_eval.models import ScopeJudgeScorer
+
+    calls: list[str] = []
+
+    def preflight():
+        calls.append("preflight")
+        raise RuntimeError("model not loaded")
+
+    judge = ScopeJudgeScorer(
+        model="g", criteria="C", post=lambda b: calls.append("post"), preflight=preflight
+    )
+    with pytest.raises(RuntimeError, match="not loaded"):
+        judge.score(["x"])
+    assert calls == ["preflight"]
+    bad = ScopeJudgeScorer(
+        model="g",
+        criteria="C",
+        post=lambda b: {"choices": [{"message": {"content": "nope"}}]},
+        preflight=lambda: None,
+    )
+    with pytest.raises(ValueError):
+        bad.score(["x"])
