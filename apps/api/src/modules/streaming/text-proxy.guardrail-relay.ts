@@ -18,6 +18,7 @@
  * upstream headers itself and never copies a caller's; {@link withoutHopeInternalHeaders} is the
  * defence-in-depth pass applied before the gateway adds its OWN correlation.
  */
+import { StringDecoder } from 'node:string_decoder';
 import { runEventProblems } from '@arcaai/async-contract';
 import type { Readable } from 'node:stream';
 
@@ -161,9 +162,11 @@ export async function materializeStreamedErrorBody(err: unknown): Promise<void> 
 export class GuardrailSseRelay {
   private tail = '';
   private passthrough = false;
+  /** Decodes across chunk boundaries: a multibyte character split between two chunks stays intact. */
+  private readonly decoder = new StringDecoder('utf8');
 
   push(chunk: Buffer | string): string {
-    const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+    const text = typeof chunk === 'string' ? chunk : this.decoder.write(chunk);
     if (this.passthrough) return text;
     this.tail += text;
     let out = '';
@@ -184,7 +187,7 @@ export class GuardrailSseRelay {
   }
 
   end(): string {
-    const rest = this.tail;
+    const rest = this.tail + this.decoder.end();
     this.tail = '';
     return rest.length > 0 ? this.rewrite(rest, rest) : '';
   }

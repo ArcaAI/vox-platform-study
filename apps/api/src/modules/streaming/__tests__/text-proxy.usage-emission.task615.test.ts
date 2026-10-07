@@ -204,6 +204,23 @@ describe('TEXT proxy — ledger emission on stream teardown', () => {
     const payload = Buffer.from(sseFrame('chunk', { type: 'chunk', content: 'hello' }));
     upstream.emit('data', payload);
 
-    expect(res.write).toHaveBeenCalledWith(payload);
+    // TASK-1050: the guardrail relay re-cuts frames, so the write is a string — the BYTES are unchanged.
+    const written = Buffer.concat(res.write.mock.calls.map((call: unknown[]) => Buffer.from(call[0] as string)));
+    expect(written.equals(payload)).toBe(true);
+  });
+
+  it('keeps a multibyte character split across two upstream chunks intact', async () => {
+    const { ctrl, upstream } = build();
+    const res = makeResponse();
+
+    await ctrl.streamTaskEvents('text-task-10', undefined, res as never);
+
+    const payload = Buffer.from(sseFrame('chunk', { type: 'chunk', content: 'രോഗി — patient' }));
+    const cut = payload.indexOf(Buffer.from('ോ')) + 1; // inside a 3-byte UTF-8 sequence
+    upstream.emit('data', payload.subarray(0, cut));
+    upstream.emit('data', payload.subarray(cut));
+
+    const written = Buffer.concat(res.write.mock.calls.map((call: unknown[]) => Buffer.from(call[0] as string)));
+    expect(written.equals(payload)).toBe(true);
   });
 });
