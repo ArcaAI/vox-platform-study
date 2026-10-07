@@ -45,6 +45,7 @@ const RECORD_KEYS = new Set<keyof GuardrailEvaluationRecord>([
   'checks',
   'policyVersion',
   'noticeIds',
+  'notices',
   'withheldContent',
   'occurredAt',
 ]);

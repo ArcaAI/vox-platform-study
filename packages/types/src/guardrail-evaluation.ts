@@ -21,6 +21,7 @@ import type {
   GuardrailDecision,
   GuardrailDirection,
 } from './guardrail-vocabulary.js';
+import type { GuardrailNotice } from './guardrail-notice.js';
 
 /** Route (under the global `api/v1` prefix). */
 export const GUARDRAIL_EVALUATIONS_PATH = 'internal/guardrail/evaluations';
@@ -83,6 +84,12 @@ export interface GuardrailEvaluationRecord {
   readonly policyVersion: string;
   /** The `GuardrailNotice`s this evaluation raised (empty for allow / ignore). */
   readonly noticeIds: readonly string[];
+  /**
+   * The full notices behind `noticeIds`, so the gateway (the only writer) can persist them
+   * (`GuardrailNoticeRepository.upsertByDedupeKey`). Omitted when `noticeIds` is empty.
+   * Orchestrator amendment, TASK-1050 2026-10-07.
+   */
+  readonly notices?: readonly GuardrailNotice[];
   /** Outbound block only. PLAINTEXT on the wire; the gateway encrypts before storing. */
   readonly withheldContent?: string;
   /** ISO-8601 UTC, when guardrail decided (stored as the row's `at`). */
