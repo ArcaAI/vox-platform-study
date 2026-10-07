@@ -161,7 +161,7 @@ describe('ModelDetailDrawer', () => {
     renderDrawer();
     fireEvent.change(screen.getByLabelText('Idle minutes'), { target: { value: '99' } });
     fireEvent.click(screen.getByRole('button', { name: /save keep policy/i }));
-    const action = (vi.mocked(toast.error).mock.calls[0]![1] as { action: { onClick: () => void } }).action;
+    const action = (vi.mocked(toast.error).mock.calls[0]![1] as unknown as { action: { onClick: () => void } }).action;
     act(() => action.onClick());
     expect((screen.getByLabelText('Idle minutes') as HTMLInputElement).value).toBe('');
   });
