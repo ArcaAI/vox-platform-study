@@ -5,7 +5,8 @@ export const guardrailControlKeys = {
   catalogue: () => [...guardrailControlKeys.root, 'catalogue'] as const,
   availability: (tenantId: string) => [...guardrailControlKeys.root, 'availability', tenantId] as const,
   policyKeys: () => [...guardrailControlKeys.root, 'policy-keys'] as const,
-  revisions: (key: string) => [...guardrailControlKeys.root, 'revisions', key] as const,
+  /** Prefix `revisions(key)` matches every row's history of `key`; a label threshold adds its row. */
+  revisions: (key: string, taskKey?: string) => [...guardrailControlKeys.root, 'revisions', key, ...(taskKey ? [taskKey] : [])] as const,
   judgeMeta: (modelId: string) => [...guardrailControlKeys.root, 'judge-meta', modelId] as const,
   judgeLanes: () => [...guardrailControlKeys.root, 'judge-lanes'] as const,
   model: (modelId: string) => [...guardrailControlKeys.root, 'model', modelId] as const,

@@ -84,15 +84,18 @@ function useInvalidatePolicyKeys() {
 export function useUpdateGuardrailPolicyKey() {
   const invalidate = useInvalidatePolicyKeys();
   return useMutation({
-    mutationFn: ({ key, value, modelVersion }: { key: string; value: unknown; modelVersion: number }) =>
-      updateGuardrailPolicyKey(key, value, modelVersion),
+    mutationFn: ({ key, value, modelVersion, taskKey }: { key: string; value: unknown; modelVersion: number; taskKey?: string }) =>
+      updateGuardrailPolicyKey(key, value, modelVersion, taskKey),
     onSettled: (_data, _error, variables) => invalidate(variables.key),
   });
 }
 
 export function useResetGuardrailPolicyKey() {
   const invalidate = useInvalidatePolicyKeys();
-  return useMutation({ mutationFn: (key: string) => resetGuardrailPolicyKey(key), onSettled: (_d, _e, key) => invalidate(key) });
+  return useMutation({
+    mutationFn: ({ key, taskKey }: { key: string; taskKey?: string }) => resetGuardrailPolicyKey(key, taskKey),
+    onSettled: (_d, _e, variables) => invalidate(variables.key),
+  });
 }
 
 export function useResetGuardrailPolicyLane() {
@@ -103,14 +106,15 @@ export function useResetGuardrailPolicyLane() {
   });
 }
 
-export function useGuardrailPolicyRevisions(key: string, enabled: boolean) {
-  return useQuery({ queryKey: guardrailControlKeys.revisions(key), queryFn: () => listGuardrailPolicyRevisions(key), enabled });
+export function useGuardrailPolicyRevisions(key: string, enabled: boolean, taskKey?: string) {
+  return useQuery({ queryKey: guardrailControlKeys.revisions(key, taskKey), queryFn: () => listGuardrailPolicyRevisions(key, 50, taskKey), enabled });
 }
 
 export function useRestoreGuardrailPolicyRevision() {
   const invalidate = useInvalidatePolicyKeys();
   return useMutation({
-    mutationFn: ({ key, revisionId }: { key: string; revisionId: string }) => restoreGuardrailPolicyRevision(key, revisionId),
+    mutationFn: ({ key, revisionId, taskKey }: { key: string; revisionId: string; taskKey?: string }) =>
+      restoreGuardrailPolicyRevision(key, revisionId, taskKey),
     onSettled: (_d, _e, variables) => invalidate(variables.key),
   });
 }
