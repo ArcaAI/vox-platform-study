@@ -29,6 +29,9 @@ export function GuardrailWarningDialog({
   onAcknowledge,
   pending = false,
   title = 'Safety warnings on the final note',
+  description = 'The note was generated, and these checks flagged it. Review the note before you rely on it or sign it.',
+  actionLabel = 'Acknowledge and continue',
+  cancelLabel = 'Review later',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,6 +40,9 @@ export function GuardrailWarningDialog({
   onAcknowledge: (noticeIds: string[]) => void;
   pending?: boolean;
   title?: string;
+  description?: string;
+  actionLabel?: string;
+  cancelLabel?: string;
 }) {
   const list = mergeGuardrailNotices([], notices);
   function handleAcknowledge(event: MouseEvent<HTMLButtonElement>) {
@@ -49,9 +55,7 @@ export function GuardrailWarningDialog({
       <AlertDialogContent className="flex max-h-[70vh] flex-col">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>
-            The note was generated, and these checks flagged it. Review the note before you rely on it or sign it.
-          </AlertDialogDescription>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {list.map((notice) => (
@@ -63,10 +67,10 @@ export function GuardrailWarningDialog({
           ))}
         </ul>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Review later</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction disabled={pending} onClick={handleAcknowledge}>
             {pending ? <Spinner /> : null}
-            Acknowledge and continue
+            {actionLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

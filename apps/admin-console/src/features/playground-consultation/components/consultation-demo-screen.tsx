@@ -47,7 +47,6 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import {
   getLatestSummary,
   playgroundConsultationKeys,
-  useApproveSummary,
   useCancelConsultationJob,
   useConfirmDocumentSection,
   useConsultationLoopStream,
@@ -68,9 +67,13 @@ import {
   useUpdateSummary,
   type CitedSegment,
 } from '../api';
+import { useApproveConsultation } from '../api/guardrail';
 import type { CorrectionProposal } from '../api/live-assist';
 import { normalizeScribeStatus } from '../api/types';
 import { useColumnLayout } from '../hooks/use-column-layout';
+import { useConsultationGuardrail } from '../hooks/use-consultation-guardrail';
+import { GuardrailWarningDialog } from '@/shared/guardrail/guardrail-warning-dialog';
+import { ConsultationGuardrailBadge, ConsultationGuardrailSlot } from './scribe/consultation-guardrail-slot';
 import { useLiveMetrics } from '../hooks/use-live-metrics';
 import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
 import { CaseNoteColumn } from './scribe/case-note-column';
@@ -303,10 +306,12 @@ function ScribeWorkspace() {
   const summaryAsync = useGenerateSummaryAsync();
   const cancelSummaryJob = useCancelConsultationJob();
   const [summaryJobId, setSummaryJobId] = useState<string | null>(null);
-  const approve = useApproveSummary();
   const summaryEdit = useUpdateSummary();
 
   const consultationId = consultation?.id ?? null;
+  // TASK-1050 — signing approves the whole consultation (`POST :id/approve`), acknowledging the
+  // outstanding guardrail warnings in the same transaction (README §9.8.3).
+  const approve = useApproveConsultation(consultationId);
   // Which engine ACTUALLY took the consultation — a selection at open is not a guarantee
   // (dispatch is best-effort so a harness outage never blocks an open).
   const governingWorkflow = useConsultationWorkflow(consultationId ?? undefined);
@@ -326,6 +331,19 @@ function ScribeWorkspace() {
   // moment `draft.data` exists, so the timestamp needs no clearing here).
   const finalizeSettledRef = useRef(false);
   const draft = useLatestSummary(consultationId, !!consultationId, { awaitingFinalizeSince });
+  /**
+   * TASK-1050 — guardrail results: a warning on the FINAL note opens one modal; live / partial warnings
+   * toast once per check and badge the note; a block is a resumable hold shown in the note column.
+   * Replaces the generic toast this screen used to raise for every guardrail failure.
+   */
+  const guardrail = useConsultationGuardrail({
+    consultationId,
+    draftId: draft.data?.id ?? null,
+    isRecording,
+    onResumed: (result) => {
+      if (typeof result.status === 'string') setConsultation((previous) => (previous ? { ...previous, status: result.status as string } : previous));
+    },
+  });
   useEffect(() => {
     if (awaitingFinalizeSince === null || !draft.data || finalizeSettledRef.current) return;
     finalizeSettledRef.current = true;
@@ -561,6 +579,9 @@ function ScribeWorkspace() {
         void consentQuery.refetch();
         setConsentDialogOpen(true);
         toast.error('Recording needs patient consent for AI documentation.');
+      } else if (guardrail.handleError(error)) {
+        // TASK-1050: 409 GUARDRAIL_HOLD — recording cannot resume until the hold is resolved.
+        toast.error('A guardrail hold is open. Resolve it in the case note column, then record again.');
       } else {
         toast.error(errorMessage(error, 'Could not start recording'));
       }
@@ -619,6 +640,9 @@ function ScribeWorkspace() {
   const summaryJob = useSummaryJobProgress(summaryJobId, {
     onTerminal: (job) => {
       setSummaryJobId(null);
+      // TASK-1050: a guardrail outcome is shown in the note column (block) or the modal (warning),
+      // not as the generic failure toast.
+      if (guardrail.handleJobTerminal(job)) return;
       const status = job.status.toUpperCase();
       if (status === 'COMPLETED') toast.success('Note generated');
       else if (status === 'CANCELLED') toast.success('Note generation cancelled');
@@ -635,7 +659,10 @@ function ScribeWorkspace() {
       { consultationId: consultation.id },
       {
         onSuccess: (job) => setSummaryJobId(job.jobId),
-        onError: (error) => toast.error(errorMessage(error, 'Note generation failed')),
+        onError: (error) => {
+          if (guardrail.handleError(error)) return;
+          toast.error(errorMessage(error, 'Note generation failed'));
+        },
       },
     );
   }
@@ -647,23 +674,26 @@ function ScribeWorkspace() {
     });
   }
 
-  function handleApprove({ overrideSafetyFlag }: { overrideSafetyFlag: boolean }) {
-    const draftId = draft.data?.id;
-    const draftVersion = draft.data?.version;
-    if (!consultation || !draftId || draftVersion === undefined) return;
+  function handleApprove({ overrideSafetyFlag, acknowledgeGuardrailNotices }: { overrideSafetyFlag: boolean; acknowledgeGuardrailNotices?: boolean }) {
+    if (!consultation || !draft.data?.id) return;
+    // TASK-1050 §9.8.3: one action — the confirm step showed the outstanding warnings, and the server
+    // acknowledges every one of them inside the approve transaction. Warnings never block signing.
     approve.mutate(
+      { overrideSafetyFlag, acknowledgeGuardrailNotices },
       {
-        consultationId: consultation.id,
-        contextItemId: draftId,
-        expectedVersion: draftVersion,
-        body: overrideSafetyFlag ? { overrideSafetyFlag: true } : undefined,
-      },
-      {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setApproved(true);
-          toast.success('Note signed');
+          const acknowledged = result?.acknowledgedNotices?.length ?? 0;
+          toast.success(acknowledged > 0 ? `Note signed; ${acknowledged} safety ${acknowledged === 1 ? 'warning' : 'warnings'} acknowledged` : 'Note signed');
+          void guardrail.refetch();
         },
-        onError: (error) => toast.error(errorMessage(error, 'Could not sign the note')),
+        onError: (error) => {
+          if (guardrail.handleError(error)) {
+            toast.error('A guardrail hold is open. Resolve it before signing.');
+            return;
+          }
+          toast.error(errorMessage(error, 'Could not sign the note'));
+        },
       },
     );
   }
@@ -832,6 +862,19 @@ function ScribeWorkspace() {
               onApprove={handleApprove}
               approvePending={approve.isPending}
               approved={approved}
+              approveWarnings={guardrail.outstandingWarnings}
+              approveDisabledReason={guardrail.blocking || guardrail.errorBlock ? 'Resolve the guardrail hold before signing.' : null}
+              guardrailSlot={
+                <ConsultationGuardrailSlot
+                  blocking={guardrail.blocking}
+                  errorBlock={guardrail.errorBlock}
+                  liveWarnings={guardrail.liveWarnings}
+                  onResume={guardrail.resume}
+                  resumePending={guardrail.resumePending}
+                  pendingResolution={guardrail.pendingResolution}
+                />
+              }
+              guardrailBadge={<ConsultationGuardrailBadge held={!!guardrail.blocking || !!guardrail.errorBlock} warnings={guardrail.liveWarnings.length} />}
               citedSegments={citedSegments}
               transcriptText={transcriptText}
               selectedCitationId={selectedCitationId}
@@ -862,6 +905,14 @@ function ScribeWorkspace() {
           open consultation and the purpose to the one recording needs, so the
           clinician confirms an attestation rather than filling a form. 
 */}
+      {/* TASK-1050 OD-15 — the ONE guardrail modal: a warning on the final note. */}
+      <GuardrailWarningDialog
+        open={guardrail.dialog.open}
+        onOpenChange={guardrail.dialog.onOpenChange}
+        notices={guardrail.dialog.notices}
+        onAcknowledge={guardrail.dialog.onAcknowledge}
+        pending={guardrail.dialog.pending}
+      />
       <RecordConsentDialog
         open={consentDialogOpen}
         onOpenChange={setConsentDialogOpen}
