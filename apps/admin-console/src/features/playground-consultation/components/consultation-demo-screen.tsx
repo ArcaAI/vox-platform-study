@@ -674,7 +674,13 @@ function ScribeWorkspace() {
     });
   }
 
-  function handleApprove({ overrideSafetyFlag, acknowledgeGuardrailNotices }: { overrideSafetyFlag: boolean; acknowledgeGuardrailNotices?: boolean }) {
+  function handleApprove({
+    overrideSafetyFlag,
+    acknowledgeGuardrailNotices,
+  }: {
+    overrideSafetyFlag: boolean;
+    acknowledgeGuardrailNotices?: boolean;
+  }) {
     if (!consultation || !draft.data?.id) return;
     // TASK-1050 §9.8.3: one action — the confirm step showed the outstanding warnings, and the server
     // acknowledges every one of them inside the approve transaction. Warnings never block signing.
@@ -684,7 +690,9 @@ function ScribeWorkspace() {
         onSuccess: (result) => {
           setApproved(true);
           const acknowledged = result?.acknowledgedNotices?.length ?? 0;
-          toast.success(acknowledged > 0 ? `Note signed; ${acknowledged} safety ${acknowledged === 1 ? 'warning' : 'warnings'} acknowledged` : 'Note signed');
+          toast.success(
+            acknowledged > 0 ? `Note signed; ${acknowledged} safety ${acknowledged === 1 ? 'warning' : 'warnings'} acknowledged` : 'Note signed',
+          );
           void guardrail.refetch();
         },
         onError: (error) => {
@@ -874,7 +882,9 @@ function ScribeWorkspace() {
                   pendingResolution={guardrail.pendingResolution}
                 />
               }
-              guardrailBadge={<ConsultationGuardrailBadge held={!!guardrail.blocking || !!guardrail.errorBlock} warnings={guardrail.liveWarnings.length} />}
+              guardrailBadge={
+                <ConsultationGuardrailBadge held={!!guardrail.blocking || !!guardrail.errorBlock} warnings={guardrail.liveWarnings.length} />
+              }
               citedSegments={citedSegments}
               transcriptText={transcriptText}
               selectedCitationId={selectedCitationId}

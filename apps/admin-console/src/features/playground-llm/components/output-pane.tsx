@@ -223,7 +223,17 @@ const DEFAULT_FAIL_CLOSED_COPY = {
 };
 
 /** Designed 422 error variant: the service failed CLOSED, no toast, a real panel. */
-function FailClosedPanel({ message, code, notice, onRetry }: { message: string; code?: string; notice?: GuardrailNotice | null; onRetry: () => void }) {
+function FailClosedPanel({
+  message,
+  code,
+  notice,
+  onRetry,
+}: {
+  message: string;
+  code?: string;
+  notice?: GuardrailNotice | null;
+  onRetry: () => void;
+}) {
   const copy = (code && FAIL_CLOSED_COPY[code]) || (notice ? FAIL_CLOSED_COPY.CONTENT_BLOCKED : undefined) || DEFAULT_FAIL_CLOSED_COPY;
   return (
     <div role="alert" className="bg-destructive/5 flex flex-col gap-2 rounded-lg p-4">

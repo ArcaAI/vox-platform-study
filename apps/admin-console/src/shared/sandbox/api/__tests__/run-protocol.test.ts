@@ -55,7 +55,8 @@ describe('run protocol v2 mirror', () => {
     expect(isTerminalRunEvent(event({ type: 'run.cancelled' }))).toBe(true);
     expect(isTerminalRunEvent(event({ type: 'node.completed', nodeId: 'n' }))).toBe(false);
     const resync = (status: string) =>
-      event({ type: 'run.resync', data: { reason: 'expired', snapshot: { status, lastSeq: 4, nodes: {}, outputs: {} } } } as Partial<RunEvent> & Pick<RunEvent, 'type'>);
+      event({ type: 'run.resync', data: { reason: 'expired', snapshot: { status, lastSeq: 4, nodes: {}, outputs: {} } } } as Partial<RunEvent> &
+        Pick<RunEvent, 'type'>);
     expect(isTerminalRunEvent(resync('COMPLETED'))).toBe(true);
     expect(isTerminalRunEvent(resync('RUNNING'))).toBe(false);
   });

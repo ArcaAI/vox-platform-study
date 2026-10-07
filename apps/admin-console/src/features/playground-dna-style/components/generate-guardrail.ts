@@ -25,7 +25,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function dnaGuardrailFromError(error: unknown): DnaGuardrailState | null {
   const outcome = classifyGuardrailError(error);
   if (!outcome) return null;
-  return { block: { notice: outcome.notice, code: outcome.code, ...(outcome.kind === 'redaction_unavailable' ? { redaction: true } : {}) }, warnings: [] };
+  return {
+    block: { notice: outcome.notice, code: outcome.code, ...(outcome.kind === 'redaction_unavailable' ? { redaction: true } : {}) },
+    warnings: [],
+  };
 }
 
 export function dnaGuardrailFromJob(job: DnaJobStatus & Record<string, unknown>): DnaGuardrailState | null {

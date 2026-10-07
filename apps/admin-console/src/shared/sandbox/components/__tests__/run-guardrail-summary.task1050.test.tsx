@@ -26,8 +26,21 @@ function example(name: string): RunEvent {
   return parsed;
 }
 
-const started: RunEvent = { seq: 1, runId: 'run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B', type: 'run.started', ts: '2026-10-07T09:14:00.000Z', data: { kind: 'workflow', slug: 'w', versionNumber: 1 } };
-const nodeStarted: RunEvent = { seq: 2, runId: started.runId, type: 'node.started', ts: started.ts, nodeId: 'n_note', data: { kind: 'core.agent', label: 'Note' } };
+const started: RunEvent = {
+  seq: 1,
+  runId: 'run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B',
+  type: 'run.started',
+  ts: '2026-10-07T09:14:00.000Z',
+  data: { kind: 'workflow', slug: 'w', versionNumber: 1 },
+};
+const nodeStarted: RunEvent = {
+  seq: 2,
+  runId: started.runId,
+  type: 'node.started',
+  ts: started.ts,
+  nodeId: 'n_note',
+  data: { kind: 'core.agent', label: 'Note' },
+};
 
 describe('RunGuardrailSummary', () => {
   it('renders the paused state with its notice copy', () => {
@@ -39,7 +52,12 @@ describe('RunGuardrailSummary', () => {
   });
 
   it('renders WARN and IGNORE screens with each check verdict and action taken', () => {
-    const view = foldRunEvents([started, nodeStarted, example('guardrail.inbound (WARN with checks)'), example('guardrail.outbound (IGNORE with checks)')]);
+    const view = foldRunEvents([
+      started,
+      nodeStarted,
+      example('guardrail.inbound (WARN with checks)'),
+      example('guardrail.outbound (IGNORE with checks)'),
+    ]);
     render(<RunGuardrailSummary view={view} />);
     expect(screen.getAllByText('Warned').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Recorded').length).toBeGreaterThan(0);

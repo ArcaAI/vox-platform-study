@@ -51,7 +51,11 @@ describe('classifyGuardrailError', () => {
   });
 
   it('reads the egress-redaction 503 as a distinct retryable outcome', () => {
-    const error = new GatewayError(503, 'x', undefined, { code: 'EGRESS_REDACTION_UNAVAILABLE', retryable: true, processingReason: 'EGRESS_REDACTION_UNAVAILABLE' });
+    const error = new GatewayError(503, 'x', undefined, {
+      code: 'EGRESS_REDACTION_UNAVAILABLE',
+      retryable: true,
+      processingReason: 'EGRESS_REDACTION_UNAVAILABLE',
+    });
     expect(classifyGuardrailError(error)).toMatchObject({ kind: 'redaction_unavailable' });
   });
 
@@ -61,7 +65,12 @@ describe('classifyGuardrailError', () => {
   });
 
   it('recognises the SDK typed errors by name', () => {
-    const sdkBlock = Object.assign(new Error('blocked'), { name: 'GuardrailBlockedError', notice: blockedNotice, evaluationIds: ['e'], context: { code: 'CONTENT_BLOCKED' } });
+    const sdkBlock = Object.assign(new Error('blocked'), {
+      name: 'GuardrailBlockedError',
+      notice: blockedNotice,
+      evaluationIds: ['e'],
+      context: { code: 'CONTENT_BLOCKED' },
+    });
     expect(classifyGuardrailError(sdkBlock)).toEqual({ kind: 'blocked', code: 'CONTENT_BLOCKED', notice: blockedNotice, evaluationIds: ['e'] });
     const sdkEgress = Object.assign(new Error('x'), { name: 'EgressRedactionUnavailableError', context: {} });
     expect(classifyGuardrailError(sdkEgress)).toMatchObject({ kind: 'redaction_unavailable' });

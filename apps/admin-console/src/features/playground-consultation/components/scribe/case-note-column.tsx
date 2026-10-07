@@ -1065,7 +1065,9 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           <Button
             size="sm"
             onClick={handleSign}
-            disabled={!draft || approvePending || approved || isEditing || !!approveDisabledReason || (assurance?.safetyFlag === true && !overrideSafety)}
+            disabled={
+              !draft || approvePending || approved || isEditing || !!approveDisabledReason || (assurance?.safetyFlag === true && !overrideSafety)
+            }
           >
             {approvePending ? <Spinner aria-hidden /> : <IconCheck aria-hidden />}
             {approved ? 'Signed' : 'Sign & save'}

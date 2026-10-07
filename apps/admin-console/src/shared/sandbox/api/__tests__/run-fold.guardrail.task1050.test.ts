@@ -20,7 +20,13 @@ function example(name: string): RunEvent {
   return parsed;
 }
 
-const started: RunEvent = { seq: 1, runId: 'run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B', type: 'run.started', ts: '2026-10-07T09:14:00.000Z', data: { kind: 'workflow', slug: 'w', versionNumber: 1 } };
+const started: RunEvent = {
+  seq: 1,
+  runId: 'run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B',
+  type: 'run.started',
+  ts: '2026-10-07T09:14:00.000Z',
+  data: { kind: 'workflow', slug: 'w', versionNumber: 1 },
+};
 const nodeStarted: RunEvent = { seq: 2, runId: started.runId, type: 'node.started', ts: started.ts, nodeId: 'n_note', data: { kind: 'core.agent' } };
 
 describe('foldRunEvents — guardrail', () => {

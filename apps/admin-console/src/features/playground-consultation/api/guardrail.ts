@@ -38,7 +38,9 @@ export interface GuardrailNoticesResult {
 export async function listGuardrailNotices(consultationId: string): Promise<GuardrailNoticesResult> {
   const { data } = await getWithEtag<unknown>(`${base(consultationId)}/guardrail-notices`);
   const record = (typeof data === 'object' && data !== null ? data : {}) as { unacknowledgedNoticeIds?: unknown };
-  const ids = Array.isArray(record.unacknowledgedNoticeIds) ? record.unacknowledgedNoticeIds.filter((id): id is string => typeof id === 'string') : [];
+  const ids = Array.isArray(record.unacknowledgedNoticeIds)
+    ? record.unacknowledgedNoticeIds.filter((id): id is string => typeof id === 'string')
+    : [];
   return { notices: toGuardrailNotices<GuardrailNoticeWithState>(data), unacknowledgedNoticeIds: ids };
 }
 

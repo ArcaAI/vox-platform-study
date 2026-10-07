@@ -55,18 +55,15 @@ export function toGuardrailNotice<T extends GuardrailNotice = GuardrailNotice>(v
   if (action !== GUARDRAIL_NOTICE_TYPE_ACTION[type as GuardrailNotice['type']]) return null;
   if (typeof messageKey !== 'string' || !KEYS.has(messageKey) || !messageKey.startsWith(`${type}.`)) return null;
   if (defaultMessage !== GUARDRAIL_NOTICE_DEFAULT_MESSAGES[messageKey as GuardrailNoticeMessageKey]) return null;
-  if (!Array.isArray(checks) || !checks.every((check) => isRecord(check) && typeof check.checkId === 'string' && CHECK_IDS.has(check.checkId))) return null;
+  if (!Array.isArray(checks) || !checks.every((check) => isRecord(check) && typeof check.checkId === 'string' && CHECK_IDS.has(check.checkId)))
+    return null;
   if (!Array.isArray(itemIds) || !itemIds.every((id) => typeof id === 'string')) return null;
   return value as unknown as T;
 }
 
 /** The notices of a list or of a body (`guardrailNotices`, TEXT's `guardrail_notices`, or a `notices` list). Invalid entries are dropped. */
 export function toGuardrailNotices<T extends GuardrailNotice = GuardrailNotice>(value: unknown): T[] {
-  const list = Array.isArray(value)
-    ? value
-    : isRecord(value)
-      ? (value.guardrailNotices ?? value.guardrail_notices ?? value.notices)
-      : undefined;
+  const list = Array.isArray(value) ? value : isRecord(value) ? (value.guardrailNotices ?? value.guardrail_notices ?? value.notices) : undefined;
   if (!Array.isArray(list)) return [];
   return list.flatMap((entry) => {
     const notice = toGuardrailNotice<T>(entry);

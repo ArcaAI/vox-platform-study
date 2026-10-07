@@ -90,7 +90,11 @@ describe('copy and classification', () => {
     expect(isWarningNotice(notice())).toBe(true);
     expect(
       isWarningNotice(
-        notice({ type: 'guardrail.unverified', messageKey: 'guardrail.unverified.generic', defaultMessage: GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.unverified.generic'] }),
+        notice({
+          type: 'guardrail.unverified',
+          messageKey: 'guardrail.unverified.generic',
+          defaultMessage: GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.unverified.generic'],
+        }),
       ),
     ).toBe(true);
     expect(isWarningNotice(FIXTURE.notices.find((n) => n.type === 'guardrail.blocked') as GuardrailNotice)).toBe(false);

@@ -219,11 +219,21 @@ function RulesTestResult({ result }: { result: EffectiveRulesScreenResult }) {
         <table aria-label={`Checks (${result.checks.length})`} className="w-full min-w-[28rem] text-xs">
           <thead className="bg-muted/50 text-muted-foreground text-left">
             <tr>
-              <th scope="col" className="px-2.5 py-1.5 font-semibold">Check</th>
-              <th scope="col" className="px-2.5 py-1.5 font-semibold">Verdict</th>
-              <th scope="col" className="px-2.5 py-1.5 font-semibold">Action</th>
-              <th scope="col" className="px-2.5 py-1.5 font-semibold">Action taken</th>
-              <th scope="col" className="px-2.5 py-1.5 font-semibold">Category</th>
+              <th scope="col" className="px-2.5 py-1.5 font-semibold">
+                Check
+              </th>
+              <th scope="col" className="px-2.5 py-1.5 font-semibold">
+                Verdict
+              </th>
+              <th scope="col" className="px-2.5 py-1.5 font-semibold">
+                Action
+              </th>
+              <th scope="col" className="px-2.5 py-1.5 font-semibold">
+                Action taken
+              </th>
+              <th scope="col" className="px-2.5 py-1.5 font-semibold">
+                Category
+              </th>
             </tr>
           </thead>
           <tbody>

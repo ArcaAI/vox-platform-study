@@ -139,7 +139,9 @@ export function GeneratePane({
             onRetry={gated || isPending ? undefined : onGenerate}
           />
         ) : null}
-        {guardrail && guardrail.warnings.length > 0 ? <GuardrailNoticeBanner notices={guardrail.warnings} title="Safety check warning on this style" /> : null}
+        {guardrail && guardrail.warnings.length > 0 ? (
+          <GuardrailNoticeBanner notices={guardrail.warnings} title="Safety check warning on this style" />
+        ) : null}
         <p aria-hidden className="text-muted-foreground font-mono text-xs">
           SSE: GET /jobs/:jobId/stream
         </p>

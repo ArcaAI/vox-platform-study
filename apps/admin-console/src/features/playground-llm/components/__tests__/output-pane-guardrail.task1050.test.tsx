@@ -94,7 +94,12 @@ describe('LLM playground guardrail outcomes', () => {
 
   it('a block keeps the fail-closed panel and names the check and the direction', () => {
     const run = runStateFromGenerateError(
-      new GatewayError(422, 'blocked', undefined, { code: 'CONTENT_BLOCKED', type: 'urn:hope:problem:guardrail-blocked', guardrailNotice: blocked, detail: 'Blocked by guardrail.' }),
+      new GatewayError(422, 'blocked', undefined, {
+        code: 'CONTENT_BLOCKED',
+        type: 'urn:hope:problem:guardrail-blocked',
+        guardrailNotice: blocked,
+        detail: 'Blocked by guardrail.',
+      }),
     );
     expect(run?.kind).toBe('fail-closed');
     renderPane(run as RunState);

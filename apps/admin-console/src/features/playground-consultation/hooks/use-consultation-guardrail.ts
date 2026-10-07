@@ -24,7 +24,15 @@ import type { GuardrailHoldResolution } from '@arcaai/types';
 import { classifyGuardrailError } from '@/shared/guardrail/guardrail-error';
 import type { GuardrailNoticeWithState } from '@/shared/guardrail/guardrail-notice-list';
 import { guardrailCheckLabel } from '@/shared/guardrail/labels';
-import { createNoticeDeduper, guardrailNoticeCopy, isBlockedNotice, isWarningNotice, mergeGuardrailNotices, toGuardrailNotice, toGuardrailNotices } from '@/shared/guardrail/notice';
+import {
+  createNoticeDeduper,
+  guardrailNoticeCopy,
+  isBlockedNotice,
+  isWarningNotice,
+  mergeGuardrailNotices,
+  toGuardrailNotice,
+  toGuardrailNotices,
+} from '@/shared/guardrail/notice';
 import {
   useAcknowledgeGuardrailNotices,
   useGuardrailNotices,
@@ -60,7 +68,10 @@ export function useConsultationGuardrail({ consultationId, draftId, isRecording,
   const resumeMutation = useResumeGuardrailHold(consultationId);
 
   // Notices learned outside the stored list (live frames, job results, error bodies), per consultation.
-  const [local, setLocal] = useState<{ consultationId: string | null; notices: readonly GuardrailNoticeWithState[] }>({ consultationId, notices: EMPTY });
+  const [local, setLocal] = useState<{ consultationId: string | null; notices: readonly GuardrailNoticeWithState[] }>({
+    consultationId,
+    notices: EMPTY,
+  });
   const [jobFinalIds, setJobFinalIds] = useState<{ consultationId: string | null; ids: ReadonlySet<string> }>({ consultationId, ids: new Set() });
   const [dismissed, setDismissed] = useState<{ consultationId: string | null; ids: ReadonlySet<string> }>({ consultationId, ids: new Set() });
   const [errorBlock, setErrorBlock] = useState<{ consultationId: string | null; code: string | null; redaction: boolean } | null>(null);
@@ -177,9 +188,9 @@ export function useConsultationGuardrail({ consultationId, draftId, isRecording,
       const result = isRecord(job.result) ? job.result : {};
       const carried = [
         ...toGuardrailNotices<GuardrailNoticeWithState>(result),
-        ...[toGuardrailNotice<GuardrailNoticeWithState>((job as unknown as Record<string, unknown>).guardrailNotice ?? result.guardrailNotice)].filter(
-          (notice): notice is GuardrailNoticeWithState => notice !== null,
-        ),
+        ...[
+          toGuardrailNotice<GuardrailNoticeWithState>((job as unknown as Record<string, unknown>).guardrailNotice ?? result.guardrailNotice),
+        ].filter((notice): notice is GuardrailNoticeWithState => notice !== null),
       ];
       addLocal(carried);
       void refetch();

@@ -51,7 +51,11 @@ export function GuardrailBlockPanel({
         : 'A safety check stopped this request');
 
   return (
-    <div role="alert" data-slot="guardrail-block-panel" className={`bg-destructive/5 flex flex-col gap-2 rounded-lg border border-destructive/30 p-4 ${className ?? ''}`}>
+    <div
+      role="alert"
+      data-slot="guardrail-block-panel"
+      className={`bg-destructive/5 flex flex-col gap-2 rounded-lg border border-destructive/30 p-4 ${className ?? ''}`}
+    >
       <div className="flex items-center gap-2">
         <IconShieldX aria-hidden className="text-destructive size-4 shrink-0" />
         <p className="text-destructive text-sm font-medium">{heading}</p>

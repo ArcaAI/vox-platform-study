@@ -142,7 +142,19 @@ function emptyView(runId: string | null): RunView {
 }
 
 function emptyNode(nodeId: string): NodeView {
-  return { nodeId, status: 'waiting', attempt: 1, warnings: 0, inputs: [], outputs: {}, streaming: [], bindingWarnings: [], modelRequests: [], guardrails: [], outputChecks: [] };
+  return {
+    nodeId,
+    status: 'waiting',
+    attempt: 1,
+    warnings: 0,
+    inputs: [],
+    outputs: {},
+    streaming: [],
+    bindingWarnings: [],
+    modelRequests: [],
+    guardrails: [],
+    outputChecks: [],
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -258,7 +270,12 @@ class Folder {
           valid: data.valid === true,
           problems,
           ...(isRecord(data.schema) && typeof data.schema.slug === 'string'
-            ? { schema: { slug: data.schema.slug, ...(typeof data.schema.versionNumber === 'number' ? { versionNumber: data.schema.versionNumber } : {}) } }
+            ? {
+                schema: {
+                  slug: data.schema.slug,
+                  ...(typeof data.schema.versionNumber === 'number' ? { versionNumber: data.schema.versionNumber } : {}),
+                },
+              }
             : {}),
         };
         return;
@@ -362,7 +379,10 @@ class Folder {
         return;
       }
       case 'binding.warning': {
-        node.bindingWarnings = [...node.bindingWarnings, { input: String(data.input ?? ''), code: String(data.code ?? ''), message: String(data.message ?? '') }];
+        node.bindingWarnings = [
+          ...node.bindingWarnings,
+          { input: String(data.input ?? ''), code: String(data.code ?? ''), message: String(data.message ?? '') },
+        ];
         return;
       }
       case 'consultation.read': {
@@ -395,12 +415,18 @@ class Folder {
       }
       case 'guardrail.inbound':
       case 'guardrail.outbound': {
-        node.guardrails = [...node.guardrails, { ...event.data, direction: event.type === 'guardrail.inbound' ? 'inbound' : 'outbound', seq: event.seq }];
+        node.guardrails = [
+          ...node.guardrails,
+          { ...event.data, direction: event.type === 'guardrail.inbound' ? 'inbound' : 'outbound', seq: event.seq },
+        ];
         return;
       }
       case 'output.validated': {
         const problems = Array.isArray(data.problems) ? data.problems.filter((p): p is string => typeof p === 'string') : [];
-        node.outputChecks = [...node.outputChecks, { valid: data.valid === true, problems, ...(typeof data.field === 'string' ? { field: data.field } : {}) }];
+        node.outputChecks = [
+          ...node.outputChecks,
+          { valid: data.valid === true, problems, ...(typeof data.field === 'string' ? { field: data.field } : {}) },
+        ];
         return;
       }
       default:

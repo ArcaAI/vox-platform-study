@@ -51,9 +51,14 @@ describe('DNA generate — guardrail', () => {
       block: { code: 'CONTENT_BLOCKED_NOT_MEDICAL' },
     });
     expect(dnaGuardrailFromError(new GatewayError(403, 'x'))).toBeNull();
-    expect(dnaGuardrailFromJob({ jobId: 'j', status: 'failed', progress: 100, error: 'CONTENT_BLOCKED' })).toMatchObject({ block: { code: 'CONTENT_BLOCKED' } });
+    expect(dnaGuardrailFromJob({ jobId: 'j', status: 'failed', progress: 100, error: 'CONTENT_BLOCKED' })).toMatchObject({
+      block: { code: 'CONTENT_BLOCKED' },
+    });
     expect(dnaGuardrailFromJob({ jobId: 'j', status: 'failed', progress: 100, error: 'LLM timeout' })).toBeNull();
-    expect(dnaGuardrailFromJob({ jobId: 'j', status: 'completed', progress: 100, result: { guardrailNotices: [warning] } })).toEqual({ block: null, warnings: [warning] });
+    expect(dnaGuardrailFromJob({ jobId: 'j', status: 'completed', progress: 100, result: { guardrailNotices: [warning] } })).toEqual({
+      block: null,
+      warnings: [warning],
+    });
   });
 
   it('renders the block panel with a retry', () => {

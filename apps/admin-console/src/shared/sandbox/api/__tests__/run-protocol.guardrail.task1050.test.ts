@@ -8,7 +8,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { RUN_GUARDRAIL_EVENT_ACTIONS, RUN_PAUSED_REASONS, RUN_TRACE_EVENT_TYPES, isTerminalRunEvent, parseRunEventFrame, type RunEvent } from '../run-protocol';
+import {
+  RUN_GUARDRAIL_EVENT_ACTIONS,
+  RUN_PAUSED_REASONS,
+  RUN_TRACE_EVENT_TYPES,
+  isTerminalRunEvent,
+  parseRunEventFrame,
+  type RunEvent,
+} from '../run-protocol';
 
 const contract = (name: string) =>
   JSON.parse(readFileSync(fileURLToPath(new URL(`../../../../../../../tests/contracts/${name}`, import.meta.url)), 'utf8')) as {

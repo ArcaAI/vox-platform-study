@@ -60,8 +60,14 @@ function stubFetch(notices: unknown[]): Call[] {
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const path = new URL(String(input), 'http://t').pathname;
       const method = init?.method ?? 'GET';
-      calls.push({ method, path, ifMatch: new Headers(init?.headers).get('if-match'), body: init?.body ? JSON.parse(init.body as string) : undefined });
-      if (method === 'GET' && path === '/api/hope/consultations/c-1/guardrail-notices') return Response.json({ notices, unacknowledgedNoticeIds: [] });
+      calls.push({
+        method,
+        path,
+        ifMatch: new Headers(init?.headers).get('if-match'),
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      if (method === 'GET' && path === '/api/hope/consultations/c-1/guardrail-notices')
+        return Response.json({ notices, unacknowledgedNoticeIds: [] });
       if (method === 'GET' && path === '/api/hope/consultations/c-1') return Response.json({ id: 'c-1', version: 5 }, { headers: { etag: '"5"' } });
       if (method === 'POST') return Response.json({ ok: true });
       throw new Error(`unrouted ${method} ${path}`);
@@ -116,7 +122,9 @@ describe('useConsultationGuardrail', () => {
   it('exposes an open block as the blocking notice and resumes it with the chosen resolution', async () => {
     const calls = stubFetch([blocked]);
     const onResumed = vi.fn();
-    const { result } = renderHook(() => useConsultationGuardrail({ consultationId: 'c-1', draftId: null, isRecording: false, onResumed }), { wrapper });
+    const { result } = renderHook(() => useConsultationGuardrail({ consultationId: 'c-1', draftId: null, isRecording: false, onResumed }), {
+      wrapper,
+    });
     await waitFor(() => expect(result.current.blocking?.noticeId).toBe('b-1'));
     act(() => result.current.resume({ noticeId: 'b-1', resolution: 'item_excluded' }));
     await waitFor(() => expect(onResumed).toHaveBeenCalled());

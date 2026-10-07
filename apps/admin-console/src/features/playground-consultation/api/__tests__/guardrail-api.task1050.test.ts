@@ -83,7 +83,9 @@ describe('consultation guardrail api', () => {
   it('resumes a hold with the chosen resolution under a fresh If-Match', async () => {
     const calls = stub({
       'GET /api/hope/consultations/c-1': { body: { id: 'c-1', version: 3 }, etag: '"3"' },
-      'POST /api/hope/consultations/c-1/guardrail-hold/resume': { body: { id: 'c-1', status: 'PAUSED', processing: 'IDLE', resolvedNoticeId: 'b-1' } },
+      'POST /api/hope/consultations/c-1/guardrail-hold/resume': {
+        body: { id: 'c-1', status: 'PAUSED', processing: 'IDLE', resolvedNoticeId: 'b-1' },
+      },
     });
     await resumeGuardrailHold('c-1', { noticeId: 'b-1', resolution: 'item_excluded' });
     const post = calls.find((call) => call.method === 'POST');

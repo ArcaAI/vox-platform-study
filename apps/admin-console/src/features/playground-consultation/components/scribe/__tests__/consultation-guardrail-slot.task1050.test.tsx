@@ -29,7 +29,16 @@ const base: GuardrailNotice = {
 describe('ConsultationGuardrailSlot', () => {
   it('a medical hold offers exclude and edit, never the override, and resumes with the choice', () => {
     const onResume = vi.fn();
-    render(<ConsultationGuardrailSlot blocking={base} errorBlock={null} liveWarnings={[]} onResume={onResume} resumePending={false} pendingResolution={null} />);
+    render(
+      <ConsultationGuardrailSlot
+        blocking={base}
+        errorBlock={null}
+        liveWarnings={[]}
+        onResume={onResume}
+        resumePending={false}
+        pendingResolution={null}
+      />,
+    );
     expect(screen.queryByRole('button', { name: /override/i })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /edited the flagged content/i }));
     expect(onResume).toHaveBeenCalledWith({ noticeId: 'b-1', resolution: 'item_edited' });
@@ -42,7 +51,16 @@ describe('ConsultationGuardrailSlot', () => {
       messageKey: 'guardrail.blocked.inbound',
       defaultMessage: GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.blocked.inbound'],
     };
-    render(<ConsultationGuardrailSlot blocking={tenantBlock} errorBlock={null} liveWarnings={[]} onResume={vi.fn()} resumePending={false} pendingResolution={null} />);
+    render(
+      <ConsultationGuardrailSlot
+        blocking={tenantBlock}
+        errorBlock={null}
+        liveWarnings={[]}
+        onResume={vi.fn()}
+        resumePending={false}
+        pendingResolution={null}
+      />,
+    );
     expect(screen.getByRole('button', { name: /override and continue once/i })).toBeDefined();
   });
 
@@ -58,10 +76,26 @@ describe('ConsultationGuardrailSlot', () => {
       resumable: false,
     };
     const { container, rerender } = render(
-      <ConsultationGuardrailSlot blocking={null} errorBlock={null} liveWarnings={[warning]} onResume={vi.fn()} resumePending={false} pendingResolution={null} />,
+      <ConsultationGuardrailSlot
+        blocking={null}
+        errorBlock={null}
+        liveWarnings={[warning]}
+        onResume={vi.fn()}
+        resumePending={false}
+        pendingResolution={null}
+      />,
     );
     expect(screen.getByText(/safety check warning on the live summary/i)).toBeDefined();
-    rerender(<ConsultationGuardrailSlot blocking={null} errorBlock={null} liveWarnings={[]} onResume={vi.fn()} resumePending={false} pendingResolution={null} />);
+    rerender(
+      <ConsultationGuardrailSlot
+        blocking={null}
+        errorBlock={null}
+        liveWarnings={[]}
+        onResume={vi.fn()}
+        resumePending={false}
+        pendingResolution={null}
+      />,
+    );
     expect(container.textContent).toBe('');
   });
 

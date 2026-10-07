@@ -4,7 +4,13 @@ import { IconPlayerPause, IconShieldCheck } from '@tabler/icons-react';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { formatNumber } from '@/shared/format';
 import { GuardrailCheckList } from '@/shared/guardrail/guardrail-check-list';
-import { guardrailActionTakenMeta, guardrailCheckLabel, guardrailDirectionShortLabel, guardrailTraceActionMeta, guardrailVerdictLabel } from '@/shared/guardrail/labels';
+import {
+  guardrailActionTakenMeta,
+  guardrailCheckLabel,
+  guardrailDirectionShortLabel,
+  guardrailTraceActionMeta,
+  guardrailVerdictLabel,
+} from '@/shared/guardrail/labels';
 import { guardrailNoticeCopy } from '@/shared/guardrail/notice';
 import type { NodeGuardrailView, NodeView, RunView } from '../api/run-fold';
 
@@ -41,17 +47,27 @@ function ScreenRow({ screen }: { screen: NodeGuardrailView }) {
         <span className="font-medium">{guardrailDirectionShortLabel(screen.direction)} screen</span>
         <StatusBadge label={meta.label} colorRole={meta.role} />
         <span className="text-muted-foreground text-xs">{`${formatNumber(screen.detected)} detected`}</span>
-        {typeof screen.latencyMs === 'number' ? <span className="text-muted-foreground text-xs">{`${formatNumber(screen.latencyMs)} ms`}</span> : null}
+        {typeof screen.latencyMs === 'number' ? (
+          <span className="text-muted-foreground text-xs">{`${formatNumber(screen.latencyMs)} ms`}</span>
+        ) : null}
       </div>
       {screen.checks && screen.checks.length > 0 ? (
         <table className="w-full text-xs">
           <caption className="sr-only">Checks of this screen</caption>
           <thead className="text-muted-foreground text-left">
             <tr>
-              <th scope="col" className="py-1 pr-2 font-semibold">Check</th>
-              <th scope="col" className="py-1 pr-2 font-semibold">Verdict</th>
-              <th scope="col" className="py-1 pr-2 font-semibold">Action taken</th>
-              <th scope="col" className="py-1 font-semibold">Category</th>
+              <th scope="col" className="py-1 pr-2 font-semibold">
+                Check
+              </th>
+              <th scope="col" className="py-1 pr-2 font-semibold">
+                Verdict
+              </th>
+              <th scope="col" className="py-1 pr-2 font-semibold">
+                Action taken
+              </th>
+              <th scope="col" className="py-1 font-semibold">
+                Category
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -84,7 +100,9 @@ function ScreenRow({ screen }: { screen: NodeGuardrailView }) {
  * trace's guardrail events carry no content, and neither does this.
  */
 export function RunGuardrailSummary({ view }: { view: RunView }) {
-  const nodesWithScreens = view.nodeOrder.map((id) => view.nodes[id]!).filter((node) => node.guardrails.length > 0 || (node.guardrailNotices?.length ?? 0) > 0);
+  const nodesWithScreens = view.nodeOrder
+    .map((id) => view.nodes[id]!)
+    .filter((node) => node.guardrails.length > 0 || (node.guardrailNotices?.length ?? 0) > 0);
   const notices = view.guardrailNotices ?? [];
   const pausedNotice = view.paused ? notices.find((notice) => notice.noticeId === view.paused?.noticeId) : undefined;
 

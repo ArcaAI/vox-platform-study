@@ -50,6 +50,12 @@ export function ConsultationGuardrailSlot({
 export function ConsultationGuardrailBadge({ held, warnings }: { held: boolean; warnings: number }) {
   if (held) return <StatusBadge label="Guardrail hold" colorRole="destructive" icon={<IconShieldExclamation aria-hidden />} />;
   if (warnings > 0)
-    return <StatusBadge label={warnings === 1 ? '1 safety warning' : `${warnings} safety warnings`} colorRole="warning" icon={<IconShieldExclamation aria-hidden />} />;
+    return (
+      <StatusBadge
+        label={warnings === 1 ? '1 safety warning' : `${warnings} safety warnings`}
+        colorRole="warning"
+        icon={<IconShieldExclamation aria-hidden />}
+      />
+    );
   return null;
 }

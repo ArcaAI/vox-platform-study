@@ -76,7 +76,13 @@ describe('RunGuardrailPanel', () => {
     expect(source.url).toContain('protocol=2');
 
     act(() => {
-      source.emit({ seq: 1, runId: RUN_ID, type: 'run.started', ts: '2026-10-07T09:14:00.000Z', data: { kind: 'workflow', slug: 'w', versionNumber: 1 } });
+      source.emit({
+        seq: 1,
+        runId: RUN_ID,
+        type: 'run.started',
+        ts: '2026-10-07T09:14:00.000Z',
+        data: { kind: 'workflow', slug: 'w', versionNumber: 1 },
+      });
       source.emit({ seq: 2, runId: RUN_ID, type: 'node.started', ts: '2026-10-07T09:14:00.000Z', nodeId: 'n_note', data: { kind: 'core.agent' } });
       source.emit(frame('guardrail.inbound (WARN with checks)'));
       source.emit(frame('guardrail.notice (blocked, resumable)'));
