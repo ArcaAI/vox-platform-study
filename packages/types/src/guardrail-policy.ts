@@ -176,7 +176,8 @@ function effectiveFields(entry: GuardrailCheckPolicy | undefined, fallback: Guar
   return {
     enabled: entry?.enabled ?? fallback.enabled,
     action: entry?.action ?? fallback.action,
-    locked: entry?.locked ?? false,
+    // A catalogue-locked check is never stored, so an absent `locked` is the catalogue's (medical: true).
+    locked: entry?.locked ?? fallback.locked ?? false,
     minScore: entry?.minScore,
     dataRegionAction: entry?.dataRegionAction,
   };

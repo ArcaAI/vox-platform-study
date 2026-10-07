@@ -100,6 +100,18 @@ describe('field-level guard — a tenant admin changes only `enabled` flags', ()
     expect(fields).toHaveLength(2 + (GUARDRAIL_CHECK_IDS.length - 1) * 5);
   });
 
+  it('a platform round-trip that restates the catalogue-locked check unchanged is not a change (e2e S3)', () => {
+    const medical = { enabled: true, action: 'block', locked: true };
+    expect(forbiddenGuardrailPolicyChanges('platform_admin', { checks: {} }, { checks: { medical_validation: medical } }, defaults)).toEqual([]);
+    // Moving it is still refused, whoever asks.
+    expect(
+      forbiddenGuardrailPolicyChanges('platform_admin', { checks: {} }, { checks: { medical_validation: { ...medical, enabled: false } } }, defaults),
+    ).toEqual(['checks.medical_validation.enabled']);
+    expect(
+      forbiddenGuardrailPolicyChanges('platform_admin', { checks: {} }, { checks: { medical_validation: { ...medical, locked: false } } }, defaults),
+    ).toEqual(['checks.medical_validation.locked']);
+  });
+
   it('changed fields compare the EFFECTIVE value: an absent entry equals its platform default', () => {
     expect(guardrailPolicyChangedFields(null, { checks: { prompt_safety: { enabled: true, action: 'block' } } }, defaults)).toEqual([]);
     expect(guardrailPolicyChangedFields(null, { checks: { injection_judge: { enabled: true, action: 'ignore' } } }, defaults)).toEqual([
