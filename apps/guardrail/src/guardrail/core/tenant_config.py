@@ -95,12 +95,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, String, select
+from sqlalchemy import Boolean, DateTime, String, select
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -233,6 +235,10 @@ _SLUG_TASK_KEY_PREFIX = "slug::"
 KEY_CHECKSUM = "checksum"
 KEY_SOURCE = "source"
 KEY_SOURCE_REVISION = "source-revision"
+#: TASK-1050: the row's judge capability declaration (`AiModel._metadata.judge`) and
+#: its serving library (`AiModel.libraryName`) — the judge runner reads both.
+KEY_JUDGE = "judge"
+KEY_LIBRARY_NAME = "library-name"
 
 
 class TenantSelectionVetoedError(Exception):
@@ -349,6 +355,8 @@ class AiModelRead(_Base):
     checksum: Mapped[str | None] = mapped_column(String)
     source: Mapped[str | None] = mapped_column(String)
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
+    #: TASK-1049 Track R / TASK-1050: which loader serves the row (`transformers`, `seq-cls`, …).
+    library_name: Mapped[str | None] = mapped_column("libraryName", String)
 
 
 class AiProviderConnectionRead(_Base):
@@ -388,6 +396,56 @@ class TenantGuardrailPolicyRead(_Base):
     tenant_id: Mapped[str] = mapped_column("tenantId", String)
     policies: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
+
+
+_GuardrailNoticeStatusType = ENUM(
+    "OPEN",
+    "ACKNOWLEDGED",
+    "RESOLVED",
+    name="GuardrailNoticeStatus",
+    schema="core",
+    create_type=False,
+)
+
+
+class GuardrailNoticeRead(_Base):
+    """Read-only mapping of ``core."GuardrailNotice"`` — ONLY what an override check needs.
+
+    TASK-1050 (contract amendment 5d0760a60): the harness re-runs a blocked node after an
+    `acknowledged` hold resolution and sends ``X-Hope-Guardrail-Override: <noticeId>``.
+    Guardrail never trusts the header; it reads this row (the sanctioned read-only SQL
+    transport) and honours the override only for a matching, resolved, recent notice.
+    The gateway is the only writer of the table.
+    """
+
+    __tablename__ = "GuardrailNotice"
+    __table_args__ = {"schema": "core"}
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    status: Mapped[str] = mapped_column("status", _GuardrailNoticeStatusType)
+    resolution: Mapped[str | None] = mapped_column(String)
+    dedupe_key: Mapped[str] = mapped_column("dedupeKey", String)
+    created_at: Mapped[Any] = mapped_column("createdAt", DateTime)
+    resolved_at: Mapped[Any] = mapped_column("resolvedAt", DateTime)
+
+
+#: The hold timeout cap (`guardrail.hold.timeoutSeconds` ceiling, README §9.8.1): an
+#: override naming a notice older than this is refused.
+GUARDRAIL_OVERRIDE_MAX_AGE_S = 24 * 60 * 60
+
+_NOTICE_ID_SHAPE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+@dataclass(frozen=True)
+class GuardrailOverrideVerdict:
+    """Whether an `X-Hope-Guardrail-Override` may be honoured, and for which dedupe key."""
+
+    ok: bool
+    reason: str = ""
+    dedupe_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -434,6 +492,11 @@ class GuardrailTenantConfig:
     checksum: str | None = None
     source: str | None = None
     source_revision: str | None = None
+    #: TASK-1050: `AiModel._metadata.judge` — the lanes / protocol / category map the
+    #: row DECLARES. `None` = no declaration (only the grandfathered medical lane runs).
+    judge: dict[str, Any] | None = None
+    #: TASK-1050: `AiModel.libraryName`, forwarded to apps/nlp so it binds the right loader.
+    library_name: str | None = None
 
 
 @dataclass
@@ -576,6 +639,8 @@ class TenantConfigResolver:
             checksum=_clean(keys.get(KEY_CHECKSUM)),
             source=_clean(keys.get(KEY_SOURCE)),
             source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
+            judge=_decode_taxonomy(keys.get(KEY_JUDGE)),
+            library_name=_clean(keys.get(KEY_LIBRARY_NAME)),
         )
 
     # `resolve_model_source` / `resolve_model_source_by_slug` are GONE
@@ -596,9 +661,25 @@ class TenantConfigResolver:
         """
         from guardrail.core.availability import GuardrailAvailability
 
-        cfg = await self.resolve(tenant_id, TASK_KEY_GUARDRAIL_AVAILABILITY)
-        return GuardrailAvailability.from_blob(
-            cfg.availability, source_tenant_id=cfg.source_tenant_id
+        # TASK-1050 (policy v2): the effective value of every field cascades
+        # platform default → SYSTEM row → tenant row FIELD BY FIELD, so both rows
+        # are read (each through the same tenant-keyed cache + single-flight). A
+        # tenant row that only toggles `enabled` must never reset the action a
+        # platform admin set on the SYSTEM row — a whole-row widening could not
+        # express that.
+        raw = (tenant_id or "").strip()
+        if is_tenantless_marker(raw):
+            raw = ""
+        system_keys = await self._get_for_tenant(SYSTEM_TENANT_ID, TASK_KEY_GUARDRAIL_AVAILABILITY)
+        tenant_keys: dict[str, str] = {}
+        if raw and raw != SYSTEM_TENANT_ID:
+            tenant_keys = await self._get_for_tenant(raw, TASK_KEY_GUARDRAIL_AVAILABILITY)
+        system_blob = _decode_taxonomy(system_keys.get(KEY_AVAILABILITY))
+        tenant_blob = _decode_taxonomy(tenant_keys.get(KEY_AVAILABILITY))
+        return GuardrailAvailability.from_tiers(
+            system_blob=system_blob,
+            tenant_blob=tenant_blob,
+            source_tenant_id=raw if tenant_blob else SYSTEM_TENANT_ID,
         )
 
     async def resolve_model_id(
@@ -757,6 +838,7 @@ class TenantConfigResolver:
                     AiModelRead.checksum,
                     AiModelRead.source,
                     AiModelRead.source_revision,
+                    AiModelRead.library_name,
                 )
                 .select_from(AiRoutingPolicyRead)
                 .join(
@@ -823,6 +905,9 @@ class TenantConfigResolver:
         entailment = meta.get("entailment")
         if isinstance(entailment, dict) and entailment:
             keys[KEY_ENTAILMENT] = json.dumps(entailment)
+        judge = meta.get("judge")
+        if isinstance(judge, dict) and judge:
+            keys[KEY_JUDGE] = json.dumps(judge)
 
         # Weight-source columns. Absent values are simply not
         # set, so the caller's env fallback still applies.
@@ -830,6 +915,7 @@ class TenantConfigResolver:
             (KEY_CHECKSUM, getattr(row, "checksum", None)),
             (KEY_SOURCE, getattr(row, "source", None)),
             (KEY_SOURCE_REVISION, getattr(row, "source_revision", None)),
+            (KEY_LIBRARY_NAME, getattr(row, "library_name", None)),
         ):
             if isinstance(value, str) and value.strip():
                 keys[key] = value
@@ -942,7 +1028,14 @@ class TenantConfigResolver:
         policies = row[0] if row is not None else None
         if not isinstance(policies, dict) or not policies:
             return {}
-        if not any(isinstance(v, dict) and v.get("enabled") is True for v in policies.values()):
+        from guardrail.core.availability import is_tenant_guardrail_policy_v2
+
+        # A v2 row (TASK-1050) is always an explicit opinion — its entries live under
+        # `checks` / `directions`, so the legacy "all disabled" test below would read
+        # every v2 row as empty. A LEGACY row that enables nothing is still absence.
+        if not is_tenant_guardrail_policy_v2(policies) and not any(
+            isinstance(v, dict) and v.get("enabled") is True for v in policies.values()
+        ):
             return {}
         return {KEY_AVAILABILITY: json.dumps(policies)}
 
@@ -1018,6 +1111,62 @@ class TenantConfigResolver:
             TenantConfigResolver._model_rank(row.model_tenant_id, tenant_id),
         )
 
+    async def verify_guardrail_override(
+        self,
+        tenant_id: str,
+        notice_id: str,
+        *,
+        now: datetime | None = None,
+        max_age_s: int = GUARDRAIL_OVERRIDE_MAX_AGE_S,
+    ) -> GuardrailOverrideVerdict:
+        """Read-only check of an override's notice. NEVER raises; never cached.
+
+        Honoured only when the ``core."GuardrailNotice"`` row with that id belongs to
+        ``tenant_id``, is ``RESOLVED`` with resolution ``acknowledged``, and was raised
+        within ``max_age_s``. Every other answer — including a DB outage — is a refusal
+        with a reason the caller logs.
+        """
+        candidate = (notice_id or "").strip()
+        if not _NOTICE_ID_SHAPE.match(candidate):
+            return GuardrailOverrideVerdict(False, "malformed_notice_id")
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(
+                    select(
+                        GuardrailNoticeRead.id,
+                        GuardrailNoticeRead.tenant_id,
+                        GuardrailNoticeRead.status,
+                        GuardrailNoticeRead.resolution,
+                        GuardrailNoticeRead.dedupe_key,
+                        GuardrailNoticeRead.created_at,
+                        GuardrailNoticeRead.resolved_at,
+                    ).where(GuardrailNoticeRead.id == candidate)
+                )
+                row = result.first()
+        except Exception as exc:  # noqa: BLE001 — an outage refuses the override, never the request
+            logger.warning("guardrail.override.lookup_failed", error_type=type(exc).__name__)
+            return GuardrailOverrideVerdict(False, "db_unavailable")
+        if row is None:
+            return GuardrailOverrideVerdict(False, "unknown_notice")
+        # Tenant first: a foreign notice is refused before anything about it is examined.
+        if str(getattr(row, "tenant_id", "")) != str(tenant_id):
+            return GuardrailOverrideVerdict(False, "tenant_mismatch")
+        if str(getattr(row, "status", "")).upper() != "RESOLVED":
+            return GuardrailOverrideVerdict(False, "not_resolved")
+        if str(getattr(row, "resolution", "") or "").lower() != "acknowledged":
+            return GuardrailOverrideVerdict(False, "not_acknowledged")
+        created = getattr(row, "created_at", None)
+        if not isinstance(created, datetime):
+            return GuardrailOverrideVerdict(False, "expired")
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        if ((now or datetime.now(UTC)) - created).total_seconds() > max_age_s:
+            return GuardrailOverrideVerdict(False, "expired")
+        dedupe_key = str(getattr(row, "dedupe_key", "") or "")
+        if not dedupe_key:
+            return GuardrailOverrideVerdict(False, "no_dedupe_key")
+        return GuardrailOverrideVerdict(True, "", dedupe_key)
+
     def clear_cache(self) -> None:
         """Drop all cached entries (test/admin helper)."""
         self._cache.clear()
@@ -1053,6 +1202,96 @@ class TenantConfigResolver:
         for key in doomed:
             self._cache.pop(key, None)
         return len(doomed)
+
+
+# ---------------------------------------------------------------------------
+# `guardrail:config:invalidate` (TASK-1050 OD-11, README §11.3 B)
+#
+# The gateway publishes on this channel after a guardrail-policy write (a platform
+# policy key, a lane → model routing write, a `TenantGuardrailPolicy` write), so an
+# admin who hits Save and immediately tests sees the new rule. Payload:
+# `{"tenantId"?: string, "taskKeys"?: string[]}` — an absent field widens, so an
+# empty payload (or one that does not parse) drops EVERYTHING: dropping too much
+# costs one re-read, dropping too little serves a stale safety rule. The TTL stays
+# the bounded-staleness backstop. A SYSTEM-tier write names the SYSTEM tenant: every
+# tenant that widens to SYSTEM reads the SYSTEM entry on its own, so dropping that
+# entry is enough.
+# ---------------------------------------------------------------------------
+
+GUARDRAIL_CONFIG_INVALIDATION_CHANNEL = "guardrail:config:invalidate"
+
+
+def parse_guardrail_config_invalidation(
+    payload: str | bytes | None,
+) -> tuple[str | None, tuple[str, ...] | None]:
+    """`(tenant_id, task_keys)` one message narrows to; `None` = every value."""
+    if isinstance(payload, (bytes, bytearray)):
+        payload = payload.decode("utf-8", errors="replace")
+    text = str(payload or "").strip()
+    if not text:
+        return None, None
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return None, None
+    if not isinstance(body, dict):
+        return None, None
+    tenant = body.get("tenantId")
+    tenant_id = tenant.strip() if isinstance(tenant, str) and tenant.strip() else None
+    raw_keys = body.get("taskKeys")
+    task_keys: tuple[str, ...] | None = None
+    if isinstance(raw_keys, list):
+        named = tuple(k.strip() for k in raw_keys if isinstance(k, str) and k.strip())
+        task_keys = named or None
+    return tenant_id, task_keys
+
+
+def apply_guardrail_config_invalidation(resolver: Any, payload: str | bytes | None) -> int:
+    """Drop the cache entries one message names; returns how many were dropped."""
+    tenant_id, task_keys = parse_guardrail_config_invalidation(payload)
+    if task_keys is None:
+        return int(resolver.invalidate(tenant_id=tenant_id))
+    return sum(int(resolver.invalidate(tenant_id=tenant_id, task_key=key)) for key in task_keys)
+
+
+async def guardrail_config_invalidation_listener(redis: Any, resolver: Any) -> None:
+    """Subscribe to :data:`GUARDRAIL_CONFIG_INVALIDATION_CHANNEL` for the process lifetime.
+
+    Never fails the service: a Redis outage degrades propagation back to the TTL.
+    """
+    if resolver is None or redis is None:
+        return
+    try:
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(GUARDRAIL_CONFIG_INVALIDATION_CHANNEL)
+    except Exception as exc:  # noqa: BLE001 — propagation degrades to the TTL
+        logger.warning("guardrail.policy_invalidation.unavailable", error=str(exc))
+        return
+    try:
+        async for message in pubsub.listen():
+            if not isinstance(message, dict) or message.get("type") != "message":
+                continue
+            raw = message.get("data")
+            dropped = apply_guardrail_config_invalidation(resolver, raw)
+            record_config_cache_event("invalidated")
+            tenant_id, task_keys = parse_guardrail_config_invalidation(raw)
+            logger.info(
+                "guardrail.policy_invalidated",
+                tenant_id=tenant_id,
+                task_keys=list(task_keys) if task_keys else None,
+                dropped=dropped,
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("guardrail.policy_invalidation.stopped", error=str(exc))
+    finally:
+        # Bounded: a close that cannot complete (a connection torn down mid-listen)
+        # must never wedge shutdown.
+        try:
+            await asyncio.wait_for(pubsub.aclose(), timeout=2.0)
+        except BaseException:  # noqa: BLE001
+            pass
 
 
 def build_judge_client(

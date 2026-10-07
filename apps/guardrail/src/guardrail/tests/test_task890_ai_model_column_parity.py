@@ -79,3 +79,55 @@ class TestAiModelReaderColumnParity:
         named = {c.name for c in AiModelRead.__table__.columns}
 
         assert column not in named
+
+
+class TestTask1050JudgeColumns:
+    """TASK-1050 W2a2: the judge runner needs `_metadata.judge` and `libraryName` per row.
+
+    Without them on `GuardrailTenantConfig`, every safety lane resolves as
+    `JUDGE_LANE_UNSUPPORTED` (no capability declaration) and a seq-cls/native row is served
+    by the wrong loader.
+    """
+
+    def test_library_name_is_mapped_and_exists(self) -> None:
+        columns = _schema_columns()
+        named = {c.name for c in AiModelRead.__table__.columns}
+        assert "libraryName" in named
+        assert "libraryName" in columns
+
+    @pytest.mark.asyncio
+    async def test_resolve_carries_judge_metadata_and_library_name(self) -> None:
+        from types import SimpleNamespace
+        from typing import Any
+
+        from guardrail.core.tenant_config import SYSTEM_TENANT_ID, TenantConfigResolver
+
+        row = SimpleNamespace(
+            default_tenant_id=SYSTEM_TENANT_ID,
+            default_resource_status="ENABLED",
+            default_enabled=True,
+            config_json=None,
+            model_tenant_id=SYSTEM_TENANT_ID,
+            provider="nlp",
+            source_uri="Qwen/Qwen3Guard-Gen-0.6B",
+            meta_data={"judge": {"protocol": "qwen3guard_native", "lanes": ["injection_judge"]}},
+            checksum=None,
+            source=None,
+            source_revision=None,
+            library_name="transformers",
+        )
+
+        class _Session:
+            async def __aenter__(self) -> Any:
+                return self
+
+            async def __aexit__(self, *_: Any) -> None:
+                return None
+
+            async def execute(self, _statement: Any) -> Any:
+                return SimpleNamespace(all=lambda: [row])
+
+        resolver = TenantConfigResolver(session_factory=_Session, cache_ttl_s=60)
+        cfg = await resolver.resolve("tenant-a", "guardrail.judge.injection")
+        assert cfg.judge == {"protocol": "qwen3guard_native", "lanes": ["injection_judge"]}
+        assert cfg.library_name == "transformers"

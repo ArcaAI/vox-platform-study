@@ -53,9 +53,12 @@ def test_declared_ids_are_exactly_the_screener_check_names() -> None:
     assert set(DECLARED_POLICY_IDS) == set(_DECLARED_FAIL_MODES)
 
 
-def test_platform_default_switches_every_declared_check_on() -> None:
-    for policy_id in DECLARED_POLICY_IDS:
-        assert PLATFORM_DEFAULT_AVAILABILITY.is_enabled(policy_id)
+def test_platform_default_is_the_catalogue_default() -> None:
+    # TASK-1050: the in-code default is the catalogue's `defaultEnabled` (= the SYSTEM
+    # seed). Every classifier check except `response_refusal` and the locked medical
+    # check are on; the four judges ship OFF (OD-6) — on the read-failure fallback too.
+    for entry in CONTRACT["policies"]:
+        assert PLATFORM_DEFAULT_AVAILABILITY.is_enabled(entry["id"]) is entry["defaultEnabled"]
 
 
 def test_threshold_specs_match_the_contract() -> None:
@@ -83,16 +86,24 @@ def test_empty_selection_is_not_an_off_switch() -> None:
 
 
 def test_all_disabled_selection_is_not_an_off_switch() -> None:
-    resolved = GuardrailAvailability.from_blob({"pii_leak": {"enabled": False}})
-    assert resolved.policies == PLATFORM_DEFAULT_AVAILABILITY.policies
+    # Disabling every outbound check does not turn the outbound screen off: an empty
+    # direction is screened with the catalogue set (TASK-1050 v2).
+    every_outbound = [p["id"] for p in CONTRACT["policies"] if "outbound" in p["directions"]]
+    resolved = GuardrailAvailability.from_blob({pid: {"enabled": False} for pid in every_outbound})
+    for entry in CONTRACT["policies"]:
+        if "outbound" in entry["directions"] and not entry["locked"]:
+            assert resolved.is_enabled(entry["id"]) is entry["defaultEnabled"]
 
 
 def test_a_real_selection_is_honoured_verbatim() -> None:
     resolved = GuardrailAvailability.from_blob(
-        {"prompt_safety": {"enabled": True}}, source_tenant_id="tenant-a"
+        {"prompt_safety": {"enabled": True}, "prompt_toxicity": {"enabled": False}},
+        source_tenant_id="tenant-a",
     )
     assert resolved.is_enabled("prompt_safety")
     assert not resolved.is_enabled("prompt_toxicity")
+    # TASK-1050 v2: a check the row does not name is NO OPINION — the platform default.
+    assert resolved.is_enabled("jailbreak_detection")
     assert resolved.source_tenant_id == "tenant-a"
 
 
@@ -150,7 +161,11 @@ def _screener(analyzer: Any, availability: GuardrailAvailability) -> Screener:
 async def test_inbound_runs_only_the_selected_checks() -> None:
     analyzer = _StubAnalyzer()
     availability = GuardrailAvailability.from_blob(
-        {"prompt_safety": {"enabled": True}, "response_safety": {"enabled": True}},
+        {
+            "prompt_safety": {"enabled": True},
+            "jailbreak_detection": {"enabled": False},
+            "prompt_toxicity": {"enabled": False},
+        },
         source_tenant_id="tenant-a",
     )
     decision = await _screener(analyzer, availability).screen_inbound("hello")
@@ -168,20 +183,31 @@ async def test_inbound_runs_only_the_selected_checks() -> None:
 @pytest.mark.asyncio
 async def test_the_gate_still_runs_when_nothing_is_selected_for_a_direction() -> None:
     analyzer = _StubAnalyzer()
-    availability = GuardrailAvailability.from_blob({"response_safety": {"enabled": True}})
+    availability = GuardrailAvailability.from_blob(
+        {
+            name: {"enabled": False}
+            for name in ("jailbreak_detection", "prompt_safety", "prompt_toxicity")
+        }
+    )
     decision = await _screener(analyzer, availability).screen_inbound("hello")
 
-    # No delegated call was made, but a DECISION still exists and every check is
-    # accounted for. There is no path that simply stops screening.
-    assert analyzer.classified == []
+    # TASK-1050 v2: a direction with nothing enabled is screened with the platform
+    # set — there is no path that simply stops screening.
+    assert analyzer.classified == [("jailbreak_detection", "prompt_safety", "prompt_toxicity")]
     assert decision.decision == DECISION_ALLOW
-    assert all(check.outcome == OUTCOME_SKIPPED for check in decision.checks)
+    assert not any(check.outcome == OUTCOME_SKIPPED for check in decision.checks)
 
 
 @pytest.mark.asyncio
 async def test_outbound_honours_the_selection_for_pii_and_containment() -> None:
     analyzer = _StubAnalyzer()
-    availability = GuardrailAvailability.from_blob({"response_safety": {"enabled": True}})
+    availability = GuardrailAvailability.from_blob(
+        {
+            "response_safety": {"enabled": True},
+            "pii_leak": {"enabled": False},
+            "containment_echo": {"enabled": False},
+        }
+    )
     decision = await _screener(analyzer, availability).screen_outbound(
         "a response", source_context="a response", nonce="abc"
     )
@@ -267,7 +293,13 @@ def _resolver(rows: dict[str, Any]) -> Any:
 
 @pytest.mark.asyncio
 async def test_resolver_widens_to_system_when_the_tenant_has_no_row() -> None:
-    resolver = _resolver({SYSTEM_TENANT_ID: ({"prompt_safety": {"enabled": True}},)})
+    resolver = _resolver(
+        {
+            SYSTEM_TENANT_ID: (
+                {"prompt_safety": {"enabled": True}, "prompt_toxicity": {"enabled": False}},
+            )
+        }
+    )
     resolved = await resolver.resolve_availability("tenant-a")
     assert resolved.is_enabled("prompt_safety")
     assert not resolved.is_enabled("prompt_toxicity")
@@ -329,10 +361,11 @@ async def test_unresolvable_availability_screens_EVERYTHING_rather_than_503() ->
         SimpleNamespace(tenant_config_resolver=_Broken()), "tenant-a"
     )
     # Unlike an unresolved model SELECTION (503, nothing to run), an unresolved
-    # AVAILABILITY has a strictest answer in code. More screening is the safe
-    # direction; less is not.
-    for policy_id in DECLARED_POLICY_IDS:
-        assert resolved.is_enabled(policy_id)
+    # AVAILABILITY has an answer in code: the catalogue defaults (TASK-1050) — every
+    # classifier gate the SYSTEM seed turns on, the judges still OFF.
+    for entry in CONTRACT["policies"]:
+        assert resolved.is_enabled(entry["id"]) is entry["defaultEnabled"]
+    assert set(DECLARED_POLICY_IDS) == {p["id"] for p in CONTRACT["policies"]}
 
 
 @pytest.mark.asyncio
@@ -366,7 +399,21 @@ async def test_both_screen_routes_report_the_availability_tier(monkeypatch: Any)
             tenant_id=tenant_id,
             policy_source_tenant_id=SYSTEM_TENANT_ID,
             availability=GuardrailAvailability.from_blob(
-                {"prompt_safety": {"enabled": True}, "response_safety": {"enabled": True}},
+                {
+                    "prompt_safety": {"enabled": True},
+                    "response_safety": {"enabled": True},
+                    **{
+                        name: {"enabled": False}
+                        for name in (
+                            "jailbreak_detection",
+                            "prompt_toxicity",
+                            "response_toxicity",
+                            "response_refusal",
+                            "pii_leak",
+                            "containment_echo",
+                        )
+                    },
+                },
                 source_tenant_id="tenant-a",
             ),
         )
