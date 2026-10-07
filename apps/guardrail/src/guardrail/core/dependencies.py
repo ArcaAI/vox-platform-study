@@ -407,11 +407,25 @@ def _nlp_client(
         # working, which is why this travels with the selection rather than
         # being configured independently on either side.
         calibration=getattr(cfg, "entailment", None),
+        # TASK-1050 / TASK-1049 Track R: the row's serving library, so apps/nlp binds
+        # the loader the platform admin chose (e.g. `seq-cls`), never a guessed one.
+        **_library_kwarg(NlpGuardClient, getattr(cfg, "library_name", None)),
         timeout_s=(
             min(float(cfg.timeout_s), float(deadline_s)) if cfg.timeout_s else float(deadline_s)
         ),
         breaker=_breaker(app_state, "nlp"),
     )
+
+
+def _library_kwarg(client_cls: Any, library_name: str | None) -> dict[str, Any]:
+    """``{"library_name": …}`` when the client accepts it (lane W2a1 adds the parameter)."""
+    import inspect
+
+    try:
+        accepted = "library_name" in inspect.signature(client_cls.__init__).parameters
+    except (TypeError, ValueError):
+        accepted = False
+    return {"library_name": library_name} if accepted else {}
 
 
 def _row_policy(cfg: Any) -> Any:
@@ -576,29 +590,111 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
     HERE, so honouring the selection on both is structural rather than two
     call sites remembering to do it.
     """
+    from guardrail.core.availability import JUDGE_IDS
     from guardrail.core.policy import GuardrailPolicy
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
     from guardrail.services.screening import Screener
 
     analyzer = await build_safety_analyzer(app_state, tenant_id)
     safety_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
+    raw_policy = getattr(safety_cfg, "policy", None)
     policy = GuardrailPolicy.from_blob(
-        getattr(safety_cfg, "policy", None),
+        raw_policy,
         source_tenant_id=getattr(safety_cfg, "source_tenant_id", None),
     )
     geometry = window_geometry_of(policy)
+    availability = await _resolve_availability(app_state, tenant_id)
+    # TASK-1050: a judge runner only when a judge lane is ON for this tenant — the
+    # four lanes ship OFF (OD-6), so a default deploy makes no extra judge call.
+    judge_runner = (
+        await _build_judge_runner(app_state, tenant_id)
+        if any(availability.is_enabled(lane) for lane in JUDGE_IDS)
+        else None
+    )
     return Screener(
         analyzer=analyzer,
         tenant_id=tenant_id,
         policy_source_tenant_id=policy.source_tenant_id,
         max_untrusted_chars=policy.max_untrusted_chars,
         pii_leak_min_score=policy.pii_leak_min_score,
-        availability=await _resolve_availability(app_state, tenant_id),
+        availability=availability,
         window_geometry=geometry,
         window_runner=await build_window_runner(app_state, tenant_id, policy, geometry),
         # TASK-1047 FC-5c: the outbound checks this tenant records instead of blocking.
         outbound_record_only=policy.outbound_record_only_checks,
+        judge_runner=judge_runner,
+        judge_geometry=_judge_geometry(app_state, policy),
+        # Bands are read through `GuardrailPolicy.judge_band` (fail-closed) by the screener.
+        screen_policy=policy,
+        medical_skip=policy.medical_judge_config_regions,
+        policy_version=await _policy_version_or_unavailable(app_state, tenant_id),
     )
+
+
+def _judge_geometry(app_state: Any, policy: Any) -> Any:
+    """The judge window — the SAME geometry the medical route judges with, so the
+    inbound judges ride the same windows (and the same window cache)."""
+    from guardrail.core.config import JudgePolicy
+    from guardrail.core.policy_version import judge_window_chars
+    from guardrail.services.windowing import WindowGeometry
+
+    settings = getattr(app_state, "settings", None)
+    judge = getattr(settings, "judge", None) or JudgePolicy()
+    try:
+        from guardrail.services.judge_runner import judge_geometry
+    except ImportError:
+        pass
+    else:
+        return judge_geometry(policy, judge.max_input_chars)
+    _size, overlap = policy.screen_window_geometry
+    size = judge_window_chars(policy, judge.max_input_chars)
+    return WindowGeometry(
+        size=size,
+        overlap=min(overlap, max(0, size - 1)),
+        concurrency=policy.screen_window_concurrency,
+    )
+
+
+async def _build_judge_runner(app_state: Any, tenant_id: str) -> Any:
+    """The per-tenant judge runner (`services/judge_runner.py`), or ``None``.
+
+    NEVER raises: an unbuildable runner leaves the enabled judge lanes UNDETERMINED,
+    which degrades to `unverified` (README §9.8.1) — never a pass and never a 503.
+    """
+    try:
+        from guardrail.services.judge_runner import build_judge_runner_for_app
+    except ImportError as exc:
+        logger.warning("guardrail.judge_runner.unavailable", error_type=type(exc).__name__)
+        return None
+    try:
+        # Wired from app.state (http client, breakers, judge timeout, window cache, policy
+        # version, the process-wide single-flight) — the same runner the medical route
+        # builds, so the two routes share calls. The screen body carries no
+        # `provider_overrides`: a keyless engine resolves its own endpoint; a CLOUD judge
+        # needs the caller to forward one (open question for lane W2c).
+        return await build_judge_runner_for_app(app_state, tenant_id)
+    except Exception as exc:  # noqa: BLE001 — see the docstring
+        logger.warning(
+            "guardrail.judge_runner.build_failed",
+            tenant_id=tenant_id,
+            error_type=type(exc).__name__,
+        )
+        return None
+
+
+async def _policy_version_or_unavailable(app_state: Any, tenant_id: str) -> str:
+    """The tenant's policy version for notices and records; `unavailable` on failure."""
+    from guardrail.core import policy_version as pv
+
+    try:
+        return str(await pv.resolve_policy_version(app_state, tenant_id))
+    except Exception as exc:  # noqa: BLE001 — a version read never breaks a screen
+        logger.warning(
+            "guardrail.policy_version.unavailable",
+            tenant_id=tenant_id,
+            error_type=type(exc).__name__,
+        )
+        return "unavailable"
 
 
 def window_geometry_of(policy: Any) -> Any:
