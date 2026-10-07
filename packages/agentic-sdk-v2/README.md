@@ -229,6 +229,40 @@ deployment (session-replay tools with PHI exposure risk, no signed BAA) — the 
 reads a declared `environment`, not `NODE_ENV`, because bundlers bake `NODE_ENV=production` into
 every optimized build including staging.
 
+### Guardrail notices, holds and the one-call approve (TASK-1050)
+
+A safety check never fails silently: it warns, blocks, or says it could not run. All three reach you as ONE standard
+message, `GuardrailNotice` v1 (no content, no judge reasoning; localise on `messageKey`, `defaultMessage` is a fixed
+English label).
+
+```tsx
+// Run: warnings -> popup, keep going. A block pauses the run; paused is NOT the end (status stays RUNNING).
+const run = useRun({ workflow: 'note-writer', onGuardrailNotice: (n) => toast.warning(n.defaultMessage) });
+run.guardrailNotices; run.paused; // deduplicated by noticeId; { noticeId, nodeId } while held
+// `useWorkflowRun({ onGuardrailNotice })` does the same for the legacy frame stream.
+
+// Synchronous calls: a block is a typed AgenticError subclass, a privacy hold is retryable.
+try { await client.post(...); }
+catch (e) {
+  if (e instanceof GuardrailBlockedError) showTermination(e.notice?.defaultMessage); // e.context.code keeps CONTENT_BLOCKED*
+  else if (e instanceof EgressRedactionUnavailableError) retryLater();              // e.retryable === true
+}
+
+// Consultation: a block is a HOLD (processingReason GUARDRAIL_HOLD), never a dead end.
+const c = useConsultation();
+c.onGuardrailHold;       // true while held; noteReady is false while held
+c.guardrailNotices;      // deduplicated by noticeId; read automatically when a hold appears
+c.addGuardrailNotices(run.guardrailNotices);          // feed notices from a run or a generate result
+await c.acknowledgeNotice(noticeId);                  // If-Match from the consultation version
+await c.resumeHold({ noticeId, resolution: 'item_excluded' }); // 'item_excluded' | 'item_edited' | 'acknowledged'
+await c.approve({ acknowledgeGuardrailNotices: true }); // acknowledge every outstanding warning in the approve
+await c.approve({ resolveHold: { noticeId, resolution: 'item_excluded' } });
+```
+
+- **Warning**: show it (a popup), carry on. Approve is never refused because of warnings; the response lists `acknowledgedNotices`.
+- **Block**: show the termination message (`notice.defaultMessage`) and, when `notice.resumable`, offer Resume. The locked
+  medical check offers no `acknowledged` override.
+
 ## Gotchas
 
 - The `/api/v1` prefix is part of `baseUrl` — every SDK route is relative to it. Omit it and each

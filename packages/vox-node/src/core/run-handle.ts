@@ -47,11 +47,13 @@ import {
   type PublicRunEventType,
   type RunError,
   type RunEventV2,
+  type RunGuardrailNotice,
   type RunResult,
   type RunStatus,
   type RunTokens,
   advanceRunCursor,
   isTerminalRunEventType,
+  isRunGuardrailNotice,
   isTerminalRunStatusValue,
 } from './run-protocol';
 import { parseSseStream } from './sse';
@@ -76,6 +78,15 @@ export interface RunOutcome {
   readonly error?: { readonly code: string; readonly message: string };
   /** The result DESCRIPTOR the terminal event carried, when it carried one. Read the value with {@link RunHandle.result}. */
   readonly result?: RunResult;
+  /** TASK-1050: every warn / unverified notice the run raised (`run.completed.guardrailNotices`). Absent when it raised none. */
+  readonly guardrailNotices?: readonly RunGuardrailNotice[];
+}
+
+/** Where a run is waiting for a guardrail hold to be resolved (`run.paused`). */
+export interface RunPausedState {
+  readonly noticeId: string;
+  readonly nodeId: string;
+  readonly reason: string;
 }
 
 /** Reconnect behaviour of a handle's streams. */
@@ -103,6 +114,13 @@ export interface RunEventsOptions {
   autoResume?: boolean;
   /** Overrides the handle's reconnect budget for this iteration. */
   maxReconnects?: number;
+  /**
+   * TASK-1050: called ONCE per notice id for each `guardrail.notice` (and each notice that only
+   * `run.completed.guardrailNotices` carries) this iteration delivers. Show the warning and carry on; a
+   * `guardrail.blocked` notice is followed by `run.paused` (resumable) or a `GUARDRAIL_BLOCKED` failure.
+   * A `run.paused` run is NOT finished — `wait()` / `events()` keep following it.
+   */
+  onGuardrailNotice?: (notice: RunGuardrailNotice) => void;
 }
 
 /** Options for {@link RunHandle.text}. */
@@ -227,6 +245,8 @@ export class RunHandle<TOutput = unknown> {
   private currentStatus: RunStatus = 'RUNNING';
   private currentOutcome: RunOutcome | undefined;
   private highestSeq = 0;
+  private readonly noticesById = new Map<string, RunGuardrailNotice>();
+  private pausedState: RunPausedState | undefined;
   private cancelRequest: Promise<RunCancelResult> | undefined;
 
   constructor(init: RunHandleInit) {
@@ -262,6 +282,16 @@ export class RunHandle<TOutput = unknown> {
     return this.highestSeq;
   }
 
+  /** Every guardrail notice any iterator on this handle has seen, one per `noticeId`, in first-seen order (TASK-1050). */
+  get guardrailNotices(): readonly RunGuardrailNotice[] {
+    return [...this.noticesById.values()];
+  }
+
+  /** Set while the run waits at a guardrail hold (`run.paused`); cleared when it moves on or ends. The run is NOT terminal while paused. */
+  get paused(): RunPausedState | undefined {
+    return this.pausedState;
+  }
+
   /** The terminal outcome, once any iterator, poll or cancel has seen the run end. */
   get outcome(): RunOutcome | undefined {
     return this.currentOutcome;
@@ -287,6 +317,7 @@ export class RunHandle<TOutput = unknown> {
     const budget = options.autoResume === false ? 0 : (options.maxReconnects ?? this.tuning.maxReconnects);
     let cursor = options.after ?? 0;
     let lastEventId: string | undefined = options.after === undefined ? undefined : String(options.after);
+    const announced = new Set<string>();
     let failures = 0;
     let lastError: unknown;
 
@@ -320,6 +351,7 @@ export class RunHandle<TOutput = unknown> {
                 if (!step.deliver) continue;
               }
               this.observe(event);
+              this.announceNotices(event, announced, options.onGuardrailNotice);
               yield event as RunEvent;
               if (isTerminalRunEventType(event.type) || (event.type === 'run.resync' && isTerminalRunStatusValue(event.data.snapshot.status))) return;
             }
@@ -517,11 +549,35 @@ export class RunHandle<TOutput = unknown> {
     if (this.currentOutcome === undefined && !isTerminalRunStatusValue(status)) this.currentStatus = 'RUNNING';
   }
 
+  /** Call `onGuardrailNotice` once per notice id this iteration has not announced yet. */
+  private announceNotices(event: RunEventV2, announced: Set<string>, onNotice: ((notice: RunGuardrailNotice) => void) | undefined): void {
+    const notices: readonly RunGuardrailNotice[] =
+      event.type === 'guardrail.notice' ? [event.data] : event.type === 'run.completed' ? (event.data.guardrailNotices ?? []) : [];
+    for (const notice of notices) {
+      if (announced.has(notice.noticeId)) continue;
+      announced.add(notice.noticeId);
+      onNotice?.(notice);
+    }
+  }
+
   /** Fold one delivered event into the handle's view of the run. */
   private observe(event: RunEventV2): void {
     switch (event.type) {
+      case 'guardrail.notice':
+        if (isRunGuardrailNotice(event.data)) this.noticesById.set(event.data.noticeId, event.data);
+        break;
+      case 'run.paused':
+        this.pausedState = { noticeId: event.data.noticeId, nodeId: event.data.nodeId, reason: event.data.reason };
+        break;
+      case 'node.started':
+      case 'node.completed':
+      case 'node.failed':
+        this.pausedState = undefined;
+        break;
       case 'run.completed': {
-        const { durationMs, tokens, degraded, result } = event.data;
+        const { durationMs, tokens, degraded, result, guardrailNotices } = event.data;
+        this.pausedState = undefined;
+        for (const notice of guardrailNotices ?? []) this.noticesById.set(notice.noticeId, notice);
         this.settle({
           runId: this.runId,
           status: 'COMPLETED',
@@ -529,10 +585,12 @@ export class RunHandle<TOutput = unknown> {
           tokens,
           ...(degraded === true ? { degraded: true } : {}),
           ...(result === undefined ? {} : { result }),
+          ...(guardrailNotices === undefined || guardrailNotices.length === 0 ? {} : { guardrailNotices }),
         });
         break;
       }
       case 'run.failed': {
+        this.pausedState = undefined;
         const { status, durationMs, tokens, error } = event.data;
         this.settle({
           runId: this.runId,
@@ -544,6 +602,7 @@ export class RunHandle<TOutput = unknown> {
         break;
       }
       case 'run.cancelled':
+        this.pausedState = undefined;
         this.settle({ runId: this.runId, status: 'CANCELED', durationMs: event.data.durationMs });
         break;
       case 'run.resync': {

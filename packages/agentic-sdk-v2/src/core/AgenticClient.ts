@@ -10,6 +10,7 @@ import { AdminPlaneRefusedError, DEFAULT_TIMEOUT, isAdminPlanePath } from './con
 import type { ISDKLogger } from './logger';
 import { createTraceparent, generateSpanId, toW3CTraceId } from './logger';
 import { classifyHttpError } from '../utils/errorUtils';
+import { buildHttpError } from './guardrail';
 import { SPEECH_ENDPOINTS } from './constants';
 
 /**
@@ -352,7 +353,7 @@ export class AgenticClient {
         // A throttled or unavailable route says when to come back; callers that retry honour it.
         const retryAfter = response.headers.get('retry-after');
         if (retryAfter) errorContext.retryAfter = retryAfter;
-        throw new AgenticError(errorCode, errorMessage, { context: errorContext });
+        throw buildHttpError(response.status, errorCode, errorMessage, errorContext, errorData);
       }
 
       // Handle 204 No Content
@@ -537,9 +538,13 @@ export class AgenticClient {
     }
 
     const errorData = await response.json().catch(() => ({}));
-    throw new AgenticError(classifyHttpError(response.status), errorData?.message || `HTTP ${response.status}: ${response.statusText}`, {
-      context: { status: response.status, endpoint, requestId, ...(typeof errorData?.code === 'string' ? { code: errorData.code } : {}) },
-    });
+    throw buildHttpError(
+      response.status,
+      classifyHttpError(response.status),
+      errorData?.message || `HTTP ${response.status}: ${response.statusText}`,
+      { status: response.status, endpoint, requestId, ...(typeof errorData?.code === 'string' ? { code: errorData.code } : {}) },
+      errorData,
+    );
   }
 
   /**

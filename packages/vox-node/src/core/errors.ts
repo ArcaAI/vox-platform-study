@@ -10,6 +10,7 @@
 
 import type { ConsultationStatus } from '../types/consultation';
 import { redactHeaders } from './redact';
+import { type RunGuardrailNotice, isRunGuardrailNotice } from './run-protocol';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -41,6 +42,25 @@ function readCurrentVersion(body: unknown): number | undefined {
   const metadata = body.metadata;
   if (!isRecord(metadata)) return undefined;
   return typeof metadata.currentVersion === 'number' ? metadata.currentVersion : undefined;
+}
+
+function readString(body: unknown, key: string): string | undefined {
+  if (!isRecord(body)) return undefined;
+  const value = body[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** The guardrail notice of an error body: top-level `guardrailNotice`, else under `metadata`. */
+function readGuardrailNotice(body: unknown): RunGuardrailNotice | undefined {
+  if (!isRecord(body)) return undefined;
+  const candidate = body.guardrailNotice ?? (isRecord(body.metadata) ? body.metadata.guardrailNotice : undefined);
+  return isRunGuardrailNotice(candidate) ? candidate : undefined;
+}
+
+function readEvaluationIds(body: unknown): string[] {
+  if (!isRecord(body)) return [];
+  const ids = body.guardrailEvaluationIds ?? (isRecord(body.metadata) ? body.metadata.guardrailEvaluationIds : undefined);
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }
 
 /**
@@ -306,6 +326,70 @@ export class VersionConflictError extends HopeAPIError {
 export class PreconditionRequiredError extends HopeAPIError {
   constructor(init: Omit<HopeAPIErrorInit, 'status'>) {
     super({ ...init, status: 428 });
+  }
+}
+
+/** RFC 9457 `type` of a guardrail block (`@arcaai/types` `GUARDRAIL_BLOCKED_PROBLEM_TYPE`). */
+export const GUARDRAIL_BLOCKED_PROBLEM_TYPE = 'urn:hope:problem:guardrail-blocked';
+
+/** The `code` of the retryable 503 raised when the cloud-egress pseudonymiser is down (processing reason `EGRESS_REDACTION_UNAVAILABLE`). */
+export const EGRESS_REDACTION_UNAVAILABLE_CODE = 'EGRESS_REDACTION_UNAVAILABLE';
+
+/** Constructor options for {@link GuardrailBlockedError} and {@link GuardrailHoldError}. */
+export interface GuardrailErrorInit<S extends number> extends Omit<HopeAPIErrorInit, 'status'> {
+  status?: S;
+  /** The standard client message the response carried (`guardrailNotice`); absent when the body had none. */
+  notice?: RunGuardrailNotice;
+  /** The guardrail evaluation ids of the request (`guardrailEvaluationIds`). */
+  evaluationIds?: readonly string[];
+}
+
+/**
+ * HTTP 422 with `type: urn:hope:problem:guardrail-blocked` — a guardrail STOPPED the operation (TASK-1050).
+ *
+ * This is a decision, not a fault. Show {@link notice} to the user (localise on `notice.messageKey`; its
+ * `defaultMessage` is a fixed English label that never quotes content) and, when `notice.resumable`, offer
+ * the resume path (`ConsultationHandle.resumeHold`). {@link code} keeps the legacy `CONTENT_BLOCKED*` error
+ * code (`error_code` on the body) so a client that predates the notice keeps working.
+ */
+export class GuardrailBlockedError extends HopeAPIError {
+  readonly notice: RunGuardrailNotice | undefined;
+  readonly evaluationIds: readonly string[];
+
+  constructor(init: GuardrailErrorInit<422>) {
+    super({ ...init, status: 422, code: init.code ?? 'GUARDRAIL_BLOCKED', message: init.message ?? init.notice?.defaultMessage ?? 'A guardrail blocked the content.' });
+    this.notice = init.notice;
+    this.evaluationIds = init.evaluationIds ?? [];
+  }
+}
+
+/**
+ * HTTP 503 from a guardrail HOLD that the caller can simply retry (TASK-1050). {@link retryable} is always
+ * `true`. The subclass {@link EgressRedactionUnavailableError} is the one the platform raises today.
+ */
+export class GuardrailHoldError extends HopeAPIError {
+  readonly retryable = true as const;
+  readonly notice: RunGuardrailNotice | undefined;
+  readonly evaluationIds: readonly string[];
+  /** Milliseconds to wait before retrying, from `Retry-After`, when present. */
+  readonly retryAfterMs: number | undefined;
+
+  constructor(init: GuardrailErrorInit<503> & { retryAfterMs?: number }) {
+    super({ ...init, status: 503, message: init.message ?? init.notice?.defaultMessage ?? 'Processing is paused by a guardrail hold. Retry to continue.' });
+    this.notice = init.notice;
+    this.evaluationIds = init.evaluationIds ?? [];
+    this.retryAfterMs = init.retryAfterMs;
+  }
+}
+
+/**
+ * HTTP 503 `EGRESS_REDACTION_UNAVAILABLE`: patient details could not be pseudonymised before a call to an external
+ * (cloud) model, so NOTHING was sent. Retryable once the pseudonymiser is back; inside a consultation the hold is
+ * also resumable (`processingReason: EGRESS_REDACTION_UNAVAILABLE`).
+ */
+export class EgressRedactionUnavailableError extends GuardrailHoldError {
+  constructor(init: GuardrailErrorInit<503> & { retryAfterMs?: number }) {
+    super({ ...init, code: init.code ?? EGRESS_REDACTION_UNAVAILABLE_CODE });
   }
 }
 
@@ -652,8 +736,9 @@ export class RunResultIntegrityError extends Error {
 export function fromResponse(response: Response, body: unknown, extra: FromResponseExtra = {}): HopeAPIError {
   const status = response.status;
   const requestId = extra.requestId ?? response.headers.get('x-request-id') ?? readCorrelationId(body) ?? undefined;
-  const code = readCode(body);
-  const message = readMessage(body);
+  // A guardrail 422 keeps the legacy `CONTENT_BLOCKED*` identifier in `error_code`; `code` is the house field.
+  const code = readCode(body) ?? readString(body, 'error_code');
+  const message = readMessage(body) ?? readString(body, 'title');
   const problems = readProblems(body);
   const common: HopeAPIErrorInit = {
     status,
@@ -664,6 +749,23 @@ export function fromResponse(response: Response, body: unknown, extra: FromRespo
     headers: response.headers,
     cause: extra.cause,
   };
+
+  const notice = readGuardrailNotice(body);
+  if (status === 422 && (readString(body, 'type') === GUARDRAIL_BLOCKED_PROBLEM_TYPE || notice !== undefined)) {
+    return new GuardrailBlockedError({ ...common, status: 422, notice, evaluationIds: readEvaluationIds(body) });
+  }
+  if (status === 503 && (code === EGRESS_REDACTION_UNAVAILABLE_CODE || notice?.messageKey === 'guardrail.blocked.redaction_unavailable')) {
+    return new EgressRedactionUnavailableError({
+      ...common,
+      status: 503,
+      notice,
+      evaluationIds: readEvaluationIds(body),
+      retryAfterMs: parseRetryAfterMs(response.headers.get('retry-after')),
+    });
+  }
+  if (status === 503 && notice !== undefined) {
+    return new GuardrailHoldError({ ...common, status: 503, notice, evaluationIds: readEvaluationIds(body), retryAfterMs: parseRetryAfterMs(response.headers.get('retry-after')) });
+  }
 
   switch (status) {
     case 400:

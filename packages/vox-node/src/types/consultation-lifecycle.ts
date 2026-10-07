@@ -8,6 +8,7 @@
  * taken by the pre-lifecycle twelve-value `ConsultationStatus` this package still exports.
  */
 
+import { isGuardrailHoldReason } from './guardrail';
 import type {
   ConsultationLifecycleFields,
   ConsultationProcessing,
@@ -238,7 +239,8 @@ export const NOTE_READY_REASON = 'NOTE_READY';
 
 /**
  * A note is ready to read when the consultation is STOPPED and either processing is IDLE with the
- * NOTE_READY reason, or AWAITING_REVIEW (a human must look). Never infer it from `status` alone.
+ * NOTE_READY reason, or AWAITING_REVIEW (a human must look). Never infer it from `status` alone. A guardrail
+ * hold is AWAITING_REVIEW too, but its note was blocked or withheld, so it is never "ready" (TASK-1050).
  */
 export function isNoteReady(state: {
   status: string;
@@ -248,6 +250,6 @@ export function isNoteReady(state: {
   return (
     state.status === 'STOPPED' &&
     ((state.processing === 'IDLE' && state.processingReason === NOTE_READY_REASON) ||
-      state.processing === 'AWAITING_REVIEW')
+      (state.processing === 'AWAITING_REVIEW' && !isGuardrailHoldReason(state.processingReason)))
   );
 }

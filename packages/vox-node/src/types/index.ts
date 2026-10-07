@@ -10,6 +10,21 @@
 export { ASR_RUNTIME_DEGRADED_REASONS, isSttDegradedStatus } from './stt';
 export { CONTEXT_CONTENT_MAX_LENGTH } from './consultation';
 
+/** Guardrail notices, holds and the one-call approve (TASK-1050). */
+export { GUARDRAIL_HOLD_PROCESSING_REASONS, isGuardrailHoldReason } from './guardrail';
+export type {
+  ApproveGuardrailOptions,
+  GuardrailAcknowledgementVia,
+  GuardrailApproveRequestAdditions,
+  GuardrailApproveResponseAdditions,
+  GuardrailHoldProcessingReason,
+  GuardrailHoldResolution,
+  GuardrailNoticeAcknowledgement,
+  GuardrailNoticesResponse,
+  GuardrailResultFields,
+  HoldResolution,
+} from './guardrail';
+
 /** The spoken-language selection contract shared with `apps/stt`, `@arcaai/vox`, and ALaaS (TASK-1004). */
 export type {
   LanguageModeId,

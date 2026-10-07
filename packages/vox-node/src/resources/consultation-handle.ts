@@ -33,6 +33,7 @@ import type { AsyncJobResponse, ConsultationSummaryResponse } from '../types/con
 import type {
   ActivityEntry,
   ApproveOptions,
+  ConsultationCommandOptions,
   AttachmentCompleteResponse,
   AttachmentInput,
   AttachmentIntentResponse,
@@ -60,6 +61,14 @@ import type {
   StopResult,
   ConsultationHandleCallOptions,
 } from '../types/consultation-lifecycle';
+import type {
+  GuardrailApproveRequestAdditions,
+  GuardrailApproveResponseAdditions,
+  GuardrailHoldResolution,
+  GuardrailNotice,
+  GuardrailNoticesResponse,
+} from '../types/guardrail';
+import { isGuardrailHoldReason } from '../types/guardrail';
 import type { SttTranscriptResult } from '../types/stt';
 import { ConsultationSummariesResource } from './consultation-summaries';
 import { JobsResource } from './jobs';
@@ -112,6 +121,14 @@ export interface ConsultationHandleEvents {
   status: LifecycleEvent;
   /** The capture started, paused, resumed, expired or stopped. */
   'capture-state': { state: CaptureStateName; sessionId?: string; audioOffsetMs?: number };
+  /**
+   * A guardrail notice this consultation raised that the handle had not delivered yet (TASK-1050). The handle learns of
+   * one from the lifecycle event stream — a block puts the consultation on a hold (`processingReason`
+   * `GUARDRAIL_HOLD` / `EGRESS_REDACTION_UNAVAILABLE`) — then reads the notice by id. Each `noticeId` is delivered once.
+   * Warnings raised while a note is generated arrive on that result's `guardrailNotices`; read them any time with
+   * {@link ConsultationHandle.guardrailNotices}.
+   */
+  'guardrail-notice': GuardrailNotice;
   /** Anything that went wrong on the socket or the event stream. */
   error: unknown;
 }
@@ -201,6 +218,7 @@ function sendControl(socket: RealtimeSttSocket, frame: Record<string, unknown>):
 type MutableState = {
   status: ConsultationLifecycleStatus;
   processing: ConsultationProcessing;
+  processingReason?: string | null;
   version: number | undefined;
 };
 
@@ -237,6 +255,7 @@ export class ConsultationHandle {
   #eventsSince = 0;
   #eventsIdle = 0;
   #disposed = false;
+  readonly #deliveredNoticeIds = new Set<string>();
 
   constructor(open: ConsultationOpenResult, deps: ConsultationHandleDeps) {
     Object.assign(this, open);
@@ -272,7 +291,13 @@ export class ConsultationHandle {
     if (status) state.status = status as ConsultationLifecycleStatus;
     const processing = response.lifecycle?.processing ?? response.processing;
     if (processing) state.processing = processing;
+    if ('processingReason' in response) state.processingReason = response.processingReason ?? null;
     if (typeof response.version === 'number') state.version = response.version;
+  }
+
+  /** `true` while the consultation waits on a guardrail hold (`processingReason` `GUARDRAIL_HOLD` / `EGRESS_REDACTION_UNAVAILABLE`). */
+  get onGuardrailHold(): boolean {
+    return isGuardrailHoldReason(this.processingReason);
   }
 
   // ── events ────────────────────────────────────────────────────────────────────────────────
@@ -292,11 +317,15 @@ export class ConsultationHandle {
     const set = this.#listeners.get(event) ?? new Set();
     set.add(listener as (payload: never) => void);
     this.#listeners.set(event, set);
-    if (event === 'status') this.#openEvents();
+    if (event === 'status' || event === 'guardrail-notice') this.#openEvents();
     return () => {
       set.delete(listener as (payload: never) => void);
-      if (event === 'status' && set.size === 0) this.#closeEvents();
+      if ((event === 'status' || event === 'guardrail-notice') && !this.#wantsEvents()) this.#closeEvents();
     };
+  }
+
+  #wantsEvents(): boolean {
+    return (this.#listeners.get('status')?.size ?? 0) > 0 || (this.#listeners.get('guardrail-notice')?.size ?? 0) > 0;
   }
 
   #emit<E extends ConsultationHandleEventName>(event: E, payload: ConsultationHandleEvents[E]): void {
@@ -323,14 +352,15 @@ export class ConsultationHandle {
             this.#eventsSince = event.seq;
           }
           this.#eventsIdle = 0;
-          this.#apply({ status: event.status, processing: event.processing, version: event.version });
+          this.#apply({ status: event.status, processing: event.processing, processingReason: event.processingReason, version: event.version });
           this.#emit('status', event);
+          if (isGuardrailHoldReason(event.processingReason)) void this.#deliverHoldNotices();
         },
       },
       {
         onClosed: (reason) => {
           this.#events = undefined;
-          if (reason !== 'end' || this.#disposed || !(this.#listeners.get('status')?.size ?? 0)) return;
+          if (reason !== 'end' || this.#disposed || !this.#wantsEvents()) return;
           void this.#reconnectEvents();
         },
         onError: (error) => {
@@ -347,7 +377,7 @@ export class ConsultationHandle {
     if (this.#eventsIdle > EVENTS_MAX_IDLE_RECONNECTS) return;
     const delay = Math.min(EVENTS_RECONNECT_MAX_MS, EVENTS_RECONNECT_BASE_MS * 2 ** (this.#eventsIdle - 1));
     await this.#sleep(delay);
-    if (!this.#disposed && (this.#listeners.get('status')?.size ?? 0) > 0) this.#openEvents();
+    if (!this.#disposed && this.#wantsEvents()) this.#openEvents();
   }
 
   #closeEvents(): void {
@@ -585,10 +615,10 @@ export class ConsultationHandle {
     verb: string,
     body: Record<string, unknown>,
     options: { ifMatch?: string | number; signal?: AbortSignal },
-  ): Promise<ConsultationState> {
-    const send = async (version: string | number): Promise<ConsultationState> => {
+  ): Promise<ConsultationState & Partial<GuardrailApproveResponseAdditions>> {
+    const send = async (version: string | number): Promise<ConsultationState & Partial<GuardrailApproveResponseAdditions>> => {
       const strong = typeof version === 'string' && version.startsWith('"') ? version : `"${version}"`;
-      const response = await this.#transport.request<ConsultationState>({
+      const response = await this.#transport.request<ConsultationState & Partial<GuardrailApproveResponseAdditions>>({
         method: 'POST',
         path: this.#path(`/${verb}`),
         body,
@@ -612,17 +642,71 @@ export class ConsultationHandle {
     }
   }
 
+  // ── guardrail notices and holds (TASK-1050) ────────────────────────────────────────────────
+
+  /** Read the consultation's notices and emit the ones not delivered before. A failed read surfaces on `error`. */
+  async #deliverHoldNotices(): Promise<void> {
+    try {
+      for (const notice of await this.guardrailNotices()) {
+        if (this.#deliveredNoticeIds.has(notice.noticeId)) continue;
+        this.#deliveredNoticeIds.add(notice.noticeId);
+        this.#emit('guardrail-notice', notice);
+      }
+    } catch (error) {
+      this.#emit('error', error);
+    }
+  }
+
+  /**
+   * `GET consultations/:id/guardrail-notices` — every guardrail notice this consultation raised, oldest first. Notices
+   * carry no content and no judge reasoning; localise on `messageKey`. A notice with `requiresAcknowledgement` is
+   * acknowledged by {@link acknowledgeNotice}, or atomically by {@link approve}.
+   */
+  async guardrailNotices(options: ConsultationHandleCallOptions = {}): Promise<GuardrailNotice[]> {
+    const response = await this.#transport.request<GuardrailNotice[] | GuardrailNoticesResponse>({
+      path: this.#path('/guardrail-notices'),
+      signal: options.signal,
+    });
+    return Array.isArray(response) ? [...response] : [...(response?.notices ?? [])];
+  }
+
+  /**
+   * `POST consultations/:id/guardrail-notices/:noticeId/ack` — the clinician acknowledges one warning. `If-Match` is the
+   * version the handle last saw (a stale one is re-read and retried once, like the other verbs). To acknowledge every
+   * outstanding warning while signing off, call {@link approve} with `acknowledgeGuardrailNotices` instead.
+   */
+  acknowledgeNotice(noticeId: string, options: ConsultationCommandOptions = {}): Promise<ConsultationState> {
+    return this.#occCommand(`guardrail-notices/${encodePathSegment(noticeId)}/ack`, {}, options);
+  }
+
+  /**
+   * `POST consultations/:id/guardrail-hold/resume` — resolve the hold a block put the consultation on, so processing
+   * continues. `resolution`: `item_excluded` (leave the blocked items out), `item_edited` (the clinician corrected the
+   * item; it is re-screened) or `acknowledged` (proceed once at warn weight, recorded as a safety override; not offered
+   * for the locked medical check — see `notice.resumable`). Sends `If-Match`.
+   */
+  resumeHold(resolution: GuardrailHoldResolution, options: ConsultationCommandOptions = {}): Promise<ConsultationState> {
+    return this.#occCommand('guardrail-hold/resume', { noticeId: resolution.noticeId, resolution: resolution.resolution }, options);
+  }
+
   /**
    * Approve the note — the clinician's sign-off. `If-Match` is the handle's version; if it is stale
    * the handle re-reads once and retries.
    *
+   * Guardrail (TASK-1050): approve is never refused because of warnings. `acknowledgeGuardrailNotices: true` says the
+   * client showed them in its confirm step, and every outstanding warning on the approved items is acknowledged in the
+   * approve transaction (the response lists them in `acknowledgedNotices`). `resolveHold` resolves an inbound hold
+   * and approves in the same call.
+   *
    * @throws ConflictError — 409 `CONSULTATION_PROCESSING_IN_FLIGHT` while the note is still being
    * produced, or a safety flag the call did not override.
    */
-  approve(options: ApproveOptions = {}): Promise<ConsultationState> {
+  approve(options: ApproveOptions & GuardrailApproveRequestAdditions = {}): Promise<ConsultationState & Partial<GuardrailApproveResponseAdditions>> {
     const body: Record<string, unknown> = {};
     if (options.clinicianUserId !== undefined) body.clinicianUserId = options.clinicianUserId;
     if (options.overrideSafetyFlag !== undefined) body.overrideSafetyFlag = options.overrideSafetyFlag;
+    if (options.acknowledgeGuardrailNotices !== undefined) body.acknowledgeGuardrailNotices = options.acknowledgeGuardrailNotices;
+    if (options.resolveHold !== undefined) body.resolveHold = { noticeId: options.resolveHold.noticeId, resolution: options.resolveHold.resolution };
     return this.#occCommand('approve', body, options);
   }
 
