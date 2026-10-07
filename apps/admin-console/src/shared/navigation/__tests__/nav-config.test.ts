@@ -41,6 +41,9 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
   { action: 'read', subject: 'Role' },
   // TASK-1023 — every admin reads the AI-model registry (read-only for a tenant admin).
   { action: 'read', subject: 'AiModel' },
+  // TASK-1050 — the seed grants tenant admins their own guardrail on/off rules (`/guardrails`).
+  { action: 'read', subject: 'TenantGuardrailPolicy' },
+  { action: 'manage', subject: 'TenantGuardrailPolicy' },
 ];
 
 /** Every platform-wide feature gate resolved `true` — the "nothing is hidden by the matrix" baseline most ability-only tests want. */
@@ -58,16 +61,17 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // Monitoring, Releases) from 10-19 to 20-29: 22/12/19/5. TASK-1023 moved
   // AI models from 10-19 to 20-29 (shared, read-only for a tenant admin): 22/13/19/5
   // (the prose above predates the later additions; the asserts below are current).
-  // The tier-30-49 Quick start was added after that: 61 total, 22/13/21/5.
+  // The tier-30-49 Quick start was added after that: 61 total, 22/13/21/5. TASK-1050 added
+  // /guardrails (30-49, W3a) and /guardrails/control (10-19, W3c): 63 total, 23/13/22/5.
   it('covers the full rail map across the four tiers', () => {
-    expect(NAV_ENTRIES).toHaveLength(62);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
+    expect(NAV_ENTRIES).toHaveLength(63);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(13);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu, plus the new /developer/invoke
     // entry (TASK-971 lane E), are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(65);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(66);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -518,6 +522,8 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
   ['/ai-services/ollama', 'ai-platform', '10-19', 4, [['manage', 'all']]],
   ['/ai-services/llama-cpp', 'ai-platform', '10-19', 5, [['manage', 'all']]],
   ['/model-residency', 'ai-platform', '10-19', 6, [['manage', 'all']]],
+  // TASK-1050 W3c — the platform admin's guardrail editor (rules, prompts, parameters, monitoring).
+  ['/guardrails/control', 'ai-platform', '10-19', 7, [['manage', 'all']]],
   ['/ai-models', 'ai-platform', '20-29', 1, [['read', 'AiModel']]],
   [
     '/ai-providers',
@@ -975,7 +981,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
         '30-49': ['Storage browser'],
       },
       'ai-platform': {
-        '10-19': ['AI services', 'LM Studio', 'vLLM', 'Ollama', 'llama.cpp', 'Model residency'],
+        '10-19': ['AI services', 'LM Studio', 'vLLM', 'Ollama', 'llama.cpp', 'Model residency', 'Guardrail control'],
         '20-29': ['AI models', 'AI providers'],
       },
       'knowledge-agents': {
@@ -1026,7 +1032,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       'platform-ops': { '20-29': ['Settings registry', 'Settings rows & secrets'], '30-49': ['Storage browser'] },
       'ai-platform': { '20-29': ['AI models', 'AI providers'] },
       'knowledge-agents': { '30-49': ['Prompts'] },
-      'identity-access': { '20-29': ['Users', 'Roles'], '30-49': ['Allowed origins'] },
+      'identity-access': { '20-29': ['Users', 'Roles'], '30-49': ['Allowed origins', 'Guardrail rules'] },
       playground: {
         '50-59': ['Consultation Scribe', 'Live Transcription', 'My Voice Enrollment & Profiles', 'My DNA Writing Style', 'LLM Playground'],
       },

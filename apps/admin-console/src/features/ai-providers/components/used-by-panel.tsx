@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo } from 'react';
-import { IconBinaryTree2 } from '@tabler/icons-react';
+import { IconBinaryTree2, IconExternalLink } from '@tabler/icons-react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@arcaai/ui/components/shadcn/table';
@@ -141,7 +142,19 @@ export function UsedByPanel({ scope }: { scope: ResolvedProviderScope }) {
               .sort((a, b) => a.taskKey.localeCompare(b.taskKey) || Number(b.isDefault) - Number(a.isDefault) || a.priority - b.priority)
               .map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell className="font-mono text-xs">{row.taskKey}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <span className="flex flex-col items-start gap-1">
+                      {row.taskKey}
+                      {/* TASK-1050 (OD-39): one editor per backend resource — the guardrail lanes are
+                          selected on Guardrail control, so this row is read-only here. */}
+                      {row.managedBy === 'guardrail-control' ? (
+                        <Link href="/guardrails/control" className="text-primary inline-flex items-center gap-1 font-sans underline underline-offset-4">
+                          Managed by Guardrail control
+                          <IconExternalLink aria-hidden className="size-3" />
+                        </Link>
+                      ) : null}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <span className="flex flex-wrap items-center gap-1.5">
                       {row.displayName ?? row.id}
