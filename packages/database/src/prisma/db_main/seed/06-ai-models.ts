@@ -42,11 +42,49 @@ export { RETIRED_AI_MODEL_SLUGS, shouldRetireAiModelSlug, pipelineYamlReferences
  */
 export const DEFAULT_AI_MODELS: AiModelSeed[] = withCapabilityMetadata([...AUDIO_AI_MODELS, ...LLM_AI_MODELS, ...NLP_AI_MODELS, ...TTS_AI_MODELS]);
 
+type SeedMetaData = NonNullable<AiModelSeed['metaData']>;
+
+/** `_metadata` keys whose CURRENT value a platform admin edits (W2h); the seed never overwrites them. */
+const ADMIN_EDITABLE_METADATA_KEYS = ['policy', 'judge'] as const;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * TASK-1050 (README §11.3 C, OD-33) — the `metaData` an UPDATE of an existing row writes. Pure.
+ *
+ * `policy` and `judge` are admin-editable CURRENT values (`/guardrails/control`, W2h), so a re-seed keeps the
+ * stored object and only ADDS the top-level keys the seed declares and the row lacks, at the seed value —
+ * which is how a new criteria key or band reaches an existing database. A key the row has and the seed does
+ * not is kept too: the seed never deletes an admin's value. A row with no stored object (or a malformed one)
+ * takes the seed's whole. `policyDefaults` / `judgeDefaults` are seed-owned factory defaults and are
+ * refreshed to the seed. Every other key keeps the full-column behaviour this function replaced: the seed
+ * blob is written as declared, so a key only the row carries is dropped.
+ *
+ * The merge is one level deep on purpose: a nested object (`judgeBands`, `categoryMap`) is one admin-edited
+ * value, so an entry an admin removed from it is not re-added by a re-seed.
+ */
+export function mergeSeedMetaDataForUpdate(existing: unknown, seed: SeedMetaData): SeedMetaData {
+  const stored = isPlainObject(existing) ? existing : {};
+  const merged: Record<string, unknown> = { ...seed };
+  for (const key of ADMIN_EDITABLE_METADATA_KEYS) {
+    const current = stored[key];
+    const fromSeed = seed[key];
+    if (!isPlainObject(current)) {
+      if (fromSeed !== undefined) merged[key] = structuredClone(fromSeed);
+      continue;
+    }
+    merged[key] = structuredClone({ ...(isPlainObject(fromSeed) ? fromSeed : {}), ...current });
+  }
+  return merged as SeedMetaData;
+}
+
 /**
  * Upsert the catalogue. NOT create-only: every registry column the seed
  * declares is re-synced on re-seed, so a catalogue correction propagates
- * (`metaData` — voices, label taxonomies, calibration, policy — included; it
- * is written only when the seed row declares one).
+ * (`metaData` — voices, label taxonomies, calibration — included; it is
+ * written only when the seed row declares one). TASK-1050: the admin-editable
+ * `metaData.policy` / `metaData.judge` are merged, not overwritten — see
+ * {@link mergeSeedMetaDataForUpdate}. A CREATE writes the seed row verbatim.
  *
  * Deliberately NOT re-synced: `resourceStatus` (an admin's enable/disable
  * decision survives), `availability` unless the seed pins NOT_APPLICABLE (a
@@ -94,7 +132,7 @@ export const seedAiModels = async (client: CorePrismaClient) => {
           tags: modelData.tags,
           provider: modelData.provider,
           architecture: modelData.architecture,
-          ...(modelData.metaData !== undefined ? { metaData: modelData.metaData } : {}),
+          ...(modelData.metaData !== undefined ? { metaData: mergeSeedMetaDataForUpdate(existing.metaData, modelData.metaData) } : {}),
         },
       });
     } else {
