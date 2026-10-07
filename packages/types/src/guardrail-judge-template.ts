@@ -39,7 +39,7 @@ export const GUARDRAIL_JUDGE_UNTRUSTED_DATA_CLAUSE =
 /** Each lane's verdict `category` enum (README §6), `none` first. The JSON `response_format` enforces the same set. */
 export const GUARDRAIL_JUDGE_LANE_CATEGORIES: Readonly<Record<GuardrailJudgeCheckId, readonly string[]>> = Object.freeze({
   injection_judge: Object.freeze(['none', 'instruction_override', 'role_play', 'prompt_exfiltration', 'tool_misuse', 'output_hijack']),
-  unsafe_content_judge: Object.freeze(['none', 'self_harm_instructions', 'violence', 'abuse', 'hate_harassment', 'illicit_synthesis']),
+  unsafe_content_judge: Object.freeze(['none', 'self_harm_instructions', 'violence', 'abuse', 'hate_harassment', 'illicit_synthesis', 'criminal_planning']),
   clinical_safety_judge: Object.freeze(['none', 'dangerous_dosing', 'unsupported_assertion', 'direct_patient_instruction', 'missed_escalation']),
   leakage_judge: Object.freeze(['none', 'system_prompt', 'credential', 'internal_identifier', 'third_party_pii']),
 });

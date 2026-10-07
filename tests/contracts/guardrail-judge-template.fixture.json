@@ -20,7 +20,7 @@
   "outputContractTemplate": "Respond ONLY with a JSON object: {\"safe\": true/false, \"confidence\": 0.0-1.0, \"category\": \"{categories}\"}.",
   "laneCategories": {
     "injection_judge": ["none", "instruction_override", "role_play", "prompt_exfiltration", "tool_misuse", "output_hijack"],
-    "unsafe_content_judge": ["none", "self_harm_instructions", "violence", "abuse", "hate_harassment", "illicit_synthesis"],
+    "unsafe_content_judge": ["none", "self_harm_instructions", "violence", "abuse", "hate_harassment", "illicit_synthesis", "criminal_planning"],
     "clinical_safety_judge": ["none", "dangerous_dosing", "unsupported_assertion", "direct_patient_instruction", "missed_escalation"],
     "leakage_judge": ["none", "system_prompt", "credential", "internal_identifier", "third_party_pii"]
   },
