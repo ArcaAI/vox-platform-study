@@ -8,3 +8,5 @@ export * from './IGuardrailAvailabilityService';
 export * from './IGuardrailTenantPolicyService';
 export * from './policy-catalogue';
 export * from './policy-v2';
+export * from './guardrail-rule-test.service';
+export * from './working-tenant';

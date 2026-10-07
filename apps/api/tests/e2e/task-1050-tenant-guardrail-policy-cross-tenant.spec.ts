@@ -188,6 +188,31 @@ test.describe('TASK-1050 — tenant guardrail on/off (admin/guardrail/policy)', 
     expect(JSON.stringify(otherBody.policies ?? {})).not.toContain('tenant_admin');
   });
 
+  test('POST admin/guardrail/screen ("Test my rules") answers the verdict under the tenant`s rules, with no content', async ({ request }) => {
+    const text = 'Summarise the attached consultation for the referral letter.';
+    const response = await request.post('/api/v1/admin/guardrail/screen', { headers: auth(tenantAdmin), data: { direction: 'inbound', text } });
+    // 503 is the documented answer when guardrail is down in the test stack; it must never be a 2xx with content.
+    expect([200, 503]).toContain(response.status());
+    if (response.status() !== 200) return;
+    const body = await response.json();
+    expect(['allow', 'warn', 'block', 'unverified']).toContain(body.decision);
+    expect(Array.isArray(body.checks)).toBe(true);
+    expect(body.checks.every((check: { name: string; verdict: string }) => typeof check.name === 'string' && typeof check.verdict === 'string')).toBe(true);
+    expect(JSON.stringify(body)).not.toContain('envelope');
+    expect(body).not.toHaveProperty('pii_spans');
+  });
+
+  test('POST admin/guardrail/screen: a clinician is 403, an API key is 403, both text and regions is 400', async ({ request }) => {
+    const data = { direction: 'inbound', text: 'x' };
+    expect((await request.post('/api/v1/admin/guardrail/screen', { headers: auth(doctor), data })).status()).toBe(403);
+    expect((await request.post('/api/v1/admin/guardrail/screen', { headers: { 'X-API-Key': SEEDED_API_KEY }, data })).status()).toBe(403);
+    const both = await request.post('/api/v1/admin/guardrail/screen', {
+      headers: auth(tenantAdmin),
+      data: { direction: 'inbound', text: 'x', regions: [{ key: 'transcript', text: 'y', trust: 'data' }] },
+    });
+    expect(both.status()).toBe(400);
+  });
+
   test('a clinician (no TenantGuardrailPolicy grant) is 403', async ({ request }) => {
     expect((await request.get(ROUTE, { headers: auth(doctor) })).status()).toBe(403);
   });
