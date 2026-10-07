@@ -15,7 +15,6 @@
 
 import type { GuardrailNotice } from '@arcaai/types';
 
-
 /** One entry of the workflow catalogue (either plane). */
 export interface WorkflowSummary {
   /** The public URL segment — what you pass as `slug` to start a run. */

@@ -242,11 +242,7 @@ export const NOTE_READY_REASON = 'NOTE_READY';
  * NOTE_READY reason, or AWAITING_REVIEW (a human must look). Never infer it from `status` alone. A guardrail
  * hold is AWAITING_REVIEW too, but its note was blocked or withheld, so it is never "ready" (TASK-1050).
  */
-export function isNoteReady(state: {
-  status: string;
-  processing: string;
-  processingReason?: string | null;
-}): boolean {
+export function isNoteReady(state: { status: string; processing: string; processingReason?: string | null }): boolean {
   return (
     state.status === 'STOPPED' &&
     ((state.processing === 'IDLE' && state.processingReason === NOTE_READY_REASON) ||

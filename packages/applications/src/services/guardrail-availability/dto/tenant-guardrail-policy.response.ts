@@ -50,7 +50,10 @@ export class GuardrailCheckStateResponse {
   @ApiProperty({ description: 'Whether THIS caller may switch the check on/off.' })
   editable!: boolean;
 
-  @ApiPropertyOptional({ description: 'Inbound only: what a flag on a DATA region does (platform admin only, OD-12).', enum: ['ignore', 'warn', 'block'] })
+  @ApiPropertyOptional({
+    description: 'Inbound only: what a flag on a DATA region does (platform admin only, OD-12).',
+    enum: ['ignore', 'warn', 'block'],
+  })
   dataRegionAction?: string;
 
   @ApiPropertyOptional({ description: 'Span floor in [0,1] (`pii_leak`). Platform admin only.' })

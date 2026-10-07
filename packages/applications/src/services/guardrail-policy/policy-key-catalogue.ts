@@ -146,10 +146,7 @@ export function loadGuardrailPolicyKeyCatalogue(starts: readonly string[] = [__d
 }
 
 export type GuardrailPolicyValueProblemCode =
-  | 'POLICY_VALUE_TYPE'
-  | 'POLICY_VALUE_OUT_OF_RANGE'
-  | 'POLICY_VALUE_EMPTY'
-  | GuardrailJudgePromptErrorCode;
+  'POLICY_VALUE_TYPE' | 'POLICY_VALUE_OUT_OF_RANGE' | 'POLICY_VALUE_EMPTY' | GuardrailJudgePromptErrorCode;
 
 export interface GuardrailPolicyValueProblem {
   readonly code: GuardrailPolicyValueProblemCode;
@@ -176,12 +173,21 @@ function bandMapProblems(spec: GuardrailPolicyKeySpec, value: Record<string, unk
     const low = isRec(band) ? band.low : undefined;
     const high = isRec(band) ? band.high : undefined;
     const keys = isRec(band) ? Object.keys(band) : [];
-    if (typeof low !== 'number' || typeof high !== 'number' || !Number.isFinite(low) || !Number.isFinite(high) || keys.some((k) => k !== 'low' && k !== 'high')) {
+    if (
+      typeof low !== 'number' ||
+      typeof high !== 'number' ||
+      !Number.isFinite(low) ||
+      !Number.isFinite(high) ||
+      keys.some((k) => k !== 'low' && k !== 'high')
+    ) {
       problems.push({ code: 'POLICY_VALUE_TYPE', message: `${spec.key}.${check} must be exactly { low: number, high: number }.` });
       continue;
     }
     if (low < lo || high > hi || low > high) {
-      problems.push({ code: 'POLICY_VALUE_OUT_OF_RANGE', message: `${spec.key}.${check} must satisfy ${spec.min ?? '-∞'} <= low <= high <= ${spec.max ?? '∞'}.` });
+      problems.push({
+        code: 'POLICY_VALUE_OUT_OF_RANGE',
+        message: `${spec.key}.${check} must satisfy ${spec.min ?? '-∞'} <= low <= high <= ${spec.max ?? '∞'}.`,
+      });
     }
   }
   return problems;

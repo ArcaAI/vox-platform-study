@@ -90,7 +90,10 @@ export class GuardrailTenantPolicyService extends BaseService implements IGuardr
     const viewer = this.viewer();
     const stored = toStoredGuardrailPolicyV2(existing?.policies ?? null);
     const system = toStoredGuardrailPolicyV2(systemRow?.policies ?? null);
-    const changed = diffGuardrailPolicyAgainstEffective(submitted, effectiveGuardrailPolicy(systemRow?.policies ?? null, existing?.policies ?? null, viewer));
+    const changed = diffGuardrailPolicyAgainstEffective(
+      submitted,
+      effectiveGuardrailPolicy(systemRow?.policies ?? null, existing?.policies ?? null, viewer),
+    );
 
     const guardBefore = withGuardrailPlatformLocks(stored, system);
     const editable = new Set(guardrailPolicyEditableFields(viewer, guardBefore, DEFAULTS));

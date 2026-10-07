@@ -80,7 +80,8 @@ export class GuardrailJudgeLaneCandidateResponse {
   servedBy!: string | null;
 
   @ApiProperty({
-    description: 'Residency as the model-residency controller reports it (`loaded` | `loading` | `unloading` | `not_loaded` | `unknown`). Read-only; load and unload live on `/model-residency`.',
+    description:
+      'Residency as the model-residency controller reports it (`loaded` | `loading` | `unloading` | `not_loaded` | `unknown`). Read-only; load and unload live on `/model-residency`.',
   })
   residency!: string;
 }

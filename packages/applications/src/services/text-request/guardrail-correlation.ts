@@ -46,7 +46,9 @@ export function stripHopeInternalHeaders<T extends Record<string, unknown>>(head
 }
 
 /** A well-formed copy of `regionItems` (empty lists and malformed refs dropped), or `undefined`. */
-export function regionItemsWire(regionItems: GuardrailRegionItems | null | undefined): Record<string, Array<{ itemId: string; itemVersion: number }>> | undefined {
+export function regionItemsWire(
+  regionItems: GuardrailRegionItems | null | undefined,
+): Record<string, Array<{ itemId: string; itemVersion: number }>> | undefined {
   if (!regionItems) return undefined;
   const out: Record<string, Array<{ itemId: string; itemVersion: number }>> = {};
   for (const [key, refs] of Object.entries(regionItems)) {

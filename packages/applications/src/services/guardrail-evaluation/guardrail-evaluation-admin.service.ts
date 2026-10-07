@@ -135,7 +135,8 @@ export class GuardrailEvaluationAdminService extends BaseService {
       where.decision = decisionToRow(query.action as (typeof GUARDRAIL_DECISIONS)[number]);
     }
     if (query.direction !== undefined) {
-      if (!(GUARDRAIL_DIRECTIONS as readonly string[]).includes(query.direction)) throw new BadRequestException(`Unknown direction: ${query.direction}`);
+      if (!(GUARDRAIL_DIRECTIONS as readonly string[]).includes(query.direction))
+        throw new BadRequestException(`Unknown direction: ${query.direction}`);
       where.direction = directionToRow(query.direction as (typeof GUARDRAIL_DIRECTIONS)[number]);
     }
     if (query.check !== undefined) {
@@ -206,4 +207,3 @@ export class GuardrailEvaluationAdminService extends BaseService {
     if (!consultation || consultation.tenantId !== tenantId) throw new NotFoundException(`Consultation ${consultationId} not found`);
   }
 }
-

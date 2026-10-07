@@ -516,8 +516,7 @@ export const RUN_GUARDRAIL_NOTICE_MESSAGES: Readonly<Record<string, string>> = O
   'guardrail.warning.generic': 'A safety check flagged this content. Review it before you rely on it.',
   'guardrail.blocked.inbound': 'A safety check stopped this request. Review the flagged input to continue.',
   'guardrail.blocked.outbound': 'A safety check withheld the generated content. Review it to continue.',
-  'guardrail.blocked.not_medical':
-    'This content is outside clinical documentation, so it was not processed. Review the flagged input to continue.',
+  'guardrail.blocked.not_medical': 'This content is outside clinical documentation, so it was not processed. Review the flagged input to continue.',
   'guardrail.blocked.redaction_unavailable':
     'Patient details could not be protected before sending to an external model, so processing is paused. Retry to continue.',
   'guardrail.unverified.generic': 'A safety check could not run, so this content was not verified. Review it before you rely on it.',

@@ -35,7 +35,13 @@ import { IConsultationWorkflowDispatchService } from '../consultation/workflow-d
 import { ConsultationDtoMapper } from '../consultation/consultation/consultation.dto.mapper';
 import type { ConsultationResponse } from '../consultation/consultation/dto/consultation.response';
 import { IConsultationEncounterService, IConsultationEncounterServiceToken } from '../consultation/encounter/IConsultationEncounterService';
-import { GUARDRAIL_CONFLICT_CODES, assertResolutionAllowed, guardrailConflict, isRedactionHoldNotice, screenedVersionsFor } from './guardrail-hold.rules';
+import {
+  GUARDRAIL_CONFLICT_CODES,
+  assertResolutionAllowed,
+  guardrailConflict,
+  isRedactionHoldNotice,
+  screenedVersionsFor,
+} from './guardrail-hold.rules';
 import { acknowledgementOf, isBlockNotice, toNoticeView, type GuardrailNoticeView } from './guardrail-wire';
 import type { IGuardrailNoticeService } from './IGuardrailNoticeService';
 
@@ -174,9 +180,13 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
     this.assertVersion(consultation, options.expectedVersion);
     const notice = await this.loadNotice(consultation, body.noticeId);
     if (!isBlockNotice(notice)) {
-      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.noticeNotResumable, 'Only a block notice holds a consultation; acknowledge a warning instead.', {
-        noticeId: notice.id,
-      });
+      throw guardrailConflict(
+        GUARDRAIL_CONFLICT_CODES.noticeNotResumable,
+        'Only a block notice holds a consultation; acknowledge a warning instead.',
+        {
+          noticeId: notice.id,
+        },
+      );
     }
     if (String(notice.status) === GuardrailNoticeStatus.RESOLVED) {
       if (notice.resolution === body.resolution) return this.resumeResult(consultation, notice.id);
@@ -229,7 +239,14 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
       },
     });
     const dispatch = await this.dispatchAfterResume(consultation, notice, body.resolution, clinicianId);
-    this.logger.log({ message: 'Guardrail hold resumed', consultationId: consultation.id, noticeId: notice.id, resolution: body.resolution, released: release, dispatch });
+    this.logger.log({
+      message: 'Guardrail hold resumed',
+      consultationId: consultation.id,
+      noticeId: notice.id,
+      resolution: body.resolution,
+      released: release,
+      dispatch,
+    });
     return this.resumeResult(consultation, notice.id);
   }
 
@@ -276,7 +293,10 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
     }
   }
 
-  private async resolveActor(consultation: ConsultationEntity, options: GuardrailNoticeCommandOptions): Promise<{ clinicianId: string; submittedBy: string }> {
+  private async resolveActor(
+    consultation: ConsultationEntity,
+    options: GuardrailNoticeCommandOptions,
+  ): Promise<{ clinicianId: string; submittedBy: string }> {
     const { clinicianId, caller } = await resolveAttributedActor({
       tenantId: consultation.tenantId,
       named: options.clinicianUserId,
@@ -313,13 +333,20 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
       })
       .map((item) => item.id);
     if (edited.length === 0) {
-      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.itemNotEdited, 'No flagged item has been edited since it was blocked.', { noticeId: notice.id });
+      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.itemNotEdited, 'No flagged item has been edited since it was blocked.', {
+        noticeId: notice.id,
+      });
     }
     return edited;
   }
 
   /** The override is a WORM fact (the existing `SAFETY_OVERRIDE` pattern); a failed append fails the resume. */
-  private async appendOverride(consultation: ConsultationEntity, notice: GuardrailNoticeEntity, clinicianId: string, submittedBy: string): Promise<void> {
+  private async appendOverride(
+    consultation: ConsultationEntity,
+    notice: GuardrailNoticeEntity,
+    clinicianId: string,
+    submittedBy: string,
+  ): Promise<void> {
     if (!this.harnessAudit) {
       throw new Error('A guardrail override must be recorded, but the harness audit trail is not wired');
     }
@@ -329,7 +356,12 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
       action: HarnessAuditAction.SAFETY_OVERRIDE,
       modelName: 'guardrail-hold-override',
       modelVersion: 'v1',
-      sensorScores: { noticeId: notice.id, messageKey: notice.messageKey, policyVersion: notice.policyVersion, checks: notice.checks } as unknown as JsonValue,
+      sensorScores: {
+        noticeId: notice.id,
+        messageKey: notice.messageKey,
+        policyVersion: notice.policyVersion,
+        checks: notice.checks,
+      } as unknown as JsonValue,
       citations: [],
       clinicianId,
       createdBy: submittedBy,
@@ -375,7 +407,11 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
     if (!notice.runId) return 'none';
     if (this.harnessGateway) {
       try {
-        await this.harnessGateway.signalGuardrailResolution(notice.runId, { noticeId: notice.id, resolution, by: clinicianId }, consultation.tenantId);
+        await this.harnessGateway.signalGuardrailResolution(
+          notice.runId,
+          { noticeId: notice.id, resolution, by: clinicianId },
+          consultation.tenantId,
+        );
         return 'signaled';
       } catch (error) {
         this.logger.warn({

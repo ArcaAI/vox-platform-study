@@ -357,7 +357,12 @@ export class GuardrailBlockedError extends HopeAPIError {
   readonly evaluationIds: readonly string[];
 
   constructor(init: GuardrailErrorInit<422>) {
-    super({ ...init, status: 422, code: init.code ?? 'GUARDRAIL_BLOCKED', message: init.message ?? init.notice?.defaultMessage ?? 'A guardrail blocked the content.' });
+    super({
+      ...init,
+      status: 422,
+      code: init.code ?? 'GUARDRAIL_BLOCKED',
+      message: init.message ?? init.notice?.defaultMessage ?? 'A guardrail blocked the content.',
+    });
     this.notice = init.notice;
     this.evaluationIds = init.evaluationIds ?? [];
   }
@@ -375,7 +380,11 @@ export class GuardrailHoldError extends HopeAPIError {
   readonly retryAfterMs: number | undefined;
 
   constructor(init: GuardrailErrorInit<503> & { retryAfterMs?: number }) {
-    super({ ...init, status: 503, message: init.message ?? init.notice?.defaultMessage ?? 'Processing is paused by a guardrail hold. Retry to continue.' });
+    super({
+      ...init,
+      status: 503,
+      message: init.message ?? init.notice?.defaultMessage ?? 'Processing is paused by a guardrail hold. Retry to continue.',
+    });
     this.notice = init.notice;
     this.evaluationIds = init.evaluationIds ?? [];
     this.retryAfterMs = init.retryAfterMs;
@@ -764,7 +773,13 @@ export function fromResponse(response: Response, body: unknown, extra: FromRespo
     });
   }
   if (status === 503 && notice !== undefined) {
-    return new GuardrailHoldError({ ...common, status: 503, notice, evaluationIds: readEvaluationIds(body), retryAfterMs: parseRetryAfterMs(response.headers.get('retry-after')) });
+    return new GuardrailHoldError({
+      ...common,
+      status: 503,
+      notice,
+      evaluationIds: readEvaluationIds(body),
+      retryAfterMs: parseRetryAfterMs(response.headers.get('retry-after')),
+    });
   }
 
   switch (status) {

@@ -82,7 +82,8 @@ export class GuardrailEvaluationRowResponse {
   @ApiProperty() policyVersion!: string;
   @ApiProperty({ type: [String] }) noticeIds!: string[];
   @ApiProperty({ type: () => [GuardrailEvaluationCheckResponse] }) checks!: GuardrailEvaluationCheckResponse[];
-  @ApiProperty({ description: 'An outbound block whose output was withheld (read it through the withheld review route).' }) hasWithheldContent!: boolean;
+  @ApiProperty({ description: 'An outbound block whose output was withheld (read it through the withheld review route).' })
+  hasWithheldContent!: boolean;
 }
 
 export class GuardrailEvaluationPageResponse {

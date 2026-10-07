@@ -35,7 +35,11 @@ export class ScreenGuardrailRulesResponse {
   @ApiProperty({ type: [GuardrailScreenCheckResponse] })
   checks!: GuardrailScreenCheckResponse[];
 
-  @ApiProperty({ description: 'The `GuardrailNotice` v1 objects this screen raised (PHI-free, fixed messages).', type: 'array', items: { type: 'object' } })
+  @ApiProperty({
+    description: 'The `GuardrailNotice` v1 objects this screen raised (PHI-free, fixed messages).',
+    type: 'array',
+    items: { type: 'object' },
+  })
   notices!: Record<string, unknown>[];
 
   @ApiPropertyOptional({ description: 'The guardrail evaluation record id (recorded with caller `playground`).', nullable: true })

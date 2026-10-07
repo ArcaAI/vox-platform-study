@@ -274,7 +274,10 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
   const noteReady = !onGuardrailHold && isNoteReady({ status, processing, processingReason });
 
   // Guardrail notices of THIS consultation, deduplicated by noticeId; cleared when another consultation is opened.
-  const [noticeState, setNoticeState] = useState<{ consultationId: string | null; notices: readonly GuardrailNotice[] }>({ consultationId: null, notices: [] });
+  const [noticeState, setNoticeState] = useState<{ consultationId: string | null; notices: readonly GuardrailNotice[] }>({
+    consultationId: null,
+    notices: [],
+  });
   const guardrailNotices = noticeState.consultationId === consultationId ? noticeState.notices : EMPTY_NOTICES;
 
   const requireContext = useCallback((): { apiClient: NonNullable<typeof store.apiClient>; id: string; version?: number } => {
@@ -293,7 +296,13 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
 
   const remember = useCallback((id: string, next: { status?: string; processing?: string; processingReason?: string | null; version?: number }) => {
     const state = toLifecycleState(next.status, next.processing as ConsultationProcessingState | undefined, next.processingReason ?? null);
-    setOverlay({ consultationId: id, status: state.status, processing: state.processing, processingReason: state.processingReason ?? null, version: next.version });
+    setOverlay({
+      consultationId: id,
+      status: state.status,
+      processing: state.processing,
+      processingReason: state.processingReason ?? null,
+      version: next.version,
+    });
   }, []);
 
   /** POST a lifecycle command; failures land in `error` and rethrow. */
@@ -385,7 +394,8 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       if (options?.overrideSafetyFlag !== undefined) body.overrideSafetyFlag = options.overrideSafetyFlag;
       if (options?.clinicianUserId !== undefined) body.clinicianUserId = options.clinicianUserId;
       if (options?.acknowledgeGuardrailNotices !== undefined) body.acknowledgeGuardrailNotices = options.acknowledgeGuardrailNotices;
-      if (options?.resolveHold !== undefined) body.resolveHold = { noticeId: options.resolveHold.noticeId, resolution: options.resolveHold.resolution };
+      if (options?.resolveHold !== undefined)
+        body.resolveHold = { noticeId: options.resolveHold.noticeId, resolution: options.resolveHold.resolution };
       return transition(CONSULTATION_ENDPOINTS.APPROVE, body) as Promise<Consultation & Partial<GuardrailApproveResponseAdditions>>;
     },
     [transition],

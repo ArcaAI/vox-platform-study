@@ -78,7 +78,9 @@ export class GuardrailNoticeCheckRequest {
 }
 
 export class GuardrailNoticeRequest {
-  @ApiProperty({ enum: [GUARDRAIL_NOTICE_SCHEMA_VERSION] }) @IsIn([GUARDRAIL_NOTICE_SCHEMA_VERSION]) schemaVersion!: typeof GUARDRAIL_NOTICE_SCHEMA_VERSION;
+  @ApiProperty({ enum: [GUARDRAIL_NOTICE_SCHEMA_VERSION] })
+  @IsIn([GUARDRAIL_NOTICE_SCHEMA_VERSION])
+  schemaVersion!: typeof GUARDRAIL_NOTICE_SCHEMA_VERSION;
   @ApiProperty() @IsString() @IsNotEmpty() noticeId!: string;
   @ApiProperty({ enum: GUARDRAIL_NOTICE_TYPES }) @IsIn(GUARDRAIL_NOTICE_TYPES as unknown as string[]) type!: GuardrailNoticeType;
   @ApiProperty({ enum: GUARDRAIL_DIRECTIONS }) @IsIn(GUARDRAIL_DIRECTIONS as unknown as string[]) direction!: GuardrailDirection;
@@ -92,7 +94,9 @@ export class GuardrailNoticeRequest {
   @ApiPropertyOptional() @IsOptional() @IsString() runId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() nodeId?: string;
   @ApiProperty({ type: [String] }) @IsArray() @IsString({ each: true }) itemIds!: string[];
-  @ApiProperty({ enum: GUARDRAIL_NOTICE_MESSAGE_KEYS }) @IsIn(GUARDRAIL_NOTICE_MESSAGE_KEYS as unknown as string[]) messageKey!: GuardrailNoticeMessageKey;
+  @ApiProperty({ enum: GUARDRAIL_NOTICE_MESSAGE_KEYS })
+  @IsIn(GUARDRAIL_NOTICE_MESSAGE_KEYS as unknown as string[])
+  messageKey!: GuardrailNoticeMessageKey;
   @ApiProperty({ description: 'The fixed label of messageKey; never stored (the gateway re-derives it).' }) @IsString() defaultMessage!: string;
   @ApiProperty() @IsBoolean() requiresAcknowledgement!: boolean;
   @ApiProperty() @IsBoolean() resumable!: boolean;

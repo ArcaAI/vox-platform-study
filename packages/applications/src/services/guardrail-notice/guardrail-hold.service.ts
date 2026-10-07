@@ -136,7 +136,12 @@ export class GuardrailHoldService extends BaseService {
    */
   async enterGuardrailHold(tenantId: string, consultationId: string, notice: GuardrailNotice): Promise<GuardrailHoldEntry | null> {
     if (notice.type !== 'guardrail.blocked') {
-      this.logger.warn({ message: 'Only a blocked notice holds a consultation — ignored', consultationId, noticeId: notice.noticeId, type: notice.type });
+      this.logger.warn({
+        message: 'Only a blocked notice holds a consultation — ignored',
+        consultationId,
+        noticeId: notice.noticeId,
+        type: notice.type,
+      });
       return null;
     }
     try {
@@ -168,14 +173,25 @@ export class GuardrailHoldService extends BaseService {
    * Inside the caller's transaction: set `processing` AWAITING_REVIEW with the hold reason. `null`
    * (logged) for an unknown, foreign, approved or closed consultation.
    */
-  async holdInTransaction(tenantId: string, consultationId: string, noticeId: string, reason: string, tx?: unknown): Promise<GuardrailHoldApplied | null> {
+  async holdInTransaction(
+    tenantId: string,
+    consultationId: string,
+    noticeId: string,
+    reason: string,
+    tx?: unknown,
+  ): Promise<GuardrailHoldApplied | null> {
     const consultation = await this.consultations.findByIdOrNull(consultationId);
     if (!consultation || consultation.tenantId !== tenantId) {
       this.logger.warn({ message: 'Guardrail hold refused — no such consultation in this tenant', consultationId, noticeId });
       return null;
     }
     if (NOT_HOLDABLE.has(String(consultation.status))) {
-      this.logger.log({ message: 'Guardrail hold not entered — the consultation is approved or closed', consultationId, noticeId, status: consultation.status });
+      this.logger.log({
+        message: 'Guardrail hold not entered — the consultation is approved or closed',
+        consultationId,
+        noticeId,
+        status: consultation.status,
+      });
       return null;
     }
     await this.consultations.setProcessing(consultationId, ConsultationProcessing.AWAITING_REVIEW, { reason }, tx);
@@ -204,7 +220,8 @@ export class GuardrailHoldService extends BaseService {
     let paused = false;
     if (hold.pause && this.lifecycle) {
       try {
-        const state = (await this.lifecycle.pause(hold.consultationId, { reason: 'guardrail_hold' })) as { status?: string; version?: number } | undefined;
+        const state = (await this.lifecycle.pause(hold.consultationId, { reason: 'guardrail_hold' })) as
+          { status?: string; version?: number } | undefined;
         status = state?.status ?? ConsultationStatus.PAUSED;
         version = state?.version ?? version;
         paused = true;

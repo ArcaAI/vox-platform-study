@@ -138,7 +138,8 @@ export class ConsultationResponse {
   processing: ConsultationProcessing;
 
   @ApiProperty({
-    description: 'Why processing is FAILED or AWAITING_REVIEW (a note that needs a human), or NOTE_READY when a written note is waiting (processing IDLE); otherwise null.',
+    description:
+      'Why processing is FAILED or AWAITING_REVIEW (a note that needs a human), or NOTE_READY when a written note is waiting (processing IDLE); otherwise null.',
     type: String,
     nullable: true,
   })

@@ -131,7 +131,8 @@ export function toStoredGuardrailPolicyV2(raw: unknown): StoredGuardrailPolicyV2
     if (v2 && typeof entry.locked === 'boolean') stated.locked = entry.locked;
     if (isScore(entry.minScore) && descriptor.threshold) stated.minScore = entry.minScore;
     if (v2 && isAction(entry.dataRegionAction)) stated.dataRegionAction = entry.dataRegionAction;
-    if (v2 && typeof entry.setBy === 'string' && (SET_BY as readonly string[]).includes(entry.setBy)) stated.setBy = entry.setBy as GuardrailPolicySetBy;
+    if (v2 && typeof entry.setBy === 'string' && (SET_BY as readonly string[]).includes(entry.setBy))
+      stated.setBy = entry.setBy as GuardrailPolicySetBy;
     if (Object.keys(stated).length > 0) out.checks[descriptor.id] = stated;
   }
   // A LEGACY row that enables nothing is absence ("there is no off") — guardrail reads it the same way.
@@ -165,7 +166,10 @@ export function effectiveGuardrailPolicy(
   const system = toStoredGuardrailPolicyV2(systemRaw);
   const tenant = toStoredGuardrailPolicyV2(tenantRaw);
   const directions = Object.fromEntries(
-    GUARDRAIL_SCREEN_DIRECTIONS.map((direction) => [direction, { enabled: tenant.directions[direction]?.enabled ?? system.directions[direction]?.enabled ?? true }]),
+    GUARDRAIL_SCREEN_DIRECTIONS.map((direction) => [
+      direction,
+      { enabled: tenant.directions[direction]?.enabled ?? system.directions[direction]?.enabled ?? true },
+    ]),
   ) as Record<GuardrailScreenDirection, { enabled: boolean }>;
 
   const checks = GUARDRAIL_POLICY_CATALOGUE.map((descriptor): EffectiveGuardrailCheck => {
@@ -205,7 +209,9 @@ export function effectiveGuardrailPolicy(
   // stored row that predates the rule is READ.
   if (options.emptyDirectionFallback === false) return { directions, checks };
   for (const direction of GUARDRAIL_SCREEN_DIRECTIONS) {
-    const unlocked = checks.filter((entry) => !GUARDRAIL_POLICY_CATALOGUE.find((d) => d.id === entry.checkId)?.locked && entry.directions.includes(direction));
+    const unlocked = checks.filter(
+      (entry) => !GUARDRAIL_POLICY_CATALOGUE.find((d) => d.id === entry.checkId)?.locked && entry.directions.includes(direction),
+    );
     if (!unlocked.some((entry) => entry.enabled)) {
       for (const entry of unlocked) entry.enabled = guardrailPolicy(entry.checkId)?.defaultEnabled ?? entry.enabled;
     }
@@ -274,7 +280,8 @@ function parseEntry(descriptor: GuardrailPolicyDescriptor, raw: unknown, legacy:
         entry.action = value;
         break;
       case 'dataRegionAction':
-        if (descriptor.platformDefaultDataRegionAction === undefined) refuse(`Policy '${id}' screens no inbound data region, so it takes no dataRegionAction`);
+        if (descriptor.platformDefaultDataRegionAction === undefined)
+          refuse(`Policy '${id}' screens no inbound data region, so it takes no dataRegionAction`);
         if (!isAction(value) || !descriptor.allowedActions.includes(value)) {
           refuse(`Policy '${id}'.dataRegionAction must be one of ${descriptor.allowedActions.join(', ')}`);
         }
@@ -298,11 +305,13 @@ function parseGuardrailPolicyWrite(raw: unknown): SubmittedGuardrailPolicy {
   const v2 = isGuardrailPolicyV2(raw);
   const out: SubmittedGuardrailPolicy = { directions: {}, checks: {} };
   if (v2) {
-    for (const key of Object.keys(raw)) if (key !== 'checks' && key !== 'directions') refuse(`Unknown policy section '${key}'; expected 'checks' and 'directions'`);
+    for (const key of Object.keys(raw))
+      if (key !== 'checks' && key !== 'directions') refuse(`Unknown policy section '${key}'; expected 'checks' and 'directions'`);
     if (raw.directions !== undefined) {
       if (!isPlainObject(raw.directions)) refuse('`directions` must be an object keyed by direction');
       for (const [direction, value] of Object.entries(raw.directions)) {
-        if (!(GUARDRAIL_SCREEN_DIRECTIONS as readonly string[]).includes(direction)) refuse(`Unknown screening direction '${direction}'; expected inbound or outbound`);
+        if (!(GUARDRAIL_SCREEN_DIRECTIONS as readonly string[]).includes(direction))
+          refuse(`Unknown screening direction '${direction}'; expected inbound or outbound`);
         if (!isPlainObject(value) || typeof value.enabled !== 'boolean' || Object.keys(value).some((field) => field !== 'enabled')) {
           refuse(`Direction '${direction}' must be { "enabled": boolean }`);
         }

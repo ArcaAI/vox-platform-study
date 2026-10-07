@@ -159,7 +159,7 @@ export class TextRequestEnrichmentService {
    *   - `system_governance` (TASK-1047 FC-4) only from the composer's own governance, never from the
    *     body: a client-supplied value is discarded, and the field is attached only when the registry
    *     vouches for every piece of the system prompt actually on the body.
-    *   - TASK-1050 guardrail attribution — `region_items`, `agent_slug`, `response_items` — only from
+   *   - TASK-1050 guardrail attribution — `region_items`, `agent_slug`, `response_items` — only from
    *     the hints (the gateway's own context); a body copy is always discarded. The matching `X-Hope-*`
    *     headers come from {@link correlationHeaders}.
    */
@@ -176,7 +176,8 @@ export class TextRequestEnrichmentService {
     const regionItems = regionItemsWire(hints.regionItems);
     if (regionItems) body.region_items = regionItems;
     delete body.agent_slug;
-    if (typeof hints.agentSlug === 'string' && hints.agentSlug.length > 0 && hints.agentSlug.length <= AGENT_SLUG_MAX) body.agent_slug = hints.agentSlug;
+    if (typeof hints.agentSlug === 'string' && hints.agentSlug.length > 0 && hints.agentSlug.length <= AGENT_SLUG_MAX)
+      body.agent_slug = hints.agentSlug;
     delete body.response_items;
     const responseItems = regionItemsWire({ response: hints.responseItems ?? [] })?.response;
     if (responseItems) body.response_items = responseItems.slice(0, RESPONSE_ITEMS_MAX);
@@ -249,7 +250,11 @@ export class TextRequestEnrichmentService {
    * ungoverned system prompt that is screened as instruction. Past the bound, or on any failure, the
    * call proceeds exactly as before F1; the registration keeps running in the background. Never throws.
    */
-  private async registerPlatformPieces(registry: IGovernedPromptRegistry, pieces: readonly GovernedPieceInput[], tenantId: string | undefined): Promise<void> {
+  private async registerPlatformPieces(
+    registry: IGovernedPromptRegistry,
+    pieces: readonly GovernedPieceInput[],
+    tenantId: string | undefined,
+  ): Promise<void> {
     const waitMs = this.platformRegistrationWaitMs();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<GovernedPlatformRegistrationOutcome>((resolve) => {
@@ -273,7 +278,11 @@ export class TextRequestEnrichmentService {
     if (timer) clearTimeout(timer);
     governedPromptPlatformRegistrationTotal.inc({ outcome });
     if (outcome === 'timeout') {
-      this.logger.warn({ message: 'Platform prompt-piece registration exceeded its wait; this call is screened as untrusted', pieces: pieces.length, waitMs });
+      this.logger.warn({
+        message: 'Platform prompt-piece registration exceeded its wait; this call is screened as untrusted',
+        pieces: pieces.length,
+        waitMs,
+      });
     }
   }
 

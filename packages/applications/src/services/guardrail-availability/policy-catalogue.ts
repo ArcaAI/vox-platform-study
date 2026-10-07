@@ -295,7 +295,15 @@ export const PLATFORM_DEFAULT_GUARDRAIL_POLICIES: GuardrailPolicySelectionSet = 
  * the `defaults` of `tests/contracts/guardrail-policy.fixture.json`.
  */
 export const GUARDRAIL_CHECK_DEFAULTS: Readonly<
-  Record<string, { readonly enabled: boolean; readonly action: GuardrailViolationAction; readonly locked: boolean; readonly allowedActions: readonly GuardrailViolationAction[] }>
+  Record<
+    string,
+    {
+      readonly enabled: boolean;
+      readonly action: GuardrailViolationAction;
+      readonly locked: boolean;
+      readonly allowedActions: readonly GuardrailViolationAction[];
+    }
+  >
 > = Object.freeze(
   Object.fromEntries(
     GUARDRAIL_POLICY_CATALOGUE.map((policy) => [

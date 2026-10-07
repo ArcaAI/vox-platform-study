@@ -224,11 +224,26 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
    * resolves it) and its legacy flat projection. The tier is attributed to the tenant when its row states
    * anything, otherwise to SYSTEM.
    */
-  private toResponse(tenantId: string, row: TenantGuardrailPolicyEntity | null, systemRow: TenantGuardrailPolicyEntity | null): GuardrailAvailabilityResponse {
+  private toResponse(
+    tenantId: string,
+    row: TenantGuardrailPolicyEntity | null,
+    systemRow: TenantGuardrailPolicyEntity | null,
+  ): GuardrailAvailabilityResponse {
     const isSystem = tenantId === SYSTEM_TENANT_ID;
-    const view = effectiveGuardrailPolicy(isSystem ? (row?.policies ?? null) : (systemRow?.policies ?? null), isSystem ? null : (row?.policies ?? null), 'platform_admin');
-    const ownsOpinion = !isSystem && Object.keys(toStoredGuardrailPolicyV2(row?.policies ?? null).checks).length + Object.keys(toStoredGuardrailPolicyV2(row?.policies ?? null).directions).length > 0;
-    const effective: ResolvedGuardrailAvailability = { policies: guardrailFlatSelection(view), sourceTenantId: ownsOpinion ? tenantId : SYSTEM_TENANT_ID };
+    const view = effectiveGuardrailPolicy(
+      isSystem ? (row?.policies ?? null) : (systemRow?.policies ?? null),
+      isSystem ? null : (row?.policies ?? null),
+      'platform_admin',
+    );
+    const ownsOpinion =
+      !isSystem &&
+      Object.keys(toStoredGuardrailPolicyV2(row?.policies ?? null).checks).length +
+        Object.keys(toStoredGuardrailPolicyV2(row?.policies ?? null).directions).length >
+        0;
+    const effective: ResolvedGuardrailAvailability = {
+      policies: guardrailFlatSelection(view),
+      sourceTenantId: ownsOpinion ? tenantId : SYSTEM_TENANT_ID,
+    };
     return GuardrailAvailabilityDtoMapper.toResponse(tenantId, row, effective, view);
   }
 

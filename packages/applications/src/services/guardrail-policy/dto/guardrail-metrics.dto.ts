@@ -138,17 +138,27 @@ export class GuardrailPerformanceResponse {
   @ApiProperty({ description: 'False when Prometheus answered nothing at all (every series below then empty / null).' }) available!: boolean;
   @ApiProperty({ type: [GuardrailMetricSample], description: 'p50 screen-window latency (s) per task.' }) windowLatencyP50!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample], description: 'p95 screen-window latency (s) per task.' }) windowLatencyP95!: GuardrailMetricSample[];
-  @ApiProperty({ type: [GuardrailMetricSample], description: 'p50 inference latency (s) per guardrail model.' }) modelLatencyP50!: GuardrailMetricSample[];
-  @ApiProperty({ type: [GuardrailMetricSample], description: 'p95 inference latency (s) per guardrail model.' }) modelLatencyP95!: GuardrailMetricSample[];
+  @ApiProperty({ type: [GuardrailMetricSample], description: 'p50 inference latency (s) per guardrail model.' })
+  modelLatencyP50!: GuardrailMetricSample[];
+  @ApiProperty({ type: [GuardrailMetricSample], description: 'p95 inference latency (s) per guardrail model.' })
+  modelLatencyP95!: GuardrailMetricSample[];
   @ApiProperty({ nullable: true, type: Number, description: 'Medical-judge verdicts per second (5 m rate).' }) judgeCallsPerSecond!: number | null;
-  @ApiProperty({ type: [GuardrailMetricSample], description: 'Delegated peer calls per second (the judge lanes ride text / nlp), per peer and operation.' }) peerCallsPerSecond!: GuardrailMetricSample[];
+  @ApiProperty({
+    type: [GuardrailMetricSample],
+    description: 'Delegated peer calls per second (the judge lanes ride text / nlp), per peer and operation.',
+  })
+  peerCallsPerSecond!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample] }) queueDepth!: GuardrailMetricSample[];
-  @ApiProperty({ type: [GuardrailMetricSample], description: 'Admission rejections per second, per gate.' }) admissionRejectionsPerSecond!: GuardrailMetricSample[];
+  @ApiProperty({ type: [GuardrailMetricSample], description: 'Admission rejections per second, per gate.' })
+  admissionRejectionsPerSecond!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample], description: '0 closed, 1 half-open, 2 open, per peer.' }) circuitBreakers!: GuardrailMetricSample[];
-  @ApiProperty({ type: [GuardrailMetricSample], description: 'Peer failures per second, per peer and reason.' }) peerFailuresPerSecond!: GuardrailMetricSample[];
+  @ApiProperty({ type: [GuardrailMetricSample], description: 'Peer failures per second, per peer and reason.' })
+  peerFailuresPerSecond!: GuardrailMetricSample[];
   @ApiProperty({ type: [GuardrailMetricSample] }) windowCacheHitRatio!: GuardrailMetricSample[];
-  @ApiProperty({ nullable: true, type: Number, description: '`guardrail_evaluation_missing_total` (the reconciler gauge).' }) evaluationsMissing!: number | null;
-  @ApiProperty({ type: [GuardrailMetricSample], description: 'Every `guardrail_evaluation_outbox_*` series (label `__name__` names it).' }) outbox!: GuardrailMetricSample[];
+  @ApiProperty({ nullable: true, type: Number, description: '`guardrail_evaluation_missing_total` (the reconciler gauge).' }) evaluationsMissing!:
+    number | null;
+  @ApiProperty({ type: [GuardrailMetricSample], description: 'Every `guardrail_evaluation_outbox_*` series (label `__name__` names it).' })
+  outbox!: GuardrailMetricSample[];
 }
 
 export class GuardrailHealthModelRow {
@@ -162,7 +172,8 @@ export class GuardrailHealthModelRow {
 export class GuardrailHealthResponse {
   @ApiProperty() at!: string;
   @ApiProperty({ type: [GuardrailHealthModelRow] }) models!: GuardrailHealthModelRow[];
-  @ApiProperty({ nullable: true, type: Number, description: 'Share of checks `undetermined` over the last hour; `null` with no checks.' }) undeterminedRate!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Share of checks `undetermined` over the last hour; `null` with no checks.' })
+  undeterminedRate!: number | null;
   @ApiProperty({ nullable: true, type: String }) lastEvaluationAt!: string | null;
   @ApiProperty({ nullable: true, type: Number }) secondsSinceLastEvaluation!: number | null;
 }

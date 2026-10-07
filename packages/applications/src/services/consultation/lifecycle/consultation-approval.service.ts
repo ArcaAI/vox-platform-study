@@ -31,7 +31,12 @@ import { IConsultationEncounterService, IConsultationEncounterServiceToken } fro
 import { LifecycleConflictCode, applyLifecycleTransition, lifecycleConflict } from './lifecycle-errors';
 import { ConsultationLifecycleEventPublisher } from './lifecycle-event.publisher';
 import { SESSION_NOTE_SIGNER, type PreparedSessionSignature, type SessionNoteSigner, type SessionSignerCaller } from './session-note-signer';
-import { GUARDRAIL_CONFLICT_CODES, assertResolutionAllowed, guardrailConflict, isRedactionHoldNotice } from '../../guardrail-notice/guardrail-hold.rules';
+import {
+  GUARDRAIL_CONFLICT_CODES,
+  assertResolutionAllowed,
+  guardrailConflict,
+  isRedactionHoldNotice,
+} from '../../guardrail-notice/guardrail-hold.rules';
 import { acknowledgementOf, isBlockNotice } from '../../guardrail-notice/guardrail-wire';
 
 /** One approved item, by reference only — never content. */
@@ -137,7 +142,9 @@ export class ConsultationApprovalService extends BaseService {
     @Inject(IConsultationEncounterServiceToken)
     private readonly encounterService?: Pick<IConsultationEncounterService, 'lifecycleView'>,
     // TASK-1050 — the consultation's guardrail notices. Unwired ⇒ approve sees no guardrail outcome.
-    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll' | 'updateWithVersion'>,
+    @Optional()
+    @Inject(GuardrailNoticeRepository)
+    private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll' | 'updateWithVersion'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -310,19 +317,29 @@ export class ConsultationApprovalService extends BaseService {
     const noticeIds = blocks.map((notice) => notice.id);
     const request = options.resolveHold;
     if (!request) {
-      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'The consultation is in a guardrail hold: resolve it (`resolveHold`) or resume it first.', {
-        noticeIds,
-      });
+      throw guardrailConflict(
+        GUARDRAIL_CONFLICT_CODES.hold,
+        'The consultation is in a guardrail hold: resolve it (`resolveHold`) or resume it first.',
+        {
+          noticeIds,
+        },
+      );
     }
     const target = blocks.find((notice) => notice.id === request.noticeId);
     if (!target || blocks.length > 1) {
-      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'Every guardrail hold but the one approve resolves must be resumed first.', { noticeIds });
+      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'Every guardrail hold but the one approve resolves must be resumed first.', {
+        noticeIds,
+      });
     }
     if (String(target.direction) === 'OUTBOUND') {
-      throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'The generated content was withheld: resume the hold and regenerate the note before approving.', {
-        noticeIds,
-        reason: 'outbound_hold',
-      });
+      throw guardrailConflict(
+        GUARDRAIL_CONFLICT_CODES.hold,
+        'The generated content was withheld: resume the hold and regenerate the note before approving.',
+        {
+          noticeIds,
+          reason: 'outbound_hold',
+        },
+      );
     }
     if (request.resolution === 'item_edited') {
       throw guardrailConflict(GUARDRAIL_CONFLICT_CODES.hold, 'An edited item needs a regenerated note: resume the hold, then approve.', {

@@ -55,7 +55,11 @@ export class GuardrailPolicyKeyEntryResponse {
   @ApiProperty({ nullable: true, type: String, description: 'The safety-judge lane whose template a criteria key follows, else `null`.' })
   lane!: string | null;
 
-  @ApiProperty({ nullable: true, type: String, description: 'The SYSTEM model row (`AiModel.id`) the key lives on; `null` when the task key elects no model.' })
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The SYSTEM model row (`AiModel.id`) the key lives on; `null` when the task key elects no model.',
+  })
   modelId!: string | null;
 
   @ApiProperty({ nullable: true, type: String })
@@ -67,7 +71,10 @@ export class GuardrailPolicyKeyEntryResponse {
   @ApiProperty({ nullable: true, description: '`_metadata.policy[key]`; `null` when unset.' })
   currentValue!: unknown;
 
-  @ApiProperty({ nullable: true, description: '`_metadata.policyDefaults[key]` (seed-owned, never written by the API); `null` when the seed ships none.' })
+  @ApiProperty({
+    nullable: true,
+    description: '`_metadata.policyDefaults[key]` (seed-owned, never written by the API); `null` when the seed ships none.',
+  })
   defaultValue!: unknown;
 
   @ApiPropertyOptional({
@@ -137,7 +144,8 @@ export class GuardrailPolicyKeyResponse extends GuardrailPolicyKeyEntryResponse 
 
 export class UpdateGuardrailPolicyKeyRequest {
   @ApiProperty({
-    description: 'The new value. Validated against the catalogue entry (type, bounds) and, for a safety-judge criteria key, the judge template (locked sections, lane categories).',
+    description:
+      'The new value. Validated against the catalogue entry (type, bounds) and, for a safety-judge criteria key, the judge template (locked sections, lane categories).',
     example: 0.05,
   })
   @IsDefined()

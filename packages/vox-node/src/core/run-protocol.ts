@@ -228,8 +228,7 @@ export const RUN_GUARDRAIL_NOTICE_MESSAGES: Readonly<Record<string, string>> = O
   'guardrail.warning.generic': 'A safety check flagged this content. Review it before you rely on it.',
   'guardrail.blocked.inbound': 'A safety check stopped this request. Review the flagged input to continue.',
   'guardrail.blocked.outbound': 'A safety check withheld the generated content. Review it to continue.',
-  'guardrail.blocked.not_medical':
-    'This content is outside clinical documentation, so it was not processed. Review the flagged input to continue.',
+  'guardrail.blocked.not_medical': 'This content is outside clinical documentation, so it was not processed. Review the flagged input to continue.',
   'guardrail.blocked.redaction_unavailable':
     'Patient details could not be protected before sending to an external model, so processing is paused. Retry to continue.',
   'guardrail.unverified.generic': 'A safety check could not run, so this content was not verified. Review it before you rely on it.',
@@ -274,11 +273,13 @@ export function guardrailNoticeProblems(value: unknown): string[] {
   const expected = RUN_GUARDRAIL_NOTICE_TYPE_ACTION[type as RunGuardrailNotice['type']];
   if (value.action !== expected) problems.push(`action must be ${expected} on a ${type} notice`);
   if (typeof value.messageKey !== 'string' || !value.messageKey.startsWith(`${type}.`)) problems.push(`messageKey must be a ${type}.* key`);
-  else if (value.defaultMessage !== RUN_GUARDRAIL_NOTICE_MESSAGES[value.messageKey]) problems.push('defaultMessage must be the fixed label of messageKey');
+  else if (value.defaultMessage !== RUN_GUARDRAIL_NOTICE_MESSAGES[value.messageKey])
+    problems.push('defaultMessage must be the fixed label of messageKey');
   if (!Array.isArray(value.checks)) problems.push('checks must be an array');
   else {
     for (const check of value.checks) {
-      if (!isRecord(check) || !(RUN_GUARDRAIL_CHECK_IDS as readonly unknown[]).includes(check.checkId)) problems.push('checks[].checkId is not a known check');
+      if (!isRecord(check) || !(RUN_GUARDRAIL_CHECK_IDS as readonly unknown[]).includes(check.checkId))
+        problems.push('checks[].checkId is not a known check');
     }
   }
   if (!Array.isArray(value.itemIds)) problems.push('itemIds must be an array');

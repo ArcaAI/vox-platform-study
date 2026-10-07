@@ -95,7 +95,10 @@ export class GuardrailMonitoringService extends BaseService implements IGuardrai
     const window = this.window(query);
     const bucketSeconds = BUCKET_SECONDS[bucket];
     if ((window.to.getTime() - window.from.getTime()) / (bucketSeconds * 1000) > MAX_SERIES_BUCKETS) {
-      throw new BadRequestException({ code: 'GUARDRAIL_METRICS_TOO_MANY_BUCKETS', message: `At most ${MAX_SERIES_BUCKETS} buckets per series; widen the bucket.` });
+      throw new BadRequestException({
+        code: 'GUARDRAIL_METRICS_TOO_MANY_BUCKETS',
+        message: `At most ${MAX_SERIES_BUCKETS} buckets per series; widen the bucket.`,
+      });
     }
     const [series, checks, topCategories, perTenant, perModel, overrides] = await Promise.all([
       this.evaluationRows.aggregateDecisionSeries({ ...window, bucketSeconds }),
@@ -114,7 +117,15 @@ export class GuardrailMonitoringService extends BaseService implements IGuardrai
       to: window.to.toISOString(),
       bucket,
       tenantId: window.tenantId ?? null,
-      totals: { evaluations, allow: sum('allow'), warn, block, unverified: sum('unverified'), flagRate: evaluations === 0 ? 0 : (warn + block) / evaluations, overrides },
+      totals: {
+        evaluations,
+        allow: sum('allow'),
+        warn,
+        block,
+        unverified: sum('unverified'),
+        flagRate: evaluations === 0 ? 0 : (warn + block) / evaluations,
+        overrides,
+      },
       series: series.map((row) => ({ ...row, bucketStart: row.bucketStart.toISOString() })),
       checks,
       topCategories,
@@ -204,7 +215,8 @@ export class GuardrailMonitoringService extends BaseService implements IGuardrai
   private window(query: GuardrailMetricsWindowQuery): { from: Date; to: Date; tenantId?: string } {
     const to = query.to ? new Date(query.to) : this.now();
     const from = query.from ? new Date(query.from) : new Date(to.getTime() - DEFAULT_WINDOW_MS);
-    if (!(from.getTime() < to.getTime())) throw new BadRequestException({ code: 'GUARDRAIL_METRICS_WINDOW_INVALID', message: '`from` must be before `to`.' });
+    if (!(from.getTime() < to.getTime()))
+      throw new BadRequestException({ code: 'GUARDRAIL_METRICS_WINDOW_INVALID', message: '`from` must be before `to`.' });
     if (to.getTime() - from.getTime() > MAX_WINDOW_MS) {
       throw new BadRequestException({ code: 'GUARDRAIL_METRICS_WINDOW_INVALID', message: 'A monitoring window is at most 31 days.' });
     }

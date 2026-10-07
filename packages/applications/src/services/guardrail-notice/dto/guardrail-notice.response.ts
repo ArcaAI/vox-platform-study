@@ -50,7 +50,10 @@ export class GuardrailNoticeResponse {
 
 /** `GET consultations/:id/guardrail-notices` (the SDKs' `GuardrailNoticesResponse`). */
 export class GuardrailNoticeListResponse {
-  @ApiProperty({ type: () => [GuardrailNoticeResponse], description: 'Every OPEN notice plus the most recent acknowledged / resolved ones, oldest first.' })
+  @ApiProperty({
+    type: () => [GuardrailNoticeResponse],
+    description: 'Every OPEN notice plus the most recent acknowledged / resolved ones, oldest first.',
+  })
   notices!: GuardrailNoticeResponse[];
 
   @ApiProperty({ type: [String], description: 'The notices still awaiting an acknowledgement.' })

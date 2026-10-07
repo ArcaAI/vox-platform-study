@@ -60,7 +60,7 @@ export class GuardrailRuleTestService implements IGuardrailRuleTestService {
 
     let body: Record<string, unknown>;
     if (direction === 'inbound') {
-      if ((text.length > 0) === (regions.length > 0)) {
+      if (text.length > 0 === regions.length > 0) {
         throw new BadRequestException('Send the inbound content as `text` or as `regions`, not both and not neither.');
       }
       body = { text, kind: 'prompt', wrap: false, include_pii_spans: false, caller: 'playground' };
@@ -85,11 +85,18 @@ export class GuardrailRuleTestService implements IGuardrailRuleTestService {
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response?.status;
       // Status and error class only — the upstream body can quote the screened text.
-      this.logger.warn({ message: 'Guardrail playground screen failed', upstreamStatus: status, error: error instanceof Error ? error.name : 'unknown' });
+      this.logger.warn({
+        message: 'Guardrail playground screen failed',
+        upstreamStatus: status,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
       if (status === 400 || status === 422) {
         throw new BadRequestException({ code: 'GUARDRAIL_SCREEN_REJECTED', message: 'Guardrail could not screen this input as given.' });
       }
-      throw new ServiceUnavailableException({ code: 'GUARDRAIL_UNAVAILABLE', message: 'The safety guardrail is temporarily unavailable. Please retry shortly.' });
+      throw new ServiceUnavailableException({
+        code: 'GUARDRAIL_UNAVAILABLE',
+        message: 'The safety guardrail is temporarily unavailable. Please retry shortly.',
+      });
     }
     return toVerdict(direction, data);
   }

@@ -419,7 +419,13 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
     label: ATTACHMENT_BLOCK.label,
     lines: snapshot.attachmentTranscripts.flatMap((attachment, index) =>
       attachment.text.trim()
-        ? [{ itemId: attachment.itemId, versionNumber: attachment.versionNumber, line: renderLabelledLine(attachmentTranscriptLabel(index), attachment.text) }]
+        ? [
+            {
+              itemId: attachment.itemId,
+              versionNumber: attachment.versionNumber,
+              line: renderLabelledLine(attachmentTranscriptLabel(index), attachment.text),
+            },
+          ]
         : [],
     ),
   };
@@ -1205,9 +1211,7 @@ export class NoteInputComposerService {
     }
 
     const results: NoteSnapshotText[] = [];
-    for (const item of (await this.contextItemRepository.findAttachments(consultationId))
-      .filter((candidate) => !skip(candidate))
-      .sort(byCreated)) {
+    for (const item of (await this.contextItemRepository.findAttachments(consultationId)).filter((candidate) => !skip(candidate)).sort(byCreated)) {
       const extracted = typeof meta(item).extractedText === 'string' ? (meta(item).extractedText as string).trim() : '';
       const body = extracted || (await text(item));
       if (body) results.push({ itemId: item.id, versionNumber: item.currentVersionNumber, text: body });

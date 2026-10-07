@@ -45,7 +45,9 @@ export function isRedactionHoldNotice(notice: { messageKey: string }): boolean {
 function checkIdsOf(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((entry) =>
-    entry && typeof entry === 'object' && typeof (entry as { checkId?: unknown }).checkId === 'string' ? [(entry as { checkId: string }).checkId] : [],
+    entry && typeof entry === 'object' && typeof (entry as { checkId?: unknown }).checkId === 'string'
+      ? [(entry as { checkId: string }).checkId]
+      : [],
   );
 }
 

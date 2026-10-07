@@ -150,7 +150,8 @@ export function buildHttpError(
   const bodyCode = isRecord(body) && typeof body.code === 'string' ? body.code : undefined;
 
   const isBlock = status === 422 && (type === GUARDRAIL_BLOCKED_PROBLEM_TYPE || notice !== undefined);
-  const isEgress = status === 503 && (bodyCode === EGRESS_REDACTION_UNAVAILABLE_CODE || notice?.messageKey === 'guardrail.blocked.redaction_unavailable');
+  const isEgress =
+    status === 503 && (bodyCode === EGRESS_REDACTION_UNAVAILABLE_CODE || notice?.messageKey === 'guardrail.blocked.redaction_unavailable');
   const isHold = status === 503 && notice !== undefined;
   if (!isBlock && !isEgress && !isHold) return new AgenticError(code, message, { context });
 

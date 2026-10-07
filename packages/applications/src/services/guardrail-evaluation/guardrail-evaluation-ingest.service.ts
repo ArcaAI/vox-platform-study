@@ -225,7 +225,10 @@ export class GuardrailEvaluationIngestService extends BaseService {
         this.secrets,
         'GuardrailEvaluation withheld content',
         async () => {
-          const ciphertext = await this.secrets!.encrypt(Buffer.from(record.withheldContent!, 'utf8'), this.secrets!.getPhiTransitKeyName?.() ?? PHI_TRANSIT_KEY);
+          const ciphertext = await this.secrets!.encrypt(
+            Buffer.from(record.withheldContent!, 'utf8'),
+            this.secrets!.getPhiTransitKeyName?.() ?? PHI_TRANSIT_KEY,
+          );
           sealed.set(record.evaluationId, { ciphertext: Buffer.from(ciphertext, 'utf8'), keyVersion: keyVersionOf(ciphertext) });
         },
         this.logger,
@@ -241,8 +244,7 @@ export class GuardrailEvaluationIngestService extends BaseService {
     const targets = new Map<string, MarkTarget>();
     for (const record of records) {
       for (const check of record.checks) {
-        const status =
-          check.actionTaken === 'block' ? GuardrailItemStatus.BLOCKED : check.actionTaken === 'warn' ? GuardrailItemStatus.WARNED : null;
+        const status = check.actionTaken === 'block' ? GuardrailItemStatus.BLOCKED : check.actionTaken === 'warn' ? GuardrailItemStatus.WARNED : null;
         if (!status) continue;
         for (const ref of check.items ?? []) {
           const prior = targets.get(ref.itemId);

@@ -43,7 +43,11 @@ import { loadGuardrailPolicyKeyCatalogue } from './policy-key-catalogue';
         const catalogue = loadGuardrailPolicyKeyCatalogue();
         // Boot does not fail on it: the key routes answer 503 GUARDRAIL_POLICY_CATALOGUE_UNAVAILABLE instead.
         if (!catalogue.available || catalogue.problems.length > 0) {
-          new Logger('GuardrailPolicyKeyCatalogue').warn({ message: 'guardrail.policy.catalogue_degraded', available: catalogue.available, problems: catalogue.problems });
+          new Logger('GuardrailPolicyKeyCatalogue').warn({
+            message: 'guardrail.policy.catalogue_degraded',
+            available: catalogue.available,
+            problems: catalogue.problems,
+          });
         }
         return catalogue;
       },

@@ -100,7 +100,9 @@ export function runReducer<TOutput>(state: RunState<TOutput>, action: RunAction<
           // Not terminal: the run waits durably at the hold. `status` stays RUNNING.
           return { ...next, paused: { noticeId: event.data.noticeId, nodeId: event.data.nodeId, reason: event.data.reason } };
         case 'output.text.delta':
-          return event.data.field === TEXT_FIELD ? (withText(next, appendDelta(next.nodeText, event.nodeId ?? '', event.data.text)) as RunState<TOutput>) : next;
+          return event.data.field === TEXT_FIELD
+            ? (withText(next, appendDelta(next.nodeText, event.nodeId ?? '', event.data.text)) as RunState<TOutput>)
+            : next;
         case 'node.started':
           if (next.paused !== null) next = { ...next, paused: null };
           // A retried node starts its output over: the earlier partial text belongs to a failed attempt.
@@ -116,7 +118,12 @@ export function runReducer<TOutput>(state: RunState<TOutput>, action: RunAction<
           return { ...next, status: 'CANCELED', paused: null };
         case 'run.failed': {
           const { status, error } = event.data;
-          return { ...next, status, paused: null, error: new RunFailedError({ runId: event.runId, status, code: error.code, message: error.message }) };
+          return {
+            ...next,
+            status,
+            paused: null,
+            error: new RunFailedError({ runId: event.runId, status, code: error.code, message: error.message }),
+          };
         }
         case 'run.resync': {
           // The server could not replay from our cursor: its snapshot replaces what we built.

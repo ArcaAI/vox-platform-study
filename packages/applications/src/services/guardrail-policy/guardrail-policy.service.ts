@@ -260,10 +260,13 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       const model = await this.resolveModel(taskKey);
       const refs: KeyRef[] = specs.map((spec) => ({ spec, path: null }));
       if (model && (GUARDRAIL_LABEL_THRESHOLD_TASK_KEYS as readonly string[]).includes(taskKey)) {
-        for (const key of labelThresholdKeysOf(model)) refs.push({ spec: labelThresholdSpec(key, taskKey), path: guardrailLabelThresholdPath(key) as string[] });
+        for (const key of labelThresholdKeysOf(model))
+          refs.push({ spec: labelThresholdSpec(key, taskKey), path: guardrailLabelThresholdPath(key) as string[] });
       }
       if (refs.length === 0) continue;
-      const keys = await Promise.all(refs.map(async (ref) => this.toEntry(ref, model, model ? await this.history(model.id, ref.spec.key) : NO_HISTORY)));
+      const keys = await Promise.all(
+        refs.map(async (ref) => this.toEntry(ref, model, model ? await this.history(model.id, ref.spec.key) : NO_HISTORY)),
+      );
       groups.push({
         taskKey,
         lane: JUDGE_LANE_BY_TASK_KEY[taskKey] ?? (taskKey === guardrailJudgeLaneTaskKey('medical_validation') ? 'medical_validation' : null),
@@ -311,7 +314,10 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     if (request.expectedVersion === undefined || request.expectedVersion !== model.version) {
       // RFC 7232: the precondition is evaluated before the payload. `@RequiresIfMatch()` 428s an absent header
       // at the HTTP layer, so `undefined` here is a non-HTTP caller skipping the precondition.
-      throw new OptimisticConcurrencyException(String(ResourceType.AiModel), model.id, { expectedVersion: request.expectedVersion, currentVersion: model.version });
+      throw new OptimisticConcurrencyException(String(ResourceType.AiModel), model.id, {
+        expectedVersion: request.expectedVersion,
+        currentVersion: model.version,
+      });
     }
     return this.writeKey(ref, model, request.value, 'edit');
   }
@@ -340,14 +346,21 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     const model = await this.resolveModel(taskKey);
     if (!model) throw this.modelUnresolved(specs[0] ?? labelThresholdSpec(`${GUARDRAIL_LABEL_TAXONOMY_KEY_PREFIX}threshold`, taskKey));
     const refs: KeyRef[] = specs.map((spec) => ({ spec, path: null }));
-    if (hasLabelThresholds) for (const key of labelThresholdKeysOf(model)) refs.push({ spec: labelThresholdSpec(key, taskKey), path: guardrailLabelThresholdPath(key) as string[] });
+    if (hasLabelThresholds)
+      for (const key of labelThresholdKeysOf(model))
+        refs.push({ spec: labelThresholdSpec(key, taskKey), path: guardrailLabelThresholdPath(key) as string[] });
     if (refs.length === 0) throw new NotFoundException(`No guardrail policy keys live on '${lane}'.`);
 
     const changes: KeyChange[] = [];
     const skippedKeys: string[] = [];
     for (const ref of refs) {
       const fallback = this.defaultOf(ref, model);
-      if (!ref.spec.editable || !fallback.has || sameValue(this.currentOf(ref, model).value, fallback.value) || this.criteriaNotApplicable(ref.spec, model)) {
+      if (
+        !ref.spec.editable ||
+        !fallback.has ||
+        sameValue(this.currentOf(ref, model).value, fallback.value) ||
+        this.criteriaNotApplicable(ref.spec, model)
+      ) {
         skippedKeys.push(ref.spec.key);
         continue;
       }
@@ -387,7 +400,10 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     const model = await this.requireJudgeModel(modelId);
     const current = (model.metaData as Rec).judge as Rec;
     if (request.expectedVersion === undefined || request.expectedVersion !== model.version) {
-      throw new OptimisticConcurrencyException(String(ResourceType.AiModel), model.id, { expectedVersion: request.expectedVersion, currentVersion: model.version });
+      throw new OptimisticConcurrencyException(String(ResourceType.AiModel), model.id, {
+        expectedVersion: request.expectedVersion,
+        currentVersion: model.version,
+      });
     }
     // `protocol` and `lanes` are the capability declaration: never taken from the request.
     const next: Rec = {
@@ -403,7 +419,10 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     const model = await this.requireJudgeModel(modelId);
     const defaults = (model.metaData as Rec).judgeDefaults;
     if (!isRec(defaults)) {
-      throw new ConflictException({ code: 'GUARDRAIL_JUDGE_DEFAULT_MISSING', message: `The seed ships no judge defaults for model '${model.slug}'.` });
+      throw new ConflictException({
+        code: 'GUARDRAIL_JUDGE_DEFAULT_MISSING',
+        message: `The seed ships no judge defaults for model '${model.slug}'.`,
+      });
     }
     return this.writeJudge(model, defaults, 'reset');
   }
@@ -466,12 +485,17 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
         continue;
       }
       if (spec.kind !== 'criteria' && !DRAFTABLE_HYPERPARAMETERS.has(spec.key)) {
-        problems.push({ key, code: 'POLICY_KEY_NOT_DRAFTABLE', message: `'${key}' cannot be drafted: a dry run takes criteria and judgeTemperature / judgeMaxTokens only.` });
+        problems.push({
+          key,
+          code: 'POLICY_KEY_NOT_DRAFTABLE',
+          message: `'${key}' cannot be drafted: a dry run takes criteria and judgeTemperature / judgeMaxTokens only.`,
+        });
         continue;
       }
       for (const problem of validateGuardrailPolicyValue(spec, value)) problems.push({ key, code: problem.code, message: problem.message });
     }
-    if (problems.length > 0) throw new BadRequestException({ code: 'GUARDRAIL_POLICY_VALUE_INVALID', message: 'A draft value is invalid.', problems });
+    if (problems.length > 0)
+      throw new BadRequestException({ code: 'GUARDRAIL_POLICY_VALUE_INVALID', message: 'A draft value is invalid.', problems });
 
     const lanes = request.lanes as GuardrailJudgeLane[];
     const laneModels = await Promise.all(lanes.map(async (lane) => ({ lane, model: await this.resolveModel(guardrailJudgeLaneTaskKey(lane)) })));
@@ -481,14 +505,26 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     if (draftJudgeMeta && Object.keys(draftJudgeMeta).length > 0) {
       const metaProblems = laneModels.flatMap(({ lane, model }) => {
         const stored = (model?.metaData as Rec | undefined)?.judge;
-        return isRec(stored) && stored.protocol === 'qwen3guard_native' ? judgeMetadataProblems({ ...stored, ...draftJudgeMeta }).map((p) => `${lane}: ${p}`) : [];
+        return isRec(stored) && stored.protocol === 'qwen3guard_native'
+          ? judgeMetadataProblems({ ...stored, ...draftJudgeMeta }).map((p) => `${lane}: ${p}`)
+          : [];
       });
-      if (metaProblems.length > 0) throw new BadRequestException({ code: 'GUARDRAIL_JUDGE_META_INVALID', message: 'The draft judge mapping is invalid.', problems: metaProblems });
+      if (metaProblems.length > 0)
+        throw new BadRequestException({
+          code: 'GUARDRAIL_JUDGE_META_INVALID',
+          message: 'The draft judge mapping is invalid.',
+          problems: metaProblems,
+        });
     }
 
     const states = await this.readResidency();
     const blocked = laneModels
-      .map(({ lane, model }) => ({ lane, modelId: model?.id ?? null, slug: model?.slug ?? null, state: model ? residencyOf(states, model.id) : 'unselected' }))
+      .map(({ lane, model }) => ({
+        lane,
+        modelId: model?.id ?? null,
+        slug: model?.slug ?? null,
+        state: model ? residencyOf(states, model.id) : 'unselected',
+      }))
       .filter((entry) => entry.state !== 'loaded');
     if (blocked.length > 0) {
       // OD-35: never load implicitly. The operator loads on /model-residency, then retries.
@@ -499,7 +535,8 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
         models: blocked,
       });
     }
-    if (!this.dryRunClient) throw new ServiceUnavailableException({ code: 'GUARDRAIL_DRY_RUN_UNAVAILABLE', message: 'The guardrail dry-run client is not wired.' });
+    if (!this.dryRunClient)
+      throw new ServiceUnavailableException({ code: 'GUARDRAIL_DRY_RUN_UNAVAILABLE', message: 'The guardrail dry-run client is not wired.' });
 
     let body: Rec;
     try {
@@ -516,9 +553,17 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       if (error instanceof GuardrailDryRunRejectedError) {
         const detail = isRec(error.detail) ? error.detail : {};
         if (detail.code === 'JUDGE_META_INVALID') {
-          throw new BadRequestException({ code: 'GUARDRAIL_JUDGE_META_INVALID', message: 'The draft judge mapping is invalid.', problems: detail.problems ?? [] });
+          throw new BadRequestException({
+            code: 'GUARDRAIL_JUDGE_META_INVALID',
+            message: 'The draft judge mapping is invalid.',
+            problems: detail.problems ?? [],
+          });
         }
-        throw new BadRequestException({ code: 'GUARDRAIL_DRY_RUN_REJECTED', message: 'Guardrail refused the dry-run request.', detail: error.detail });
+        throw new BadRequestException({
+          code: 'GUARDRAIL_DRY_RUN_REJECTED',
+          message: 'Guardrail refused the dry-run request.',
+          detail: error.detail,
+        });
       }
       if (error instanceof GuardrailDryRunUnavailableError) {
         throw new ServiceUnavailableException({ code: 'GUARDRAIL_DRY_RUN_UNAVAILABLE', message: error.message });
@@ -571,7 +616,10 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
   private requireEditableSpec(key: string): GuardrailPolicyKeySpec {
     const spec = this.requireSpec(key);
     if (!spec.editable) {
-      throw new BadRequestException({ code: 'GUARDRAIL_POLICY_KEY_NOT_EDITABLE', message: `'${key}' is declared read-only in the policy-key catalogue.` });
+      throw new BadRequestException({
+        code: 'GUARDRAIL_POLICY_KEY_NOT_EDITABLE',
+        message: `'${key}' is declared read-only in the policy-key catalogue.`,
+      });
     }
     return spec;
   }
@@ -579,7 +627,12 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
   private assertValidValue(spec: GuardrailPolicyKeySpec, value: unknown): void {
     const problems = validateGuardrailPolicyValue(spec, value);
     if (problems.length > 0) {
-      throw new BadRequestException({ code: 'GUARDRAIL_POLICY_VALUE_INVALID', message: `The value for '${spec.key}' is invalid.`, key: spec.key, problems });
+      throw new BadRequestException({
+        code: 'GUARDRAIL_POLICY_VALUE_INVALID',
+        message: `The value for '${spec.key}' is invalid.`,
+        key: spec.key,
+        problems,
+      });
     }
   }
 
@@ -637,9 +690,21 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       return { ...this.toEntry(ref, model, await this.history(model.id, ref.spec.key)), version: model.version, changed: false, revisionId: null };
     }
     const changes: KeyChange[] = [{ key: ref.spec.key, value, path: ref.path, defaultAtEdit: this.defaultOf(ref, model).value }];
-    const { saved, revisions } = await this.commit(model, (meta) => applyChanges(meta, changes), changes, reason, restoredFromRevisionId, ref.spec.taskKey);
+    const { saved, revisions } = await this.commit(
+      model,
+      (meta) => applyChanges(meta, changes),
+      changes,
+      reason,
+      restoredFromRevisionId,
+      ref.spec.taskKey,
+    );
     const revision = revisions[0] ?? null;
-    return { ...this.toEntry(ref, saved, await this.history(saved.id, ref.spec.key)), version: saved.version, changed: true, revisionId: revision?.id ?? null };
+    return {
+      ...this.toEntry(ref, saved, await this.history(saved.id, ref.spec.key)),
+      version: saved.version,
+      changed: true,
+      revisionId: revision?.id ?? null,
+    };
   }
 
   private async writeJudge(model: AiModelEntity, next: Rec, reason: 'edit' | 'reset'): Promise<GuardrailJudgeMetaResponse> {
@@ -650,7 +715,9 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
     const meta = (model.metaData ?? {}) as Rec;
     if (sameValue(meta.judge, next)) return this.judgeMetaResponse(model, false);
     const taskKeys = laneTaskKeysOf(next);
-    const changes: KeyChange[] = [{ key: GUARDRAIL_JUDGE_META_REVISION_KEY, value: next, defaultAtEdit: isRec(meta.judgeDefaults) ? meta.judgeDefaults : null }];
+    const changes: KeyChange[] = [
+      { key: GUARDRAIL_JUDGE_META_REVISION_KEY, value: next, defaultAtEdit: isRec(meta.judgeDefaults) ? meta.judgeDefaults : null },
+    ];
     const { saved } = await this.commit(model, (current) => ({ ...current, judge: next }), changes, reason, null, taskKeys);
     return this.judgeMetaResponse(saved, true);
   }
@@ -711,7 +778,9 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
           reason,
           restoredFromRevisionId: restoredFromRevisionId ?? undefined,
           // README §11.3 C — the default this value was set against, for "default changed since your edit".
-          ...(Object.prototype.hasOwnProperty.call(change, 'defaultAtEdit') ? { metaData: { defaultAtEdit: (change.defaultAtEdit ?? null) as never } } : {}),
+          ...(Object.prototype.hasOwnProperty.call(change, 'defaultAtEdit')
+            ? { metaData: { defaultAtEdit: (change.defaultAtEdit ?? null) as never } }
+            : {}),
         });
         revisions.push(await this.revisions.create(entity, tx));
       }
@@ -767,7 +836,9 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       this.aiModels.findAll({ filters: { tenantId: SYSTEM_TENANT_ID, resourceStatus: ResourceStatusType.ENABLED } as never }),
       this.readResidency(),
     ]);
-    const judges = catalogue.filter((model) => model.tenantId === SYSTEM_TENANT_ID && isAiModelJudgeMetadata((model.metaData as Rec | undefined)?.judge));
+    const judges = catalogue.filter(
+      (model) => model.tenantId === SYSTEM_TENANT_ID && isAiModelJudgeMetadata((model.metaData as Rec | undefined)?.judge),
+    );
     const lanes = [];
     for (const lane of GUARDRAIL_JUDGE_LANES) {
       const taskKey = guardrailJudgeLaneTaskKey(lane);
@@ -776,7 +847,12 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
       // The medical judge also accepts the legacy guardian rows that declare no judge capability at all.
       const legacy =
         lane === 'medical_validation'
-          ? catalogue.filter((model) => model.tenantId === SYSTEM_TENANT_ID && model.taskType === ModelTaskType.GUARDRAIL && !isRec((model.metaData as Rec | undefined)?.judge))
+          ? catalogue.filter(
+              (model) =>
+                model.tenantId === SYSTEM_TENANT_ID &&
+                model.taskType === ModelTaskType.GUARDRAIL &&
+                !isRec((model.metaData as Rec | undefined)?.judge),
+            )
           : [];
       const candidates = [...declared, ...legacy].map((model) => toCandidate(model, states));
       const selectedId = resolved?.model?.id ?? resolved?.policy?.modelId ?? null;
@@ -826,8 +902,18 @@ export class GuardrailPolicyService extends BaseService implements IGuardrailPol
    * BEFORE the model row is read, so a bad value is a 400 whatever the row says.
    */
   private async resolveRef(key: string, taskKey: string | undefined, mode: 'read'): Promise<{ ref: KeyRef; model: AiModelEntity | null }>;
-  private async resolveRef(key: string, taskKey: string | undefined, mode: 'write', check?: { value: unknown }): Promise<{ ref: KeyRef; model: AiModelEntity }>;
-  private async resolveRef(key: string, taskKey: string | undefined, mode: 'read' | 'write', check?: { value: unknown }): Promise<{ ref: KeyRef; model: AiModelEntity | null }> {
+  private async resolveRef(
+    key: string,
+    taskKey: string | undefined,
+    mode: 'write',
+    check?: { value: unknown },
+  ): Promise<{ ref: KeyRef; model: AiModelEntity }>;
+  private async resolveRef(
+    key: string,
+    taskKey: string | undefined,
+    mode: 'read' | 'write',
+    check?: { value: unknown },
+  ): Promise<{ ref: KeyRef; model: AiModelEntity | null }> {
     const path = guardrailLabelThresholdPath(key);
     if (path === null) {
       const spec = mode === 'write' ? this.requireEditableSpec(key) : this.requireSpec(key);
@@ -899,7 +985,9 @@ function protocolOf(model: AiModelEntity | null): string | null {
 /** The routing task keys a judge declaration's lanes select through (what an `_metadata.judge` change invalidates). */
 function laneTaskKeysOf(judge: Rec): string[] {
   const lanes = Array.isArray(judge.lanes) ? (judge.lanes as string[]) : [];
-  return lanes.filter((lane) => (GUARDRAIL_JUDGE_LANES as readonly string[]).includes(lane)).map((lane) => guardrailJudgeLaneTaskKey(lane as GuardrailJudgeLane));
+  return lanes
+    .filter((lane) => (GUARDRAIL_JUDGE_LANES as readonly string[]).includes(lane))
+    .map((lane) => guardrailJudgeLaneTaskKey(lane as GuardrailJudgeLane));
 }
 
 function toRevisionSummary(row: GuardrailPolicyRevisionEntity): GuardrailPolicyRevisionSummaryResponse {

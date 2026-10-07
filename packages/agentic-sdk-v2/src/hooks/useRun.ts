@@ -122,7 +122,10 @@ function newIdempotencyKey(): string {
 /** Resolve a gateway-relative path (`/api/v1/…`) against the client's base URL, which may or may not already end in `/api/v1`. */
 function resolveGatewayUrl(baseUrl: string, path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
-  const origin = baseUrl.trim().replace(/\/+$/, '').replace(/\/api\/v1$/i, '');
+  const origin = baseUrl
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/api\/v1$/i, '');
   return `${origin}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
@@ -149,7 +152,10 @@ export function useRun<TInput = Record<string, unknown>, TOutput = unknown>(opti
   const store = useAgenticStore();
   const apiClient = store.apiClient;
 
-  const [state, dispatch] = useReducer(runReducer as (s: RunState<TOutput>, a: Parameters<typeof runReducer<TOutput>>[1]) => RunState<TOutput>, INITIAL_RUN_STATE as RunState<TOutput>);
+  const [state, dispatch] = useReducer(
+    runReducer as (s: RunState<TOutput>, a: Parameters<typeof runReducer<TOutput>>[1]) => RunState<TOutput>,
+    INITIAL_RUN_STATE as RunState<TOutput>,
+  );
 
   const lifecycle = useRef<AbortController | null>(null);
   const currentRunId = useRef<string | null>(null);
@@ -189,7 +195,9 @@ export function useRun<TInput = Record<string, unknown>, TOutput = unknown>(opti
                 : `${apiClient.getBaseUrl()}${RUN_ENDPOINTS.EVENTS('workflow', slug, runId)}?protocol=2&ticket=${encodeURIComponent(ticket.ticket)}`;
               return appendCursor(base, cursor);
             })
-          : createFetchConnector(({ headers, signal }) => apiClient.requestRaw(`${RUN_ENDPOINTS.EVENTS('agent', slug, runId)}?protocol=2`, { headers, signal }));
+          : createFetchConnector(({ headers, signal }) =>
+              apiClient.requestRaw(`${RUN_ENDPOINTS.EVENTS('agent', slug, runId)}?protocol=2`, { headers, signal }),
+            );
 
       const loadResult = async (): Promise<void> => {
         try {

@@ -52,7 +52,10 @@ export class GuardrailDryRunRequest {
   @IsIn(GUARDRAIL_DIRECTIONS as unknown as string[])
   direction!: string;
 
-  @ApiPropertyOptional({ enum: GUARDRAIL_DRY_RUN_MODES, description: 'Native judges only: prompt (user turn) or response moderation. Default `prompt`.' })
+  @ApiPropertyOptional({
+    enum: GUARDRAIL_DRY_RUN_MODES,
+    description: 'Native judges only: prompt (user turn) or response moderation. Default `prompt`.',
+  })
   @IsOptional()
   @IsIn(GUARDRAIL_DRY_RUN_MODES as unknown as string[])
   mode?: string;
@@ -63,7 +66,10 @@ export class GuardrailDryRunRequest {
   @MaxLength(GUARDRAIL_DRY_RUN_MAX_TEXT_CHARS)
   promptContext?: string;
 
-  @ApiProperty({ type: [String], description: `1–${GUARDRAIL_DRY_RUN_MAX_SAMPLES} sample texts (synthetic, or a curated evaluation sample pasted in).` })
+  @ApiProperty({
+    type: [String],
+    description: `1–${GUARDRAIL_DRY_RUN_MAX_SAMPLES} sample texts (synthetic, or a curated evaluation sample pasted in).`,
+  })
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(GUARDRAIL_DRY_RUN_MAX_SAMPLES)
@@ -101,7 +107,8 @@ export class GuardrailDryRunVerdict {
   @ApiProperty({ nullable: true, type: Number }) confidence!: number | null;
   @ApiProperty({ nullable: true, type: String, description: 'The model slug that answered.' }) model!: string | null;
   @ApiProperty({ nullable: true, type: Number }) latencyMs!: number | null;
-  @ApiProperty({ nullable: true, type: String, description: 'Native tier (`Safe` | `Controversial` | `Unsafe`) for a qwen3guard_native judge.' }) tier!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: 'Native tier (`Safe` | `Controversial` | `Unsafe`) for a qwen3guard_native judge.' })
+  tier!: string | null;
 }
 
 export class GuardrailDryRunSampleResult {
