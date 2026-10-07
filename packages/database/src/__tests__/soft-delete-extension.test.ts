@@ -161,6 +161,11 @@ describe('modelHasSoftDelete', () => {
       // Gate-edit mining store: derived append-only corpus, pruned
       // wholesale rather than soft-deleted, so it has no resourceStatus column.
       'GateEditExemplar',
+      // TASK-1050 — guardrail audit records: append-only evaluations and policy revisions; notices
+      // move through OPEN → ACKNOWLEDGED → RESOLVED rather than being soft-deleted.
+      'GuardrailEvaluation',
+      'GuardrailNotice',
+      'GuardrailPolicyRevision',
       // The usage ledger and everything derived from it. All four
       // are APPEND-ONLY metering artifacts with hard retention (raw events 18
       // months, rollups indefinitely) rather than the ENABLED/DELETED
