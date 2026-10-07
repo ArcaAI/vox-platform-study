@@ -1,5 +1,6 @@
 import { GuardrailAvailabilityServiceModule } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
+import { GuardrailRuleTestController } from './guardrail-rule-test.controller';
 import { GuardrailTenantPolicyController } from './guardrail-tenant-policy.controller';
 
 /**
@@ -8,6 +9,6 @@ import { GuardrailTenantPolicyController } from './guardrail-tenant-policy.contr
  */
 @Module({
   imports: [GuardrailAvailabilityServiceModule],
-  controllers: [GuardrailTenantPolicyController],
+  controllers: [GuardrailTenantPolicyController, GuardrailRuleTestController],
 })
 export class GuardrailTenantPolicyModule {}

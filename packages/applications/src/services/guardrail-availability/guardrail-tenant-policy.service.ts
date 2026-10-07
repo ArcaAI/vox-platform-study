@@ -8,7 +8,7 @@ import {
 } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { forbiddenGuardrailPolicyChanges, guardrailPolicyEditableFields, type GuardrailCheckDefaults } from '@arcaai/types';
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, isSuperAdmin } from '../../common';
@@ -17,6 +17,7 @@ import type { TenantGuardrailPolicyResponse, UpdateTenantGuardrailPolicyRequest 
 import { GuardrailAvailabilityDtoMapper } from './guardrail-availability.dto.mapper';
 import { GuardrailPolicyChangePublisher } from './guardrail-policy-change.publisher';
 import type { IGuardrailTenantPolicyService } from './IGuardrailTenantPolicyService';
+import { resolveGuardrailWorkingTenant } from './working-tenant';
 import { GUARDRAIL_CHECK_DEFAULTS, GuardrailPolicySelectionError, guardrailPolicy } from './policy-catalogue';
 import {
   GUARDRAIL_CHECK_LOCKED,
@@ -138,13 +139,7 @@ export class GuardrailTenantPolicyService extends BaseService implements IGuardr
 
   /** AUTH-NOTE step 1: existence first. */
   private targetTenant(): string {
-    const tenantId = this.clsService.get('tenantId');
-    if (!tenantId) throw new BadRequestException({ message: 'Select a working tenant to read or change its guardrail rules.', code: 'WORKING_TENANT_REQUIRED' });
-    const user = this.requestUser;
-    if (!isSuperAdmin(user) && user?.tenantId && user.tenantId !== tenantId) {
-      throw new NotFoundException('Guardrail policy not found');
-    }
-    return tenantId;
+    return resolveGuardrailWorkingTenant(this.clsService.get('tenantId'), this.requestUser);
   }
 
   /** AUTH-NOTE step 2: the platform tier is not a tenant's to write (row-independent, 403). */
