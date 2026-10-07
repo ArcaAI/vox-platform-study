@@ -12,8 +12,8 @@ import { ControlErrorState } from './control-states';
 import { displayValue, writeErrorMessage } from './guardrail-control-logic';
 
 /** A key's revision history (newest first) with Restore. Restore re-validates against today's catalogue. */
-export function RevisionHistory({ policyKey }: { policyKey: string }) {
-  const query = useGuardrailPolicyRevisions(policyKey, true);
+export function RevisionHistory({ policyKey, taskKey }: { policyKey: string; taskKey?: string }) {
+  const query = useGuardrailPolicyRevisions(policyKey, true, taskKey);
   const restore = useRestoreGuardrailPolicyRevision();
 
   if (query.isError) return <ControlErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -54,7 +54,7 @@ export function RevisionHistory({ policyKey }: { policyKey: string }) {
                 disabled={restore.isPending}
                 onClick={() =>
                   restore.mutate(
-                    { key: policyKey, revisionId: revision.id },
+                    { key: policyKey, revisionId: revision.id, taskKey },
                     { onSuccess: () => toast.success(`${policyKey} restored`), onError: (error) => toast.error(writeErrorMessage(error)) },
                   )
                 }

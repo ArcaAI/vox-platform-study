@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { IconAlertTriangle, IconGitCompare, IconHistory, IconLock, IconRestore } from '@tabler/icons-react';
+import { IconAlertTriangle, IconGitCompare, IconHistory, IconInfoCircle, IconLock, IconRestore } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import {
   GUARDRAIL_JUDGE_LOCKED_SECTIONS,
@@ -59,6 +59,24 @@ export function SaveReScreenWarning() {
       <AlertDescription>
         A prompt change changes the guardrail policy version: cached window verdicts are discarded and every window is screened again on its next
         request.
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+/**
+ * README §11.3 C: a seed upgrade changed the factory default after this value was last edited. The current
+ * value is left alone; the admin decides whether to take the new default (Reset) or keep theirs.
+ */
+export function DefaultChangedNotice({ show, what = 'value' }: { show: boolean | undefined; what?: string }) {
+  if (!show) return null;
+  return (
+    <Alert>
+      <IconInfoCircle aria-hidden />
+      <AlertTitle>Default changed since your edit</AlertTitle>
+      <AlertDescription>
+        The platform default for this {what} was updated after it was last edited. Your {what} is unchanged; use Diff vs default or Reset to review or
+        take the new default.
       </AlertDescription>
     </Alert>
   );
@@ -170,6 +188,8 @@ export function JudgePromptEditor({
         {readOnly ? <Badge variant="outline">read-only</Badge> : null}
       </div>
 
+      <DefaultChangedNotice show={entry.defaultChangedSinceEdit} what="prompt" />
+
       {GUARDRAIL_JUDGE_TEMPLATE_SECTIONS.map((section) => {
         const isLocked = (GUARDRAIL_JUDGE_LOCKED_SECTIONS as readonly string[]).includes(section);
         const field = PART_OF[section];
@@ -267,10 +287,13 @@ export function JudgePromptEditor({
           size="sm"
           disabled={readOnly || entry.isDefault || reset.isPending}
           onClick={() =>
-            reset.mutate(entry.key, {
-              onSuccess: () => toast.success(`${entry.key} reset to default`),
-              onError: (error) => toast.error(writeErrorMessage(error)),
-            })
+            reset.mutate(
+              { key: entry.key },
+              {
+                onSuccess: () => toast.success(`${entry.key} reset to default`),
+                onError: (error) => toast.error(writeErrorMessage(error)),
+              },
+            )
           }
         >
           <IconRestore aria-hidden />
@@ -315,6 +338,7 @@ export function PlainCriteriaEditor({ entry }: { entry: GuardrailPolicyKeyEntry 
         <span className="font-mono">{entry.key}</span>
         {entry.isDefault ? <Badge variant="secondary">default</Badge> : <Badge>edited</Badge>}
       </div>
+      <DefaultChangedNotice show={entry.defaultChangedSinceEdit} what="criteria text" />
       <CodeEditor
         aria-label={entry.key}
         value={current}
@@ -337,10 +361,13 @@ export function PlainCriteriaEditor({ entry }: { entry: GuardrailPolicyKeyEntry 
           size="sm"
           disabled={readOnly || entry.isDefault || reset.isPending}
           onClick={() =>
-            reset.mutate(entry.key, {
-              onSuccess: () => toast.success(`${entry.key} reset to default`),
-              onError: (error) => toast.error(writeErrorMessage(error)),
-            })
+            reset.mutate(
+              { key: entry.key },
+              {
+                onSuccess: () => toast.success(`${entry.key} reset to default`),
+                onError: (error) => toast.error(writeErrorMessage(error)),
+              },
+            )
           }
         >
           <IconRestore aria-hidden />

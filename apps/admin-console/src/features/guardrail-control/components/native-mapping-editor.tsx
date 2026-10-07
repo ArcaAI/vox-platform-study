@@ -17,9 +17,9 @@ import { useGuardrailJudgeMeta, useResetGuardrailJudgeMeta, useUpdateGuardrailJu
 import type { GuardrailJudgeCategoryTarget } from '../api/types';
 import { ControlErrorState } from './control-states';
 import { writeErrorMessage } from './guardrail-control-logic';
-import { SaveReScreenWarning } from './judge-prompt-editor';
+import { DefaultChangedNotice, SaveReScreenWarning } from './judge-prompt-editor';
 
-interface MappingDraft {
+export interface MappingDraft {
   categoryMap: Record<string, GuardrailJudgeCategoryTarget>;
   tiers: Record<string, string>;
 }
@@ -32,7 +32,16 @@ const unsafeOf = (lane: string): string[] =>
  * platform admin owns is how its native categories and tiers MAP onto ours — `categoryMap` and the
  * Controversial tier. Validated live with the same `judgeMetadataProblems` the gateway applies.
  */
-export function NativeMappingEditor({ modelId, modelSlug }: { modelId: string; modelSlug: string | null }) {
+export function NativeMappingEditor({
+  modelId,
+  modelSlug,
+  onDraftChange,
+}: {
+  modelId: string;
+  modelSlug: string | null;
+  /** The unsaved mapping when it differs from the stored one AND is valid, else `null` — the dry run sends it. */
+  onDraftChange?: (draft: MappingDraft | null) => void;
+}) {
   const uid = useId();
   const query = useGuardrailJudgeMeta(modelId);
   const update = useUpdateGuardrailJudgeMeta(modelId);
@@ -62,14 +71,22 @@ export function NativeMappingEditor({ modelId, modelSlug }: { modelId: string; m
   });
   const lanes = meta.judge.lanes;
 
+  function change(next: MappingDraft | null) {
+    setDraft(next);
+    if (!onDraftChange) return;
+    const candidate = next ?? saved;
+    const valid = judgeMetadataProblems({ protocol: meta!.judge.protocol, lanes: meta!.judge.lanes, ...candidate }).length === 0;
+    onDraftChange(JSON.stringify(candidate) !== JSON.stringify(saved) && valid ? candidate : null);
+  }
+
   function setTarget(native: string, target: GuardrailJudgeCategoryTarget) {
-    setDraft({ ...current, categoryMap: { ...current.categoryMap, [native]: target } });
+    change({ ...current, categoryMap: { ...current.categoryMap, [native]: target } });
   }
 
   function remove(native: string) {
     const next = { ...current.categoryMap };
     delete next[native];
-    setDraft({ ...current, categoryMap: next });
+    change({ ...current, categoryMap: next });
   }
 
   function add() {
@@ -95,6 +112,8 @@ export function NativeMappingEditor({ modelId, modelSlug }: { modelId: string; m
           Categories lines are parsed. Edit how its categories and tiers map onto the platform&apos;s lanes below.
         </AlertDescription>
       </Alert>
+
+      <DefaultChangedNotice show={meta.defaultChangedSinceEdit} what="mapping" />
 
       <Table aria-label="Native category map">
         <TableHeader>
@@ -179,7 +198,7 @@ export function NativeMappingEditor({ modelId, modelSlug }: { modelId: string; m
           <NativeSelect
             id={`${uid}-controversial`}
             value={current.tiers.Controversial ?? 'warn'}
-            onChange={(event) => setDraft({ ...current, tiers: { ...current.tiers, Controversial: event.target.value } })}
+            onChange={(event) => change({ ...current, tiers: { ...current.tiers, Controversial: event.target.value } })}
           >
             {JUDGE_CONTROVERSIAL_TIER_VALUES.map((value) => (
               <NativeSelectOption key={value} value={value}>
@@ -215,7 +234,7 @@ export function NativeMappingEditor({ modelId, modelSlug }: { modelId: string; m
             reset.mutate(undefined, {
               onSuccess: () => {
                 toast.success('Mapping reset to default');
-                setDraft(null);
+                change(null);
               },
               onError: (error) => toast.error(writeErrorMessage(error)),
             })
@@ -224,7 +243,7 @@ export function NativeMappingEditor({ modelId, modelSlug }: { modelId: string; m
           <IconRestore aria-hidden />
           Reset to default
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={!dirty} onClick={() => setDraft(null)}>
+        <Button type="button" variant="outline" size="sm" disabled={!dirty} onClick={() => change(null)}>
           Discard
         </Button>
         <Button
@@ -238,11 +257,11 @@ export function NativeMappingEditor({ modelId, modelSlug }: { modelId: string; m
               {
                 onSuccess: () => {
                   toast.success('Mapping saved');
-                  setDraft(null);
+                  change(null);
                 },
                 onError: (error) => {
                   toast.error(writeErrorMessage(error));
-                  setDraft(null);
+                  change(null);
                 },
               },
             )

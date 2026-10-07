@@ -74,8 +74,9 @@ export function DryRunPanel({
           Dry run
         </h2>
         <p className="text-muted-foreground text-xs">
-          Runs on the live judge, stores nothing.{' '}
-          {draftKeys.length > 0 ? `Includes your unsaved draft of ${draftKeys.join(', ')}.` : 'Uses the saved configuration.'}
+          Runs on the live judge, stores nothing. {draftKeys.length > 0 ? `Includes your unsaved draft of ${draftKeys.join(', ')}.` : null}
+          {draftJudgeMeta ? 'Includes your unsaved native mapping.' : null}
+          {draftKeys.length === 0 && !draftJudgeMeta ? 'Uses the saved configuration.' : null}
         </p>
       </div>
 

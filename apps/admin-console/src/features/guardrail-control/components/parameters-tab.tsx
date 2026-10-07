@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useId, useState } from 'react';
-import { IconAdjustments, IconExternalLink, IconRestore } from '@tabler/icons-react';
+import { IconAdjustments, IconExternalLink, IconHistory, IconRestore } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { CodeEditor } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -25,8 +25,11 @@ import {
   useUpdateGuardrailJudgeLanes,
   useUpdateGuardrailPolicyKey,
 } from '../api/hooks';
-import type { GuardrailJudgeLane, GuardrailJudgeLaneCandidate, GuardrailPolicyKeyEntry } from '../api/types';
+import type { GuardrailJudgeLane, GuardrailJudgeLaneCandidate, GuardrailPolicyKeyEntry, GuardrailPolicyKeyGroup } from '../api/types';
+import { LABEL_THRESHOLD_PREFIX, policyKeyTaskKey } from '../api/client';
 import { ControlErrorState } from './control-states';
+import { DefaultChangedNotice } from './judge-prompt-editor';
+import { RevisionHistory } from './revision-history';
 import { displayValue, writeErrorMessage } from './guardrail-control-logic';
 
 const PARAMETER_KINDS = new Set(['hyperparameter', 'threshold', 'geometry']);
@@ -82,11 +85,15 @@ function ParameterField({ entry }: { entry: GuardrailPolicyKeyEntry }) {
   const parsed = parseField(entry, current);
   const dirty = current !== saved;
   const error = 'error' in parsed ? parsed.error : null;
+  const taskKey = policyKeyTaskKey(entry);
+  // A label threshold with no seeded default reports its CURRENT value as the default: reset would be a no-op.
+  const noSeededDefault = entry.defaultSource === 'current';
+  const [showHistory, setShowHistory] = useState(false);
 
   function save() {
     if (!dirty || error || entry.modelVersion === null || !('value' in parsed)) return;
     update.mutate(
-      { key: entry.key, value: parsed.value, modelVersion: entry.modelVersion },
+      { key: entry.key, value: parsed.value, modelVersion: entry.modelVersion, taskKey },
       {
         onSuccess: () => {
           toast.success(`${entry.key} saved`);
@@ -141,34 +148,44 @@ function ParameterField({ entry }: { entry: GuardrailPolicyKeyEntry }) {
         />
       )}
       <p id={`${uid}-hint`} className="text-muted-foreground text-xs">
-        Bounds {boundsOf(entry)} · default <span className="font-mono">{displayValue(entry.defaultValue)}</span> · on{' '}
+        Bounds {boundsOf(entry)} · default <span className="font-mono">{displayValue(entry.defaultValue)}</span>
+        {noSeededDefault ? ' (no seeded default yet: the current value is the default)' : null} · on{' '}
         <span className="font-mono">{entry.modelSlug ?? entry.taskKey}</span>
       </p>
+      <DefaultChangedNotice show={entry.defaultChangedSinceEdit} />
       {error && dirty ? <p className="text-destructive text-sm">{error}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           type="button"
           variant="outline"
           size="sm"
-          disabled={entry.isDefault || reset.isPending}
+          disabled={entry.isDefault || noSeededDefault || reset.isPending}
           onClick={() =>
-            reset.mutate(entry.key, {
-              onSuccess: () => {
-                toast.success(`${entry.key} reset to default`);
-                setText(null);
+            reset.mutate(
+              { key: entry.key, taskKey },
+              {
+                onSuccess: () => {
+                  toast.success(`${entry.key} reset to default`);
+                  setText(null);
+                },
+                onError: (failure) => toast.error(writeErrorMessage(failure)),
               },
-              onError: (failure) => toast.error(writeErrorMessage(failure)),
-            })
+            )
           }
         >
           <IconRestore aria-hidden />
           Reset
+        </Button>
+        <Button type="button" variant="outline" size="sm" aria-pressed={showHistory} onClick={() => setShowHistory(!showHistory)}>
+          <IconHistory aria-hidden />
+          History
         </Button>
         <Button type="button" size="sm" disabled={!dirty || Boolean(error) || entry.modelVersion === null || update.isPending} onClick={save}>
           {update.isPending ? <Spinner /> : null}
           Save
         </Button>
       </div>
+      {showHistory ? <RevisionHistory policyKey={entry.key} taskKey={taskKey} /> : null}
     </li>
   );
 }
@@ -303,15 +320,52 @@ function ParametersSkeleton() {
   );
 }
 
+/** Policy keys grouped by the model row (task key) they live on. */
+function KeyGroups({
+  query,
+  groups,
+  emptyTitle,
+  emptyDescription,
+}: {
+  query: ReturnType<typeof useGuardrailPolicyKeys>;
+  groups: GuardrailPolicyKeyGroup[];
+  emptyTitle: string;
+  emptyDescription: string;
+}) {
+  if (query.isError) return <ControlErrorState error={query.error} onRetry={() => void query.refetch()} />;
+  if (!query.data) return <ParametersSkeleton />;
+  if (groups.length === 0) return <EmptyState icon={IconAdjustments} title={emptyTitle} description={emptyDescription} />;
+  return (
+    <>
+      {groups.map((group) => (
+        <div key={group.taskKey} className="flex flex-col gap-2">
+          <h3 className="flex flex-wrap items-center gap-2 text-sm font-medium">
+            <span className="font-mono">{group.taskKey}</span>
+            <Badge variant="outline">{group.modelSlug ?? 'no model elected'}</Badge>
+            {group.protocol ? <Badge variant="secondary">{group.protocol}</Badge> : null}
+          </h3>
+          <ul className="grid gap-3 lg:grid-cols-2">
+            {group.keys.map((entry) => (
+              <ParameterField key={`${entry.taskKey}:${entry.key}:${entry.modelVersion}`} entry={entry} />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </>
+  );
+}
+
 /** Parameters (README §11.3 D, §12.2): bounded keys, the judge model per lane, serving and residency read-only. */
 export function ParametersTab() {
   const keys = useGuardrailPolicyKeys();
   const lanes = useGuardrailJudgeLanes();
   const health = useGuardrailHealth();
 
-  const groups = (keys.data?.groups ?? [])
-    .map((group) => ({ ...group, keys: group.keys.filter((key) => PARAMETER_KINDS.has(key.kind) && key.editable) }))
-    .filter((group) => group.keys.length > 0);
+  const isLabel = (entry: GuardrailPolicyKeyEntry) => entry.key.startsWith(LABEL_THRESHOLD_PREFIX);
+  const groupsOf = (pick: (entry: GuardrailPolicyKeyEntry) => boolean) =>
+    (keys.data?.groups ?? [])
+      .map((group) => ({ ...group, keys: group.keys.filter((key) => PARAMETER_KINDS.has(key.kind) && key.editable && pick(key)) }))
+      .filter((group) => group.keys.length > 0);
   const judgeModels = new Map<string, GuardrailJudgeLaneCandidate>();
   for (const lane of lanes.data?.lanes ?? []) for (const candidate of lane.candidates) judgeModels.set(candidate.modelId, candidate);
 
@@ -321,32 +375,30 @@ export function ParametersTab() {
         <h2 id="params-keys" className="text-base font-medium">
           Hyper-parameters and thresholds
         </h2>
-        {keys.isError ? (
-          <ControlErrorState error={keys.error} onRetry={() => void keys.refetch()} />
-        ) : !keys.data ? (
-          <ParametersSkeleton />
-        ) : groups.length === 0 ? (
-          <EmptyState
-            icon={IconAdjustments}
-            title="No editable parameters"
-            description="The catalogue declares no editable hyper-parameter, threshold or geometry key."
-          />
-        ) : (
-          groups.map((group) => (
-            <div key={group.taskKey} className="flex flex-col gap-2">
-              <h3 className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                <span className="font-mono">{group.taskKey}</span>
-                <Badge variant="outline">{group.modelSlug ?? 'no model elected'}</Badge>
-                {group.protocol ? <Badge variant="secondary">{group.protocol}</Badge> : null}
-              </h3>
-              <ul className="grid gap-3 lg:grid-cols-2">
-                {group.keys.map((entry) => (
-                  <ParameterField key={`${entry.key}:${entry.modelVersion}`} entry={entry} />
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
+        <KeyGroups
+          query={keys}
+          groups={groupsOf((entry) => !isLabel(entry))}
+          emptyTitle="No editable parameters"
+          emptyDescription="The catalogue declares no editable hyper-parameter, threshold or geometry key."
+        />
+      </section>
+
+      <section aria-labelledby="params-labels" className="flex flex-col gap-3">
+        <div>
+          <h2 id="params-labels" className="text-base font-medium">
+            Classifier thresholds
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            The score thresholds inside each classifier row&apos;s label taxonomy, in [0, 1]. Labels and the task set are a model-version change and
+            stay with the model registry.
+          </p>
+        </div>
+        <KeyGroups
+          query={keys}
+          groups={groupsOf(isLabel)}
+          emptyTitle="No classifier thresholds"
+          emptyDescription="No guardrail classifier row carries an editable label threshold."
+        />
       </section>
 
       <section aria-labelledby="params-lanes" className="flex flex-col gap-3">

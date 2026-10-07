@@ -106,7 +106,11 @@ export interface GuardrailPolicyKeyEntry {
   modelVersion: number | null;
   currentValue: unknown;
   defaultValue: unknown;
+  /** `seed`: seed-owned default; `current`: a label threshold with no seeded default (reset is a no-op); `null`: none. */
+  defaultSource?: 'seed' | 'current' | null;
   isDefault: boolean;
+  /** The seed default moved since the current value was last edited (README §11.3 C). Absent on older gateways. */
+  defaultChangedSinceEdit?: boolean;
   lastRevision: GuardrailPolicyRevisionSummary | null;
 }
 
@@ -172,6 +176,7 @@ export interface GuardrailJudgeMeta {
   judge: GuardrailJudgeDeclaration;
   judgeDefaults: GuardrailJudgeDeclaration | null;
   isDefault: boolean;
+  defaultChangedSinceEdit?: boolean;
   changed?: boolean;
 }
 

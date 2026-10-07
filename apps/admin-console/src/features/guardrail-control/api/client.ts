@@ -35,6 +35,16 @@ const METRICS = 'admin/guardrail/metrics';
 const enc = encodeURIComponent;
 const ifMatch = (version: number) => `"${version}"`;
 
+/** The `labelTaxonomy.*` classifier thresholds live on several model rows: every single-key route needs `?taskKey=`. */
+export const LABEL_THRESHOLD_PREFIX = 'labelTaxonomy.';
+
+/** `?taskKey=` for a label threshold (its row), nothing for a catalogue key. */
+export function policyKeyTaskKey(entry: { key: string; taskKey: string }): string | undefined {
+  return entry.key.startsWith(LABEL_THRESHOLD_PREFIX) ? entry.taskKey : undefined;
+}
+
+const taskKeyQuery = (taskKey?: string) => (taskKey ? `?taskKey=${enc(taskKey)}` : '');
+
 // ── Rules ────────────────────────────────────────────────────────────────────
 
 export function getGuardrailCatalogue(): Promise<GuardrailCatalogueEntry[]> {
@@ -65,38 +75,39 @@ export function listGuardrailPolicyKeys(): Promise<GuardrailPolicyKeys> {
   return getJson(POLICY_KEYS);
 }
 
-export async function updateGuardrailPolicyKey(key: string, value: unknown, modelVersion: number): Promise<GuardrailPolicyKeyWriteResult> {
+export async function updateGuardrailPolicyKey(
+  key: string,
+  value: unknown,
+  modelVersion: number,
+  taskKey?: string,
+): Promise<GuardrailPolicyKeyWriteResult> {
   const response = await putWithEtag<GuardrailPolicyKeyWriteResult>(
-    `${POLICY_KEYS}/${enc(key)}`,
+    `${POLICY_KEYS}/${enc(key)}${taskKeyQuery(taskKey)}`,
     { value, expectedVersion: modelVersion },
     ifMatch(modelVersion),
   );
   return response.data;
 }
 
-export function resetGuardrailPolicyKey(key: string): Promise<GuardrailPolicyKeyWriteResult> {
-  return postJson(`${POLICY_KEYS}/${enc(key)}/reset`);
+export function resetGuardrailPolicyKey(key: string, taskKey?: string): Promise<GuardrailPolicyKeyWriteResult> {
+  return postJson(`${POLICY_KEYS}/${enc(key)}/reset${taskKeyQuery(taskKey)}`);
 }
 
 export function resetGuardrailPolicyLane(lane: string): Promise<GuardrailLaneResetResult> {
   return postJson(`${POLICY_KEYS}/reset`, undefined, { lane });
 }
 
-export function listGuardrailPolicyRevisions(key: string, limit = 50): Promise<GuardrailPolicyRevisions> {
-  return getJson(`${POLICY_KEYS}/${enc(key)}/revisions`, { limit });
+export function listGuardrailPolicyRevisions(key: string, limit = 50, taskKey?: string): Promise<GuardrailPolicyRevisions> {
+  return getJson(`${POLICY_KEYS}/${enc(key)}/revisions`, { limit, taskKey });
 }
 
-export function restoreGuardrailPolicyRevision(key: string, revisionId: string): Promise<GuardrailPolicyKeyWriteResult> {
-  return postJson(`${POLICY_KEYS}/${enc(key)}/revisions/${enc(revisionId)}/restore`);
+export function restoreGuardrailPolicyRevision(key: string, revisionId: string, taskKey?: string): Promise<GuardrailPolicyKeyWriteResult> {
+  return postJson(`${POLICY_KEYS}/${enc(key)}/revisions/${enc(revisionId)}/restore${taskKeyQuery(taskKey)}`);
 }
 
 // ── Judge models ─────────────────────────────────────────────────────────────
 
-/**
- * SEAM (W2h follow-up): W2h ships `PUT …/judge-meta` and `POST …/judge-meta/reset` but no READ of the
- * current `_metadata.judge`. This calls the matching `GET` the route family implies; until it exists the
- * native-mapping editor renders its error state (and the PUT/reset responses still carry the declaration).
- */
+/** `GET …/judge-meta` (W2h round 3): the current `_metadata.judge`, its seed default and `defaultChangedSinceEdit`. */
 export function getGuardrailJudgeMeta(modelId: string): Promise<GuardrailJudgeMeta> {
   return getJson(`${JUDGE_MODELS}/${enc(modelId)}/judge-meta`);
 }

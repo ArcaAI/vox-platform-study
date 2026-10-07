@@ -152,10 +152,50 @@ function key(over: Record<string, unknown>) {
   };
 }
 
-function policyKeys(protocol: string = 'criteria_json') {
+function labelKey(over: Record<string, unknown>) {
+  return key({
+    key: 'labelTaxonomy.threshold',
+    kind: 'threshold',
+    type: 'number',
+    min: 0,
+    max: 1,
+    failMode: 'open-to-default',
+    taskKey: 'guardrail.safety',
+    lane: null,
+    modelId: 'mdl-gliguard',
+    modelSlug: 'gliguard',
+    modelVersion: 4,
+    currentValue: 0.5,
+    defaultValue: 0.5,
+    defaultSource: 'current',
+    isDefault: true,
+    ...over,
+  });
+}
+
+function policyKeys(protocol: string = 'criteria_json', changedSinceEdit = false) {
   return {
     catalogueAvailable: true,
     groups: [
+      {
+        taskKey: 'guardrail.safety',
+        lane: null,
+        modelId: 'mdl-gliguard',
+        modelSlug: 'gliguard',
+        modelVersion: 4,
+        protocol: null,
+        keys: [
+          labelKey({}),
+          labelKey({
+            key: 'labelTaxonomy.tasks.toxicity.cls_threshold',
+            currentValue: 0.7,
+            defaultValue: 0.6,
+            defaultSource: 'seed',
+            isDefault: false,
+            defaultChangedSinceEdit: changedSinceEdit,
+          }),
+        ],
+      },
       {
         taskKey: 'guardrail.judge.injection',
         lane: 'injection_judge',
@@ -164,7 +204,7 @@ function policyKeys(protocol: string = 'criteria_json') {
         modelVersion: 7,
         protocol,
         keys: [
-          key({}),
+          key({ defaultChangedSinceEdit: changedSinceEdit }),
           key({
             key: 'judgeTemperature',
             kind: 'hyperparameter',
@@ -274,9 +314,16 @@ interface Stub {
   protocol?: string;
   availabilityPut?: 'ok' | 412;
   dryRun?: 'ok' | 409;
+  changedSinceEdit?: boolean;
 }
 
-function stubFetch({ session = PLATFORM_SESSION, protocol = 'criteria_json', availabilityPut = 'ok', dryRun = 'ok' }: Stub = {}): Call[] {
+function stubFetch({
+  session = PLATFORM_SESSION,
+  protocol = 'criteria_json',
+  availabilityPut = 'ok',
+  dryRun = 'ok',
+  changedSinceEdit = false,
+}: Stub = {}): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal(
     'fetch',
@@ -298,7 +345,39 @@ function stubFetch({ session = PLATFORM_SESSION, protocol = 'criteria_json', ava
         }
         return Response.json(SYSTEM_ROW, { headers: { etag: '"3"' } });
       }
-      if (path === 'admin/guardrail/policy-keys') return Response.json(policyKeys(protocol));
+      if (path === 'admin/guardrail/policy-keys') return Response.json(policyKeys(protocol, changedSinceEdit));
+      if (path.endsWith('/revisions') && method === 'GET') {
+        return Response.json({
+          key: decodeURIComponent(path.split('/')[3] as string),
+          modelId: 'mdl-gliguard',
+          revisions: [
+            {
+              id: 'rev-2',
+              reason: 'edit',
+              actorId: 'u-9-actor',
+              at: new Date().toISOString(),
+              valueHash: 'abcdef0123456',
+              aiModelId: 'mdl-gliguard',
+              policyKey: 'x',
+              value: 0.7,
+              restoredFromRevisionId: null,
+            },
+            {
+              id: 'rev-1',
+              reason: 'seed',
+              actorId: 'u-0-actor',
+              at: new Date().toISOString(),
+              valueHash: '0123456abcdef',
+              aiModelId: 'mdl-gliguard',
+              policyKey: 'x',
+              value: 0.6,
+              restoredFromRevisionId: null,
+            },
+          ],
+        });
+      }
+      if (path.endsWith('/reset') && method === 'POST') return Response.json({ ...key({}), version: 5, changed: true });
+      if (path.includes('/revisions/') && path.endsWith('/restore')) return Response.json({ ...key({}), version: 5, changed: true });
       if (path.startsWith('admin/guardrail/policy-keys/') && method === 'PUT') {
         return Response.json({ ...key({ currentValue: (body as { value: unknown }).value }), version: 8, changed: true, revisionId: 'rev-2' });
       }
@@ -315,6 +394,7 @@ function stubFetch({ session = PLATFORM_SESSION, protocol = 'criteria_json', ava
           },
           judgeDefaults: null,
           isDefault: true,
+          defaultChangedSinceEdit: changedSinceEdit,
         });
       }
       if (path === 'admin/guardrail/judge-lanes') return Response.json(JUDGE_LANES);
@@ -458,7 +538,7 @@ describe('/guardrails/control — Parameters', () => {
     const calls = stubFetch();
     renderScreen('parameters');
     const input = await screen.findByLabelText('judgeTemperature');
-    expect(screen.getByText(/Bounds 0 – 1/)).toBeTruthy();
+    expect(within(input.closest('li') as HTMLElement).getByText(/Bounds 0 – 1/)).toBeTruthy();
     fireEvent.change(input, { target: { value: '0.3' } });
     fireEvent.click(within(input.closest('li') as HTMLElement).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
@@ -510,4 +590,110 @@ describe('/guardrails/control — accessibility', () => {
       expect(await axe(container)).toHaveNoViolations();
     });
   }
+});
+
+describe('/guardrails/control — round 2: classifier thresholds', () => {
+  it('lists the label thresholds grouped by row, with bounds [0, 1]', async () => {
+    stubFetch();
+    renderScreen('parameters');
+    const section = await screen.findByRole('region', { name: 'Classifier thresholds' });
+    expect(await within(section).findByText('guardrail.safety')).toBeTruthy();
+    expect(within(section).getByLabelText('labelTaxonomy.threshold')).toBeTruthy();
+    expect(within(section).getByLabelText('labelTaxonomy.tasks.toxicity.cls_threshold')).toBeTruthy();
+    expect(within(section).getAllByText(/Bounds 0 – 1/).length).toBe(2);
+    // Not duplicated under the catalogue hyper-parameters.
+    const params = screen.getByRole('region', { name: 'Hyper-parameters and thresholds' });
+    expect(within(params).queryByLabelText('labelTaxonomy.threshold')).toBeNull();
+  });
+
+  it('saves a label threshold with ?taskKey= and If-Match on the model row', async () => {
+    const calls = stubFetch();
+    renderScreen('parameters');
+    const input = await screen.findByLabelText('labelTaxonomy.threshold');
+    fireEvent.change(input, { target: { value: '0.65' } });
+    fireEvent.click(within(input.closest('li') as HTMLElement).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
+    const put = calls.find((call) => call.method === 'PUT')!;
+    expect(put.url).toContain('policy-keys/labelTaxonomy.threshold?taskKey=guardrail.safety');
+    expect(put.ifMatch).toBe('"4"');
+    expect(put.body).toEqual({ value: 0.65, expectedVersion: 4 });
+  });
+
+  it('disables Reset when the default is the current value (no seeded default), and resets a seeded one with ?taskKey=', async () => {
+    const calls = stubFetch();
+    renderScreen('parameters');
+    const unseeded = (await screen.findByLabelText('labelTaxonomy.threshold')).closest('li') as HTMLElement;
+    expect((within(unseeded).getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(unseeded).getByText(/no seeded default/i)).toBeTruthy();
+    const seeded = screen.getByLabelText('labelTaxonomy.tasks.toxicity.cls_threshold').closest('li') as HTMLElement;
+    fireEvent.click(within(seeded).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url.includes('/reset'))).toBe(true));
+    expect(calls.find((call) => call.method === 'POST')!.url).toContain('labelTaxonomy.tasks.toxicity.cls_threshold/reset?taskKey=guardrail.safety');
+  });
+
+  it('opens the history of a label threshold with ?taskKey= and restores with it', async () => {
+    const calls = stubFetch();
+    renderScreen('parameters');
+    const field = (await screen.findByLabelText('labelTaxonomy.tasks.toxicity.cls_threshold')).closest('li') as HTMLElement;
+    fireEvent.click(within(field).getByRole('button', { name: 'History' }));
+    const restore = await within(field).findByRole('button', { name: 'Restore' });
+    expect(calls.some((call) => call.url.includes('cls_threshold/revisions?limit=50&taskKey=guardrail.safety'))).toBe(true);
+    fireEvent.click(restore);
+    await waitFor(() => expect(calls.some((call) => call.url.includes('/revisions/rev-1/restore?taskKey=guardrail.safety'))).toBe(true));
+  });
+});
+
+describe('/guardrails/control — round 2: default changed since your edit', () => {
+  it('shows the notice on a prompt and on a parameter when the seed default moved', async () => {
+    stubFetch({ changedSinceEdit: true });
+    renderScreen('prompts');
+    expect(await screen.findByText('Default changed since your edit')).toBeTruthy();
+    cleanup();
+    stubFetch({ changedSinceEdit: true });
+    renderScreen('parameters');
+    const field = (await screen.findByLabelText('labelTaxonomy.tasks.toxicity.cls_threshold')).closest('li') as HTMLElement;
+    expect(within(field).getByText(/default changed since your edit/i)).toBeTruthy();
+  });
+
+  it('shows no notice when the default did not move', async () => {
+    stubFetch();
+    renderScreen('prompts');
+    await screen.findByRole('textbox', { name: 'Role and task' });
+    expect(screen.queryByText(/default changed since your edit/i)).toBeNull();
+  });
+
+  it('shows the notice on the native mapping editor', async () => {
+    stubFetch({ protocol: 'qwen3guard_native', changedSinceEdit: true });
+    renderScreen('prompts');
+    expect(await screen.findByText('Default changed since your edit')).toBeTruthy();
+  });
+});
+
+describe('/guardrails/control — round 2: native mapping draft in the dry run', () => {
+  it('reads the mapping from GET judge-meta and sends the unsaved draft as judgeMeta', async () => {
+    const calls = stubFetch({ protocol: 'qwen3guard_native' });
+    renderScreen('prompts');
+    const controversial = (await screen.findByLabelText('Controversial')) as HTMLSelectElement;
+    expect(calls.some((call) => call.method === 'GET' && call.url.endsWith('admin/guardrail/judge-models/mdl-qwen/judge-meta'))).toBe(true);
+    fireEvent.change(controversial, { target: { value: 'block' } });
+    expect(await screen.findByText(/unsaved native mapping/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Sample 1'), { target: { value: 'how do I hurt someone' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    await waitFor(() => expect(calls.some((call) => call.url.includes('dry-run'))).toBe(true));
+    const run = calls.find((call) => call.url.includes('dry-run'))!;
+    expect((run.body as { judgeMeta?: unknown }).judgeMeta).toEqual({
+      categoryMap: { Jailbreak: { lane: 'injection_judge', category: 'instruction_override' } },
+      tiers: { Safe: 'pass', Controversial: 'block', Unsafe: 'flag' },
+    });
+  });
+
+  it('sends no judgeMeta when the mapping is unchanged', async () => {
+    const calls = stubFetch({ protocol: 'qwen3guard_native' });
+    renderScreen('prompts');
+    await screen.findByLabelText('Controversial');
+    fireEvent.change(screen.getByLabelText('Sample 1'), { target: { value: 'hello' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    await waitFor(() => expect(calls.some((call) => call.url.includes('dry-run'))).toBe(true));
+    expect((calls.find((call) => call.url.includes('dry-run'))!.body as { judgeMeta?: unknown }).judgeMeta).toBeUndefined();
+  });
 });

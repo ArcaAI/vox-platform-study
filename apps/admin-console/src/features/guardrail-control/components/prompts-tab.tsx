@@ -12,7 +12,7 @@ import type { GuardrailPolicyKeyEntry, GuardrailPolicyKeyGroup } from '../api/ty
 import { ControlErrorState } from './control-states';
 import { DryRunPanel } from './dry-run-panel';
 import { JudgePromptEditor, PlainCriteriaEditor } from './judge-prompt-editor';
-import { NativeMappingEditor } from './native-mapping-editor';
+import { NativeMappingEditor, type MappingDraft } from './native-mapping-editor';
 
 const MEDICAL = 'medical_validation';
 const LANE_LABEL: Record<string, string> = {
@@ -55,6 +55,7 @@ export function PromptsTab() {
   const query = useGuardrailPolicyKeys();
   const [lane, setLane] = useState<string>(GUARDRAIL_JUDGE_CHECK_IDS[0]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [mappingDraft, setMappingDraft] = useState<MappingDraft | null>(null);
 
   if (query.isError) return <ControlErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (!query.data) return <PromptsSkeleton />;
@@ -99,7 +100,7 @@ export function PromptsTab() {
   } else {
     const { entry, group } = findLane(groups, lane);
     if (group?.protocol === 'qwen3guard_native' && group.modelId) {
-      body = <NativeMappingEditor key={group.modelId} modelId={group.modelId} modelSlug={group.modelSlug} />;
+      body = <NativeMappingEditor key={group.modelId} modelId={group.modelId} modelSlug={group.modelSlug} onDraftChange={setMappingDraft} />;
     } else if (entry) {
       body = (
         <JudgePromptEditor
@@ -125,7 +126,15 @@ export function PromptsTab() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${uid}-lane`}>Lane</Label>
-        <NativeSelect id={`${uid}-lane`} value={lane} onChange={(event) => setLane(event.target.value)} className="max-w-sm">
+        <NativeSelect
+          id={`${uid}-lane`}
+          value={lane}
+          onChange={(event) => {
+            setLane(event.target.value);
+            setMappingDraft(null);
+          }}
+          className="max-w-sm"
+        >
           {[...GUARDRAIL_JUDGE_CHECK_IDS, MEDICAL].map((value) => (
             <NativeSelectOption key={value} value={value}>
               {LANE_LABEL[value] ?? value}
@@ -134,7 +143,7 @@ export function PromptsTab() {
         </NativeSelect>
       </div>
       <section aria-label={`${LANE_LABEL[lane] ?? lane} prompt`}>{body}</section>
-      <DryRunPanel defaultLanes={[lane]} draftPolicy={drafts} />
+      <DryRunPanel defaultLanes={[lane]} draftPolicy={drafts} draftJudgeMeta={mappingDraft ?? undefined} />
     </div>
   );
 }
