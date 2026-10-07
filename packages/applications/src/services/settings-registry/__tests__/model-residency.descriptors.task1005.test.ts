@@ -27,8 +27,12 @@ describe('model-residency descriptors (TASK-1005)', () => {
   });
 
   it('every key is a SYSTEM-only, platform-admin, global-kv, open-to-default tuning knob', () => {
-    expect(MODEL_RESIDENCY_SETTINGS).toHaveLength(8);
-    for (const descriptor of MODEL_RESIDENCY_SETTINGS) {
+    // TASK-1051: a ninth descriptor (`residency.shadowReviewedAt`, a string date record) joined the
+    // family; the eight TASK-1005 knobs are still asserted exactly as before, the new one separately below.
+    const knobs = MODEL_RESIDENCY_SETTINGS.filter((d) => d.key !== 'residency.shadowReviewedAt');
+    expect(knobs).toHaveLength(8);
+    expect(MODEL_RESIDENCY_SETTINGS).toHaveLength(9);
+    for (const descriptor of knobs) {
       expect(descriptor, descriptor.key).toMatchObject({
         tier: 'global-kv',
         maxScope: 'system',
@@ -37,6 +41,16 @@ describe('model-residency descriptors (TASK-1005)', () => {
         sensitivity: 'internal',
       });
     }
+  });
+
+  it('`residency.shadowReviewedAt` is a SYSTEM-only string date record, default null, validated as ISO 8601 (TASK-1051)', () => {
+    const d = MODEL_RESIDENCY_SETTINGS.find((x) => x.key === 'residency.shadowReviewedAt');
+    expect(d).toMatchObject({ tier: 'global-kv', maxScope: 'system', globalOnly: true, failMode: 'open-to-default', dataType: 'string', default: null });
+    expect(HOPE_SETTINGS_REGISTRY.get('residency.shadowReviewedAt')?.default).toBeNull();
+    expect(d?.validate?.(null)).toBeUndefined();
+    expect(d?.validate?.('2026-10-14')).toBeUndefined();
+    expect(d?.validate?.('yesterday')).toEqual(expect.any(String));
+    expect(d?.validate?.(5)).toEqual(expect.any(String));
   });
 
   it('puts `stt.warmDefaultAsrOnBoot` on the stt effective-config pull (where STT reads it) and nothing else', () => {

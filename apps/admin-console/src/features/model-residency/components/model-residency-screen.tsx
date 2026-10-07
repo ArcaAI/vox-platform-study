@@ -1,152 +1,197 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
+import { IconAlertTriangle, IconClock } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { cn } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
-import { Card } from '@arcaai/ui/components/shadcn/card';
+import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import {
   asModelResidencyConflict,
   isTerminalResidencyOperation,
   useModelResidencyOperation,
   type LmStudioResidencyLoadOptions,
+  type LoadModelResidencyResponse,
+  type ModelResidencyOperation,
 } from '@/shared/residency';
-import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
-import { ErrorState } from '@/shared/state/error-state';
-import { formatRelativeTime } from '@/shared/format';
-import { modelResidencyKeys, useLoadResidencyModel, useModelResidencyCatalogue, useUnloadResidencyModel } from '../api';
-import type { ResidencyCatalogueModel, ResidencyServiceGroup } from '../api/types';
-import { ForceActionDialog } from './force-action-dialog';
+import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
+import { modelResidencyKeys, useLoadResidencyModel, useModelResidencyCatalogue } from '../api';
+import type { ModelResidencyCatalogueResponse, ResidencyCatalogueModel, ResidencyServiceGroup } from '../api/types';
+import { AttentionStrip } from './attention-strip';
 import { GpuSummaryPanel } from './gpu-summary-panel';
+import { LinkInstanceDialog } from './link-instance-dialog';
+import { LoadPreviewDialog } from './load-preview-dialog';
 import { ModelDetailDrawer } from './model-detail-drawer';
-import { ServiceSection } from './service-section';
+import { ModelsTable, pendingKey } from './models-table';
+import { deriveAttentionItems, formatDataAge, formatReportingServices } from './residency-display';
 import { SuggestionsPanel } from './suggestions-panel';
+import { UnloadDialog } from './unload-dialog';
 
-type DrawerTarget = { service: ResidencyServiceGroup; model: ResidencyCatalogueModel };
-type ForceTarget = { kind: 'load' | 'unload'; service: ResidencyServiceGroup; model: ResidencyCatalogueModel };
+/** A row addressed by its stable keys — resolved against the LATEST catalogue on every render. */
+type RowKey = { service: string; modelRef: string };
+type Resolved = { service: ResidencyServiceGroup; model: ResidencyCatalogueModel };
+type PendingOperation = { operationId: string; name: string };
 
-function CatalogueSkeleton() {
+const READINESS_HREF = '/model-residency/readiness';
+const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+function resolve(data: ModelResidencyCatalogueResponse, key: RowKey | null): Resolved | null {
+  if (!key) return null;
+  const service = data.services.find((candidate) => candidate.service === key.service);
+  const model = service?.models.find((candidate) => candidate.modelRef === key.modelRef);
+  return service && model ? { service, model } : null;
+}
+
+function toKey(service: ResidencyServiceGroup, model: ResidencyCatalogueModel): RowKey {
+  return { service: service.service, modelRef: model.modelRef };
+}
+
+/**
+ * Polls ONE admitted load to a terminal state. One watcher per pending model
+ * (C-a): a second load no longer overwrites the first one's operation id.
+ */
+function OperationWatcher({ operationId, onTerminal }: { operationId: string; onTerminal: (operation: ModelResidencyOperation) => void }) {
+  const query = useModelResidencyOperation(operationId);
+  const operation = query.data;
+  useEffect(() => {
+    if (operation && isTerminalResidencyOperation(operation.status)) onTerminal(operation);
+  }, [operation, onTerminal]);
+  return null;
+}
+
+/** Body skeleton shared with the route's `loading.tsx` (rule 10: mirrors the loaded layout). */
+export function ModelResidencySkeleton() {
   return (
     <div className="flex flex-col gap-4" aria-hidden>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 2 }, (_, index) => (
-          <div key={index} className="flex flex-col gap-2 rounded-md border p-4">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="h-2 w-full" />
-          </div>
-        ))}
+      <div className="flex flex-col gap-2 rounded-xl border p-4">
+        <Skeleton className="h-5 w-48" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
       </div>
-      {Array.from({ length: 3 }, (_, index) => (
-        <div key={index} className="flex flex-col gap-3 rounded-md border p-4">
-          <Skeleton className="h-4 w-56" />
-          {Array.from({ length: 2 }, (__, row) => (
-            <Skeleton key={row} className="h-8 w-full" />
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <Skeleton className="h-5 w-32" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: 2 }, (_, index) => (
+              <div key={index} className="flex flex-col gap-3 rounded-xl border p-4">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-6 w-40" />
+                <Skeleton className="h-4 w-full" />
+                {Array.from({ length: 3 }, (__, line) => (
+                  <Skeleton key={line} className="h-3 w-3/4" />
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col gap-3 rounded-xl border p-4">
+            <Skeleton className="h-5 w-28" />
+            <div className="flex gap-4">
+              {Array.from({ length: 4 }, (_, index) => (
+                <Skeleton key={index} className="h-6 w-28" />
+              ))}
+            </div>
+            <div className="flex gap-2">
+              {Array.from({ length: 4 }, (_, index) => (
+                <Skeleton key={index} className="h-8 w-24 rounded-full" />
+              ))}
+            </div>
+            {Array.from({ length: 6 }, (_, index) => (
+              <Skeleton key={index} className="h-10 w-full" />
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 rounded-xl border p-4">
+          <Skeleton className="h-5 w-40" />
+          {Array.from({ length: 2 }, (_, index) => (
+            <div key={index} className="flex flex-col gap-2">
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-8 w-40" />
+            </div>
           ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
 
+function ReadinessLink() {
+  return (
+    <Button asChild variant="outline" size="sm">
+      <Link href={READINESS_HREF}>Enforce readiness</Link>
+    </Button>
+  );
+}
+
 /**
- * Model residency (ticket §13 — the catalogue-first redesign). Every
- * self-hosted `AiModel`, grouped by the service that can run it, loaded or
- * not — so "which model will be loaded and handled by what service" (the
- * owner's complaint about the shipped screen) is answered by the page
- * itself. Platform-admin only (D-11, reconfirmed 2026-09-25), no tenant
- * scope. One `GET admin/model-residency/catalogue` read, polled every 10s.
+ * Model residency overview (TASK-1051 artboard 01). Every model each service
+ * can run — loaded or not — in ONE table grouped by service, with what needs
+ * attention first, the GPU memory picture, and the shadow-mode
+ * recommendations beside the content. Platform-admin only (D-11), no tenant
+ * scope. One `GET admin/model-residency/catalogue` read, polled every 10 s.
+ *
+ * Load / unload / link go through lane C2's dialogs (each toasts its own
+ * outcome); the screen tracks the async load OPERATIONS they admit, one per
+ * model, and toasts each terminal state exactly once.
  */
 export function ModelResidencyScreen() {
   const catalogue = useModelResidencyCatalogue();
   const queryClient = useQueryClient();
-  const loadMutation = useLoadResidencyModel();
-  const unloadMutation = useUnloadResidencyModel();
+  const reload = useLoadResidencyModel();
 
-  const [drawerTarget, setDrawerTarget] = useState<DrawerTarget | null>(null);
-  const [forceTarget, setForceTarget] = useState<ForceTarget | null>(null);
-  const [confirmUnloadTarget, setConfirmUnloadTarget] = useState<DrawerTarget | null>(null);
-  const [pendingOperationId, setPendingOperationId] = useState<string | null>(null);
-  const operationQuery = useModelResidencyOperation(pendingOperationId);
+  const [drawerKey, setDrawerKey] = useState<RowKey | null>(null);
+  const [loadKey, setLoadKey] = useState<RowKey | null>(null);
+  const [unloadKey, setUnloadKey] = useState<RowKey | null>(null);
+  const [linkKey, setLinkKey] = useState<RowKey | null>(null);
 
-  // The load/reload route is asynchronous (~100s for a real LLM, past
-  // Cloudflare's 100s edge timeout), so it only ADMITS the load. Poll the
-  // operation to a terminal state, then refresh the catalogue so the
-  // optimistic "loading" row is replaced by the real one (or removed, on
-  // failure). No `setPendingOperationId` here: `refetchInterval` already
-  // stops once terminal, and the id is overwritten by the next load anyway.
-  useEffect(() => {
-    const operation = operationQuery.data;
-    if (!operation || !isTerminalResidencyOperation(operation.status)) return;
-    void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() });
-    if (operation.status === 'succeeded') {
-      toast.success(`${operation.modelRef} loaded.`);
-    } else {
-      toast.error(operation.error?.message || `Loading ${operation.modelRef} failed.`);
-    }
-  }, [operationQuery.data, queryClient]);
+  // C-a: pending operations keyed per model; C-b: ids already toasted.
+  const [pending, setPending] = useState<Record<string, PendingOperation>>({});
+  const toasted = useRef(new Set<string>());
 
-  function requestLoad(service: ResidencyServiceGroup, model: ResidencyCatalogueModel, force = false, reason?: string) {
-    loadMutation.mutate(
-      { service: service.service, modelRef: model.modelRef, force, reason: force ? reason : undefined },
-      {
-        onSuccess: (response) => {
-          setForceTarget(null);
-          if (response.outcome === 'already_loaded') {
-            toast.success(`${model.name} is already resident.`);
-            return;
-          }
-          setPendingOperationId(response.operationId ?? null);
-          toast.success(`Loading ${model.name}…`);
-        },
-        onError: (error) => {
-          const conflict = asModelResidencyConflict(error);
-          if (conflict?.code === 'OVER_BUDGET' && !force) {
-            setForceTarget({ kind: 'load', service, model });
-            return;
-          }
-          toast.error(conflict?.message || `Couldn't load ${model.name}.`);
-        },
-      },
-    );
-  }
+  const track = useCallback((service: string, modelRef: string, operationId: string, name: string) => {
+    setPending((current) => ({ ...current, [pendingKey(service, modelRef)]: { operationId, name } }));
+  }, []);
 
-  function requestUnload(service: ResidencyServiceGroup, model: ResidencyCatalogueModel, force = false, reason?: string) {
-    unloadMutation.mutate(
-      { service: service.service, modelRef: model.modelRef, force, reason: force ? reason : undefined },
-      {
-        onSuccess: () => {
-          toast.success(`${model.name} unloaded.`);
-          setForceTarget(null);
-          setConfirmUnloadTarget(null);
-        },
-        onError: (error) => {
-          const conflict = asModelResidencyConflict(error);
-          if (conflict?.code === 'IN_FLIGHT') {
-            setConfirmUnloadTarget(null);
-            setForceTarget({ kind: 'unload', service, model });
-            return;
-          }
-          toast.error(conflict?.message || `Couldn't unload ${model.name}.`);
-        },
-      },
-    );
-  }
+  const handleTerminal = useCallback(
+    (key: string, name: string, operation: ModelResidencyOperation) => {
+      if (toasted.current.has(operation.id)) return;
+      toasted.current.add(operation.id);
+      if (operation.status === 'succeeded') toast.success(`${name} loaded.`);
+      else toast.error(operation.error?.message || `Loading ${name} failed.`);
+      setPending((current) => {
+        if (current[key]?.operationId !== operation.id) return current;
+        return Object.fromEntries(Object.entries(current).filter(([candidate]) => candidate !== key));
+      });
+      void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() });
+    },
+    [queryClient],
+  );
 
-  function handleUnloadClick(service: ResidencyServiceGroup, model: ResidencyCatalogueModel) {
-    if (model.residency && model.residency.inFlight > 0) {
-      setForceTarget({ kind: 'unload', service, model });
-    } else {
-      setConfirmUnloadTarget({ service, model });
+  const pendingKeys = useMemo(() => new Set(Object.keys(pending)), [pending]);
+
+  const openLoad = useCallback((service: ResidencyServiceGroup, model: ResidencyCatalogueModel) => setLoadKey(toKey(service, model)), []);
+  const openUnload = useCallback((service: ResidencyServiceGroup, model: ResidencyCatalogueModel) => setUnloadKey(toKey(service, model)), []);
+  const openLink = useCallback((service: ResidencyServiceGroup, model: ResidencyCatalogueModel) => setLinkKey(toKey(service, model)), []);
+  const openDrawer = useCallback((service: ResidencyServiceGroup, model: ResidencyCatalogueModel) => setDrawerKey(toKey(service, model)), []);
+
+  function handleAdmitted(target: Resolved, response: LoadModelResidencyResponse) {
+    setLoadKey(null);
+    // The dialog toasts only its failures; an accepted load is followed to its terminal state, an already-resident one is said here.
+    if (response.outcome === 'accepted' && response.operationId) {
+      track(target.service.service, target.model.modelRef, response.operationId, target.model.name);
+    } else if (response.outcome === 'already_loaded') {
+      toast.success(`${target.model.name} is already loaded.`);
     }
   }
 
   function handleReload(service: ResidencyServiceGroup, model: ResidencyCatalogueModel, options: LmStudioResidencyLoadOptions) {
-    loadMutation.mutate(
+    reload.mutate(
       { service: service.service, modelRef: model.modelRef, replace: true, options },
       {
         onSuccess: (response) => {
@@ -154,28 +199,26 @@ export function ModelResidencyScreen() {
             toast.success(`${model.name} is already resident on that profile.`);
             return;
           }
-          setPendingOperationId(response.operationId ?? null);
-          toast.success(`Reloading ${model.name}…`);
+          if (response.operationId) track(service.service, model.modelRef, response.operationId, model.name);
         },
-        onError: (error) => {
-          const conflict = asModelResidencyConflict(error);
-          toast.error(conflict?.message || `Couldn't reload ${model.name}.`);
-        },
+        onError: (error) => toast.error(asModelResidencyConflict(error)?.message || `Couldn't reload ${model.name}.`),
       },
     );
   }
 
+  const header = (meta?: ReactNode) => <PageHeader title="Model residency" meta={meta} actions={<ReadinessLink />} />;
+
   if (catalogue.isLoading) {
     return (
-      <ScreenTemplate header={<PageHeader title="Model residency" />}>
-        <CatalogueSkeleton />
+      <ScreenTemplate header={header()}>
+        <ModelResidencySkeleton />
       </ScreenTemplate>
     );
   }
 
   if (catalogue.error && !catalogue.data) {
     return (
-      <ScreenTemplate header={<PageHeader title="Model residency" />}>
+      <ScreenTemplate header={header()}>
         <ErrorState error={catalogue.error} onRetry={() => void catalogue.refetch()} />
       </ScreenTemplate>
     );
@@ -184,35 +227,44 @@ export function ModelResidencyScreen() {
   const data = catalogue.data;
   if (!data) return null;
 
-  const actionPending = loadMutation.isPending || unloadMutation.isPending;
+  const now = new Date();
+  const stale = data.freshness.staleServices;
+  const staleLabels = stale.map((id) => data.services.find((service) => service.service === id)?.label ?? id);
+  const freshness = [
+    formatReportingServices(data.services, stale),
+    formatDataAge(data.freshness.oldestReportAt, now),
+    ...(stale.length > 0 ? [`stale: ${staleLabels.join(', ')}`] : []),
+  ].join(' · ');
+
+  const drawer = resolve(data, drawerKey);
+  const loadTarget = resolve(data, loadKey);
+  const unloadTarget = resolve(data, unloadKey);
+  const linkTarget = resolve(data, linkKey);
 
   return (
     <>
       <ScreenTemplate
-        header={
-          <PageHeader
-            title="Model residency"
-            meta={
-              <>
-                <Badge variant="secondary">{data.mode === 'shadow' ? 'Suggestions only — nothing is loaded automatically' : 'Automatic'}</Badge>
-                <span>
-                  {data.freshness.staleServices.length > 0
-                    ? `Stale reports from: ${data.freshness.staleServices.join(', ')}`
-                    : `Every service reported within ${data.freshness.maxAgeSeconds}s`}
-                </span>
-              </>
-            }
-          />
-        }
-        stats={
-          <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-            <GpuSummaryPanel devices={data.devices} />
-            <SuggestionsPanel suggestions={data.suggestions} />
-          </div>
-        }
+        header={header(
+          <>
+            <Badge variant="secondary">
+              <IconClock aria-hidden />
+              {data.mode === 'shadow' ? 'Shadow mode — recommends, never acts' : 'Automatic'}
+            </Badge>
+            <Badge
+              variant="outline"
+              data-testid="residency-freshness"
+              data-stale={stale.length > 0 ? 'true' : 'false'}
+              className={cn('whitespace-normal', stale.length > 0 && 'border-warning-strong/50 text-warning-strong')}
+            >
+              {stale.length > 0 ? <IconAlertTriangle aria-hidden /> : null}
+              {freshness}
+            </Badge>
+          </>,
+        )}
+        statusBanner={catalogue.error ? <ErrorBanner error={catalogue.error} onRetry={() => void catalogue.refetch()} /> : undefined}
         footer={
           <StatusFooter
-            start={<span>auto-refresh 10s &middot; reported {formatRelativeTime(data.reportedAt)}</span>}
+            start={<span>auto-refresh 10 s &middot; catalogue observed {timeFormat.format(new Date(data.reportedAt))}</span>}
             end={
               <span aria-hidden className="font-mono">
                 GET /admin/model-residency/catalogue
@@ -222,74 +274,88 @@ export function ModelResidencyScreen() {
         }
       >
         <div className="flex flex-col gap-4">
-          {data.services.map((service) => (
-            <ServiceSection
-              key={service.service}
-              service={service}
-              devices={data.devices}
-              onLoad={requestLoad}
-              onUnload={handleUnloadClick}
-              onOpenDrawer={(service, model) => setDrawerTarget({ service, model })}
-            />
-          ))}
-          <Card className="gap-1 p-4">
-            <p className="text-muted-foreground text-xs">
-              &ldquo;Always loaded&rdquo; means a live-consultation agent uses the model, or a platform admin pinned it &mdash; the controller never
-              unloads it. Sizes shown with a leading ~ are catalogue estimates; sizes without one are measured on the running instance.
-            </p>
-          </Card>
+          <AttentionStrip items={deriveAttentionItems(data)} onLink={openLink} onLoad={openLoad} />
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="flex min-w-0 flex-col gap-4">
+              <GpuSummaryPanel devices={data.devices} />
+              <ModelsTable
+                services={data.services}
+                devices={data.devices}
+                pendingKeys={pendingKeys}
+                onLoad={openLoad}
+                onUnload={openUnload}
+                onLink={openLink}
+                onOpenDrawer={openDrawer}
+              />
+            </div>
+            <SuggestionsPanel suggestions={data.suggestions} services={data.services} onApplyLoad={openLoad} onApplyUnload={openUnload} now={now} />
+          </div>
         </div>
       </ScreenTemplate>
 
-      {drawerTarget ? (
+      {Object.entries(pending).map(([key, operation]) => (
+        <OperationWatcher
+          key={operation.operationId}
+          operationId={operation.operationId}
+          onTerminal={(result) => handleTerminal(key, operation.name, result)}
+        />
+      ))}
+
+      {drawer ? (
         <ModelDetailDrawer
           open
           onOpenChange={(next) => {
-            if (!next) setDrawerTarget(null);
+            if (!next) setDrawerKey(null);
           }}
-          service={drawerTarget.service}
-          model={drawerTarget.model}
+          service={drawer.service}
+          model={drawer.model}
           devices={data.devices}
-          actionPending={actionPending}
-          onLoad={requestLoad}
-          onUnload={handleUnloadClick}
+          actionPending={reload.isPending}
+          onLoad={openLoad}
+          onUnload={openUnload}
           onReload={handleReload}
+          onLink={openLink}
         />
       ) : null}
 
-      <ConfirmDialog
-        open={confirmUnloadTarget !== null}
-        onOpenChange={(next) => {
-          if (!next) setConfirmUnloadTarget(null);
-        }}
-        title={confirmUnloadTarget ? `Unload ${confirmUnloadTarget.model.name}?` : ''}
-        description="Frees this model's device memory. A future request loads it again on the usual keep policy."
-        confirmLabel="Unload"
-        isPending={unloadMutation.isPending}
-        onConfirm={() => {
-          if (confirmUnloadTarget) requestUnload(confirmUnloadTarget.service, confirmUnloadTarget.model);
-        }}
-      />
+      {loadTarget ? (
+        <LoadPreviewDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setLoadKey(null);
+          }}
+          service={loadTarget.service}
+          model={loadTarget.model}
+          onAdmitted={(response) => handleAdmitted(loadTarget, response)}
+        />
+      ) : null}
 
-      <ForceActionDialog
-        open={forceTarget !== null}
-        onOpenChange={(next) => {
-          if (!next) setForceTarget(null);
-        }}
-        title={forceTarget ? `Force ${forceTarget.kind === 'load' ? 'load' : 'unload'} ${forceTarget.model.name}?` : ''}
-        description={
-          forceTarget?.kind === 'load'
-            ? 'The controller refused this load against the measured free memory on the target device.'
-            : `This model is serving ${forceTarget?.model.residency?.inFlight ?? 'some'} request(s) right now. Forcing the unload drops them in flight.`
-        }
-        confirmLabel={forceTarget?.kind === 'load' ? 'Force load' : 'Force unload'}
-        isPending={actionPending}
-        onConfirm={(reason) => {
-          if (!forceTarget) return;
-          if (forceTarget.kind === 'load') requestLoad(forceTarget.service, forceTarget.model, true, reason);
-          else requestUnload(forceTarget.service, forceTarget.model, true, reason);
-        }}
-      />
+      {unloadTarget ? (
+        <UnloadDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setUnloadKey(null);
+          }}
+          service={unloadTarget.service}
+          model={unloadTarget.model}
+          onUnloaded={() => setUnloadKey(null)}
+        />
+      ) : null}
+
+      {linkTarget ? (
+        <LinkInstanceDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setLinkKey(null);
+          }}
+          service={linkTarget.service}
+          model={linkTarget.model}
+          onLinked={() => {
+            setLinkKey(null);
+            setDrawerKey(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }

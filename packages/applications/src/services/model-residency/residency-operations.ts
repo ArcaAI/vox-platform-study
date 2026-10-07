@@ -1,4 +1,5 @@
-import type { ResidencyOperationStatus } from './model-residency.types';
+import type { ModelResidencyRecommendation } from './dto';
+import type { RecommendationAction, RecommendationReason, ResidencyOperationStatus } from './model-residency.types';
 
 /**
  * TASK-1005 — the in-memory record of asynchronous loads.
@@ -69,4 +70,126 @@ export class ResidencyOperationRegistry {
       if (op.status !== 'running') this.operations.delete(id);
     }
   }
+}
+
+// ── TASK-1051 F4 — standing recommendations ────────────────────────────────────
+
+/** The fields of a controller decision the recommendation store keeps. */
+export interface ResidencyConclusion {
+  action: RecommendationAction;
+  service: string;
+  modelRef: string;
+  reason: RecommendationReason;
+}
+
+/** A recommendation as the store holds it: the wire shape plus when it was last confirmed (ms). */
+type StoredRecommendation = ModelResidencyRecommendation & { lastMs: number };
+
+export interface ShadowCounts {
+  loads: number;
+  unloads: number;
+  refusedOverBudget: number;
+  duplicateLoads: number;
+}
+
+const conclusionOf = (c: Pick<ResidencyConclusion, 'action' | 'reason'>): string => `${c.action}|${c.reason}`;
+const pairOf = (c: Pick<ResidencyConclusion, 'service' | 'modelRef'>): string => `${c.service}|${c.modelRef}`;
+const strip = ({ lastMs: _lastMs, ...wire }: StoredRecommendation): ModelResidencyRecommendation => ({ ...wire });
+
+/**
+ * TASK-1051 F4 (D-2) — the controller's recommendations, in memory, per process.
+ *
+ * SHADOW: ONE standing row per `action|service|modelRef|reason`. The controller
+ * reaches the same conclusion every 10 s tick; a repeat refreshes `at` (last
+ * confirmed) and `repeats` and keeps `id` and `firstSeenAt`, so the console sees
+ * four rows, not a hundred copies of them. A row not re-confirmed within
+ * `staleAfterMs` is no longer the controller's opinion and is omitted (and a later
+ * recurrence starts a new row).
+ *
+ * ENFORCE: an append-only bounded log (the command was sent; each one is an event),
+ * newest first, with `firstSeenAt = at` and `repeats = 1`.
+ *
+ * DISMISS hides a conclusion for one (service, model) until the controller records
+ * a DIFFERENT conclusion for that pair; then the dismissal clears.
+ */
+export class ResidencyRecommendationStore {
+  private readonly standing = new Map<string, StoredRecommendation>();
+  private readonly log: StoredRecommendation[] = [];
+  /** `service|modelRef` → the dismissed `action|reason`. */
+  private readonly dismissed = new Map<string, string>();
+  readonly counts: ShadowCounts = { loads: 0, unloads: 0, refusedOverBudget: 0, duplicateLoads: 0 };
+  /** When the first shadow row of this process was recorded. */
+  earliestShadowAt: number | null = null;
+
+  constructor(
+    private readonly staleAfterMs = 60_000,
+    private readonly logCapacity = 200,
+  ) {}
+
+  /** Record a shadow conclusion; `created` is false when it re-confirmed a standing row. */
+  recordShadow(decision: ResidencyConclusion, id: string, now: number): { recommendation: ModelResidencyRecommendation; created: boolean } {
+    this.clearDismissalOnChange(decision);
+    const key = `${conclusionOf(decision)}|${pairOf(decision)}`;
+    const existing = this.standing.get(key);
+    if (existing && now - existing.lastMs <= this.staleAfterMs) {
+      existing.lastMs = now;
+      existing.at = new Date(now).toISOString();
+      existing.repeats += 1;
+      return { recommendation: existing, created: false };
+    }
+    const at = new Date(now).toISOString();
+    const row: StoredRecommendation = { id, at, firstSeenAt: at, repeats: 1, ...pick(decision), mode: 'shadow', applied: false, lastMs: now };
+    this.standing.set(key, row);
+    this.earliestShadowAt ??= now;
+    this.count(decision);
+    return { recommendation: row, created: true };
+  }
+
+  /** Record an enforce-mode event. The returned object is the stored one (`applied` is flipped on it when the command settles). */
+  recordEnforce(decision: ResidencyConclusion, id: string, applied: boolean, now: number): ModelResidencyRecommendation {
+    this.clearDismissalOnChange(decision);
+    const at = new Date(now).toISOString();
+    const row: StoredRecommendation = { id, at, firstSeenAt: at, repeats: 1, ...pick(decision), mode: 'enforce', applied, lastMs: now };
+    this.log.unshift(row);
+    if (this.log.length > this.logCapacity) this.log.length = this.logCapacity;
+    this.count(decision);
+    return row;
+  }
+
+  /** Live standing rows and the enforce log, dismissed ones omitted, most recently confirmed first (copies). */
+  visible(now: number): ModelResidencyRecommendation[] {
+    this.prune(now);
+    return [...this.standing.values(), ...this.log]
+      .filter((row) => this.dismissed.get(pairOf(row)) !== conclusionOf(row))
+      .sort((a, b) => b.lastMs - a.lastMs)
+      .map(strip);
+  }
+
+  /** Hide a live recommendation; false when no such id is known. */
+  dismiss(id: string, now: number): boolean {
+    this.prune(now);
+    const row = [...this.standing.values(), ...this.log].find((r) => r.id === id);
+    if (!row) return false;
+    this.dismissed.set(pairOf(row), conclusionOf(row));
+    return true;
+  }
+
+  private clearDismissalOnChange(decision: ResidencyConclusion): void {
+    const dismissed = this.dismissed.get(pairOf(decision));
+    if (dismissed !== undefined && dismissed !== conclusionOf(decision)) this.dismissed.delete(pairOf(decision));
+  }
+
+  private prune(now: number): void {
+    for (const [key, row] of this.standing) if (now - row.lastMs > this.staleAfterMs) this.standing.delete(key);
+  }
+
+  private count(decision: ResidencyConclusion): void {
+    if (decision.reason === 'admission_rejected') this.counts.refusedOverBudget += 1;
+    else if (decision.action === 'load') this.counts.loads += 1;
+    else if (decision.action === 'unload') this.counts.unloads += 1;
+  }
+}
+
+function pick(decision: ResidencyConclusion): ResidencyConclusion {
+  return { action: decision.action, service: decision.service, modelRef: decision.modelRef, reason: decision.reason };
 }

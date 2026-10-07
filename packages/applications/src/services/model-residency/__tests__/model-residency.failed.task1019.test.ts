@@ -96,6 +96,7 @@ function build() {
         provider: 'lm-studio',
         wireModelId: GEMMA,
         format: 'GGUF',
+        memorySizeMb: 3000, // TASK-1051: a never-measured row with no memorySizeMb is refused 409 NO_SIZE
       }),
     ] as Row[],
   };

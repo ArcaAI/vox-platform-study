@@ -35,6 +35,14 @@ export const MODEL_RESIDENCY_DEFAULTS = {
 
 export type ModelResidencySettingKey = keyof typeof MODEL_RESIDENCY_DEFAULTS;
 
+/**
+ * TASK-1051 — when an administrator recorded the review of the shadow log (an ISO
+ * date). Read by the enforce-readiness checklist only; absent (null) = no review on
+ * file. Kept out of `MODEL_RESIDENCY_DEFAULTS` because that map is the controller's
+ * numeric/boolean tuning set, and this is a record, not a knob.
+ */
+export const RESIDENCY_SHADOW_REVIEWED_AT_KEY = 'residency.shadowReviewedAt';
+
 /** An inclusive bound, refused rather than clamped so an admin is told. */
 const numberBetween =
   (min: number, max: number, what: string, integer = true) =>
@@ -130,6 +138,22 @@ export const MODEL_RESIDENCY_SETTINGS: SettingDescriptor[] = [
       'How long an automatic (enforce-mode) load waits for the one-load-per-GPU gate before deferring to the next tick. Owner decision OD-2: wait at most 5 s for room, then give up (a live request gets 503 + `Retry-After` from the serving agent).',
     default: MODEL_RESIDENCY_DEFAULTS['residency.admission.maxWaitMs'],
     validate: numberBetween(0, 60_000, 'Admission wait'),
+  },
+  {
+    ...PLATFORM_KNOB,
+    key: RESIDENCY_SHADOW_REVIEWED_AT_KEY,
+    dataType: 'string',
+    category: CATEGORY,
+    label: 'Model residency: shadow review recorded on',
+    description:
+      'The date (ISO 8601) an administrator reviewed the shadow-mode recommendation log (owner decision OD-1 of TASK-1005: review the log before turning `residency.enforce` on). Read ONLY by the enforce-readiness checklist (`GET admin/model-residency/readiness`); it enables nothing by itself. Empty = no review on file.',
+    default: null,
+    validate: (value: unknown) => {
+      if (value === null) return undefined;
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(value) || Number.isNaN(Date.parse(value))) {
+        return 'Shadow review date must be an ISO 8601 date (e.g. 2026-10-14 or 2026-10-14T09:00:00Z).';
+      }
+    },
   },
   {
     ...PLATFORM_KNOB,
