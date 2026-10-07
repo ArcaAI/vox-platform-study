@@ -73,6 +73,8 @@ import { normalizeScribeStatus } from '../api/types';
 import { useColumnLayout } from '../hooks/use-column-layout';
 import { useConsultationGuardrail } from '../hooks/use-consultation-guardrail';
 import { GuardrailWarningDialog } from '@/shared/guardrail/guardrail-warning-dialog';
+import { approveResolutionsFor, isRedactionUnavailableNotice } from '@/shared/guardrail/notice';
+import type { GuardrailHoldResolution } from '@arcaai/types';
 import { ConsultationGuardrailBadge, ConsultationGuardrailSlot } from './scribe/consultation-guardrail-slot';
 import { useLiveMetrics } from '../hooks/use-live-metrics';
 import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
@@ -677,15 +679,18 @@ function ScribeWorkspace() {
   function handleApprove({
     overrideSafetyFlag,
     acknowledgeGuardrailNotices,
+    resolveHold,
   }: {
     overrideSafetyFlag: boolean;
     acknowledgeGuardrailNotices?: boolean;
+    resolveHold?: GuardrailHoldResolution;
   }) {
     if (!consultation || !draft.data?.id) return;
     // TASK-1050 §9.8.3: one action — the confirm step showed the outstanding warnings, and the server
     // acknowledges every one of them inside the approve transaction. Warnings never block signing.
     approve.mutate(
-      { overrideSafetyFlag, acknowledgeGuardrailNotices },
+      // OD-24: an inbound hold is resolved inside the same approve transaction (`resolveHold`).
+      { overrideSafetyFlag, acknowledgeGuardrailNotices, ...(resolveHold ? { resolveHold } : {}) },
       {
         onSuccess: (result) => {
           setApproved(true);
@@ -745,6 +750,24 @@ function ScribeWorkspace() {
       return latest ? { id: latest.id, content: latest.content, version: latest.version } : null;
     },
   });
+
+  /**
+   * TASK-1050 OD-24 — signing during a guardrail hold. An INBOUND safety hold may be resolved and signed
+   * in one action (only its allowed resolutions). An OUTBOUND hold withheld the note: sign stays
+   * disabled until the hold is resumed and the note regenerated; likewise the egress-redaction pause,
+   * which is retried, and a block that arrived without a notice.
+   */
+  const approveResolutions = guardrail.blocking ? approveResolutionsFor(guardrail.blocking) : [];
+  const approveHold = guardrail.blocking && approveResolutions.length > 0 ? { notice: guardrail.blocking, resolutions: approveResolutions } : null;
+  const holdSignReason = guardrail.blocking
+    ? isRedactionUnavailableNotice(guardrail.blocking)
+      ? 'Processing is paused: retry it in the case note before signing.'
+      : guardrail.blocking.direction === 'outbound'
+        ? 'The note was withheld by a safety check. Resume the hold and regenerate the note before signing.'
+        : 'Resolve the guardrail hold before signing.'
+    : guardrail.errorBlock
+      ? 'Resolve the guardrail hold before signing.'
+      : null;
 
   // Harness owns drafting once its progress stream reports stages — hide the
   // manual generate action then (avoids the generate-vs-auto-harness race).
@@ -871,7 +894,8 @@ function ScribeWorkspace() {
               approvePending={approve.isPending}
               approved={approved}
               approveWarnings={guardrail.outstandingWarnings}
-              approveDisabledReason={guardrail.blocking || guardrail.errorBlock ? 'Resolve the guardrail hold before signing.' : null}
+              approveHold={approveHold}
+              approveDisabledReason={approveHold ? null : holdSignReason}
               guardrailSlot={
                 <ConsultationGuardrailSlot
                   blocking={guardrail.blocking}

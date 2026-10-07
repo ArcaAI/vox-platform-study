@@ -11,7 +11,7 @@ import {
   guardrailVerdictLabel,
 } from '@/shared/guardrail/labels';
 import { useItemRuns } from '../../api';
-import { useGuardrailEvaluations } from '../../api/guardrail';
+import { useRunGuardrailEvaluations } from '../../api/guardrail';
 import { formatDuration, formatRunCost, formatTokenPair } from './activity-format';
 
 /** The AI runs that produced the viewed version, one row per workflow step. */
@@ -66,20 +66,15 @@ export function RunDetail({ consultationId, itemId, version }: { consultationId:
   );
 }
 
-/** The newest evaluations scanned for a run's checks (the route has no run filter yet). */
-const RUN_CHECK_SCAN_LIMIT = 100;
-
 /**
  * TASK-1050 W3b — the guardrail checks of the run(s) that produced this version: every screen of those
  * runs, direction by direction, with each check's verdict and what was done. Verdicts only, no content.
- * Matched on `runId` / `runKey` from the newest evaluations of the consultation.
+ * Asked by run (`runId` / `runKey` filters) and matched again client-side, in case a gateway ignores them.
  */
 export function RunGuardrailChecks({ consultationId, runIds }: { consultationId: string; runIds: readonly string[] }) {
-  const evaluations = useGuardrailEvaluations(consultationId, { limit: RUN_CHECK_SCAN_LIMIT }, runIds.length > 0);
-  if (runIds.length === 0 || evaluations.isError) return null;
-  if (evaluations.isPending) return <Skeleton className="h-10 w-full" />;
-  const wanted = new Set(runIds);
-  const rows = evaluations.data.items.filter((row) => (row.runId && wanted.has(row.runId)) || (row.runKey && wanted.has(row.runKey)));
+  const { rows, isPending, isError } = useRunGuardrailEvaluations(consultationId, runIds);
+  if (runIds.length === 0 || isError) return null;
+  if (isPending) return <Skeleton className="h-10 w-full" />;
   if (rows.length === 0) return null;
   return (
     <section aria-label="Guardrail checks of this run" className="flex flex-col gap-2">

@@ -41,6 +41,7 @@ import { planTestInputs } from './lib/test-inputs';
 import { RunStatusBar } from './run-status-bar';
 import { StepPanel, type StepPanelNode } from './step-panel';
 import { TestFlow } from './test-flow';
+import { TestGuardrailPanel } from './test-guardrail-panel';
 import { TestInputPanel, type TestInputState } from './test-input-panel';
 import { useAttachments } from './use-attachments';
 import { useTestRun } from './use-test-run';
@@ -106,7 +107,10 @@ function TestSurface({ definitionId }: TestTabProps) {
   const setHidePhi = useCallback((hide: boolean) => storeApi.getState().setHidePhi(hide), [storeApi]);
   const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
 
-  const plan = useMemo(() => planTestInputs({ nodes, agentOptions, contextSchema: composer?.contextSchema }), [nodes, agentOptions, composer?.contextSchema]);
+  const plan = useMemo(
+    () => planTestInputs({ nodes, agentOptions, contextSchema: composer?.contextSchema }),
+    [nodes, agentOptions, composer?.contextSchema],
+  );
   const attachments = useAttachments(plan.attach?.mimeTypes ?? NO_MIME_TYPES);
   const clearAttachments = attachments.clear;
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -139,11 +143,20 @@ function TestSurface({ definitionId }: TestTabProps) {
   const kinds: ContextKindRow[] = useMemo(() => {
     const schema = composer?.contextSchema;
     if (!isRecord(schema) || !Array.isArray(schema.kinds)) return [];
-    return schema.kinds.filter(isRecord).flatMap((kind) =>
-      typeof kind.key === 'string'
-        ? [{ key: kind.key, label: typeof kind.label === 'string' ? kind.label : kind.key, primitive: typeof kind.primitive === 'string' ? kind.primitive : 'STRUCTURED', phi: kind.phiClass === 'PHI' }]
-        : [],
-    );
+    return schema.kinds
+      .filter(isRecord)
+      .flatMap((kind) =>
+        typeof kind.key === 'string'
+          ? [
+              {
+                key: kind.key,
+                label: typeof kind.label === 'string' ? kind.label : kind.key,
+                primitive: typeof kind.primitive === 'string' ? kind.primitive : 'STRUCTURED',
+                phi: kind.phiClass === 'PHI',
+              },
+            ]
+          : [],
+      );
   }, [composer?.contextSchema]);
 
   const variableStepIds = useMemo(() => nodes.filter((node) => node.type === 'core.variable').map((node) => node.id), [nodes]);
@@ -185,7 +198,8 @@ function TestSurface({ definitionId }: TestTabProps) {
       return { value: null, problem: 'Other input is not valid JSON.' };
     }
   }, [plan.extraKinds.length, input.extraJson]);
-  const recordUnavailable = input.record && plan.record && tenantId === null ? 'Recording needs a working tenant: pick one from the switcher in the top bar.' : null;
+  const recordUnavailable =
+    input.record && plan.record && tenantId === null ? 'Recording needs a working tenant: pick one from the switcher in the top bar.' : null;
 
   const runTest = useCallback(async () => {
     const payload: Record<string, unknown> = { ...(extra.value ?? {}) };
@@ -265,7 +279,12 @@ function TestSurface({ definitionId }: TestTabProps) {
   })();
 
   const originTs = live.startedAt ?? events[0]?.ts;
-  const recordingState = recorder.status === 'recording' || recorder.status === 'starting' ? 'live' : recordedRunId !== null && recordedRunId === controller.runId ? 'ended' : null;
+  const recordingState =
+    recorder.status === 'recording' || recorder.status === 'starting'
+      ? 'live'
+      : recordedRunId !== null && recordedRunId === controller.runId
+        ? 'ended'
+        : null;
 
   return (
     <div className="flex shrink-0 flex-col gap-4" data-slot="workflow-test-tab" data-definition-id={definitionId}>
@@ -281,7 +300,10 @@ function TestSurface({ definitionId }: TestTabProps) {
         </div>
       ) : null}
       {controller.streamError ? (
-        <div role="alert" className="border-destructive/40 bg-destructive/10 text-destructive flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
+        <div
+          role="alert"
+          className="border-destructive/40 bg-destructive/10 text-destructive flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm"
+        >
           <span>The trace connection was lost: {controller.streamError}</span>
           <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={controller.reconnect}>
             Reconnect
@@ -296,6 +318,7 @@ function TestSurface({ definitionId }: TestTabProps) {
             <TestFlow view={view} />
           </div>
           <StepPanel node={stepNode} run={stepNodeId ? view.nodes[stepNodeId] : undefined} hidePhi={hidePhi} live={!timeTravelling} />
+          <TestGuardrailPanel view={view} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <TestInputPanel

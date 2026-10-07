@@ -83,4 +83,51 @@ describe('CaseNoteColumn — guardrail', () => {
     expect(within(note).getByText('slot-content')).toBeDefined();
     expect(within(note).getByText('badge-content')).toBeDefined();
   });
+
+  it('an INBOUND hold offers "Resolve & sign" with only the allowed resolutions, in one action', () => {
+    const onApprove = vi.fn();
+    const hold: GuardrailNotice = {
+      ...warning,
+      noticeId: 'b-1',
+      type: 'guardrail.blocked',
+      action: 'block',
+      direction: 'inbound',
+      checks: [{ checkId: 'injection_judge', category: 'instruction_override', severity: 'high' }],
+      messageKey: 'guardrail.blocked.inbound',
+      defaultMessage: GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.blocked.inbound'],
+      requiresAcknowledgement: false,
+      resumable: true,
+    };
+    render(<CaseNoteColumn {...props({ onApprove, approveHold: { notice: hold, resolutions: ['item_excluded', 'acknowledged'] } })} />);
+    fireEvent.click(screen.getByRole('button', { name: /sign & save/i }));
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText(/Prompt injection/)).toBeDefined();
+    expect(within(dialog).getByRole('button', { name: /override once, resolve & sign/i })).toBeDefined();
+    fireEvent.click(within(dialog).getByRole('button', { name: /exclude the flagged content, resolve & sign/i }));
+    expect(onApprove).toHaveBeenCalledWith({
+      overrideSafetyFlag: false,
+      acknowledgeGuardrailNotices: true,
+      resolveHold: { noticeId: 'b-1', resolution: 'item_excluded' },
+    });
+  });
+
+  it('the locked medical hold offers only "exclude" in the resolve-and-sign step', () => {
+    const hold: GuardrailNotice = {
+      ...warning,
+      noticeId: 'b-2',
+      type: 'guardrail.blocked',
+      action: 'block',
+      direction: 'inbound',
+      checks: [{ checkId: 'medical_validation', severity: 'high' }],
+      messageKey: 'guardrail.blocked.not_medical',
+      defaultMessage: GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.blocked.not_medical'],
+      requiresAcknowledgement: false,
+      resumable: true,
+    };
+    render(<CaseNoteColumn {...props({ approveHold: { notice: hold, resolutions: ['item_excluded'] } })} />);
+    fireEvent.click(screen.getByRole('button', { name: /sign & save/i }));
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).queryByRole('button', { name: /override/i })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: /exclude the flagged content, resolve & sign/i })).toBeDefined();
+  });
 });

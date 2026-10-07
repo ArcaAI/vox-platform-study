@@ -208,31 +208,31 @@ export interface NerResult {
 
 // ─── TASK-1050: "Test my rules" (screen under the tenant's EFFECTIVE rules) ───
 
-/** One check of an effective-rules screen. Verdicts and ids only — never content or judge reasoning. */
+/**
+ * One check of an effective-rules screen (W2b round 2, `POST admin/guardrail/screen`). Verdicts, codes
+ * and scores only. `checkId` is accepted too, for a relay that keeps the notice vocabulary's name.
+ */
 export interface EffectiveRulesCheck {
-  checkId: string;
-  verdict: 'pass' | 'flag' | 'undetermined' | 'skipped';
+  name?: string;
+  checkId?: string;
+  verdict: 'pass' | 'flag' | 'undetermined' | 'skipped' | string;
   /** The action the tenant's effective rules configure for a violation of this check. */
-  action?: 'ignore' | 'warn' | 'block';
+  action?: 'ignore' | 'warn' | 'block' | string;
   /** What the platform would actually do with this verdict. */
-  actionTaken: 'none' | 'ignore' | 'warn' | 'block' | 'unverified';
-  category?: string;
+  actionTaken: 'none' | 'ignore' | 'warn' | 'block' | 'unverified' | string;
   score?: number;
-  confidence?: number;
-  model?: string;
-  latencyMs?: number;
+  category?: string;
+  /** A short reason code from the check (e.g. `dose_exceeds_maximum`). */
+  reason?: string;
 }
 
-/**
- * Response of the effective-rules screen. ASSUMED shape (TODO seam, see `screenWithEffectiveRules`):
- * guardrail's `/guardrail/screen/{direction}` decision, relayed by the gateway in camelCase.
- */
+/** Response of `POST admin/guardrail/screen` (W2b round 2). */
 export interface EffectiveRulesScreenResult {
-  direction: 'inbound' | 'outbound';
-  decision: 'allow' | 'warn' | 'block' | 'unverified';
-  policyVersion?: string;
+  decision: 'allow' | 'warn' | 'block' | 'unverified' | string;
   checks: EffectiveRulesCheck[];
   notices?: unknown[];
+  evaluationId?: string;
+  policyVersion?: string;
 }
 
 export interface EffectiveRulesScreenRequest {

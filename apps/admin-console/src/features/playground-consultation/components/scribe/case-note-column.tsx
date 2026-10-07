@@ -44,6 +44,8 @@ import { cn } from '@arcaai/ui';
 import { EmptyState } from '@/shared/state/empty-state';
 import { GuardrailWarningDialog } from '@/shared/guardrail/guardrail-warning-dialog';
 import type { GuardrailNotice } from '@/shared/guardrail/notice';
+import type { GuardrailHoldResolution, HoldResolution } from '@arcaai/types';
+import { ResolveAndSignDialog } from './resolve-and-sign-dialog';
 import type { LoopActivityEntry } from '../../hooks/use-loop-activity';
 import type { UseNoteEditorResult } from '../../hooks/use-note-editor';
 import {
@@ -492,7 +494,7 @@ export interface CaseNoteColumnProps {
   /** Cancels the running generation job. Rendered only while one is running. */
   onCancelGenerate?: (() => void) | null;
   /** TASK-1050: `acknowledgeGuardrailNotices` — the confirm step showed the outstanding warnings (§9.8.3). */
-  onApprove: (options: { overrideSafetyFlag: boolean; acknowledgeGuardrailNotices?: boolean }) => void;
+  onApprove: (options: { overrideSafetyFlag: boolean; acknowledgeGuardrailNotices?: boolean; resolveHold?: GuardrailHoldResolution }) => void;
   approvePending: boolean;
   approved: boolean;
   /**
@@ -501,6 +503,11 @@ export interface CaseNoteColumnProps {
    * warnings never block signing.
    */
   approveWarnings?: readonly GuardrailNotice[];
+  /**
+   * TASK-1050 OD-24 — an INBOUND guardrail hold that may be resolved and signed in ONE action: Sign &
+   * save opens a "Resolve & sign" step offering only these resolutions.
+   */
+  approveHold?: { notice: GuardrailNotice; resolutions: readonly HoldResolution[] } | null;
   /** TASK-1050 — why signing is unavailable right now (a guardrail hold); shown beside the button. */
   approveDisabledReason?: string | null;
   /** TASK-1050 — the guardrail block panel / warning banner, rendered at the top of the note. */
@@ -588,6 +595,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     approved,
     approveWarnings = [],
     approveDisabledReason = null,
+    approveHold = null,
     guardrailSlot = null,
     guardrailBadge = null,
     citedSegments = [],
@@ -605,9 +613,15 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
   const [confirmSignOpen, setConfirmSignOpen] = useState(false);
+  const [resolveSignOpen, setResolveSignOpen] = useState(false);
   const noteFieldId = useId();
 
   function handleSign() {
+    // TASK-1050 OD-24: an inbound hold is resolved and signed in one action.
+    if (approveHold && approveHold.resolutions.length > 0) {
+      setResolveSignOpen(true);
+      return;
+    }
     // TASK-1050 §9.8.3: show the outstanding warnings, then acknowledge-and-approve in one action.
     if (approveWarnings.length > 0) {
       setConfirmSignOpen(true);
@@ -1074,6 +1088,23 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           </Button>
         </div>
       </div>
+      {approveHold ? (
+        <ResolveAndSignDialog
+          open={resolveSignOpen}
+          onOpenChange={setResolveSignOpen}
+          hold={approveHold.notice}
+          resolutions={approveHold.resolutions}
+          warnings={approveWarnings}
+          onResolveAndSign={(resolution) => {
+            setResolveSignOpen(false);
+            onApprove({
+              overrideSafetyFlag: overrideSafety,
+              acknowledgeGuardrailNotices: true,
+              resolveHold: { noticeId: approveHold.notice.noticeId, resolution },
+            });
+          }}
+        />
+      ) : null}
       <GuardrailWarningDialog
         open={confirmSignOpen}
         onOpenChange={setConfirmSignOpen}

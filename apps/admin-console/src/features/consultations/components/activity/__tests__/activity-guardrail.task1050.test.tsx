@@ -2,7 +2,7 @@
  * TASK-1050 W3b — guardrail on the consultation timeline: the per-item badge (warn / block counts and
  * the item's `guardrailStatus` marker), the run detail's guardrail checks, and the Guardrail stat card.
  */
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityItemEntry } from '@arcaai/types';
 import { renderWithProviders } from '@/test/render';
@@ -41,7 +41,34 @@ describe('activity item guardrail badge', () => {
   });
 });
 
+describe('activity item guardrail badge — the gateway marker wins (W2e round 4)', () => {
+  it('a CLEAN marker means no badge, even when derived counts exist (the item was edited and re-screened)', () => {
+    const { container } = render(<ItemBody entry={{ ...ITEM, guardrailStatus: 'clean' } as ActivityItemEntry} guardrail={{ warn: 1, block: 0 }} />);
+    expect(container.textContent).not.toMatch(/guardrail/i);
+  });
+
+  it('a WARNED marker labels the badge, with the counts as detail', () => {
+    render(<ItemBody entry={{ ...ITEM, guardrailStatus: 'warned' } as ActivityItemEntry} guardrail={{ warn: 2, block: 0 }} />);
+    expect(screen.getByText('Guardrail warning · 2 warnings')).toBeDefined();
+  });
+});
+
 describe('RunGuardrailChecks', () => {
+  it("asks the gateway for that run's evaluations (runId / runKey filter) and still filters a page that ignored it", async () => {
+    const urls: URL[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        urls.push(new URL(String(input), 'http://t'));
+        return Response.json({ consultationId: 'c-1', items: [], nextCursor: null, hasMore: false, limit: 100 });
+      }),
+    );
+    renderWithProviders(<RunGuardrailChecks consultationId="c-1" runIds={['run-1']} />);
+    await waitFor(() => expect(urls.length).toBeGreaterThanOrEqual(2));
+    expect(urls.some((url) => url.searchParams.get('runId') === 'run-1')).toBe(true);
+    expect(urls.some((url) => url.searchParams.get('runKey') === 'run-1')).toBe(true);
+  });
+
   it("lists that run's guardrail checks only", async () => {
     vi.stubGlobal(
       'fetch',

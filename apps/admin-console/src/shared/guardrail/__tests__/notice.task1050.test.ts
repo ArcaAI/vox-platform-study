@@ -10,6 +10,7 @@ import { GUARDRAIL_NOTICE_DEFAULT_MESSAGES, type GuardrailNotice } from '@arcaai
 import {
   BLOCK_FLOOR_CHECK_IDS,
   allowedHoldResolutions,
+  approveResolutionsFor,
   createNoticeDeduper,
   guardrailNoticeCopy,
   isWarningNotice,
@@ -174,5 +175,33 @@ describe('allowedHoldResolutions', () => {
   it('mirrors the platform catalogue: the block floor is exactly the locked checks whose action is block', () => {
     const floor = CATALOGUE.policies.filter((policy) => policy.locked && policy.platformDefaultAction === 'block').map((policy) => policy.id);
     expect([...BLOCK_FLOOR_CHECK_IDS].sort()).toEqual(floor.sort());
+  });
+});
+
+describe('approveResolutionsFor (OD-24: one-action approve over an INBOUND hold)', () => {
+  const inboundBlock = (checkId: string, messageKey: GuardrailNotice['messageKey'] = 'guardrail.blocked.inbound') =>
+    notice({
+      type: 'guardrail.blocked',
+      action: 'block',
+      direction: 'inbound',
+      resumable: true,
+      messageKey,
+      defaultMessage: GUARDRAIL_NOTICE_DEFAULT_MESSAGES[messageKey],
+      checks: [{ checkId: checkId as GuardrailNotice['checks'][number]['checkId'], severity: 'high' }],
+    });
+
+  it('offers acknowledged and item_excluded for a tenant-set inbound block (never item_edited)', () => {
+    expect(approveResolutionsFor(inboundBlock('injection_judge'))).toEqual(['item_excluded', 'acknowledged']);
+  });
+
+  it('offers only item_excluded for the locked medical check', () => {
+    expect(approveResolutionsFor(inboundBlock('medical_validation', 'guardrail.blocked.not_medical'))).toEqual(['item_excluded']);
+  });
+
+  it('offers nothing for an outbound hold (the note was withheld) or the egress-redaction hold', () => {
+    expect(approveResolutionsFor({ ...inboundBlock('leakage_judge', 'guardrail.blocked.outbound'), direction: 'outbound' })).toEqual([]);
+    const egress = FIXTURE.notices.find((n) => n.messageKey === 'guardrail.blocked.redaction_unavailable') as GuardrailNotice;
+    expect(approveResolutionsFor(egress)).toEqual([]);
+    expect(approveResolutionsFor(notice())).toEqual([]);
   });
 });

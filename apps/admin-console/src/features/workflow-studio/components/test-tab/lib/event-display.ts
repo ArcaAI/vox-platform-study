@@ -5,6 +5,7 @@
  * Values only ever appear in the line when PHI is shown; `hidePhi` replaces each with `•••`
  * (labels, paths, codes and counts are not patient data and stay).
  */
+import { guardrailCheckLabel } from '@/shared/guardrail/labels';
 import type { RunEvent } from '@/shared/sandbox/api/run-protocol';
 
 export const EVENT_CATEGORIES = ['steps', 'model', 'guardrails', 'data', 'audio', 'warnings'] as const;
@@ -25,6 +26,9 @@ const PRIMARY: Record<RunEvent['type'], Exclude<EventCategory, 'warnings'>> = {
   'run.failed': 'steps',
   'run.cancelled': 'steps',
   'run.resync': 'steps',
+  // TASK-1050: a guardrail hold parks the run at a step; the standard notice is a guardrail event.
+  'run.paused': 'steps',
+  'guardrail.notice': 'guardrails',
   'node.started': 'steps',
   'node.completed': 'steps',
   'node.failed': 'steps',
@@ -57,6 +61,8 @@ export function isWarningEvent(event: RunEvent): boolean {
     case 'node.failed':
     case 'run.failed':
     case 'run.resync':
+    case 'run.paused':
+    case 'guardrail.notice':
       return true;
     case 'node.completed':
       return data.status === 'DEGRADED' || (typeof data.warnings === 'number' && data.warnings > 0);
@@ -143,6 +149,16 @@ export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => stri
       return `Cancelled${typeof data.reason === 'string' && data.reason ? `: ${options.hidePhi ? MASK : data.reason}` : ''}`;
     case 'run.resync':
       return `Resynced from a snapshot (${String(data.reason ?? 'gap')})`;
+    case 'run.paused':
+      return `Paused at ${typeof data.nodeId === 'string' ? labelOf(data.nodeId) : 'a step'} on a guardrail hold`;
+    case 'guardrail.notice': {
+      // Ids, direction and check names only — a notice never carries content (README §9.7.3).
+      const kind = data.type === 'guardrail.blocked' ? 'Blocked' : data.type === 'guardrail.unverified' ? 'Unverified' : 'Warning';
+      const checks = Array.isArray(data.checks)
+        ? data.checks.flatMap((check) => (isRecord(check) && typeof check.checkId === 'string' ? [guardrailCheckLabel(check.checkId)] : []))
+        : [];
+      return `${kind} notice (${data.direction === 'outbound' ? 'outbound' : 'inbound'})${checks.length > 0 ? `: ${checks.join(', ')}` : ''}`;
+    }
     case 'ping':
       return 'Keep-alive';
     case 'node.started': {
@@ -152,7 +168,8 @@ export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => stri
     case 'node.completed': {
       const status = data.status === 'DEGRADED' ? 'Degraded' : data.status === 'SKIPPED' ? 'Skipped' : 'Done';
       const parts = [`${status} in ${formatDuration(data.durationMs)}`];
-      if (isRecord(data.tokens)) parts.push(`${Number(data.tokens.in ?? 0).toLocaleString('en-US')} in / ${Number(data.tokens.out ?? 0).toLocaleString('en-US')} out tokens`);
+      if (isRecord(data.tokens))
+        parts.push(`${Number(data.tokens.in ?? 0).toLocaleString('en-US')} in / ${Number(data.tokens.out ?? 0).toLocaleString('en-US')} out tokens`);
       if (typeof data.warnings === 'number' && data.warnings > 0) parts.push(count(data.warnings, 'warning'));
       return parts.join(' · ');
     }
@@ -165,15 +182,22 @@ export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => stri
     case 'output.data':
       return `${String(data.field ?? 'value')} = ${value(data.value)}`;
     case 'input.validated': {
-      const schema = isRecord(data.schema) ? `${String(data.schema.slug)}${typeof data.schema.versionNumber === 'number' ? ` v${data.schema.versionNumber}` : ''}` : 'its schema';
+      const schema = isRecord(data.schema)
+        ? `${String(data.schema.slug)}${typeof data.schema.versionNumber === 'number' ? ` v${data.schema.versionNumber}` : ''}`
+        : 'its schema';
       const problems = Array.isArray(data.problems) ? data.problems : [];
-      return data.valid === true ? `Input matches ${schema}` : `Input does not match ${schema}: ${options.hidePhi ? MASK : String(problems[0] ?? '')}`;
+      return data.valid === true
+        ? `Input matches ${schema}`
+        : `Input does not match ${schema}: ${options.hidePhi ? MASK : String(problems[0] ?? '')}`;
     }
     case 'data.bound': {
       const inputs = Array.isArray(data.inputs) ? data.inputs.filter(isRecord) : [];
       if (inputs.length === 0) return 'No inputs bound';
       return inputs
-        .map((input) => `${String(input.input)} ← ${sourceText(input.source)} = ${input.empty === true ? 'optional, rendered empty' : value(input.value, 40)}`)
+        .map(
+          (input) =>
+            `${String(input.input)} ← ${sourceText(input.source)} = ${input.empty === true ? 'optional, rendered empty' : value(input.value, 40)}`,
+        )
         .join(' · ');
     }
     case 'binding.warning':
@@ -192,7 +216,11 @@ export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => stri
       return `Prompt composed: ${count(layers, 'layer')}, ${count(Number(data.charsTotal ?? 0), 'character')}${tokens}`;
     }
     case 'model.request': {
-      const flags = [`attempt ${String(data.attempt ?? 1)}`, ...(data.fallback === true ? ['fallback'] : []), ...(data.stream === true ? ['streaming'] : [])];
+      const flags = [
+        `attempt ${String(data.attempt ?? 1)}`,
+        ...(data.fallback === true ? ['fallback'] : []),
+        ...(data.stream === true ? ['streaming'] : []),
+      ];
       return `${String(data.provider ?? '?')} · ${String(data.model ?? '?')}, ${flags.join(', ')}`;
     }
     case 'guardrail.inbound':
@@ -201,7 +229,9 @@ export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => stri
     case 'output.validated': {
       const field = typeof data.field === 'string' ? data.field : 'Output';
       const problems = Array.isArray(data.problems) ? data.problems : [];
-      return data.valid === true ? `${field} matches its contract` : `${field} does not match its contract: ${options.hidePhi ? MASK : String(problems[0] ?? '')}`;
+      return data.valid === true
+        ? `${field} matches its contract`
+        : `${field} does not match its contract: ${options.hidePhi ? MASK : String(problems[0] ?? '')}`;
     }
     default:
       return (event as RunEvent).type;

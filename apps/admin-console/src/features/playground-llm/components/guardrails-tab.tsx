@@ -12,7 +12,13 @@ import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { GatewayError } from '@/shared/api';
 import { GuardrailNoticeList } from '@/shared/guardrail/guardrail-notice-list';
-import { guardrailActionTakenMeta, guardrailCheckLabel, guardrailDecisionMeta, guardrailVerdictLabel } from '@/shared/guardrail/labels';
+import {
+  guardrailActionTakenMeta,
+  guardrailCategoryLabel,
+  guardrailCheckLabel,
+  guardrailDecisionMeta,
+  guardrailVerdictLabel,
+} from '@/shared/guardrail/labels';
 import { toGuardrailNotices } from '@/shared/guardrail/notice';
 import { useAnalyzeGuardrail, useScreenWithEffectiveRules } from '../api/hooks';
 import { GUARDRAIL_TYPES, type EffectiveRulesScreenResult, type GuardrailAnalysis, type GuardrailType } from '../api/types';
@@ -214,6 +220,7 @@ function RulesTestResult({ result }: { result: EffectiveRulesScreenResult }) {
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge label={decision.label} colorRole={decision.role} />
         {result.policyVersion ? <span className="text-muted-foreground font-mono text-xs">{`policy ${result.policyVersion}`}</span> : null}
+        {result.evaluationId ? <span className="text-muted-foreground font-mono text-xs">{`evaluation ${result.evaluationId}`}</span> : null}
       </div>
       <div className="overflow-x-auto rounded-md border">
         <table aria-label={`Checks (${result.checks.length})`} className="w-full min-w-[28rem] text-xs">
@@ -232,24 +239,31 @@ function RulesTestResult({ result }: { result: EffectiveRulesScreenResult }) {
                 Action taken
               </th>
               <th scope="col" className="px-2.5 py-1.5 font-semibold">
+                Score
+              </th>
+              <th scope="col" className="px-2.5 py-1.5 font-semibold">
                 Category
               </th>
             </tr>
           </thead>
           <tbody>
-            {result.checks.map((check) => {
+            {result.checks.map((check, index) => {
               const taken = guardrailActionTakenMeta(check.actionTaken);
+              const checkName = check.name ?? check.checkId ?? `check ${index + 1}`;
               return (
-                <tr key={check.checkId} className="border-t">
-                  <td className="px-2.5 py-1.5">{guardrailCheckLabel(check.checkId)}</td>
+                <tr key={`${checkName}-${index}`} className="border-t">
+                  <td className="px-2.5 py-1.5">{guardrailCheckLabel(checkName)}</td>
                   <td className="px-2.5 py-1.5">{guardrailVerdictLabel(check.verdict)}</td>
                   <td className="px-2.5 py-1.5">{check.action ? (ACTION_LABELS[check.action] ?? check.action) : '—'}</td>
                   <td className="px-2.5 py-1.5">
                     <StatusBadge label={taken.label} colorRole={taken.role} />
                   </td>
+                  <td className="px-2.5 py-1.5 tabular-nums">{typeof check.score === 'number' ? `${Math.round(check.score * 100)}%` : '—'}</td>
                   <td className="text-muted-foreground px-2.5 py-1.5">
-                    {check.category ?? '—'}
-                    {typeof check.confidence === 'number' ? ` · ${Math.round(check.confidence * 100)}%` : ''}
+                    <span className="flex flex-col">
+                      <span>{check.category ? guardrailCategoryLabel(check.category) : '—'}</span>
+                      {check.reason ? <span className="font-mono">{guardrailCategoryLabel(check.reason)}</span> : null}
+                    </span>
                   </td>
                 </tr>
               );

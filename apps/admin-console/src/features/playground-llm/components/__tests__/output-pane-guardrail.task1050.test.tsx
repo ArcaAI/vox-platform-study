@@ -48,15 +48,16 @@ const idleStream: TaskStreamState = {
   usage: null,
   finishReason: null,
   error: null,
+  guardrailNotices: [],
   reopen: () => undefined,
   close: () => undefined,
 };
 
-function renderPane(run: RunState, onRetry = vi.fn()) {
+function renderPane(run: RunState, onRetry = vi.fn(), stream: TaskStreamState = idleStream) {
   render(
     <OutputPane
       run={run}
-      stream={idleStream}
+      stream={stream}
       isPending={false}
       postMortem={undefined}
       streamProviderModel=""
@@ -127,5 +128,21 @@ describe('LLM playground guardrail outcomes', () => {
       code: 'MODEL_NOT_SELECTED',
     });
     expect(runStateFromGenerateError(new GatewayError(500, 'boom'))).toBeNull();
+  });
+
+  it('a streaming warn shows the banner above the streamed output (task stream notices)', () => {
+    renderPane({ kind: 'stream', taskId: 't-1' }, vi.fn(), { ...idleStream, status: 'done', content: 'Streamed note', guardrailNotices: [warning] });
+    const banner = document.querySelector<HTMLElement>('[data-slot="guardrail-notice-banner"]');
+    if (!banner) throw new Error('no banner');
+    expect(within(banner).getByText(/Clinical safety/)).toBeDefined();
+    expect(screen.getByText('Streamed note')).toBeDefined();
+  });
+
+  it('a streaming block names the check instead of the bare upstream failure', () => {
+    renderPane({ kind: 'stream', taskId: 't-1' }, vi.fn(), { ...idleStream, status: 'failed', error: 'Blocked', guardrailNotices: [blocked] });
+    const panel = document.querySelector<HTMLElement>('[data-slot="guardrail-block-panel"]');
+    if (!panel) throw new Error('no block panel');
+    expect(within(panel).getByText(/Prompt injection/)).toBeDefined();
+    expect(screen.queryByText(/Upstream failure/)).toBeNull();
   });
 });

@@ -8,6 +8,7 @@
  */
 import { Badge } from '@arcaai/ui';
 import type { NodeView } from '@/shared/sandbox/api/run-fold';
+import { NodeGuardrailBadge } from '@/shared/sandbox/components/run-guardrail-summary';
 import type { BindingSource } from '@/shared/sandbox/api/run-protocol';
 import { formatDuration, formatValue } from './lib/event-display';
 import { nodeWarningCount } from './lib/flow-state';
@@ -74,7 +75,10 @@ export function StepPanel({ node, run, hidePhi, live }: { node: StepPanelNode | 
       actions={
         <>
           <Badge variant={STATUS_VARIANT[status]}>{STATUS_TEXT[status]}</Badge>
-          {run?.durationMs !== undefined && status !== 'running' ? <span className="text-muted-foreground text-xs tabular-nums">{formatDuration(run.durationMs)}</span> : null}
+          <NodeGuardrailBadge node={run} />
+          {run?.durationMs !== undefined && status !== 'running' ? (
+            <span className="text-muted-foreground text-xs tabular-nums">{formatDuration(run.durationMs)}</span>
+          ) : null}
           {run && run.attempt > 1 ? <span className="text-muted-foreground text-xs">Attempt {run.attempt}</span> : null}
         </>
       }
@@ -120,7 +124,11 @@ export function StepPanel({ node, run, hidePhi, live }: { node: StepPanelNode | 
                     <SourceText source={input.source} />
                     <span aria-hidden="true">=</span>
                     <span className="sr-only">resolved to</span>
-                    {input.empty ? <span className="text-muted-foreground text-xs italic">optional, rendered empty</span> : <Value value={input.value} hidePhi={hidePhi} />}
+                    {input.empty ? (
+                      <span className="text-muted-foreground text-xs italic">optional, rendered empty</span>
+                    ) : (
+                      <Value value={input.value} hidePhi={hidePhi} />
+                    )}
                     {input.phiClass === 'PHI' ? (
                       <Badge variant="outline" className="text-[11px]">
                         PHI
@@ -160,7 +168,8 @@ export function StepPanel({ node, run, hidePhi, live }: { node: StepPanelNode | 
               <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
                 {run.prompt ? (
                   <li>
-                    Prompt: {run.prompt.layers.length} layer{run.prompt.layers.length === 1 ? '' : 's'}, {run.prompt.charsTotal.toLocaleString('en-US')} characters
+                    Prompt: {run.prompt.layers.length} layer{run.prompt.layers.length === 1 ? '' : 's'},{' '}
+                    {run.prompt.charsTotal.toLocaleString('en-US')} characters
                     {run.prompt.tokensTotal !== undefined ? `, ${run.prompt.tokensTotal.toLocaleString('en-US')} tokens` : ''}
                   </li>
                 ) : null}
@@ -172,7 +181,8 @@ export function StepPanel({ node, run, hidePhi, live }: { node: StepPanelNode | 
                 ))}
                 {run.guardrails.map((check) => (
                   <li key={check.seq}>
-                    {check.direction === 'inbound' ? 'Inbound' : 'Outbound'} guardrail: {check.action}, {check.detected} finding{check.detected === 1 ? '' : 's'}
+                    {check.direction === 'inbound' ? 'Inbound' : 'Outbound'} guardrail: {check.action}, {check.detected} finding
+                    {check.detected === 1 ? '' : 's'}
                   </li>
                 ))}
                 {run.tokens ? (
