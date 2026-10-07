@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 from hope_obs import outbound_context_headers
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from harness.core.llm_concurrency import LlmCallTimeout, governed_request
 from harness.core.provider_credentials import (
@@ -46,6 +46,113 @@ class TextServiceError(RuntimeError):
     def __init__(self, message: str, *, after_send: bool = False) -> None:
         super().__init__(message)
         self.after_send = after_send
+
+
+#: TASK-1050 — the RFC 9457 `type` of a text-service guardrail block, and the distinct code of a
+#: cloud-egress pseudonymiser outage (a privacy hold, never a safety verdict). Both from the frozen
+#: contract (`@arcaai/types` `GUARDRAIL_BLOCKED_PROBLEM_TYPE`, processing reason
+#: `EGRESS_REDACTION_UNAVAILABLE`); restated here because this module may not import the
+#: interpreter package.
+GUARDRAIL_BLOCKED_PROBLEM_TYPE = "urn:hope:problem:guardrail-blocked"
+EGRESS_REDACTION_UNAVAILABLE = "EGRESS_REDACTION_UNAVAILABLE"
+#: `@arcaai/types` `GUARDRAIL_CORRELATION_HEADERS` (pinned against the vocabulary fixture by
+#: `test_task1050_run_protocol_guardrail.py` through `run_protocol.GUARDRAIL_CORRELATION_HEADERS`).
+GUARDRAIL_CORRELATION_HEADERS: dict[str, str] = {
+    "consultationId": "X-Hope-Consultation-Id",
+    "runId": "X-Hope-Run-Id",
+    "itemId": "X-Hope-Item-Id",
+    "runKey": "X-Hope-Run-Key",
+    "nodeId": "X-Hope-Node-Id",
+}
+#: The header a node re-run after an `acknowledged` hold resolution carries: proceed ONCE, at
+#: warn weight, for exactly this notice. Proposed by TASK-1050 W2f (README §9.7.5 / §9.8.1).
+GUARDRAIL_OVERRIDE_HEADER = "X-Hope-Guardrail-Override"
+
+
+class TextGuardrailBlocked(TextServiceError):
+    """The text service refused this generation for a guardrail reason (TASK-1050, lane W2c).
+
+    ``kind`` says which: ``"blocked"`` — a ``block`` verdict (the 422
+    ``urn:hope:problem:guardrail-blocked`` body), or ``"redaction_unavailable"`` — the cloud
+    pseudonymiser was down, so unredacted PHI was not sent (TASK-1035 posture: fail closed). Both
+    are HOLDS inside a workflow run, never an outage to fall back from: another candidate would be
+    screened against the same policy. ``notice`` is the ``GuardrailNotice`` v1 the body carried
+    (``None`` when it carried none); ``evaluation_ids`` the gap-detection keys (README §9.8.2).
+
+    ``status_code`` is the HTTP status, so the per-endpoint governor classifies it like any other
+    response: a 422 is terminal (never re-POSTed), a 503 redaction outage is retried within its
+    bounded budget before it surfaces here.
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: str,
+        status_code: int,
+        notice: dict[str, Any] | None,
+        evaluation_ids: list[str],
+        error_code: str | None,
+    ) -> None:
+        super().__init__(f"text generate refused by guardrail ({kind}, http {status_code})")
+        self.kind = kind
+        self.status_code = status_code
+        self.notice = notice
+        self.evaluation_ids = evaluation_ids
+        self.error_code = error_code
+
+
+def _string_list(value: Any) -> list[str]:
+    return [v for v in value if isinstance(v, str) and v] if isinstance(value, list) else []
+
+
+def _problem_body(body: Any) -> dict[str, Any] | None:
+    """The problem object of an error body — top level, or FastAPI's ``{"detail": {...}}``."""
+    if not isinstance(body, dict):
+        return None
+    detail = body.get("detail")
+    if isinstance(detail, dict) and (
+        "guardrailNotice" in detail or "error_code" in detail or "type" in detail
+    ):
+        return detail
+    return body
+
+
+def guardrail_refusal(status_code: int, body: Any) -> TextGuardrailBlocked | None:
+    """The :class:`TextGuardrailBlocked` an error response stands for, or ``None`` (pure).
+
+    A block is recognised by its problem ``type`` or by the notice it carries; a redaction outage
+    by its ``error_code``. Anything else is an ordinary text error and stays one.
+    """
+    problem = _problem_body(body)
+    if problem is None:
+        return None
+    error_code = problem.get("error_code") or problem.get("code")
+    error_code = error_code if isinstance(error_code, str) else None
+    raw_notice = problem.get("guardrailNotice") or problem.get("guardrail_notice")
+    notice = raw_notice if isinstance(raw_notice, dict) else None
+    ids = _string_list(
+        problem.get("guardrailEvaluationIds") or problem.get("guardrail_evaluation_ids")
+    )
+    if error_code == EGRESS_REDACTION_UNAVAILABLE:
+        kind = "redaction_unavailable"
+    elif problem.get("type") == GUARDRAIL_BLOCKED_PROBLEM_TYPE or notice is not None:
+        kind = "blocked"
+    else:
+        return None
+    return TextGuardrailBlocked(
+        kind=kind,
+        status_code=status_code,
+        notice=notice,
+        evaluation_ids=ids,
+        error_code=error_code,
+    )
+
+
+def _json_or_none(resp: httpx.Response) -> Any:
+    try:
+        return resp.json()
+    except ValueError:
+        return None
 
 
 # Read-side httpx failures: the request bytes were fully sent, so Text MAY have run the
@@ -133,6 +240,28 @@ class TextGenerationResult(BaseModel):
     # service reports them (`{"inbound": {action, detected, …}, "outbound": {…}}`). Additive-
     # optional; absent ⇒ the harness derives the inbound verdict from `egress` alone.
     guardrail: dict[str, Any] | None = None
+    # TASK-1050 (lane W2c) — the warn / unverified `GuardrailNotice`s this call raised (a block is
+    # a `TextGuardrailBlocked` instead) and the guardrail evaluation ids, one per request x
+    # direction (README §9.8.2 gap detection). Either spelling is read; absent ⇒ empty, which is
+    # what an older text service reports. Additive with defaults ⇒ replay-safe like `stats`.
+    guardrail_notices: list[dict[str, Any]] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("guardrail_notices", "guardrailNotices"),
+    )
+    guardrail_evaluation_ids: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("guardrail_evaluation_ids", "guardrailEvaluationIds"),
+    )
+
+    @field_validator("guardrail_notices", mode="before")
+    @classmethod
+    def _only_notice_objects(cls, value: Any) -> list[dict[str, Any]]:
+        return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
+
+    @field_validator("guardrail_evaluation_ids", mode="before")
+    @classmethod
+    def _only_ids(cls, value: Any) -> list[str]:
+        return _string_list(value)
 
 
 def _int_or_none(source: Any, name: str) -> int | None:
@@ -249,6 +378,8 @@ class TextClient:
         known_phi: list[dict[str, str]] | None = None,
         reasoning: Mapping[str, Any] | None = None,
         system_governance: Mapping[str, Any] | None = None,
+        correlation: Mapping[str, str] | None = None,
+        guardrail_override: str | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -292,6 +423,8 @@ class TextClient:
             known_phi=known_phi,
             reasoning=reasoning,
             system_governance=system_governance,
+            correlation=correlation,
+            guardrail_override=guardrail_override,
             stream=False,
         )
 
@@ -304,6 +437,12 @@ class TextClient:
                     # The prompt reached Text (bytes sent) but the response was
                     # lost. The model MAY have run — do NOT let the governor re-POST it.
                     raise _TextResponseLost(exc) from exc
+                if resp.status_code >= 400:
+                    # TASK-1050 — a guardrail refusal is typed, never flattened into an outage
+                    # the fallback chain would walk past.
+                    refusal = guardrail_refusal(resp.status_code, _json_or_none(resp))
+                    if refusal is not None:
+                        raise refusal
                 resp.raise_for_status()
                 return resp
 
@@ -352,6 +491,8 @@ class TextClient:
         known_phi: list[dict[str, str]] | None = None,
         reasoning: Mapping[str, Any] | None = None,
         system_governance: Mapping[str, Any] | None = None,
+        correlation: Mapping[str, str] | None = None,
+        guardrail_override: str | None = None,
     ) -> TextGenerationResult:
         """TASK-1038 R8 — the same generation as :meth:`generate`, with ``stream: true``.
 
@@ -380,6 +521,8 @@ class TextClient:
             known_phi=known_phi,
             reasoning=reasoning,
             system_governance=system_governance,
+            correlation=correlation,
+            guardrail_override=guardrail_override,
             stream=True,
         )
         headers["Accept"] = "text/event-stream"
@@ -391,6 +534,11 @@ class TextClient:
                     async with client.stream(
                         "POST", url, json=body, headers=headers, timeout=self._timeout
                     ) as resp:
+                        if resp.status_code >= 400:
+                            await resp.aread()
+                            refusal = guardrail_refusal(resp.status_code, _json_or_none(resp))
+                            if refusal is not None:
+                                raise refusal
                         resp.raise_for_status()
                         return await _read_generation_stream(resp, on_delta, provider, model)
                 except _POST_SEND_ERRORS as exc:
@@ -431,6 +579,8 @@ class TextClient:
         stream: bool,
         reasoning: Mapping[str, Any] | None = None,
         system_governance: Mapping[str, Any] | None = None,
+        correlation: Mapping[str, str] | None = None,
+        guardrail_override: str | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, str]]:
         """``(url, body, headers)`` of one generate call — the ONE preparation both the blocking
         and the streaming calls use (tenant guard, credential fold, locality, PHI, headers)."""
@@ -526,6 +676,15 @@ class TextClient:
         # the guard above already rejected a blank value.
         headers["X-Tenant-Id"] = tenant_id.strip()
         headers.update(outbound_context_headers())
+        # TASK-1050 — the correlation the guardrail evaluation record lands on (README §9.8.2),
+        # only the names the contract declares and only when known; and the one-shot override of
+        # a resolved hold (README §9.7.5). Never a credential and never content.
+        for field_name, value in (correlation or {}).items():
+            name = GUARDRAIL_CORRELATION_HEADERS.get(field_name)
+            if name is not None and isinstance(value, str) and value.strip():
+                headers[name] = value.strip()
+        if guardrail_override:
+            headers[GUARDRAIL_OVERRIDE_HEADER] = guardrail_override
         return url, body, headers
 
 
@@ -540,6 +699,8 @@ async def _read_generation_stream(
     event = ""
     data_lines: list[str] = []
     terminal: dict[str, Any] | None = None
+    #: TASK-1050 — the `guardrail.notice` frames (warn / unverified) the stream carried.
+    notices: list[dict[str, Any]] = []
 
     async def dispatch() -> dict[str, Any] | None:
         nonlocal event, data_lines
@@ -560,7 +721,14 @@ async def _read_generation_stream(
             return None
         payload = chunk.get("data")
         data: dict[str, Any] = payload if isinstance(payload, dict) else {}
+        if kind == "guardrail.notice":
+            if data:
+                notices.append(data)
+            return None
         if kind == "error":
+            refusal = guardrail_refusal(422, data)
+            if refusal is not None:
+                raise refusal
             raise TextServiceError(f"text stream failed: {data.get('error') or 'error frame'}")
         if kind == "done":
             return data
@@ -598,4 +766,23 @@ async def _read_generation_stream(
         guardrail=(
             terminal.get("guardrail") if isinstance(terminal.get("guardrail"), dict) else None
         ),
+        guardrail_notices=[
+            *notices,
+            *(
+                n
+                for n in _list_of(terminal, "guardrail_notices", "guardrailNotices")
+                if isinstance(n, dict) and n not in notices
+            ),
+        ],
+        guardrail_evaluation_ids=_string_list(
+            _list_of(terminal, "guardrail_evaluation_ids", "guardrailEvaluationIds")
+        ),
     )
+
+
+def _list_of(source: dict[str, Any], *names: str) -> list[Any]:
+    for name in names:
+        value = source.get(name)
+        if isinstance(value, list):
+            return value
+    return []

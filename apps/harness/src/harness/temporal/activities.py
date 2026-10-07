@@ -131,6 +131,7 @@ from harness.services.sensor_runner import SensorRunOutput, run_computational_se
 from harness.services.text_client import (
     TextClient,
     TextGenerationResult,
+    TextGuardrailBlocked,
     TextServiceError,
     usage_detail_counters,
 )
@@ -1998,6 +1999,9 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     egress = egress_counts(result.egress)
     if egress is not None:
         llm_stats["egress"] = egress
+    # TASK-1050 (README §9.8.2) — the guardrail evaluations of this call, for gap detection.
+    if result.guardrail_evaluation_ids:
+        llm_stats["guardrail_evaluation_ids"] = list(result.guardrail_evaluation_ids)
     llm_stats.update(call_record)
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
@@ -2035,6 +2039,9 @@ def note_call_llm_stats(result: TextGenerationResult) -> dict[str, Any]:
     egress = egress_counts(result.egress)
     if egress is not None:
         stats["egress"] = egress
+    # TASK-1050 (README §9.8.2) — the guardrail evaluations of this call, for gap detection.
+    if result.guardrail_evaluation_ids:
+        stats["guardrail_evaluation_ids"] = list(result.guardrail_evaluation_ids)
     return stats
 
 
@@ -2247,11 +2254,17 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
             generate=walk_attempts(attempts, _generate, allows_another=budget.allows_another),
             preserved_sections=envelope.preserved_sections,
             allow_repair=budget.allows_another,
+            # TASK-1049 F9 — one lead call fills guardrail's window cache for the shared prefix.
+            prime_shared_prefix=True,
         )
     except NotePlanCallFailed as exc:
         record_note_plan_steps(batch, plan, exc.records, provider=provider, model=model)
         await batch.flush()
         errors = [r.error for r in exc.records if r.error is not None]
+        if any(isinstance(e, TextGuardrailBlocked) for e in errors):
+            # TASK-1050 — a guardrail refusal comes back the same on a retry (this workflow has no
+            # hold; the interpreter's `core.agent` finalizer does): fail it by name, once.
+            raise ApplicationError(str(exc), type="GuardrailBlocked", non_retryable=True) from exc
         # A note cut off by its output budget (after its one retry) or with no section written
         # would come back the same on a retry: fail the note, never store it.
         if isinstance(exc, NotePlanEmptyNote):

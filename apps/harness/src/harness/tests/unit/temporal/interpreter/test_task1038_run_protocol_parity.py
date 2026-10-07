@@ -19,11 +19,23 @@ import pytest
 
 from harness.temporal.interpreter import run_protocol as rp
 
-_FIXTURE: dict[str, Any] = json.loads(
-    (
-        Path(__file__).resolve().parents[8] / "tests" / "contracts" / "run-protocol.fixture.json"
-    ).read_text(encoding="utf-8")
+_CONTRACTS = Path(__file__).resolve().parents[8] / "tests" / "contracts"
+_BASE: dict[str, Any] = json.loads(
+    (_CONTRACTS / "run-protocol.fixture.json").read_text(encoding="utf-8")
 )
+# TASK-1050: the guardrail additions ship as an OVERLAY every reader merges (maps into the base
+# maps, lists appended), exactly as `run-protocol.test.ts` does — so these assertions cover the
+# whole catalogue. The overlay's own vocabulary is asserted in `test_task1050_run_protocol_guardrail`.
+_OVERLAY: dict[str, Any] = json.loads(
+    (_CONTRACTS / "guardrail-run-events.fixture.json").read_text(encoding="utf-8")
+)
+_FIXTURE: dict[str, Any] = {
+    **_BASE,
+    "visibility": {**_BASE["visibility"], **_OVERLAY["visibility"]},
+    "nodeScope": {**_BASE["nodeScope"], **_OVERLAY["nodeScope"]},
+    "examples": [*_BASE["examples"], *_OVERLAY["examples"]],
+    "invalid": [*_BASE["invalid"], *_OVERLAY["invalid"]],
+}
 
 
 class TestConstants:
