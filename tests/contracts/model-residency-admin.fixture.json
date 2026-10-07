@@ -90,7 +90,8 @@
       "OVER_BUDGET",
       "SERVICE_UNREACHABLE",
       "NO_SIZE",
-      "SERVICE_MISMATCH"
+      "SERVICE_MISMATCH",
+      "RUNTIME_KEY_TAKEN"
     ],
     "loadOutcome": ["accepted", "already_loaded"],
     "operationStatus": ["running", "succeeded", "failed"],

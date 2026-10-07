@@ -45,6 +45,33 @@ export function matchesRuntimeKey(service: string, model: CatalogueRefFields, re
   return normalizeRuntimeKey(service, ref) === normalizeRuntimeKey(service, reportedKey);
 }
 
+/** How a reported key resolved to its row, strongest first. */
+export type RuntimeKeyResolution = 'exact' | 'confirmed' | 'normalised';
+
+/**
+ * TASK-1051 review — the ONE ranked answer to "which catalogue row is this reported key?":
+ * the row whose catalogue ref IS the key, else a row an operator confirmed the key on, else the
+ * row whose ref normalises to the same key — but only when exactly ONE row does. A normalised key
+ * two rows share (`foo@q4_0` with rows `foo` and `foo@q8_0`) is unmatched (`null`), so a sibling
+ * variant is never claimed by whichever row happens to come first.
+ */
+export function resolveRuntimeKey<T extends CatalogueRefFields>(
+  service: string,
+  reportedKey: string,
+  rows: readonly T[],
+): { row: T; via: RuntimeKeyResolution } | null {
+  const exact = rows.find((row) => refFor(service, row) === reportedKey);
+  if (exact) return { row: exact, via: 'exact' };
+  const confirmed = rows.find((row) => confirmedKeys(row.metaData).includes(reportedKey));
+  if (confirmed) return { row: confirmed, via: 'confirmed' };
+  const wanted = normalizeRuntimeKey(service, reportedKey);
+  const normalised = rows.filter((row) => {
+    const ref = refFor(service, row);
+    return ref !== null && normalizeRuntimeKey(service, ref) === wanted;
+  });
+  return normalised.length === 1 ? { row: normalised[0], via: 'normalised' } : null;
+}
+
 export interface RuntimeKeyCandidate {
   aiModelId: string;
   name: string;

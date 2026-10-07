@@ -109,8 +109,10 @@ const strip = ({ lastMs: _lastMs, ...wire }: StoredRecommendation): ModelResiden
  * ENFORCE: an append-only bounded log (the command was sent; each one is an event),
  * newest first, with `firstSeenAt = at` and `repeats = 1`.
  *
- * DISMISS hides a conclusion for one (service, model) until the controller records
- * a DIFFERENT conclusion for that pair; then the dismissal clears.
+ * DISMISS hides a STANDING conclusion for one (service, model) until the controller
+ * records a DIFFERENT conclusion for that pair, or until the standing row goes stale
+ * (the condition stopped holding); then the dismissal clears, so a later recurrence
+ * shows again. Enforce-log rows are history — never dismissable, never hidden.
  */
 export class ResidencyRecommendationStore {
   private readonly standing = new Map<string, StoredRecommendation>();
@@ -128,6 +130,8 @@ export class ResidencyRecommendationStore {
 
   /** Record a shadow conclusion; `created` is false when it re-confirmed a standing row. */
   recordShadow(decision: ResidencyConclusion, id: string, now: number): { recommendation: ModelResidencyRecommendation; created: boolean } {
+    // A stale row (and the dismissal of it) goes BEFORE the recurrence is matched against it.
+    this.prune(now);
     this.clearDismissalOnChange(decision);
     const key = `${conclusionOf(decision)}|${pairOf(decision)}`;
     const existing = this.standing.get(key);
@@ -159,16 +163,15 @@ export class ResidencyRecommendationStore {
   /** Live standing rows and the enforce log, dismissed ones omitted, most recently confirmed first (copies). */
   visible(now: number): ModelResidencyRecommendation[] {
     this.prune(now);
-    return [...this.standing.values(), ...this.log]
-      .filter((row) => this.dismissed.get(pairOf(row)) !== conclusionOf(row))
+    return [...[...this.standing.values()].filter((row) => this.dismissed.get(pairOf(row)) !== conclusionOf(row)), ...this.log]
       .sort((a, b) => b.lastMs - a.lastMs)
       .map(strip);
   }
 
-  /** Hide a live recommendation; false when no such id is known. */
+  /** Hide a live STANDING recommendation; false when no such id is standing (an enforce-log event is not dismissable). */
   dismiss(id: string, now: number): boolean {
     this.prune(now);
-    const row = [...this.standing.values(), ...this.log].find((r) => r.id === id);
+    const row = [...this.standing.values()].find((r) => r.id === id);
     if (!row) return false;
     this.dismissed.set(pairOf(row), conclusionOf(row));
     return true;
@@ -180,7 +183,12 @@ export class ResidencyRecommendationStore {
   }
 
   private prune(now: number): void {
-    for (const [key, row] of this.standing) if (now - row.lastMs > this.staleAfterMs) this.standing.delete(key);
+    for (const [key, row] of this.standing) {
+      if (now - row.lastMs <= this.staleAfterMs) continue;
+      this.standing.delete(key);
+      // The condition stopped holding: the dismissal of it expires with it.
+      if (this.dismissed.get(pairOf(row)) === conclusionOf(row)) this.dismissed.delete(pairOf(row));
+    }
   }
 
   private count(decision: ResidencyConclusion): void {

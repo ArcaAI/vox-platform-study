@@ -38,6 +38,8 @@ export type ResidencyErrorCode =
   | 'NO_SIZE'
   | 'OPTIONS_UNSUPPORTED'
   | 'OVER_BUDGET'
+  // TASK-1051 review — a runtime key another catalogue row already answers to (its ref, or a confirmed link).
+  | 'RUNTIME_KEY_TAKEN'
   | 'SERVICE_UNREACHABLE';
 export type ResidencyOperationStatus = 'running' | 'succeeded' | 'failed';
 
