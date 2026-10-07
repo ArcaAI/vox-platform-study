@@ -76,6 +76,8 @@ const ITEM_COLUMNS = {
   mediaId: true,
   createdBy: true,
   createdAt: true,
+  // TASK-1050: the denormalised guardrail marker (no ciphertext), for activity badges.
+  guardrailStatus: true,
 } as const;
 
 /**
