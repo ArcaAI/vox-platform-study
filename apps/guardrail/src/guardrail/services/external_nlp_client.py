@@ -59,6 +59,9 @@ CLASSIFY_PATH = "/api/v1/guard/classify"
 ENTAILMENT_PATH = "/api/v1/guard/entailment"
 #: TASK-1050 §12 — a generative guard judge on its own chat template (`qwen3guard_native`).
 JUDGE_PATH = "/api/v1/guard/judge"
+#: The `AiModel.libraryName` apps/nlp serves with its sequence-classification runtime
+#: (TASK-1049 R2, `nlp.services.seq_cls_guard.SEQ_CLS_LIBRARY`) — the only runtime sent `threshold`.
+SEQ_CLS_LIBRARY = "transformers"
 
 
 @dataclass(frozen=True)
@@ -376,13 +379,18 @@ class NlpGuardClient:
     async def classify_scored(self, tasks: dict[str, Any], text: str) -> ClassifiedTasks:
         """The same one call, with the per-label confidences kept.
 
-        TASK-1049 Track R: the row's ``library_name`` (runtime choice) and this client's
-        ``threshold`` (the caller's policy) ride every classify call. Before, the threshold was
-        never sent and apps/nlp applied its own 0.5 — a value no policy chose.
+        TASK-1049 Track R: the row's ``library_name`` (runtime choice) rides the call when the
+        row has one. ``threshold`` is sent ONLY to the sequence-classification runtime
+        (``transformers``), which requires it. A GLiNER2 call stays byte-identical to the
+        pre-Track-R wire — no threshold, so apps/nlp keeps its own 0.5, the value every TASK-1049
+        GLiGuard measurement assumed. Sending the policy's 0.4 there would silently move every
+        production flag.
         """
-        request: dict[str, Any] = {"text": text, "tasks": tasks, "threshold": self.threshold}
+        request: dict[str, Any] = {"text": text, "tasks": tasks}
         if self.library_name:
             request["library_name"] = self.library_name
+            if self.library_name.lower() == SEQ_CLS_LIBRARY:
+                request["threshold"] = self.threshold
         payload = await self._post(CLASSIFY_PATH, request, "classify")
         results = payload.get("results")
         labels = results if isinstance(results, dict) else {}

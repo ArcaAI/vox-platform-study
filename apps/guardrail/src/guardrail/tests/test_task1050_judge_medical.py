@@ -327,10 +327,18 @@ async def test_classify_sends_the_library_and_the_threshold() -> None:
     assert body["threshold"] == 0.4
 
 
-async def test_classify_without_a_library_sends_none_so_nlp_keeps_gliner2() -> None:
+@pytest.mark.parametrize("library_name", [None, "gliner2", "GLiNER2"])
+async def test_a_gliner2_classify_call_is_byte_identical_to_today(library_name: str | None) -> None:
+    # Every TASK-1049 measurement assumed apps/nlp's own 0.5: a GLiNER2 call never carries the
+    # policy threshold, and an absent library is sent as absent.
     http = _Nlp({"results": {}})
-    await _nlp(http).classify({"safety": {}}, "text")
-    assert "library_name" not in http.calls[0][1]
+    await _nlp(http, threshold=0.4, library_name=library_name).classify({"safety": {}}, "text")
+    body = http.calls[0][1]
+    assert "threshold" not in body
+    expected = {"text", "tasks", "tenant_id", "model_name"}
+    if library_name:
+        expected.add("library_name")
+    assert set(body) == expected
 
 
 async def test_the_judge_call_carries_the_protocol_and_the_row_parameters() -> None:
