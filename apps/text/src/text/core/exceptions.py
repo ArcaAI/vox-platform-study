@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+# A stdlib-only leaf module: the frozen notice vocabulary (TASK-1050).
+from text.services.guardrail_notices import (
+    EGRESS_REDACTION_UNAVAILABLE,
+    GUARDRAIL_BLOCKED_PROBLEM_TYPE,
+    GUARDRAIL_BLOCKED_TITLE,
+)
+
 
 class TextError(Exception):
     """Base exception for Text."""
@@ -191,6 +200,13 @@ class ContentBlockedError(TextError):
     non-PHI vocabulary. ``message`` must always be a FIXED sentence: guardrail's
     own free-text ``reason``/``reasoning`` can quote the prompt and must never be
     interpolated into it.
+
+    TASK-1050: a block guardrail decided carries its ``GuardrailNotice`` and the
+    evaluation ids; the 422 body then adds them under the frozen names
+    (``guardrailNotice`` / ``guardrailEvaluationIds``) with
+    ``type: urn:hope:problem:guardrail-blocked`` — inside the house envelope, which
+    keeps ``detail`` and ``error_code`` for old clients (the gateway's envelope
+    refuses RFC 9457, so this is deliberately not ``application/problem+json``).
     """
 
     def __init__(
@@ -198,8 +214,25 @@ class ContentBlockedError(TextError):
         message: str = "Content blocked by safety filter",
         *,
         error_code: str = "CONTENT_BLOCKED",
+        guardrail_notice: dict[str, Any] | None = None,
+        guardrail_evaluation_ids: list[str] | None = None,
     ):
         super().__init__(message, error_code=error_code)
+        self.guardrail_notice = guardrail_notice
+        self.guardrail_evaluation_ids = list(guardrail_evaluation_ids or [])
+
+    @property
+    def extra_body(self) -> dict[str, Any] | None:
+        """What the 422 body adds to ``{detail, error_code}``; ``None`` without a notice."""
+        if self.guardrail_notice is None:
+            return None
+        return {
+            "type": GUARDRAIL_BLOCKED_PROBLEM_TYPE,
+            "title": GUARDRAIL_BLOCKED_TITLE,
+            "status": 422,
+            "guardrailNotice": self.guardrail_notice,
+            "guardrailEvaluationIds": self.guardrail_evaluation_ids,
+        }
 
 
 class GuardrailUnavailableError(TextError):
@@ -214,6 +247,43 @@ class GuardrailUnavailableError(TextError):
 
     def __init__(self, message: str = "The safety guardrail is temporarily unavailable."):
         super().__init__(message, error_code="GUARDRAIL_UNAVAILABLE")
+
+
+class EgressRedactionUnavailableError(GuardrailUnavailableError):
+    """A CLOUD call could not get its PII spans, so it is refused (TASK-1050 §9.8.1).
+
+    The one guardrail failure that stays fail-CLOSED, because it is privacy, not a
+    safety verdict: without the inbound screen's spans the cloud pseudonymiser would
+    send identifiers it never saw, so the text is never sent. A distinct, retryable
+    503 whose ``error_code`` is also the consultation's processing reason (a
+    resumable hold, never a lost run); the body carries the
+    ``guardrail.blocked.redaction_unavailable`` notice. A ``GuardrailUnavailableError``
+    (the screen WAS unavailable) with its own code, so every existing handler of an
+    unavailable guardrail still catches it.
+    """
+
+    def __init__(
+        self,
+        *,
+        guardrail_notice: dict[str, Any],
+        guardrail_evaluation_ids: list[str] | None = None,
+    ) -> None:
+        TextError.__init__(
+            self,
+            "Patient details could not be protected before sending to an external model.",
+            error_code=EGRESS_REDACTION_UNAVAILABLE,
+        )
+        self.guardrail_notice = guardrail_notice
+        self.guardrail_evaluation_ids = list(guardrail_evaluation_ids or [])
+
+    @property
+    def extra_body(self) -> dict[str, Any]:
+        return {
+            "processing_reason": EGRESS_REDACTION_UNAVAILABLE,
+            "retryable": True,
+            "guardrailNotice": self.guardrail_notice,
+            "guardrailEvaluationIds": self.guardrail_evaluation_ids,
+        }
 
 
 class JudgeProviderNotLocalError(TextError):

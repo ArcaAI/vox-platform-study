@@ -102,6 +102,17 @@ export const GUARDRAIL_CORRELATION_HEADERS = Object.freeze({
 } as const);
 export type GuardrailCorrelationField = keyof typeof GUARDRAIL_CORRELATION_HEADERS;
 
+/**
+ * Re-run of a node after an `acknowledged` hold resolution (TASK-1050 §9.8.1, harness W2f).
+ * Value: the resolved `noticeId`. INTERNAL ONLY — the gateway strips every `X-Hope-*`
+ * header from business-plane requests, and guardrail honours it only after verifying (read-only)
+ * that the notice is RESOLVED with resolution `acknowledged` for the same tenant and that the
+ * check's platform floor is below `block`.
+ */
+export const GUARDRAIL_OVERRIDE_HEADER = 'X-Hope-Guardrail-Override' as const;
+/** Every `X-Hope-*` header name is internal; external requests carrying one are stripped. */
+export const HOPE_INTERNAL_HEADER_PREFIX = 'x-hope-' as const;
+
 /** Fixed machine codes the gateway answers with (README §11.1, §9.7.7). */
 export const GUARDRAIL_ERROR_CODES = Object.freeze({
   /** 403: a tenant admin's write touched a field only a platform admin may set (field-level split gate). */

@@ -54,7 +54,7 @@ class _Guardrail:
         self.outputs: list[dict[str, Any]] = []
 
     async def screen_inbound(
-        self, *, regions: list[dict[str, str]], tenant_id: str | None = None
+        self, *, regions: list[dict[str, str]], tenant_id: str | None = None, **_: Any
     ) -> dict[str, Any]:
         self.inbound_regions.append(regions)
         if self.delay:

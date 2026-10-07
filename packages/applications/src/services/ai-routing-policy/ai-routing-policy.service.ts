@@ -23,7 +23,15 @@ import {
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
-import { AI_TASK_KEYS, AI_TASK_KIND_BY_TASK_KEY, AI_TASK_MODEL_TASK_TYPES, AiTaskKey } from './constants';
+import {
+  AI_TASK_KEYS,
+  AI_TASK_KIND_BY_TASK_KEY,
+  AI_TASK_MODEL_TASK_TYPES,
+  AiTaskKey,
+  GUARDRAIL_CONTROL_MANAGED_BY,
+  GUARDRAIL_CONTROL_TASK_PREFIX,
+} from './constants';
+import { GUARDRAIL_JUDGE_TASK_KEYS, JUDGE_LANE_UNSUPPORTED, JudgeLaneUnsupportedError, assertModelSupportsLane, type GuardrailJudgeCheckId } from '@arcaai/types';
 import { IProviderConnectionService, ProviderService } from '../ai-provider-connection/IProviderConnectionService';
 import {
   GenerationCapabilitySelector,
@@ -77,6 +85,11 @@ const ROUTING_CONNECTION_SERVICE: ProviderService = 'llm';
  * in memory, so the two must agree on what "live" means or the veto would fire
  * on rows the database would have served.
  */
+/** TASK-1050 — routing task key → the safety-judge lane it selects a model for. */
+const JUDGE_LANE_BY_TASK_KEY: ReadonlyMap<string, GuardrailJudgeCheckId> = new Map(
+  Object.entries(GUARDRAIL_JUDGE_TASK_KEYS).map(([lane, taskKey]) => [taskKey, lane as GuardrailJudgeCheckId]),
+);
+
 function isLiveRow(row: AiRoutingPolicyEntity): boolean {
   return row.resourceStatus === ResourceStatusType.ENABLED && row.enabled === true;
 }
@@ -168,7 +181,11 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     const rows = await this.readPolicies([tenantId], filters);
     return rows
       .sort((a, b) => (a.taskKey === b.taskKey ? b.policyVersion - a.policyVersion : a.taskKey.localeCompare(b.taskKey)))
-      .map((row) => AiRoutingPolicyDtoMapper.toResponse(row));
+      .map((row) => ({
+        ...AiRoutingPolicyDtoMapper.toResponse(row),
+        // TASK-1050 (OD-39) — `/guardrails/control` is the authoritative editor of every `guardrail.*` selection.
+        managedBy: row.taskKey.startsWith(GUARDRAIL_CONTROL_TASK_PREFIX) ? GUARDRAIL_CONTROL_MANAGED_BY : null,
+      }));
   }
 
   async getById(id: string, tenantId: string): Promise<AiRoutingPolicyResponse> {
@@ -1365,6 +1382,24 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
           `Model '${model.slug}' declares taskType '${model.taskType}', which cannot serve AI task '${taskKey}' ` +
           `(expected ${accepted.join(' or ')}).`,
       });
+    }
+    this.assertModelDeclaresJudgeLane(taskKey, model);
+  }
+
+  /**
+   * TASK-1050 (README §12.2) — a safety-judge lane key may bind only a model whose `_metadata.judge` declares
+   * that lane (a missing or invalid declaration supports none). Enforced HERE, on the routing write path, so
+   * no caller — `/guardrails/control`, `/ai-providers`, an import — can elect a judge for a lane it cannot
+   * answer. 400 `JUDGE_LANE_UNSUPPORTED`: the request names an incapable model, which is a bad request.
+   */
+  private assertModelDeclaresJudgeLane(taskKey: string, model: { id: string; slug: string; metaData?: unknown }): void {
+    const lane = JUDGE_LANE_BY_TASK_KEY.get(taskKey);
+    if (!lane) return;
+    try {
+      assertModelSupportsLane((model.metaData as { judge?: unknown } | null | undefined)?.judge, lane);
+    } catch (error) {
+      if (!(error instanceof JudgeLaneUnsupportedError)) throw error;
+      throw new BadRequestException({ code: JUDGE_LANE_UNSUPPORTED, message: error.message, lane, modelId: model.id, problems: error.problems });
     }
   }
 

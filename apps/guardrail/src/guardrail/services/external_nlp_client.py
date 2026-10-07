@@ -57,6 +57,11 @@ logger = get_logger(__name__)
 PII_PATH = "/api/v1/guard/pii"
 CLASSIFY_PATH = "/api/v1/guard/classify"
 ENTAILMENT_PATH = "/api/v1/guard/entailment"
+#: TASK-1050 §12 — a generative guard judge on its own chat template (`qwen3guard_native`).
+JUDGE_PATH = "/api/v1/guard/judge"
+#: The `AiModel.libraryName` apps/nlp serves with its sequence-classification runtime
+#: (TASK-1049 R2, `nlp.services.seq_cls_guard.SEQ_CLS_LIBRARY`) — the only runtime sent `threshold`.
+SEQ_CLS_LIBRARY = "transformers"
 
 
 @dataclass(frozen=True)
@@ -154,6 +159,7 @@ class NlpGuardClient:
         labels: list[str] | None = None,
         threshold: float = 0.5,
         calibration: dict[str, Any] | None = None,
+        library_name: str | None = None,
         timeout_s: float = 60.0,
         max_attempts: int = 2,
         retry_backoff_s: float = 0.1,
@@ -184,6 +190,11 @@ class NlpGuardClient:
         # with the selection because the bounds are calibrated per BUILD, incl.
         # quantisation: Q6 tolerances are meaningless for a Q4 of the same model.
         self.calibration = calibration
+        #: The selected row's `AiModel.libraryName` (TASK-1049 R2). It decides apps/nlp's
+        #: `/guard/classify` RUNTIME: absent or `gliner2` ⇒ GLiNER2, `transformers` ⇒ the
+        #: sequence-classification runtime, anything else ⇒ 503. Absent is sent as absent, so a
+        #: caller that predates the field keeps exactly its old call.
+        self.library_name = (library_name or "").strip() or None
         self._timeout_s = timeout_s
         self._max_attempts = max(1, max_attempts)
         self._retry_backoff_s = retry_backoff_s
@@ -366,11 +377,54 @@ class NlpGuardClient:
         return (await self.classify_scored(tasks, text)).labels
 
     async def classify_scored(self, tasks: dict[str, Any], text: str) -> ClassifiedTasks:
-        """The same one call, with the per-label confidences kept."""
-        payload = await self._post(CLASSIFY_PATH, {"text": text, "tasks": tasks}, "classify")
+        """The same one call, with the per-label confidences kept.
+
+        TASK-1049 Track R: the row's ``library_name`` (runtime choice) rides the call when the
+        row has one. ``threshold`` is sent ONLY to the sequence-classification runtime
+        (``transformers``), which requires it. A GLiNER2 call stays byte-identical to the
+        pre-Track-R wire — no threshold, so apps/nlp keeps its own 0.5, the value every TASK-1049
+        GLiGuard measurement assumed. Sending the policy's 0.4 there would silently move every
+        production flag.
+        """
+        request: dict[str, Any] = {"text": text, "tasks": tasks}
+        if self.library_name:
+            request["library_name"] = self.library_name
+            if self.library_name.lower() == SEQ_CLS_LIBRARY:
+                request["threshold"] = self.threshold
+        payload = await self._post(CLASSIFY_PATH, request, "classify")
         results = payload.get("results")
         labels = results if isinstance(results, dict) else {}
         return ClassifiedTasks(labels=labels, scores=_parse_scores(payload.get("scores"), labels))
+
+    async def judge(
+        self,
+        *,
+        protocol: str,
+        mode: str,
+        prompt: str,
+        response: str | None = None,
+        max_new_tokens: int,
+        temperature: float,
+    ) -> dict[str, Any]:
+        """One generative-guard judgement (TASK-1050 §12, ``POST /api/v1/guard/judge``).
+
+        Returns apps/nlp's NATIVE fields raw — ``{tier, categories[], refusal,
+        undetermined_reason, latency_ms, …}``. Which lane a category feeds and what a tier means
+        are the model row's ``_metadata.judge`` mapping, applied by the judge runner, never here.
+        ``max_new_tokens`` / ``temperature`` are the row's ``judgeMaxTokens`` /
+        ``judgeTemperature``. Same deadline, no-retry-once-sent and fail-closed raise as every
+        other call on this client.
+        """
+        body: dict[str, Any] = {
+            "protocol": protocol,
+            "mode": mode,
+            "prompt": prompt,
+            "max_new_tokens": int(max_new_tokens),
+            "temperature": float(temperature),
+        }
+        if response is not None:
+            body["response"] = response
+        return await self._post(JUDGE_PATH, body, "judge")
 
     async def score_pairs(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
         """The `NliScorer` seam's spelling (`services/groundedness_nli.py`)."""

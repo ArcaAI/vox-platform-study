@@ -9,6 +9,7 @@
 
 import type { ConsultationProcessing, GoverningRunSummary } from '@arcaai/types';
 import type { ConsultationStatus as ConsultationLifecycleStatus } from '@arcaai/types';
+import type { GuardrailResultFields } from './guardrail';
 
 // -----------------------------------------------------------------------------
 // Requests
@@ -259,7 +260,7 @@ export interface ConsultationSummaryStructuredData {
  * DTO's class name is `SummaryResponse`
  * (`packages/applications/.../summary.response.ts`).
  */
-export interface ConsultationSummaryResponse {
+export interface ConsultationSummaryResponse extends GuardrailResultFields {
   id: string;
   consultationId: string;
   type: 'summary' | 'pre_summary';
@@ -344,7 +345,7 @@ export type JobType = 'PRE_SUMMARY' | 'SUMMARY' | 'COMPREHENSIVE_SUMMARY' | 'NER
  * by `JobStatusResponse` below (`PENDING|RUNNING|COMPLETED|FAILED|CANCELLED`);
  * that mismatch exists in the gateway source, not introduced here.
  */
-export interface AsyncJobResponse {
+export interface AsyncJobResponse extends GuardrailResultFields {
   jobId: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   consultationId: string;
@@ -368,7 +369,7 @@ export interface AsyncJobResponse {
  * serializes `Date` to an ISO-8601 string — so this SDK type declares them
  * as `string`, matching what actually arrives over the wire.
  */
-export interface JobStatusResponse {
+export interface JobStatusResponse extends GuardrailResultFields {
   jobId: string;
   type: JobType;
   status: JobStatusType;

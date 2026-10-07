@@ -153,6 +153,9 @@ RUN cd /app/packages/applications && \
 
 # Copy built API application
 COPY --from=builder --chown=api:hope /app/apps/api/dist ./apps/api/dist
+# TASK-1050: the guardrail policy-key catalogue (generated from apps/guardrail `_SPECS`) is the
+# gateway's only source of key metadata; it is resolved by walking up to /app.
+COPY --chown=api:hope apps/guardrail/src/guardrail/tests/contracts/policy-keys.json ./apps/guardrail/src/guardrail/tests/contracts/policy-keys.json
 
 # Copy only packages that have built dist folders (TypeScript compiled packages)
 COPY --from=builder --chown=api:hope /app/packages/applications/dist ./packages/applications/dist

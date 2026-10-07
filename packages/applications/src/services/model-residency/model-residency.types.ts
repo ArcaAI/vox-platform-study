@@ -30,7 +30,21 @@ export type ResidencyBytesSource = 'measured' | 'unknown';
 export type RecommendationAction = 'load' | 'unload' | 'pin' | 'unpin';
 export type RecommendationReason = 'idle_ttl_expired' | 'promotion_rate' | 'live_path_pin' | 'make_room' | 'admission_rejected';
 export type ResidencyErrorCode =
-  'IN_FLIGHT' | 'LOAD_FAILED' | 'LOAD_IN_PROGRESS' | 'MODEL_UNKNOWN' | 'OPTIONS_UNSUPPORTED' | 'OVER_BUDGET' | 'SERVICE_UNREACHABLE';
+  | 'IN_FLIGHT'
+  | 'LOAD_FAILED'
+  | 'LOAD_IN_PROGRESS'
+  | 'MODEL_UNKNOWN'
+  // TASK-1051 F8 — never measured and no catalogue size: an un-forced load is refused.
+  | 'NO_SIZE'
+  | 'OPTIONS_UNSUPPORTED'
+  | 'OVER_BUDGET'
+  // TASK-1051 review — a runtime key another catalogue row already answers to (its ref, or a confirmed link).
+  | 'RUNTIME_KEY_TAKEN'
+  // TASK-1051 — `POST links` names a service the catalogue row is not served by.
+  | 'SERVICE_MISMATCH'
+  | 'SERVICE_UNREACHABLE'
+  // TASK-1051 — `POST suggestions/:id/dismiss` with an id no standing (shadow) recommendation has.
+  | 'SUGGESTION_UNKNOWN';
 export type ResidencyOperationStatus = 'running' | 'succeeded' | 'failed';
 
 /** Why a load failed (TASK-1019). `at` is null when the source (the stt-worker gauge) carries no time. */

@@ -46,6 +46,7 @@ from harness.services.note_plan.models import (
     CoverageResultV1,
     NotePlanV1,
 )
+from harness.services.text_client import TextGuardrailBlocked
 from harness.temporal.interpreter.compose_messages import compose_messages
 
 #: At most this many calls in flight at once — the plan's own cap.
@@ -340,6 +341,18 @@ def _user(prefix: str, directive: str) -> str:
     return f"{prefix}\n\n{directive}" if prefix else directive
 
 
+def _plan_governance(plan: NotePlanV1, section_keys: Sequence[str]) -> dict[str, Any] | None:
+    """The ``systemGovernance`` the repair call sends: a plan call's own claim (every plan call
+    sends the one system prompt), preferring a call that wrote one of the repaired sections.
+    ``None`` when no plan call carried one — then apps/text screens the system itself, as before."""
+    keys = set(section_keys)
+    governed = [call for call in plan.calls if call.system_governance]
+    for call in governed:
+        if keys & set(call.section_keys):
+            return dict(call.system_governance or {})
+    return dict(governed[0].system_governance or {}) if governed else None
+
+
 async def execute_plan(
     plan: NotePlanV1,
     *,
@@ -349,12 +362,21 @@ async def execute_plan(
     preserved_sections: Mapping[str, str] | None = None,
     max_parallel: int = MAX_PARALLEL_CALLS,
     allow_repair: Callable[[], bool] = lambda: True,
+    prime_shared_prefix: bool = False,
 ) -> NotePlanExecution:
     """Run ``plan.calls`` (bounded parallel), merge, check coverage, repair the gaps ONCE.
 
     Raises :class:`NotePlanCallFailed` when any call raised (the note is never assembled from
     a subset), and ``ValueError`` before any call when a ``section_regen`` plan's preserved
     sections were not supplied.
+
+    TASK-1049 F9 / TASK-1050 — ``prime_shared_prefix`` runs the FIRST call alone and fans the rest
+    out after it. Every call is the same byte-identical block prefix plus its own directive, and
+    apps/text screens the prefix's data windows on each call; fanned out together, all N calls
+    screen the same windows IN FLIGHT and none can reuse another's verdict, so the guardrail judge
+    (the platform's bottleneck, TASK-1049 §12) does N times the work. Primed, the lead call fills
+    guardrail's window cache and the rest hit it. A lead call guardrail REFUSED is not fanned out
+    at all: the others carry the same data and would be refused the same way.
     """
     preserved = dict(preserved_sections or {})
     if plan.preserve is not None:
@@ -376,20 +398,25 @@ async def execute_plan(
         )
         for index, call in enumerate(plan.calls)
     ]
-    records = list(
-        await asyncio.gather(
-            *(
-                _run(
-                    generate,
-                    r,
-                    gate,
-                    retry_max_tokens=_retry_max_tokens(plan, call),
-                    allow_retry=allow_repair,
-                )
-                for r, call in zip(requests, plan.calls, strict=True)
-            )
+
+    def _start(index: int) -> Awaitable[NoteCallRecord]:
+        return _run(
+            generate,
+            requests[index],
+            gate,
+            retry_max_tokens=_retry_max_tokens(plan, plan.calls[index]),
+            allow_retry=allow_repair,
         )
-    )
+
+    records: list[NoteCallRecord] = []
+    pending = list(range(len(requests)))
+    if prime_shared_prefix and len(requests) > 1:
+        lead = await _start(0)
+        records.append(lead)
+        pending = pending[1:]
+        if isinstance(lead.error, TextGuardrailBlocked):
+            raise NotePlanCallFailed(records)
+    records.extend(await asyncio.gather(*(_start(index) for index in pending)))
     if any(record.error is not None for record in records):
         raise NotePlanCallFailed(records)
 
@@ -438,6 +465,10 @@ async def execute_plan(
             ),
             kind="repair",
             response_format=section_response_format(repair_keys),
+            # TASK-1049 F4 — the repair sends the SAME system prompt as every plan call, so it
+            # carries the same gateway-verified claim; without it apps/text re-screened the whole
+            # governed instruction as untrusted text on every repair.
+            system_governance=_plan_governance(plan, repair_keys),
         )
         [repaired] = await asyncio.gather(_run(generate, repair, gate))
         records.append(repaired)

@@ -286,6 +286,25 @@ class DatabaseConfig(BaseSettings):
         return v
 
 
+class EvaluationOutboxPolicy(BaseModel):
+    """Bounds of the evaluation-record outbox and its drainer (TASK-1050 README §9.8.2).
+
+    A plain ``BaseModel`` like :class:`TransportPolicy`: none of this is an env var. It
+    is the shape of the service's own at-least-once capture path, and becomes
+    ``guardrail.evaluationOutbox.*`` descriptors when that read surface lands.
+    """
+
+    #: Approximate MAXLEN of the Redis stream — the outbox is BOUNDED, so a gateway
+    #: that stays down cannot grow Redis without limit.
+    stream_maxlen: int = 100_000
+    #: Records per POST (the contract maximum is 100).
+    batch_max: int = 100
+    #: A pending (posted, not acknowledged) entry idle this long is REDRIVEN.
+    redrive_idle_ms: int = 30_000
+    #: Sleep between drain passes when the stream is not backed up.
+    drain_interval_s: float = 1.0
+
+
 class Settings(BaseSettings):
     """Root application settings."""
 
@@ -428,6 +447,7 @@ class Settings(BaseSettings):
     # Sub-configs
     judge: JudgePolicy = Field(default_factory=JudgePolicy)
     transport: TransportPolicy = Field(default_factory=TransportPolicy)
+    evaluation_outbox: EvaluationOutboxPolicy = Field(default_factory=EvaluationOutboxPolicy)
     groundedness: GroundednessConfig = Field(default_factory=GroundednessConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)

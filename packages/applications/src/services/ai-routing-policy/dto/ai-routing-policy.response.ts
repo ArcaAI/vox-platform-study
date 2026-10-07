@@ -139,4 +139,12 @@ export class AiRoutingPolicyResponse {
 
   @ApiPropertyOptional({ description: 'Actor who last changed this revision', nullable: true })
   updatedBy?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Set on LIST responses. `guardrail-control` when the selection is owned by the Guardrail control screen (every `guardrail.*` key, TASK-1050 OD-39): render it read-only and deep-link to `/guardrails/control`. `null` otherwise.',
+    nullable: true,
+    enum: ['guardrail-control'],
+  })
+  managedBy?: 'guardrail-control' | null;
 }

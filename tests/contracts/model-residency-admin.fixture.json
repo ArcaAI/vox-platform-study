@@ -81,7 +81,19 @@
     "classSource": ["policy", "implicit-live-path", "default"],
     "recommendationAction": ["load", "unload", "pin", "unpin"],
     "recommendationReason": ["idle_ttl_expired", "promotion_rate", "live_path_pin", "make_room", "admission_rejected"],
-    "errorCode": ["IN_FLIGHT", "LOAD_FAILED", "LOAD_IN_PROGRESS", "MODEL_UNKNOWN", "OPTIONS_UNSUPPORTED", "OVER_BUDGET", "SERVICE_UNREACHABLE"],
+    "errorCode": [
+      "IN_FLIGHT",
+      "LOAD_FAILED",
+      "LOAD_IN_PROGRESS",
+      "MODEL_UNKNOWN",
+      "OPTIONS_UNSUPPORTED",
+      "OVER_BUDGET",
+      "SERVICE_UNREACHABLE",
+      "NO_SIZE",
+      "SERVICE_MISMATCH",
+      "RUNTIME_KEY_TAKEN",
+      "SUGGESTION_UNKNOWN"
+    ],
     "loadOutcome": ["accepted", "already_loaded"],
     "operationStatus": ["running", "succeeded", "failed"],
     "readinessCheck": [
@@ -94,7 +106,7 @@
       "unmeasured_budgeted",
       "actions_audited"
     ],
-    "previewRefusal": ["NO_SIZE", "OVER_BUDGET", "ALREADY_LOADED"]
+    "previewRefusal": ["NO_SIZE", "OVER_BUDGET", "ALREADY_LOADED", "LOAD_IN_PROGRESS", "IN_FLIGHT"]
   },
   "load": {
     "path": "POST /api/v1/admin/model-residency/load",

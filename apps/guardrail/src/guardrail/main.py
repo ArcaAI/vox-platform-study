@@ -360,6 +360,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Config invalidation listener — the propagation path for a policy change.
     app.state.config_invalidation_task = asyncio.create_task(_config_invalidation_listener(app))
 
+    # TASK-1050: the evaluation-record outbox + its drainer (at-least-once capture of
+    # every screen, README §9.8.2) and the `guardrail:config:invalidate` subscriber
+    # (guardrail-policy writes, OD-11). No I/O at construction; both degrade quietly.
+    from guardrail.services.evaluation_outbox import start_evaluation_capture
+
+    start_evaluation_capture(app.state, settings, redis_client, http_client=http_client)
+
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Reuses the shared `http_client` above. Guardrail
     # has no dedicated `environment` settings field; `DEPLOYMENT_ENVIRONMENT`
@@ -391,6 +398,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         invalidation_task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await invalidation_task
+
+    from guardrail.services.evaluation_outbox import stop_evaluation_capture
+
+    await stop_evaluation_capture(app.state)
 
     if hasattr(app.state, "job_processor") and app.state.job_processor:
         await app.state.job_processor.stop()
@@ -462,6 +473,7 @@ def create_app() -> FastAPI:
     from guardrail.api.endpoints.guardrails import router as guardrails_router
     from guardrail.api.endpoints.health import router as health_router
     from guardrail.api.endpoints.jobs import router as jobs_router
+    from guardrail.api.endpoints.judge_dry_run import router as judge_dry_run_router
     from guardrail.api.endpoints.medical import router as medical_router
     from guardrail.api.endpoints.policy_version import router as policy_version_router
     from guardrail.api.endpoints.realtime import router as realtime_router
@@ -483,6 +495,8 @@ def create_app() -> FastAPI:
     app.include_router(screen_router, prefix="/api/v1", tags=["screening"])
     # The tenant's screening policy version (TASK-1047 FC-3) — behind X-Service-Token.
     app.include_router(policy_version_router, prefix="/api/v1", tags=["screening"])
+    # TASK-1050 §11.3 B — a platform admin's draft judge prompt, judged in memory.
+    app.include_router(judge_dry_run_router, prefix="/api/v1", tags=["screening"])
     app.include_router(realtime_router, prefix="/api/v1", tags=["realtime"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 

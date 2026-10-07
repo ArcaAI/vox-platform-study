@@ -9,7 +9,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isNoteReady } from '@arcaai/types';
-import type { CaptureState, ConsultationActivityPage, EncounterRecap, StopResult } from '@arcaai/types';
+import type {
+  CaptureState,
+  ConsultationActivityPage,
+  EncounterRecap,
+  GuardrailApproveRequestAdditions,
+  GuardrailApproveResponseAdditions,
+  GuardrailHoldResolution,
+  GuardrailNotice,
+  StopResult,
+} from '@arcaai/types';
 import { useAgenticStore } from '../store';
 import { useArcaSession } from './useArcaSession';
 import { useArcaAudio } from './useArcaAudio';
@@ -17,6 +26,7 @@ import { useArcaSummary } from './useArcaSummary';
 import { CONSULTATION_ENDPOINTS, LIFECYCLE_HEADER } from '../core/constants';
 import { ifMatchFor, toOccError } from '../utils/occ';
 import { generateIdempotencyKey } from '../utils/idempotency';
+import { isGuardrailHoldReason, mergeGuardrailNotices } from '../core/guardrail';
 import { toLifecycleState } from '../types/consultation';
 import type { Consultation, ConsultationLifecycleStatus, ConsultationProcessingState } from '../types/consultation';
 import type { AudioStartOptions, TranscriptSegment } from '../types/audio';
@@ -85,6 +95,17 @@ export interface UseConsultationReturn {
   processingReason: string | null;
   /** STOPPED with the note finished (IDLE + `NOTE_READY`) or waiting on a human (AWAITING_REVIEW). */
   noteReady: boolean;
+  /**
+   * TASK-1050: `true` while the consultation waits on a guardrail hold (`processingReason` `GUARDRAIL_HOLD` or
+   * `EGRESS_REDACTION_UNAVAILABLE`). Show the blocking notice's `defaultMessage` and offer {@link resumeHold}.
+   */
+  onGuardrailHold: boolean;
+  /**
+   * TASK-1050: the consultation's guardrail notices, one per `noticeId`, oldest first. Filled by
+   * {@link refreshGuardrailNotices} (called for you when a hold appears) and {@link addGuardrailNotices}
+   * (feed it the `guardrailNotices` of a run or a generate result).
+   */
+  guardrailNotices: readonly GuardrailNotice[];
   isCapturing: boolean;
   level: number;
   segments: TranscriptSegment[];
@@ -97,7 +118,25 @@ export interface UseConsultationReturn {
   generateSummary: (options?: ConsultationGenerateSummaryOptions) => Promise<AsyncJobResponse>;
   sendAttachment: (input: ConsultationAttachmentInput, options?: SendAttachmentOptions) => Promise<ConsultationAttachmentResult>;
   sendFeedback: (input: ConsultationFeedbackInput) => Promise<unknown>;
-  approve: (options?: { overrideSafetyFlag?: boolean; clinicianUserId?: string }) => Promise<Consultation>;
+  /**
+   * Approve with the clinician's sign-off. `acknowledgeGuardrailNotices: true` acknowledges every outstanding warning in
+   * the same transaction (the response lists them in `acknowledgedNotices`); `resolveHold` resolves an inbound hold and
+   * approves in one call. Approve is never refused because of warnings.
+   */
+  approve: (
+    options?: { overrideSafetyFlag?: boolean; clinicianUserId?: string } & GuardrailApproveRequestAdditions,
+  ) => Promise<Consultation & Partial<GuardrailApproveResponseAdditions>>;
+  /** TASK-1050: read the consultation's notices (`GET :id/guardrail-notices`) into {@link guardrailNotices}. */
+  refreshGuardrailNotices: () => Promise<readonly GuardrailNotice[]>;
+  /** TASK-1050: merge notices from elsewhere (a run, a generate result) into {@link guardrailNotices}, deduplicated by `noticeId`. */
+  addGuardrailNotices: (notices: readonly GuardrailNotice[]) => void;
+  /** TASK-1050: acknowledge one warning (`POST :id/guardrail-notices/:noticeId/ack`, `If-Match`). */
+  acknowledgeNotice: (noticeId: string) => Promise<unknown>;
+  /**
+   * TASK-1050: resolve the guardrail hold so processing continues (`POST :id/guardrail-hold/resume`, `If-Match`):
+   * `item_excluded`, `item_edited` or `acknowledged` (not offered for the locked medical check — see `notice.resumable`).
+   */
+  resumeHold: (resolution: GuardrailHoldResolution) => Promise<unknown>;
   close: () => Promise<Consultation>;
   reopen: (options?: { reason?: string }) => Promise<Consultation>;
   history: (query?: Record<string, string | number | undefined>) => Promise<ConsultationActivityPage>;
@@ -122,6 +161,8 @@ interface StreamingControl {
 // =============================================================================
 // Helpers
 // =============================================================================
+
+const EMPTY_NOTICES: readonly GuardrailNotice[] = Object.freeze([]);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -228,7 +269,13 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
   const status = live?.status ?? base.status;
   const processing = live?.processing ?? base.processing;
   const processingReason = (live ? live.processingReason : base.processingReason) ?? null;
-  const noteReady = isNoteReady({ status, processing, processingReason });
+  const onGuardrailHold = isGuardrailHoldReason(processingReason);
+  // A hold is AWAITING_REVIEW too, but its note was blocked or withheld — never "ready".
+  const noteReady = !onGuardrailHold && isNoteReady({ status, processing, processingReason });
+
+  // Guardrail notices of THIS consultation, deduplicated by noticeId; cleared when another consultation is opened.
+  const [noticeState, setNoticeState] = useState<{ consultationId: string | null; notices: readonly GuardrailNotice[] }>({ consultationId: null, notices: [] });
+  const guardrailNotices = noticeState.consultationId === consultationId ? noticeState.notices : EMPTY_NOTICES;
 
   const requireContext = useCallback((): { apiClient: NonNullable<typeof store.apiClient>; id: string; version?: number } => {
     const apiClient = store.apiClient;
@@ -315,14 +362,15 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
   );
 
   const transition = useCallback(
-    async (path: (id: string) => string, body: unknown): Promise<Consultation> => {
+    async (path: (id: string) => string, body: unknown, lenient = false): Promise<Consultation> => {
       const { id, version } = requireContext();
       setCommandError(null);
       const headers: Record<string, string> = typeof version === 'number' ? { 'If-Match': ifMatchFor(version) } : {};
       try {
         const updated = await command<Consultation & { processing?: string }>(path, body, headers);
-        remember(id, updated);
-        store.setConsultation?.(updated);
+        // `lenient` (ack, resume): the answer may be a thin state, so fold in only what it actually carries.
+        if (!lenient || typeof updated?.status === 'string') remember(id, updated);
+        if (!lenient || typeof updated?.id === 'string') store.setConsultation?.(updated);
         return updated;
       } catch (error) {
         throw typeof version === 'number' ? toOccError(error, id, version) : error;
@@ -332,7 +380,55 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
   );
 
   const approve = useCallback(
-    (options?: { overrideSafetyFlag?: boolean; clinicianUserId?: string }) => transition(CONSULTATION_ENDPOINTS.APPROVE, options ?? {}),
+    (options?: { overrideSafetyFlag?: boolean; clinicianUserId?: string } & GuardrailApproveRequestAdditions) => {
+      const body: Record<string, unknown> = {};
+      if (options?.overrideSafetyFlag !== undefined) body.overrideSafetyFlag = options.overrideSafetyFlag;
+      if (options?.clinicianUserId !== undefined) body.clinicianUserId = options.clinicianUserId;
+      if (options?.acknowledgeGuardrailNotices !== undefined) body.acknowledgeGuardrailNotices = options.acknowledgeGuardrailNotices;
+      if (options?.resolveHold !== undefined) body.resolveHold = { noticeId: options.resolveHold.noticeId, resolution: options.resolveHold.resolution };
+      return transition(CONSULTATION_ENDPOINTS.APPROVE, body) as Promise<Consultation & Partial<GuardrailApproveResponseAdditions>>;
+    },
+    [transition],
+  );
+
+  const addGuardrailNotices = useCallback(
+    (notices: readonly GuardrailNotice[]): void => {
+      if (consultationId === null) return;
+      setNoticeState((current) => {
+        const base = current.consultationId === consultationId ? current.notices : EMPTY_NOTICES;
+        const merged = mergeGuardrailNotices(base, notices);
+        return merged === current.notices && current.consultationId === consultationId ? current : { consultationId, notices: merged };
+      });
+    },
+    [consultationId],
+  );
+
+  const refreshGuardrailNotices = useCallback(async (): Promise<readonly GuardrailNotice[]> => {
+    const { apiClient, id } = requireContext();
+    const response = await apiClient.get<GuardrailNotice[] | { notices?: GuardrailNotice[] }>(CONSULTATION_ENDPOINTS.GUARDRAIL_NOTICES(id));
+    const list = Array.isArray(response) ? response : (response?.notices ?? []);
+    addGuardrailNotices(list);
+    return list;
+  }, [requireContext, addGuardrailNotices]);
+
+  // A hold is announced by the lifecycle (`processingReason`); the notice itself is read by id, never carried by the event.
+  const lastHoldFetch = useRef<string | null>(null);
+  useEffect(() => {
+    if (consultationId === null || !onGuardrailHold) return;
+    const key = `${consultationId}:${processingReason}`;
+    if (lastHoldFetch.current === key) return;
+    lastHoldFetch.current = key;
+    refreshGuardrailNotices().catch((error: unknown) => setCommandError(error as Error));
+  }, [consultationId, onGuardrailHold, processingReason, refreshGuardrailNotices]);
+
+  const acknowledgeNotice = useCallback(
+    (noticeId: string): Promise<unknown> => transition((id) => CONSULTATION_ENDPOINTS.GUARDRAIL_NOTICE_ACK(id, noticeId), {}, true),
+    [transition],
+  );
+
+  const resumeHold = useCallback(
+    (resolution: GuardrailHoldResolution): Promise<unknown> =>
+      transition(CONSULTATION_ENDPOINTS.GUARDRAIL_HOLD_RESUME, { noticeId: resolution.noticeId, resolution: resolution.resolution }, true),
     [transition],
   );
   const close = useCallback(() => transition(CONSULTATION_ENDPOINTS.CLOSE, {}), [transition]);
@@ -485,6 +581,8 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       processing,
       processingReason,
       noteReady,
+      onGuardrailHold,
+      guardrailNotices,
       isCapturing: audio.isCapturing,
       level: audio.level,
       segments: audio.transcriptSegments,
@@ -496,6 +594,10 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       sendAttachment,
       sendFeedback,
       approve,
+      refreshGuardrailNotices,
+      addGuardrailNotices,
+      acknowledgeNotice,
+      resumeHold,
       close,
       reopen,
       history,
@@ -507,6 +609,8 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       processing,
       processingReason,
       noteReady,
+      onGuardrailHold,
+      guardrailNotices,
       audio.isCapturing,
       audio.level,
       audio.transcriptSegments,
@@ -520,6 +624,10 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       sendAttachment,
       sendFeedback,
       approve,
+      refreshGuardrailNotices,
+      addGuardrailNotices,
+      acknowledgeNotice,
+      resumeHold,
       close,
       reopen,
       history,

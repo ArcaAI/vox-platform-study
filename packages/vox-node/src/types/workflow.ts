@@ -18,6 +18,8 @@
  */
 
 /** One entry of `GET /api/v1/workflows` and `GET /api/v1/consultations/:id/workflows`. */
+import type { GuardrailResultFields } from './guardrail';
+
 export interface WorkflowSummary {
   /** The public URL segment — the value you pass as `slug` to every run method. */
   slug: string;
@@ -170,7 +172,7 @@ export function isTerminalRunStatus(status: string): boolean {
 }
 
 /** Live run status — `GET /api/v1/workflows/:slug/runs/:runId`, and the `mode=blocking` 200 body. */
-export interface WorkflowRunStatus {
+export interface WorkflowRunStatus extends GuardrailResultFields {
   runId: string;
   slug: string;
   workflowVersionNumber: number;

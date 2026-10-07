@@ -44,7 +44,16 @@ function agentModel(overrides: Record<string, unknown> = {}) {
 }
 
 function aiModel(overrides: Record<string, unknown>) {
-  return { tenantId: SYSTEM_TENANT_ID, servedBy: 'stt', observedMemoryMb: null, observedLoadSeconds: null, name: 'model', ...overrides };
+  // TASK-1051 F8: a catalogue size, so a never-measured model is admitted against size × 1.2 (no size at all is NO_SIZE).
+  return {
+    tenantId: SYSTEM_TENANT_ID,
+    servedBy: 'stt',
+    observedMemoryMb: null,
+    observedLoadSeconds: null,
+    memorySizeMb: 1_000,
+    name: 'model',
+    ...overrides,
+  };
 }
 
 function deferred<T>() {
@@ -315,6 +324,8 @@ describe('ModelResidencyService (TASK-1005)', () => {
       expect(h.lmStudio.unload).not.toHaveBeenCalled();
 
       const view = await h.service.getView();
+      // TASK-1051 review finding 4: classifying the live-path ASR PINNED is the reason to pin it, not proof the runtime
+      // holds it pinned — the agent reports it unpinned, so shadow records "pin it" (as enforce would send it).
       expect(view.recommendations.map((r) => [r.action, r.modelRef, r.reason, r.mode, r.applied])).toEqual(
         expect.arrayContaining([
           ['unload', NER, 'idle_ttl_expired', 'shadow', false],

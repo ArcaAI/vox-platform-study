@@ -44,6 +44,10 @@ export const PUBLIC_RUN_EVENT_TYPES = Object.freeze([
   'output.audio.delta',
   'output.data',
   'ping',
+  // TASK-1050: a guardrail hold pauses the run at the blocked node, and every warn / block / unverified
+  // reaches the client as ONE standard notice.
+  'run.paused',
+  'guardrail.notice',
 ] as const);
 
 /** The admin trace's debug events — console only. A business-plane stream never carries them; listed so a frame is recognised, not dropped as unknown. */
@@ -65,7 +69,7 @@ export type PublicRunEventType = (typeof PUBLIC_RUN_EVENT_TYPES)[number];
 export type AdminRunEventType = (typeof ADMIN_RUN_EVENT_TYPES)[number];
 export type RunEventType = PublicRunEventType | AdminRunEventType;
 
-/** All 23 types, public first. */
+/** All 25 types, public first. */
 export const RUN_EVENT_TYPES: readonly RunEventType[] = Object.freeze([...PUBLIC_RUN_EVENT_TYPES, ...ADMIN_RUN_EVENT_TYPES]);
 
 /** The three events that end a run. */
@@ -161,13 +165,140 @@ export interface RunSnapshot {
 
 export type PhiClass = 'PHI' | 'NON_PHI';
 
+/** The guardrail action vocabulary on the admin trace (TASK-1036's three plus TASK-1050's `WARN` / `IGNORE`). */
+export const RUN_GUARDRAIL_EVENT_ACTIONS = Object.freeze(['ALLOW', 'REDACT', 'BLOCK', 'WARN', 'IGNORE'] as const);
+export type RunGuardrailEventAction = (typeof RUN_GUARDRAIL_EVENT_ACTIONS)[number];
+
+/** One check of a screen on the admin trace — verdict, action and timing; never content or judge reasoning. */
+export interface RunGuardrailCheck {
+  readonly checkId: string;
+  readonly verdict: 'pass' | 'flag' | 'undetermined' | 'skipped';
+  readonly actionTaken: 'none' | 'ignore' | 'warn' | 'block' | 'unverified';
+  readonly category?: string;
+  readonly score?: number;
+  readonly confidence?: number;
+  readonly model?: string;
+  readonly latencyMs?: number;
+}
+
 /** Inbound screens only the EXTERNAL_DATA blocks; outbound screens the response. */
 export interface GuardrailEventData {
-  readonly action: 'ALLOW' | 'REDACT' | 'BLOCK';
+  readonly action: RunGuardrailEventAction;
   readonly detected: number;
   readonly categories?: readonly string[];
   readonly mode?: 'detect' | 'redact';
   readonly latencyMs?: number;
+  /** TASK-1050: per-check outcomes. Absent on a producer that predates it. */
+  readonly checks?: readonly RunGuardrailCheck[];
+}
+
+/** Why a run paused. Only the guardrail hold today. */
+export const RUN_PAUSED_REASONS = Object.freeze(['guardrail_hold'] as const);
+export type RunPausedReason = (typeof RUN_PAUSED_REASONS)[number];
+
+/** The check ids a notice may name (`@arcaai/types` `GUARDRAIL_CHECK_IDS`, pinned by `guardrail-vocabulary.fixture.json`). */
+export const RUN_GUARDRAIL_CHECK_IDS = Object.freeze([
+  'jailbreak_detection',
+  'prompt_safety',
+  'prompt_toxicity',
+  'response_safety',
+  'response_toxicity',
+  'response_refusal',
+  'pii_leak',
+  'containment_echo',
+  'medical_validation',
+  'injection_judge',
+  'unsafe_content_judge',
+  'clinical_safety_judge',
+  'leakage_judge',
+] as const);
+
+/** The ONE action each notice type carries (`@arcaai/types` `GUARDRAIL_NOTICE_TYPE_ACTION`). */
+export const RUN_GUARDRAIL_NOTICE_TYPE_ACTION: Readonly<Record<RunGuardrailNotice['type'], RunGuardrailNotice['action']>> = Object.freeze({
+  'guardrail.warning': 'warn',
+  'guardrail.blocked': 'block',
+  'guardrail.unverified': 'warn',
+});
+
+/**
+ * The fixed label of every notice `messageKey` (`@arcaai/types` `GUARDRAIL_NOTICE_DEFAULT_MESSAGES`). A notice's
+ * `defaultMessage` is exactly its key's label, so nothing a producer interpolates can reach a client. Localise on `messageKey`.
+ */
+export const RUN_GUARDRAIL_NOTICE_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
+  'guardrail.warning.generic': 'A safety check flagged this content. Review it before you rely on it.',
+  'guardrail.blocked.inbound': 'A safety check stopped this request. Review the flagged input to continue.',
+  'guardrail.blocked.outbound': 'A safety check withheld the generated content. Review it to continue.',
+  'guardrail.blocked.not_medical':
+    'This content is outside clinical documentation, so it was not processed. Review the flagged input to continue.',
+  'guardrail.blocked.redaction_unavailable':
+    'Patient details could not be protected before sending to an external model, so processing is paused. Retry to continue.',
+  'guardrail.unverified.generic': 'A safety check could not run, so this content was not verified. Review it before you rely on it.',
+});
+
+/** `GuardrailNotice` v1, structurally identical to `@arcaai/types` (no content, no judge reasoning). */
+export interface RunGuardrailNotice {
+  readonly schemaVersion: 1;
+  readonly noticeId: string;
+  readonly type: 'guardrail.warning' | 'guardrail.blocked' | 'guardrail.unverified';
+  readonly direction: 'inbound' | 'outbound';
+  readonly action: 'warn' | 'block';
+  readonly checks: ReadonlyArray<{ readonly checkId: string; readonly category?: string; readonly severity: 'low' | 'medium' | 'high' }>;
+  readonly consultationId?: string;
+  readonly runId?: string;
+  readonly nodeId?: string;
+  readonly itemIds: readonly string[];
+  readonly messageKey: string;
+  readonly defaultMessage: string;
+  readonly requiresAcknowledgement: boolean;
+  readonly resumable: boolean;
+  readonly policyVersion: string;
+  readonly occurredAt: string;
+}
+
+/**
+ * The cross-field rules of a notice (`action` is the type's one action, `messageKey` belongs to the type,
+ * `defaultMessage` is the key's fixed label, known check ids, schemaVersion 1, `policyVersion` present).
+ * Empty when the notice is well-formed. A diagnostic for tests and tooling — {@link isRunGuardrailNotice} is the lenient runtime guard.
+ */
+export function guardrailNoticeProblems(value: unknown): string[] {
+  if (!isRecord(value)) return ['notice must be an object'];
+  const problems: string[] = [];
+  if (value.schemaVersion !== 1) problems.push('schemaVersion must be 1');
+  if (typeof value.noticeId !== 'string' || value.noticeId === '') problems.push('noticeId is required');
+  if (typeof value.policyVersion !== 'string' || value.policyVersion === '') problems.push('policyVersion is required');
+  const type = value.type;
+  if (typeof type !== 'string' || !Object.prototype.hasOwnProperty.call(RUN_GUARDRAIL_NOTICE_TYPE_ACTION, type)) {
+    problems.push('type is not a known notice type');
+    return problems;
+  }
+  const expected = RUN_GUARDRAIL_NOTICE_TYPE_ACTION[type as RunGuardrailNotice['type']];
+  if (value.action !== expected) problems.push(`action must be ${expected} on a ${type} notice`);
+  if (typeof value.messageKey !== 'string' || !value.messageKey.startsWith(`${type}.`)) problems.push(`messageKey must be a ${type}.* key`);
+  else if (value.defaultMessage !== RUN_GUARDRAIL_NOTICE_MESSAGES[value.messageKey]) problems.push('defaultMessage must be the fixed label of messageKey');
+  if (!Array.isArray(value.checks)) problems.push('checks must be an array');
+  else {
+    for (const check of value.checks) {
+      if (!isRecord(check) || !(RUN_GUARDRAIL_CHECK_IDS as readonly unknown[]).includes(check.checkId)) problems.push('checks[].checkId is not a known check');
+    }
+  }
+  if (!Array.isArray(value.itemIds)) problems.push('itemIds must be an array');
+  return problems;
+}
+
+/**
+ * The runtime guard the SDKs apply before a notice reaches a handler: a notice we can render by `noticeId`,
+ * `type` and `messageKey`. Deliberately lenient about fields a newer server may add — a safety message is never
+ * dropped for being newer than this client; {@link guardrailNoticeProblems} is the strict check.
+ */
+export function isRunGuardrailNotice(value: unknown): value is RunGuardrailNotice {
+  return (
+    isRecord(value) &&
+    typeof value.noticeId === 'string' &&
+    value.noticeId !== '' &&
+    typeof value.type === 'string' &&
+    Object.prototype.hasOwnProperty.call(RUN_GUARDRAIL_NOTICE_TYPE_ACTION, value.type) &&
+    typeof value.messageKey === 'string'
+  );
 }
 
 export interface RunEventDataMap {
@@ -183,11 +314,17 @@ export interface RunEventDataMap {
     readonly tokens: RunTokens;
     readonly result?: RunResult;
     readonly degraded?: boolean;
+    /** TASK-1050: every warn / unverified notice the run raised (a block pauses or fails the run instead). */
+    readonly guardrailNotices?: readonly RunGuardrailNotice[];
   };
   'run.failed': { readonly status: 'FAILED' | 'TIMED_OUT'; readonly durationMs: number; readonly error: RunError; readonly tokens?: RunTokens };
   /** The event type is spelled `cancelled`; the status keeps the persisted `CANCELED`. */
   'run.cancelled': { readonly status: 'CANCELED'; readonly durationMs: number; readonly reason?: string };
   'run.resync': { readonly reason: RunResyncReason; readonly snapshot: RunSnapshot };
+  /** TASK-1050: the run waits durably at `nodeId` for a hold resolution. NOT terminal — keep following the stream. */
+  'run.paused': { readonly reason: RunPausedReason; readonly noticeId: string; readonly nodeId: string };
+  /** TASK-1050: the standard client message (`@arcaai/types` `GuardrailNotice` v1). */
+  'guardrail.notice': RunGuardrailNotice;
   'node.started': { readonly kind: string; readonly label?: string; readonly attempt?: number };
   'node.completed': {
     readonly status: 'COMPLETED' | 'DEGRADED' | 'SKIPPED';

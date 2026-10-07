@@ -39,6 +39,11 @@ describe('AI_TASK_KEYS — the routing-policy vocabulary', () => {
         'guardrail.groundedness',
         'guardrail.pii',
         'guardrail.pii.spans',
+        // TASK-1050 (README §12.2) — the model per safety-judge lane.
+        'guardrail.judge.injection',
+        'guardrail.judge.unsafe_content',
+        'guardrail.judge.clinical_safety',
+        'guardrail.judge.leakage',
         'nlp.ner',
         'nlp.classification',
         'nlp.diagnosis',

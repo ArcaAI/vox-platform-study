@@ -479,9 +479,13 @@ Worktree `hope-v2-task-1049-s`, branch `task-1049/s-safety`; the orchestrator me
 | `on` | both outbound lanes (negatives) | 357 / 0 | 207 real ACI-Bench clinician notes + 150 MTS-Dialog section groups (CC BY 4.0). Report the FP rate per source, because MTS groups mix patients. |
 | `iu` | `unsafe_content_judge` | 245 / 461 | Positives are Aegis 2.0 requests aimed at the assistant, embedded in transcripts: 235 match the §6 criterion, 226 are adjacent (criminal planning, fraud, malware). Negatives are 35 clinical hard-negative scenarios: patient-reported self-harm, abuse, overdose and substance use, violence suffered, and clinician risk assessment. |
 
-Open points for the owner:
-- Criminal planning (190 Aegis items) is not named in the §6 unsafe-content criterion.
-- `self_harm_instructions` (11) and `abuse` (4) positives are few, so their per-category recall will have wide intervals.
+**OD-43 top-up (commit `f906e5a0f`, 26 tests):** `iu` is now 245 / **566**.
+- **Criminal planning:** Aegis Criminal Planning, Fraud and Malware are criterion category `criminal_planning` (195), per the OD-43 proposal to add it to `unsafeContentJudgeCriteria`.
+- **Thin categories:** `self_harm_instructions` and `abuse` are topped up to **60 each** from real Aegis 2.0 train and validation prompts. There is no templated harmful text, and exact duplicates across splits are removed.
+- **Per category:** criminal_planning 195, hate_harassment 101, violence 97, self_harm_instructions 60, abuse 60, illicit_synthesis 22, adjacent (sexual) 31.
+- **Caveats:**
+  - Aegis labels self-harm at prompt level from multi-turn context, and a spot-check found about 5 of 12 top-up items are not requests aimed at the assistant. That lowers the recall ceiling for that category; a human relabelling of those 49 items would fix it.
+  - `illicit_synthesis` stays thin (22).
 
 ### 14.2 S-2 prep: guard-LLM candidates (model cards, config and API only; no weights)
 
@@ -531,6 +535,7 @@ GLiGuard alone at the OD-28 bar: threshold 0.999 gives clinical FP 1.55 % but re
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | §14.1 OD-43 top-up: `iu` criminal_planning criterion (195) and self-harm/abuse from Aegis train/validation (60 each), commit `f906e5a0f`. |
 | 2026-10-07 | Track S milestone 1 (§14): S-4 judge eval sets (`e7fd0d5b9`), S-2 guard-LLM candidate review incl. Qwen3Guard-Gen-0.6B (owner must-evaluate), band calibration from existing scores. No model loaded. |
 | 2026-10-07 | Implementation review against the owner's four rules (R1 prompts validated at authoring only, R2/R3 guardrail and NER on medical context only, R4 25 consultations): findings F1–F11 (§13). |
 | 2026-10-07 | Single-judge load test (granite-guardian 4.1 8B, 25 consultations, 5 parallel/context configs) and interactive report (§12). Loads owner-requested; stop rule continued through macOS warn (owner decision). |

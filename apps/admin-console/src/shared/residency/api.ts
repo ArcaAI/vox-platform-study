@@ -74,7 +74,7 @@ export function loadModelResidency(body: LoadModelResidencyRequest): Promise<Loa
 }
 
 export type ModelResidencyErrorCode =
-  'IN_FLIGHT' | 'LOAD_FAILED' | 'LOAD_IN_PROGRESS' | 'MODEL_UNKNOWN' | 'OPTIONS_UNSUPPORTED' | 'OVER_BUDGET' | 'SERVICE_UNREACHABLE';
+  'IN_FLIGHT' | 'LOAD_FAILED' | 'LOAD_IN_PROGRESS' | 'MODEL_UNKNOWN' | 'NO_SIZE' | 'OPTIONS_UNSUPPORTED' | 'OVER_BUDGET' | 'SERVICE_UNREACHABLE';
 
 /** The gateway house error form: `ConflictException`'s object body — `{ code, message, ...details }`. */
 export interface ModelResidencyConflict {
@@ -92,6 +92,7 @@ const RESIDENCY_ERROR_CODES: ReadonlySet<string> = new Set<ModelResidencyErrorCo
   'LOAD_FAILED',
   'LOAD_IN_PROGRESS',
   'MODEL_UNKNOWN',
+  'NO_SIZE',
   'OPTIONS_UNSUPPORTED',
   'OVER_BUDGET',
   'SERVICE_UNREACHABLE',

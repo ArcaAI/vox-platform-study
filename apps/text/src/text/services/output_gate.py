@@ -19,9 +19,10 @@ the streaming path emits a terminal ``error`` frame every consumer already
 discards on. The exception carries everything either site needs so neither
 re-derives the rejection contract.
 
-Fail posture is the input gate's, verbatim: a genuine rejection is a
-422-equivalent, a sustained outage is a retryable 503-equivalent and a malformed
-verdict fails closed. There is no posture switch and no tenant opt-out any more
+Fail posture is the input gate's: a genuine rejection is a 422-equivalent and a
+malformed verdict fails closed. Since TASK-1050 (README §9.8.1) a sustained OUTAGE
+no longer fails the generation: it is recorded as a ``guardrail.unverified`` notice
+and the completion is released. There is no posture switch and no tenant opt-out any more
 (TASK-1035 OD-1/OD-4); the only unscreened path is a process with NO client wired
 at all, which the service lifespan never builds (it is how the hermetic unit
 harness constructs an app).
@@ -47,6 +48,7 @@ from typing import Any
 from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError, TextError
 from text.core.locality import CLOUD, LOCAL
 from text.core.logging import get_logger
+from text.models.requests import ProviderOverride, serialize_provider_overrides
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.egress import (
     record_outbound_data_findings,
@@ -55,8 +57,18 @@ from text.services.egress import (
 )
 from text.services.egress import source_regions as _regions_of_segments
 from text.services.external_guardrail import (
-    GUARDRAIL_UNAVAILABLE_REASON,
+    GUARDRAIL_NO_VERDICT_REASONS,
     ExternalGuardrailClient,
+)
+from text.services.guardrail_notices import (
+    OUTBOUND_SCREEN_CHECKS,
+    UNKNOWN_POLICY_VERSION,
+    GuardrailOutcome,
+    blocked_checks,
+    blocked_notice,
+    guardrail_correlation,
+    unverified_notice,
+    valid_notices,
 )
 from text.services.judge_guard import assert_not_in_judge_scope
 
@@ -102,6 +114,8 @@ class OutputRejectedError(Exception):
         decision: dict[str, Any] | None = None,
         guardrail_usage: UsageDetail | None = None,
         pii_leak: bool = False,
+        guardrail_notice: dict[str, Any] | None = None,
+        guardrail_evaluation_ids: list[str] | None = None,
     ) -> None:
         super().__init__(f"Response rejected by guardrail: {reason}")
         self.reason = reason
@@ -110,6 +124,9 @@ class OutputRejectedError(Exception):
         self.guardrail_usage = guardrail_usage
         #: A CLOUD completion carried a real identifier (TASK-1035).
         self.pii_leak = pii_leak
+        #: TASK-1050: the block's `GuardrailNotice`, and every evaluation id so far.
+        self.guardrail_notice = guardrail_notice
+        self.guardrail_evaluation_ids = list(guardrail_evaluation_ids or [])
 
     @property
     def status_code(self) -> int:
@@ -153,8 +170,14 @@ class OutputRejectedError(Exception):
                 "The response was blocked because it contained an identifier that was "
                 "not sent to the provider.",
                 error_code=PII_LEAK_CODE,
+                guardrail_notice=self.guardrail_notice,
+                guardrail_evaluation_ids=self.guardrail_evaluation_ids,
             )
-        return ContentBlockedError("The response was blocked by the safety guardrail.")
+        return ContentBlockedError(
+            "The response was blocked by the safety guardrail.",
+            guardrail_notice=self.guardrail_notice,
+            guardrail_evaluation_ids=self.guardrail_evaluation_ids,
+        )
 
     def terminal_data(self, *, usage: dict[str, Any]) -> dict[str, Any]:
         """The ``data`` of the terminal ``error`` frame on the streaming path.
@@ -170,13 +193,16 @@ class OutputRejectedError(Exception):
                 "decision": self.decision.get("decision"),
                 "reasons": list(self.decision.get("reasons") or []),
             }
-        return {
+        data: dict[str, Any] = {
             "error": self.detail,
             "code": self.code,
             "retryable": self.retryable,
             "guardrail": summary,
             "usage": usage,
         }
+        if self.guardrail_notice is not None:
+            data["guardrail_notice"] = self.guardrail_notice
+        return data
 
 
 def assemble_completion(content: str | None, reasoning: str | None) -> str:
@@ -219,8 +245,21 @@ async def gate_completion(
     app_state: Any,
     where: str,
     locality: str = CLOUD,
+    outcome: GuardrailOutcome | None = None,
+    caller: str | None = None,
+    agent_slug: str | None = None,
+    response_items: list[dict[str, Any]] | None = None,
+    prompt_context: str | None = None,
+    provider_overrides: dict[str, ProviderOverride] | None = None,
 ) -> UsageDetail | None:
     """Screen ``completion``; return guardrail's own usage, or raise.
+
+    TASK-1050 (README §9.8.1): only a ``block`` raises. ``warn`` / ``unverified``
+    release the completion and their notices and evaluation id go to ``outcome``;
+    an OUTAGE (no verdict) is a ``guardrail.unverified`` notice and releases too —
+    the outbound screen is a safety verdict, not the cloud redaction, so it never
+    fails a generation for being down. A block carries its notice (guardrail's, or
+    one synthesised from the blocking checks).
 
     * client wired ⇒ screen; ``allowed`` missing or false ⇒ raise (outage
       reason ⇒ retryable, anything else ⇒ content rejection), EXCEPT a LOCAL call
@@ -242,7 +281,17 @@ async def gate_completion(
             source_regions=source_regions,
             tenant_id=tenant_id,
             tenant_policy=tenant_policy,
+            locality=locality,
+            # TASK-1050 (W2a2 wire): who asked, the generated item(s), the user
+            # prompt the response answers, and a cloud judge's connection.
+            caller=caller,
+            agent_slug=agent_slug,
+            response_items=response_items,
+            prompt_context=prompt_context,
+            provider_overrides=serialize_provider_overrides(provider_overrides),
         )
+        collected = outcome if outcome is not None else GuardrailOutcome()
+        collected.add_verdict(verdict)
         # Lifted BEFORE the allow/deny branch, as on the input side: a rejected
         # response still burned guardrail tokens. (Guardrail's outbound screen
         # carries no usage block yet — this is ``None`` until it does.)
@@ -250,6 +299,14 @@ async def gate_completion(
         # TASK-1047 FC-5c: record-only checks that flagged are findings, recorded
         # PHI-safely whatever the decision. Advisory — never consulted for `allowed`.
         record_outbound_data_findings(verdict, where=where)
+        # An outage or an unreadable answer (TASK-1050 Q3): nothing judged, degrade.
+        if (
+            not verdict.get("allowed", False)
+            and verdict.get("reason") in GUARDRAIL_NO_VERDICT_REASONS
+        ):
+            collected.add_notice(unverified_notice("outbound", OUTBOUND_SCREEN_CHECKS, _item_ids()))
+            logger.warning("text.egress.outbound_unverified", where=where, locality=locality)
+            return guardrail_usage
         if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
             reason = str(verdict.get("reason", "not_allowed"))
             raw = verdict.get("raw")
@@ -259,12 +316,41 @@ async def gate_completion(
                 # OD-2: detect-only on a local provider. Counts only — never the text.
                 logger.info("text.egress.pii_leak_detected_local", where=where)
                 return guardrail_usage
+            notice = _block_notice(verdict, raw)
+            collected.add_notice(notice)
             raise OutputRejectedError(
                 reason=reason,
-                retryable=reason == GUARDRAIL_UNAVAILABLE_REASON,
+                retryable=False,
                 decision=raw if isinstance(raw, dict) else None,
                 guardrail_usage=guardrail_usage,
                 pii_leak=_PII_LEAK_CHECK in blocking,
+                guardrail_notice=notice,
+                guardrail_evaluation_ids=collected.evaluation_ids,
             )
         return guardrail_usage
     return None
+
+
+def _item_ids() -> list[str]:
+    """The generated item, when the caller named it (``X-Hope-Item-Id``)."""
+    item_id = guardrail_correlation().get("itemId")
+    return [item_id] if item_id else []
+
+
+def _block_notice(verdict: dict[str, Any], raw: Any) -> dict[str, Any]:
+    """Guardrail's own block notice, or one naming the blocking checks."""
+    for notice in valid_notices(verdict.get("notices")):
+        if notice["type"] == "guardrail.blocked":
+            return notice
+    source = raw if isinstance(raw, dict) else verdict
+    checks = blocked_checks(source) or [
+        {"checkId": check, "severity": "high"} for check in OUTBOUND_SCREEN_CHECKS
+    ]
+    version = source.get("policy_version", source.get("policyVersion"))
+    return blocked_notice(
+        "outbound",
+        "guardrail.blocked.outbound",
+        checks,
+        _item_ids(),
+        version if isinstance(version, str) and version else UNKNOWN_POLICY_VERSION,
+    )

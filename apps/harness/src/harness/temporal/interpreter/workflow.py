@@ -27,7 +27,7 @@ from harness.temporal.workflow_ids import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from harness.temporal.interpreter import caps, payload_refs
+    from harness.temporal.interpreter import caps, guardrail_hold, payload_refs
     from harness.temporal.interpreter.activities import (
         emit_run_events,
         load_config,
@@ -72,6 +72,9 @@ with workflow.unsafe.imports_passed_through():
         CoreLoopBounds,
         CoreLoopInput,
         CoreLoopResult,
+        GuardrailHold,
+        GuardrailHoldState,
+        GuardrailResolutionSignal,
         InterpreterInput,
         InterpreterResult,
         InterpreterStateQueryResult,
@@ -103,10 +106,12 @@ with workflow.unsafe.imports_passed_through():
         review_gate_workflow_id,
     )
     from harness.temporal.interpreter.run_events import (
+        EVENT_GUARDRAIL_NOTICE,
         EVENT_NODE_COMPLETED,
         EVENT_NODE_FAILED,
         EVENT_NODE_STARTED,
         EVENT_RUN_COMPLETED,
+        EVENT_RUN_PAUSED,
         EVENT_RUN_STARTED,
     )
     from harness.temporal.models import TrajectoryContext
@@ -314,6 +319,19 @@ _LIVE_OUTPUTS_RETRY = RetryPolicy(maximum_attempts=1)
 # consulted when replaying an old run.
 _LIVE_AUDIO_PATCH = "task-1042-live-audio-wait"
 
+# TASK-1050 W2f (README §9.8.1) — the GUARDRAIL HOLD's patch marker. A node whose generation
+# guardrail REFUSED (a block, or the cloud pseudonymiser being down) no longer just degrades: the
+# walk publishes `guardrail.notice` + `run.paused` (NEW `emit_run_events` commands), parks on the
+# `guardrail_resolution` signal with a timer (NEW), and re-executes ONLY that node (a NEW
+# `execute_activity`). Cheap operand FIRST — the recorded activity result CARRIES a
+# `guardrail_hold`, a field that did not exist before this marker — so `workflow.patched` is never
+# consulted when replaying a history recorded before it. In-flight harness workflows are DRAINED
+# before this deploys all the same (rule 06 §Temporal; `docs/operations/deprecation-register.md`).
+_GUARDRAIL_HOLD_PATCH = "task-1050-guardrail-hold"
+
+#: The run-level failure name of a hold that ended without a resolution (`run.failed`'s code).
+GUARDRAIL_BLOCKED = "GUARDRAIL_BLOCKED"
+
 #: How long the walk parks between two state reads. One short activity plus one timer per
 #: interval: the 3600 s ceiling costs ~720 polls (~4,300 history events), well inside Temporal's
 #: 51,200-event ceiling, and the graph starts within 5 s of the integrator closing the session.
@@ -501,6 +519,8 @@ _V2_INPUT_FIELDS = (
     "run_fields",
     "event_scope",
     "output_offload_min_bytes",
+    # TASK-1050 W2f — set only on a node re-run after a guardrail hold.
+    "guardrail_override",
 )
 
 
@@ -656,6 +676,13 @@ class WorkflowInterpreter:
         # loop child, never read by the top-level walk).
         self._loop_body_node_ids: set[str] = set()
         self._sources: list[str] = []
+        # TASK-1050 W2f — the warn / unverified notices the nodes raised (for
+        # `run.completed.guardrailNotices`), the holds the walk is parked on (by notice id, for the
+        # `guardrail_holds` query and the signal's admission check) and the resolutions received.
+        # Pure state from recorded results and recorded signals, replay-safe like `_node_outputs`.
+        self._guardrail_notices: list[dict[str, Any]] = []
+        self._pending_holds: dict[str, GuardrailHoldState] = {}
+        self._hold_resolutions: dict[str, GuardrailResolutionSignal] = {}
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -911,6 +938,8 @@ class WorkflowInterpreter:
                 "result_inline_max_bytes": (
                     inp.limits.result_inline_max_bytes if inp.limits is not None else None
                 ),
+                # TASK-1050 — every warn / unverified notice the run raised (activity input only).
+                "guardrail_notices": list(self._guardrail_notices) or None,
             }
         await self._emit_run_events(
             inp,
@@ -1551,13 +1580,22 @@ class WorkflowInterpreter:
             # Timeout OR an application-raised exception both surface here identically
             # (contracts/ example) — so the CAUSE is the only thing that says which, and it
             # travels onto the reason rather than being discarded (F13).
-            degraded_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
-            return NodeResult(
-                node_id=node.node_id,
-                node_type=node.type,
-                status=degraded_status,
-                reason=_activity_error_reason(exc),
-            )
+            return self._activity_failure(node, spec, exc)
+
+        # TASK-1050 W2f — a generation guardrail refused holds the run HERE (see the marker).
+        held = await self._settle_guardrail_hold(
+            node,
+            inp,
+            spec,
+            activity_input,
+            result,
+            timedelta(seconds=timeout_seconds),
+            retry_policy,
+        )
+        if isinstance(held, NodeResult):
+            return held
+        result = held
+        self._collect_guardrail_notices(result)
 
         self._record_io(node.node_id, result)
         if result.status == "SUCCEEDED":
@@ -1588,6 +1626,179 @@ class WorkflowInterpreter:
         # activity-internal sandbox check) — never critical-promoted; a skip is not a failure.
         return NodeResult(
             node_id=node.node_id, node_type=node.type, status="SKIPPED", reason=result.reason
+        )
+
+    @staticmethod
+    def _activity_failure(node: CompiledNode, spec: Any, exc: ActivityError) -> NodeResult:
+        """The settled record of a node activity that raised (pure)."""
+        degraded_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
+        return NodeResult(
+            node_id=node.node_id,
+            node_type=node.type,
+            status=degraded_status,
+            reason=_activity_error_reason(exc),
+        )
+
+    # TASK-1050 W2f — the node-level guardrail hold (README §9.8.1).
+
+    def _collect_guardrail_notices(self, result: NodeActivityResult) -> None:
+        """Keep a node's warn / unverified notices for `run.completed` (pure; once per notice)."""
+        known = {notice.get("noticeId") for notice in self._guardrail_notices}
+        for notice in result.guardrail_notices or []:
+            if isinstance(notice, dict) and notice.get("noticeId") not in known:
+                known.add(notice.get("noticeId"))
+                self._guardrail_notices.append(notice)
+
+    async def _settle_guardrail_hold(
+        self,
+        node: CompiledNode,
+        inp: InterpreterInput,
+        spec: Any,
+        activity_input: NodeActivityInput,
+        result: NodeActivityResult,
+        start_to_close: timedelta,
+        retry_policy: RetryPolicy,
+    ) -> NodeActivityResult | NodeResult:
+        """While the node's result reports a guardrail hold: publish it, wait for its resolution,
+        and re-execute ONLY this node. Returns the result to settle, or the node's settled record
+        when the hold ended without one (timed out, not resumable, cancelled, round cap).
+
+        Cheap operand first (`result.guardrail_hold`, then the run speaking protocol v2 — the
+        notice and the pause are v2 events), so a result without a hold — every result recorded
+        before the marker — never consults `workflow.patched`. Off the marker, the refused node
+        settles as the DEGRADED result it already is.
+        """
+        rounds = 0
+        base_scope = activity_input.event_scope
+        while (
+            result.guardrail_hold is not None
+            and self._v2
+            and workflow.patched(_GUARDRAIL_HOLD_PATCH)
+        ):
+            hold = result.guardrail_hold
+            resolution = await self._await_guardrail_resolution(node, inp, hold, rounds)
+            if isinstance(resolution, NodeResult):
+                return resolution
+            rounds += 1
+            notice_id = resolution.notice_id
+            scope = f"hold:{rounds}"
+            activity_input = activity_input.model_copy(
+                update={
+                    "guardrail_override": guardrail_hold.hold_override(
+                        hold.kind, resolution.resolution, notice_id
+                    ),
+                    # The re-run's steps take their own seq base, and its events their own dedupe
+                    # scope: the refused attempt's must not swallow them.
+                    "trajectory": (
+                        activity_input.trajectory.model_copy(update={"seq": self._next_seq()})
+                        if activity_input.trajectory is not None
+                        else None
+                    ),
+                    "event_scope": f"{base_scope}|{scope}" if base_scope else scope,
+                }
+            )
+            await self._emit_run_events(
+                inp,
+                [
+                    RunEventSpec(
+                        event_type=EVENT_NODE_STARTED,
+                        node_id=node.node_id,
+                        node_type=node.type,
+                        label=self._label_of(node),
+                        attempt=rounds + 1,
+                    )
+                ],
+            )
+            try:
+                result = await workflow.execute_activity(
+                    spec.activity,
+                    activity_input,
+                    start_to_close_timeout=start_to_close,
+                    retry_policy=retry_policy,
+                )
+            except ActivityError as exc:
+                return self._activity_failure(node, spec, exc)
+        return result
+
+    async def _await_guardrail_resolution(
+        self,
+        node: CompiledNode,
+        inp: InterpreterInput,
+        hold: GuardrailHold,
+        rounds: int,
+    ) -> GuardrailResolutionSignal | NodeResult:
+        """Publish one hold, then wait (durably, bounded) for its ``guardrail_resolution``."""
+        notice = dict(hold.notice)
+        notice_id = notice.get("noticeId")
+        await self._emit_run_events(
+            inp,
+            [RunEventSpec(event_type=EVENT_GUARDRAIL_NOTICE, node_id=node.node_id, notice=notice)],
+        )
+        refusal: str | None = None
+        if not isinstance(notice_id, str) or not notice_id:
+            refusal = "the refusal named no notice"
+        elif notice.get("resumable") is False:
+            refusal = "the notice is not resumable"
+        elif rounds >= caps.MAX_GUARDRAIL_HOLD_ROUNDS:
+            refusal = f"held {rounds} times"
+        if refusal is not None:
+            return self._guardrail_blocked(node, f"{refusal} (notice {notice_id})")
+        assert isinstance(notice_id, str)  # noqa: S101 — narrowed by the refusal checks above
+        await self._emit_run_events(
+            inp,
+            [RunEventSpec(event_type=EVENT_RUN_PAUSED, node_id=node.node_id, notice=notice)],
+        )
+        self._pending_holds[notice_id] = GuardrailHoldState(
+            noticeId=notice_id, nodeId=node.node_id, kind=hold.kind
+        )
+        wait = self._guardrail_hold_wait_seconds(inp)
+        timed_out = False
+        # A durable wait on a person, not compute: the budget clock is paused across it.
+        self._pause_clock()
+        try:
+            await workflow.wait_condition(
+                lambda: notice_id in self._hold_resolutions or self._cancelled,
+                timeout=timedelta(seconds=wait),
+            )
+        except TimeoutError:
+            timed_out = True
+        finally:
+            self._resume_clock()
+            self._pending_holds.pop(notice_id, None)
+        if self._cancelled:
+            return self._interrupted(node)
+        resolution = self._hold_resolutions.pop(notice_id, None)
+        if timed_out or resolution is None:
+            return self._guardrail_blocked(
+                node, f"no resolution within {int(wait)}s (notice {notice_id})"
+            )
+        return resolution
+
+    def _guardrail_blocked(self, node: CompiledNode, why: str) -> NodeResult:
+        """A hold that ended without a resolution fails the node — whatever its criticality — and
+        names the run's failure ``GUARDRAIL_BLOCKED`` (pure)."""
+        if self._run_failure_reason is None:
+            self._run_failure_reason = GUARDRAIL_BLOCKED
+        return NodeResult(
+            node_id=node.node_id,
+            node_type=node.type,
+            status="FAILED",
+            reason=f"{GUARDRAIL_BLOCKED}: guardrail hold ended: {why}",
+        )
+
+    def _guardrail_hold_wait_seconds(self, inp: InterpreterInput) -> float:
+        """The hold timeout (pure: recorded input + workflow time; see
+        `guardrail_hold.hold_wait_seconds`)."""
+        info = workflow.info()
+        execution_timeout = info.execution_timeout
+        return guardrail_hold.hold_wait_seconds(
+            inp.limits.guardrail_hold_timeout_seconds if inp.limits is not None else None,
+            ceiling=caps.GUARDRAIL_HOLD_MAX_WAIT_SECONDS,
+            execution_timeout_seconds=(
+                execution_timeout.total_seconds() if execution_timeout is not None else None
+            ),
+            elapsed_seconds=(workflow.now() - info.workflow_start_time).total_seconds(),
+            grace_seconds=caps.RUN_TIMEOUT_GRACE_SECONDS,
         )
 
     # TASK-1036 / TASK-1038 (lane B1) — bindings, declared reads and the v2 activity fields.
@@ -2153,7 +2364,7 @@ class WorkflowInterpreter:
         """Execute the one blocking HITL gate as a CHILD workflow.
 
         A child rather than an in-line `wait_condition` is what keeps the interpreter's own
-        signal surface `cancel`-only for every palette — see
+        signal surface run-level only (`cancel`; TASK-1050's `guardrail_resolution`) — see
         `gate_workflow.py`'s module docstring for why this is a new workflow type rather than the
         `HarnessDocWorkflow` delegation `palette-contract.md` originally chose.
 
@@ -2292,6 +2503,22 @@ class WorkflowInterpreter:
         (F-09, orchestration.md, is the anti-pattern this must not repeat)."""
         self._cancelled = True
         self._cancel_reason = signal.reason if signal else None
+
+    @workflow.signal(name="guardrail_resolution")
+    def guardrail_resolution(self, signal: GuardrailResolutionSignal) -> None:
+        """TASK-1050 W2f — how a guardrail hold was resolved. Admitted ONLY for a hold the walk is
+        parked on, once; anything else (an unknown notice, a hold already resolved or timed out) is
+        dropped — the resolution route answers 409 for it before it ever signals."""
+        if (
+            signal.notice_id in self._pending_holds
+            and signal.notice_id not in self._hold_resolutions
+        ):
+            self._hold_resolutions[signal.notice_id] = signal
+
+    @workflow.query(name="guardrail_holds")
+    def guardrail_holds(self) -> list[GuardrailHoldState]:
+        """TASK-1050 W2f — the guardrail holds the walk is parked on right now."""
+        return list(self._pending_holds.values())
 
     @workflow.query(name="state")
     def state(self) -> InterpreterStateQueryResult:

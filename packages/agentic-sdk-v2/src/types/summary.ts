@@ -4,6 +4,9 @@
  * Types for summary generation and DNA writing style.
  */
 
+import type { GuardrailNotice } from '@arcaai/types';
+
+
 // =============================================================================
 // Summary Types
 // =============================================================================
@@ -28,6 +31,10 @@ export interface NEREntity {
  * Summary response from generation
  */
 export interface SummaryResponse {
+  /** TASK-1050: every warn / unverified guardrail notice the operation raised. Absent on a gateway that predates it. */
+  guardrailNotices?: readonly GuardrailNotice[];
+  /** TASK-1050: the guardrail evaluation ids of the request (one per request x direction). */
+  guardrailEvaluationIds?: readonly string[];
   /** Summary ID */
   id: string;
   /** Associated context item ID */
@@ -178,6 +185,10 @@ export type SummaryJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
  * Backend returns a job ID that can be polled for status/result.
  */
 export interface AsyncJobResponse {
+  /** TASK-1050: every warn / unverified guardrail notice the operation raised. Absent on a gateway that predates it. */
+  guardrailNotices?: readonly GuardrailNotice[];
+  /** TASK-1050: the guardrail evaluation ids of the request (one per request x direction). */
+  guardrailEvaluationIds?: readonly string[];
   /** Unique job ID */
   jobId: string;
   /** Current job status */
