@@ -12,3 +12,5 @@ export * from './residency-load-spec.builder';
 export * from './residency-metrics';
 export * from './residency-operations';
 export * from './residency-policy-engine';
+export * from './runtime-key';
+export * from './residency-budget';

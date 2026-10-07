@@ -114,7 +114,25 @@ export const CATALOGUE_SERVICES = ['stt', 'stt-worker', 'lm-studio', 'nlp'] as c
 export type CatalogueRunsOn = 'gpu' | 'cpu';
 export type CatalogueModelStatus = ResidencyModelState | 'not_loaded' | 'failed';
 export type CatalogueSizeSource = 'measured' | 'catalogue' | 'unknown';
-export type CatalogueUseRole = 'primary' | 'fallback' | 'routing';
+export type CatalogueUseRole = 'primary' | 'fallback' | 'routing' | 'pipeline_stage' | 'workflow_node';
+/** TASK-1051 — what HOPE can do with a catalogue row: hold it in memory (`resident`), nothing (a cloud API = `remote`; compiled into a library = `builtin`). */
+export type CatalogueModelKind = 'resident' | 'remote' | 'builtin';
+/** TASK-1051 — a device's per-model bytes: `measured` (the service's own delta), `estimated` (catalogue size, or a split LM Studio model's per-card share), `unknown`. */
+export type CatalogueDeviceBytesSource = 'measured' | 'estimated' | 'unknown';
+/** TASK-1051 — how well an unmatched runtime instance fits a catalogue row. */
+export type RuntimeKeyMatchStrength = 'strong' | 'weak';
+/** TASK-1051 — the checks behind `GET readiness`, in display order. */
+export const READINESS_CHECK_IDS = [
+  'shadow_review_recorded',
+  'instances_matched',
+  'gpus_inside_headroom',
+  'shared_decision_state',
+  'shadow_days',
+  'usage_complete',
+  'unmeasured_budgeted',
+  'actions_audited',
+] as const;
+export type ReadinessCheckId = (typeof READINESS_CHECK_IDS)[number];
 export type CatalogueKeepPolicyKind = 'always' | 'warm' | 'on_demand';
 export type CatalogueAction = 'load' | 'unload' | 'reload' | 'edit_policy';
 
@@ -123,6 +141,8 @@ export interface CatalogueRefFields {
   slug: string;
   sourceUri: string;
   wireModelId?: string | null;
+  /** `AiModel._metadata` — TASK-1051 reads `residency.runtimeKeys` (operator-confirmed engine keys) from it. */
+  metaData?: unknown;
 }
 
 /** The key a service caches a catalogue model under: stt / stt-worker = slug, nlp = sourceUri (hub id), LM Studio = wireModelId. */

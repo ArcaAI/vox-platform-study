@@ -5,7 +5,11 @@
   "response": {
     "mode": "shadow",
     "reportedAt": "2026-09-25T02:00:05Z",
-    "freshness": { "maxAgeSeconds": 12, "staleServices": [] },
+    "freshness": {
+      "maxAgeSeconds": 12,
+      "staleServices": [],
+      "oldestReportAt": "2026-09-25T01:59:53Z"
+    },
     "devices": [
       {
         "id": "gpu0",
@@ -17,9 +21,25 @@
         "utilisationPercent": 1.5,
         "headroomPercent": 15,
         "models": [
-          { "service": "stt", "modelRef": "arcaai-whisper-ml-en-ggml", "name": "ArcaAI Whisper ml-en", "bytes": 1623195648 },
-          { "service": "lm-studio", "modelRef": "gemma-4-e2b-it-qat", "name": "Gemma 4 E2B", "bytes": null }
-        ]
+          {
+            "service": "stt",
+            "modelRef": "arcaai-whisper-ml-en-ggml",
+            "name": "ArcaAI Whisper ml-en",
+            "bytes": 1623195648,
+            "bytesSource": "measured"
+          },
+          {
+            "service": "lm-studio",
+            "modelRef": "gemma-4-e2b-it-qat",
+            "name": "Gemma 4 E2B",
+            "bytes": 1288490188,
+            "bytesSource": "estimated"
+          }
+        ],
+        "headroomBytes": 2576351232,
+        "overHeadroom": false,
+        "attributedBytes": 2911685836,
+        "unattributedBytes": 2771596084
       }
     ],
     "services": [
@@ -34,12 +54,23 @@
           {
             "aiModelId": "0199a1b2-0000-7000-8000-000000000001",
             "name": "ArcaAI Whisper ml-en",
+            "kind": "resident",
             "slug": "arcaai-whisper-ml-en-ggml",
             "modelRef": "arcaai-whisper-ml-en-ggml",
             "format": "WHISPER_CPP",
             "status": "loaded",
             "error": null,
-            "size": { "bytes": 1623195648, "source": "measured" },
+            "size": {
+              "bytes": 1623195648,
+              "source": "measured"
+            },
+            "budgetBytes": 1623195648,
+            "identity": {
+              "matched": true,
+              "runtimeKeys": ["arcaai-whisper-ml-en-ggml"],
+              "reportedKey": "arcaai-whisper-ml-en-ggml",
+              "candidates": []
+            },
             "loadSeconds": 6.8,
             "residency": {
               "device": "gpu0",
@@ -66,7 +97,14 @@
                   "role": "primary",
                   "liveConsultation": true
                 }
-              ]
+              ],
+              "consumers": {
+                "agents": 1,
+                "fallbacks": 0,
+                "routingPolicies": 0,
+                "pipelineStages": 0,
+                "workflowNodes": 0
+              }
             },
             "keepPolicy": {
               "kind": "always",
@@ -82,12 +120,23 @@
           {
             "aiModelId": "0199a1b2-0000-7000-8000-000000000002",
             "name": "ArcaAI Whisper radiology",
+            "kind": "resident",
             "slug": "arcaai-whisper-radiology-en-f16",
             "modelRef": "arcaai-whisper-radiology-en-f16",
             "format": "WHISPER_CPP",
             "status": "not_loaded",
             "error": null,
-            "size": { "bytes": 1610612736, "source": "catalogue" },
+            "size": {
+              "bytes": 1610612736,
+              "source": "catalogue"
+            },
+            "budgetBytes": 1932735283,
+            "identity": {
+              "matched": true,
+              "runtimeKeys": ["arcaai-whisper-radiology-en-f16"],
+              "reportedKey": null,
+              "candidates": []
+            },
             "loadSeconds": null,
             "residency": null,
             "usage": {
@@ -104,7 +153,14 @@
                   "role": "fallback",
                   "liveConsultation": false
                 }
-              ]
+              ],
+              "consumers": {
+                "agents": 0,
+                "fallbacks": 1,
+                "routingPolicies": 0,
+                "pipelineStages": 0,
+                "workflowNodes": 0
+              }
             },
             "keepPolicy": {
               "kind": "on_demand",
@@ -130,12 +186,23 @@
           {
             "aiModelId": null,
             "name": "hand-copied-whisper",
+            "kind": "resident",
             "slug": null,
             "modelRef": "hand-copied-whisper",
             "format": null,
             "status": "loaded",
             "error": null,
-            "size": { "bytes": 943718400, "source": "measured" },
+            "size": {
+              "bytes": 943718400,
+              "source": "measured"
+            },
+            "budgetBytes": 943718400,
+            "identity": {
+              "matched": false,
+              "runtimeKeys": [],
+              "reportedKey": "hand-copied-whisper",
+              "candidates": []
+            },
             "loadSeconds": null,
             "residency": {
               "device": "cuda:0",
@@ -148,7 +215,19 @@
               "loadedAt": null,
               "lastUsedAt": null
             },
-            "usage": { "agentCount": 0, "tenantCount": 0, "liveConsultation": false, "uses": [] },
+            "usage": {
+              "agentCount": 0,
+              "tenantCount": 0,
+              "liveConsultation": false,
+              "uses": [],
+              "consumers": {
+                "agents": 0,
+                "fallbacks": 0,
+                "routingPolicies": 0,
+                "pipelineStages": 0,
+                "workflowNodes": 0
+              }
+            },
             "keepPolicy": {
               "kind": "on_demand",
               "label": "Load when needed",
@@ -182,12 +261,23 @@
           {
             "aiModelId": "0199a1b2-0000-7000-8000-000000000003",
             "name": "Medical NER",
+            "kind": "resident",
             "slug": "medical-ner",
             "modelRef": "blaze999/Medical-NER",
             "format": "SAFETENSOR",
             "status": "not_loaded",
             "error": null,
-            "size": { "bytes": 734003200, "source": "measured" },
+            "size": {
+              "bytes": 734003200,
+              "source": "measured"
+            },
+            "budgetBytes": 734003200,
+            "identity": {
+              "matched": true,
+              "runtimeKeys": ["blaze999/Medical-NER"],
+              "reportedKey": null,
+              "candidates": []
+            },
             "loadSeconds": 3.2,
             "residency": null,
             "usage": {
@@ -213,7 +303,14 @@
                   "role": "routing",
                   "liveConsultation": false
                 }
-              ]
+              ],
+              "consumers": {
+                "agents": 1,
+                "fallbacks": 0,
+                "routingPolicies": 1,
+                "pipelineStages": 0,
+                "workflowNodes": 0
+              }
             },
             "keepPolicy": {
               "kind": "on_demand",
@@ -237,6 +334,9 @@
         "action": "unload",
         "service": "nlp",
         "modelRef": "gliner-medical-large",
+        "firstSeenAt": "2026-09-25T01:38:00Z",
+        "repeats": 5,
+        "reason": "idle_ttl_expired",
         "applied": false
       }
     ]
@@ -246,9 +346,13 @@
     "runsOn": ["gpu", "cpu"],
     "status": ["loaded", "loading", "unloading", "not_loaded", "failed"],
     "sizeSource": ["measured", "catalogue", "unknown"],
-    "useRole": ["primary", "fallback", "routing"],
+    "useRole": ["primary", "fallback", "routing", "pipeline_stage", "workflow_node"],
     "keepPolicyKind": ["always", "warm", "on_demand"],
     "keepPolicySource": ["policy", "implicit-live-path", "default"],
-    "action": ["load", "unload", "reload", "edit_policy"]
-  }
+    "action": ["load", "unload", "reload", "edit_policy"],
+    "kind": ["resident", "remote", "builtin"],
+    "deviceBytesSource": ["measured", "estimated", "unknown"],
+    "matchStrength": ["strong", "weak"]
+  },
+  "$unmatchedExample": "TASK-1051: a resident instance no catalogue row claims (by normalised key or a confirmed key) is listed with aiModelId null, kind 'resident', identity {matched: false, runtimeKeys: [], reportedKey: '<the key as reported>', candidates: [{aiModelId, name, slug, strength: 'strong'|'weak', reason}]} — candidates best first; a catalogue row whose instance IS matched carries identity.matched true and reportedKey = the reported key (e.g. 'gemma-4-e2b-it-qat@q4_0' for wireModelId 'gemma-4-e2b-it-qat'). A remote (cloud API) or builtin (compiled into a library) row has residency null, budgetBytes null, actions ['edit_policy'] at most, and never status 'failed' for that reason."
 }

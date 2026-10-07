@@ -37,7 +37,13 @@ export interface ResidencyLoadError {
  *  estimate; `unknown` means neither is available. Never present an estimate as an observation. */
 export type ResidencySizeSource = 'measured' | 'catalogue' | 'unknown';
 
-export type ResidencyUseRole = 'primary' | 'fallback' | 'routing';
+export type ResidencyUseRole = 'primary' | 'fallback' | 'routing' | 'pipeline_stage' | 'workflow_node';
+
+/** TASK-1051 — `remote` (cloud API) and `builtin` (compiled into a library) hold no memory; render "Not applicable", never "failed". */
+export type ResidencyModelKind = 'resident' | 'remote' | 'builtin';
+
+/** TASK-1051 — a device's per-model bytes: `estimated` is the catalogue size or a split model's per-card share. */
+export type ResidencyDeviceBytesSource = 'measured' | 'estimated' | 'unknown';
 
 export type ResidencyKeepPolicyKind = 'always' | 'warm' | 'on_demand';
 
@@ -48,9 +54,12 @@ export type ResidencyKeepPolicySource = 'policy' | 'implicit-live-path' | 'defau
 export type ResidencyAction = 'load' | 'unload' | 'reload' | 'edit_policy';
 
 export interface ResidencyFreshness {
+  /** Age of the OLDEST service report, measured from `oldestReportAt` (TASK-1051 — the agent's clock, not the fetch). */
   maxAgeSeconds: number;
   /** Services whose last agent report is older than `maxAgeSeconds`. */
   staleServices: string[];
+  /** TASK-1051 — null when no service has reported yet. */
+  oldestReportAt: string | null;
 }
 
 /** One model's slice of a device (the GPU summary card's "models on this card" list). */
@@ -59,6 +68,7 @@ export interface ResidencyDeviceModelRef {
   modelRef: string;
   name: string;
   bytes: number | null;
+  bytesSource: ResidencyDeviceBytesSource;
 }
 
 /** One GPU (or CPU budget) the controller places models on. */
@@ -69,8 +79,17 @@ export interface ResidencyDevice {
   totalBytes: number;
   usedBytes: number;
   freeBytes: number;
-  utilisationPercent: number;
+  /** TASK-1051 — null when DCGM reports nothing usable: render "n/a", never 0. */
+  utilisationPercent: number | null;
   headroomPercent: number;
+  /** TASK-1051 — `totalBytes × headroomPercent / 100`. */
+  headroomBytes: number;
+  /** TASK-1051 — `freeBytes < headroomBytes`. */
+  overHeadroom: boolean;
+  /** TASK-1051 — sum of `models[].bytes`. */
+  attributedBytes: number;
+  /** TASK-1051 — `usedBytes − attributedBytes` (CUDA contexts, other pods on the card). */
+  unattributedBytes: number;
   models: ResidencyDeviceModelRef[];
 }
 
@@ -110,11 +129,40 @@ export interface ResidencyUse {
   liveConsultation: boolean;
 }
 
+/** TASK-1051 — every kind of consumer, counted (the drawer's "why it is pinned" tiles). */
+export interface ResidencyConsumerCounts {
+  agents: number;
+  fallbacks: number;
+  routingPolicies: number;
+  pipelineStages: number;
+  workflowNodes: number;
+}
+
 export interface ResidencyUsage {
   agentCount: number;
   tenantCount: number;
   liveConsultation: boolean;
   uses: ResidencyUse[];
+  consumers: ResidencyConsumerCounts;
+}
+
+/** TASK-1051 — a catalogue row an unmatched runtime instance could be. */
+export interface ResidencyRuntimeKeyCandidate {
+  aiModelId: string;
+  name: string;
+  slug: string;
+  strength: 'strong' | 'weak';
+  reason: string;
+}
+
+/** TASK-1051 — how the row is tied to what the service reports. */
+export interface ResidencyIdentity {
+  matched: boolean;
+  runtimeKeys: string[];
+  /** The key the service reported for the resident instance; null when not resident. */
+  reportedKey: string | null;
+  /** Only on an unmatched resident row, best first. */
+  candidates: ResidencyRuntimeKeyCandidate[];
 }
 
 export interface ResidencyKeepPolicy {
@@ -138,6 +186,8 @@ export interface ResidencyKeepPolicy {
 export interface ResidencyCatalogueModel {
   aiModelId: string | null;
   name: string;
+  /** TASK-1051 */
+  kind: ResidencyModelKind;
   slug: string | null;
   modelRef: string;
   format: string | null;
@@ -145,6 +195,10 @@ export interface ResidencyCatalogueModel {
   /** Set only while `status` is `failed`; absent from a gateway that predates TASK-1019. */
   error?: ResidencyLoadError | null;
   size: ResidencySize;
+  /** TASK-1051 — what a load reserves (measured, else catalogue × 1.2); null = no size, a load needs force. */
+  budgetBytes: number | null;
+  /** TASK-1051 */
+  identity: ResidencyIdentity;
   /** Estimated (or measured) seconds to load, when known. */
   loadSeconds: number | null;
   residency: ResidencyLiveState | null;
@@ -172,8 +226,16 @@ export interface ResidencyServiceGroup {
 
 /** A shadow-mode suggestion, already rewritten server-side as one plain sentence. */
 export interface ResidencySuggestion {
+  /** Stable for the standing recommendation — what dismiss takes. */
   id: string;
+  /** Last confirmed. */
   at: string;
+  /** TASK-1051 */
+  firstSeenAt: string;
+  /** TASK-1051 — ticks that re-confirmed it. */
+  repeats: number;
+  /** TASK-1051 — `idle_ttl_expired | promotion_rate | live_path_pin | make_room | admission_rejected`. */
+  reason: string;
   text: string;
   action: string;
   service: string;
@@ -189,6 +251,79 @@ export interface ModelResidencyCatalogueResponse {
   devices: ResidencyDevice[];
   services: ResidencyServiceGroup[];
   suggestions: ResidencySuggestion[];
+}
+
+/** TASK-1051 — POST admin/model-residency/load/preview (body = the load request): a dry run, changes nothing. */
+export interface ResidencyPreviewModel {
+  service: string;
+  modelRef: string;
+  name: string;
+  bytes: number | null;
+  reason: string;
+}
+
+export interface ModelResidencyLoadPreview {
+  service: string;
+  modelRef: string;
+  device: string | null;
+  needBytes: number | null;
+  needSource: ResidencySizeSource;
+  freeBytes: number | null;
+  headroomBytes: number | null;
+  unattributedBytes: number | null;
+  shortfallBytes: number;
+  fits: boolean;
+  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | null;
+  /** ON_DEMAND resident models on the same device, largest first. */
+  evictable: ResidencyPreviewModel[];
+  /** Pinned resident models on the same device — shown, never offered. */
+  pinned: ResidencyPreviewModel[];
+}
+
+/** TASK-1051 — POST admin/model-residency/links */
+export interface LinkRuntimeKeyRequest {
+  service: string;
+  runtimeKey: string;
+  aiModelId: string;
+}
+
+export interface LinkRuntimeKeyResponse {
+  aiModelId: string;
+  service: string;
+  runtimeKeys: string[];
+}
+
+/** TASK-1051 — POST admin/model-residency/suggestions/:id/dismiss */
+export interface DismissSuggestionResponse {
+  id: string;
+  dismissed: boolean;
+}
+
+/** PUT admin/model-residency/pins (TASK-1005; first console caller TASK-1051) */
+export interface PinModelRequest {
+  service: string;
+  modelRef: string;
+  pinned: boolean;
+  ttlSeconds?: number | null;
+}
+
+/** TASK-1051 — GET admin/model-residency/readiness */
+export type ReadinessCheckId =
+  | 'shadow_review_recorded'
+  | 'instances_matched'
+  | 'gpus_inside_headroom'
+  | 'shared_decision_state'
+  | 'shadow_days'
+  | 'usage_complete'
+  | 'unmeasured_budgeted'
+  | 'actions_audited';
+
+export interface ModelResidencyReadiness {
+  mode: ModelResidencyMode;
+  passed: number;
+  total: number;
+  checks: Array<{ id: ReadinessCheckId; title: string; passed: boolean; detail: string }>;
+  shadow: { since: string; loads: number; unloads: number; refusedOverBudget: number; duplicateLoads: number };
 }
 
 /** POST admin/model-residency/unload */

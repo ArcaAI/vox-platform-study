@@ -1,12 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type {
   CatalogueAction,
+  CatalogueDeviceBytesSource,
   CatalogueKeepPolicyKind,
+  CatalogueModelKind,
   CatalogueModelStatus,
   CatalogueRunsOn,
   CatalogueSizeSource,
   CatalogueUseRole,
+  RuntimeKeyMatchStrength,
   RecommendationAction,
+  RecommendationReason,
   ResidencyBytesSource,
   ResidencyClassSource,
   ResidencyMode,
@@ -30,9 +34,15 @@ export class ModelResidencyDeviceModel {
   @ApiProperty({
     nullable: true,
     type: Number,
-    description: 'Bytes this model holds on THIS device; `null` when unknown — always for LM Studio, which splits one model over every card.',
+    description:
+      'Bytes this model holds on THIS device. A split LM Studio model carries its per-card SHARE (estimated); `null` only when nothing is known.',
   })
   bytes!: number | null;
+  @ApiProperty({
+    enum: ['measured', 'estimated', 'unknown'],
+    description: 'TASK-1051 — `measured` = the service`s own load delta; `estimated` = the catalogue size or a split model`s per-card share.',
+  })
+  bytesSource!: CatalogueDeviceBytesSource;
 }
 
 export class ModelResidencyCatalogueDevice {
@@ -44,6 +54,14 @@ export class ModelResidencyCatalogueDevice {
   @ApiProperty() freeBytes!: number;
   @ApiProperty({ nullable: true, type: Number }) utilisationPercent!: number | null;
   @ApiProperty({ description: 'The `residency.headroomPercent` in force.' }) headroomPercent!: number;
+  @ApiProperty({ description: 'TASK-1051 — bytes the controller keeps free on this device (`totalBytes × headroomPercent / 100`).' })
+  headroomBytes!: number;
+  @ApiProperty({ description: 'TASK-1051 — `freeBytes < headroomBytes`: a cold load here would breach the budget.' }) overHeadroom!: boolean;
+  @ApiProperty({ description: 'TASK-1051 — the sum of `models[].bytes` (measured + estimated).' }) attributedBytes!: number;
+  @ApiProperty({
+    description: 'TASK-1051 — `usedBytes − attributedBytes`, floored at 0: CUDA contexts and other processes on a time-sliced card.',
+  })
+  unattributedBytes!: number;
   @ApiProperty({ type: [ModelResidencyDeviceModel], description: 'The models resident on this device right now.' })
   models!: ModelResidencyDeviceModel[];
 }
@@ -77,8 +95,16 @@ export class ModelResidencyUse {
     string | null;
   @ApiProperty({ description: 'The agent`s name; for a routing use, the policy`s display name or its task key.' }) agentName!: string;
   @ApiProperty({ description: 'The agent task (`SPEECH_TO_TEXT`, …) or, for a routing use, the policy`s task key (`nlp.ner`, …).' }) task!: string;
-  @ApiProperty({ enum: ['primary', 'fallback', 'routing'] }) role!: CatalogueUseRole;
+  @ApiProperty({ enum: ['primary', 'fallback', 'routing', 'pipeline_stage', 'workflow_node'] }) role!: CatalogueUseRole;
   @ApiProperty({ description: 'This agent is assigned on the live consultation path and this model is its primary.' }) liveConsultation!: boolean;
+}
+
+export class ModelResidencyConsumerCounts {
+  @ApiProperty({ description: 'Agents whose PRIMARY model this is.' }) agents!: number;
+  @ApiProperty({ description: 'Agents holding it in a fallback chain.' }) fallbacks!: number;
+  @ApiProperty({ description: 'Active routing policies (guardrail, NLP, judge) naming it.' }) routingPolicies!: number;
+  @ApiProperty({ description: 'ASR agents whose resolved spec uses it as a stage (VAD, denoise, diarization, embedding).' }) pipelineStages!: number;
+  @ApiProperty({ description: 'Published workflow `core.agent` nodes whose agent runs on it.' }) workflowNodes!: number;
 }
 
 export class ModelResidencyUsage {
@@ -87,6 +113,11 @@ export class ModelResidencyUsage {
   @ApiProperty({ description: 'Any use is on the live consultation path.' }) liveConsultation!: boolean;
   @ApiProperty({ type: [ModelResidencyUse], description: 'Across ALL tenants; only ACTIVE PUBLISHED agents and ACTIVE routing policies count.' })
   uses!: ModelResidencyUse[];
+  @ApiProperty({
+    type: ModelResidencyConsumerCounts,
+    description: 'TASK-1051 — every kind of consumer, counted; any of them on a live path makes `liveConsultation` true.',
+  })
+  consumers!: ModelResidencyConsumerCounts;
 }
 
 export class ModelResidencyKeepPolicy {
@@ -101,16 +132,48 @@ export class ModelResidencyKeepPolicy {
 }
 
 export class ModelResidencyLoadError {
-  @ApiProperty({ example: 'LOAD_FAILED', description: 'The error code the failed load raised (an agent exception class name, or a gateway code).' }) code!: string;
+  @ApiProperty({ example: 'LOAD_FAILED', description: 'The error code the failed load raised (an agent exception class name, or a gateway code).' })
+  code!: string;
   @ApiProperty({ description: 'What the load said, truncated to 500 characters.' }) message!: string;
   @ApiProperty({ nullable: true, type: String, description: 'When it failed (ISO); `null` when the source carries no time (the stt-worker gauge).' })
   at!: string | null;
+}
+
+export class ModelResidencyRuntimeKeyCandidate {
+  @ApiProperty() aiModelId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() slug!: string;
+  @ApiProperty({ enum: ['strong', 'weak'] }) strength!: RuntimeKeyMatchStrength;
+  @ApiProperty({ example: 'Same key once the quantisation/instance suffix is removed' }) reason!: string;
+}
+
+export class ModelResidencyIdentity {
+  @ApiProperty({ description: 'The reported instance is tied to this catalogue row (by normalised key or an operator-confirmed key).' })
+  matched!: boolean;
+  @ApiProperty({ type: [String], description: 'Every key this row is recognised under: its catalogue ref, then the confirmed keys.' })
+  runtimeKeys!: string[];
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The key the service actually reported for the resident instance; `null` when not resident.',
+  })
+  reportedKey!: string | null;
+  @ApiProperty({
+    type: [ModelResidencyRuntimeKeyCandidate],
+    description: 'Only on an UNMATCHED resident row: catalogue rows it could be, best first.',
+  })
+  candidates!: ModelResidencyRuntimeKeyCandidate[];
 }
 
 export class ModelResidencyCatalogueModel {
   @ApiProperty({ nullable: true, type: String, description: '`null` only for a resident model the catalogue does not know.' }) aiModelId!:
     string | null;
   @ApiProperty() name!: string;
+  @ApiProperty({
+    enum: ['resident', 'remote', 'builtin'],
+    description: 'TASK-1051 — `remote` (a cloud API) and `builtin` (compiled into a library) hold no memory and offer no load/unload.',
+  })
+  kind!: CatalogueModelKind;
   @ApiProperty({ nullable: true, type: String }) slug!: string | null;
   @ApiProperty({
     nullable: true,
@@ -124,8 +187,17 @@ export class ModelResidencyCatalogueModel {
     description: '`failed` = the last load of this model raised and nothing has cleared it yet (a later load or unload does). `error` says why.',
   })
   status!: CatalogueModelStatus;
-  @ApiProperty({ type: ModelResidencyLoadError, nullable: true, description: 'Set only while `status` is `failed`.' }) error!: ModelResidencyLoadError | null;
+  @ApiProperty({ type: ModelResidencyLoadError, nullable: true, description: 'Set only while `status` is `failed`.' })
+  error!: ModelResidencyLoadError | null;
   @ApiProperty({ type: ModelResidencySize }) size!: ModelResidencySize;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'TASK-1051 — what admission reserves for a load: the measured footprint, else the catalogue size × 1.2; `null` = no size (a load is refused unless forced).',
+  })
+  budgetBytes!: number | null;
+  @ApiProperty({ type: ModelResidencyIdentity }) identity!: ModelResidencyIdentity;
   @ApiProperty({ nullable: true, type: Number, description: 'Seconds the last load took (measured).' }) loadSeconds!: number | null;
   @ApiProperty({ type: ModelResidencyPlacement, nullable: true, description: '`null` when not loaded.' }) residency!: ModelResidencyPlacement | null;
   @ApiProperty({ type: ModelResidencyUsage }) usage!: ModelResidencyUsage;
@@ -145,8 +217,11 @@ export class ModelResidencyCatalogueService {
 }
 
 export class ModelResidencySuggestion {
-  @ApiProperty() id!: string;
-  @ApiProperty() at!: string;
+  @ApiProperty({ description: 'Stable for the life of this standing recommendation — the id `POST suggestions/:id/dismiss` takes.' }) id!: string;
+  @ApiProperty({ description: 'Last confirmed (the controller reached the same conclusion again).' }) at!: string;
+  @ApiProperty({ description: 'TASK-1051 — when the controller first reached this conclusion.' }) firstSeenAt!: string;
+  @ApiProperty({ description: 'TASK-1051 — how many ticks have re-confirmed it (1 = once).' }) repeats!: number;
+  @ApiProperty({ enum: ['idle_ttl_expired', 'promotion_rate', 'live_path_pin', 'make_room', 'admission_rejected'] }) reason!: RecommendationReason;
   @ApiProperty({ example: 'Unload Medical NER on nlp — idle for 20 minutes and no live agent uses it.' }) text!: string;
   @ApiProperty({ enum: ['load', 'unload', 'pin', 'unpin'] }) action!: RecommendationAction;
   @ApiProperty() service!: string;
@@ -161,6 +236,10 @@ export class ModelResidencyCatalogueResponse {
   @ApiProperty({ type: [ModelResidencyCatalogueDevice] }) devices!: ModelResidencyCatalogueDevice[];
   @ApiProperty({ type: [ModelResidencyCatalogueService], description: 'Always four groups, in this order: stt, stt-worker, lm-studio, nlp.' })
   services!: ModelResidencyCatalogueService[];
-  @ApiProperty({ type: [ModelResidencySuggestion], description: 'The controller`s recommendations, newest first, one plain sentence each.' })
+  @ApiProperty({
+    type: [ModelResidencySuggestion],
+    description:
+      'TASK-1051 — STANDING recommendations: one per (action, service, model), most recently confirmed first, never one the current policy already satisfies, dismissed ones omitted; at most 20.',
+  })
   suggestions!: ModelResidencySuggestion[];
 }

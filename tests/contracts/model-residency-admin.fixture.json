@@ -7,7 +7,8 @@
       "reportedAt": "2026-09-24T13:00:05Z",
       "freshness": {
         "maxAgeSeconds": 15,
-        "staleServices": []
+        "staleServices": [],
+        "oldestReportAt": "2026-09-24T12:59:50Z"
       },
       "devices": [
         {
@@ -66,7 +67,9 @@
           "modelRef": "gliner-medical-large",
           "reason": "idle_ttl_expired",
           "mode": "shadow",
-          "applied": false
+          "applied": false,
+          "firstSeenAt": "2026-09-24T12:58:00Z",
+          "repeats": 1
         }
       ]
     }
@@ -80,7 +83,18 @@
     "recommendationReason": ["idle_ttl_expired", "promotion_rate", "live_path_pin", "make_room", "admission_rejected"],
     "errorCode": ["IN_FLIGHT", "LOAD_FAILED", "LOAD_IN_PROGRESS", "MODEL_UNKNOWN", "OPTIONS_UNSUPPORTED", "OVER_BUDGET", "SERVICE_UNREACHABLE"],
     "loadOutcome": ["accepted", "already_loaded"],
-    "operationStatus": ["running", "succeeded", "failed"]
+    "operationStatus": ["running", "succeeded", "failed"],
+    "readinessCheck": [
+      "shadow_review_recorded",
+      "instances_matched",
+      "gpus_inside_headroom",
+      "shared_decision_state",
+      "shadow_days",
+      "usage_complete",
+      "unmeasured_budgeted",
+      "actions_audited"
+    ],
+    "previewRefusal": ["NO_SIZE", "OVER_BUDGET", "ALREADY_LOADED"]
   },
   "load": {
     "path": "POST /api/v1/admin/model-residency/load",
@@ -169,6 +183,84 @@
       "error": null,
       "startedAt": "2026-09-24T13:01:00Z",
       "finishedAt": null
+    }
+  },
+  "preview": {
+    "path": "POST /api/v1/admin/model-residency/load/preview",
+    "request": "<same body as load.request>",
+    "response": {
+      "service": "stt",
+      "modelRef": "arcaai-whisper-large-ml-en-gguf",
+      "device": "gpu0",
+      "needBytes": 2242054144,
+      "needSource": "catalogue",
+      "freeBytes": 26214400,
+      "headroomBytes": 2576351232,
+      "unattributedBytes": 6227702579,
+      "shortfallBytes": 4792190976,
+      "fits": false,
+      "refusal": "OVER_BUDGET",
+      "evictable": [
+        {
+          "service": "nlp",
+          "modelRef": "blaze999/Medical-NER",
+          "name": "Medical NER",
+          "bytes": 867303424,
+          "reason": "On demand · idle 5 h"
+        }
+      ],
+      "pinned": [
+        {
+          "service": "stt",
+          "modelRef": "radiology-asr-en",
+          "name": "Radiology ASR (Whisper.cpp EN)",
+          "bytes": 2059665408,
+          "reason": "Used by a live-consultation agent"
+        }
+      ]
+    }
+  },
+  "links": {
+    "path": "POST /api/v1/admin/model-residency/links",
+    "request": {
+      "service": "lm-studio",
+      "runtimeKey": "gemma-4-e2b-it-qat@q4_0",
+      "aiModelId": "0199a1b2-0000-7000-8000-000000000010"
+    },
+    "response": {
+      "aiModelId": "0199a1b2-0000-7000-8000-000000000010",
+      "service": "lm-studio",
+      "runtimeKeys": ["gemma-4-e2b-it-qat", "gemma-4-e2b-it-qat@q4_0"]
+    }
+  },
+  "dismiss": {
+    "path": "POST /api/v1/admin/model-residency/suggestions/:id/dismiss",
+    "response": {
+      "id": "0199a1b2-0000-7000-8000-00000000abcd",
+      "dismissed": true
+    }
+  },
+  "readiness": {
+    "path": "GET /api/v1/admin/model-residency/readiness",
+    "response": {
+      "mode": "shadow",
+      "passed": 4,
+      "total": 8,
+      "checks": [
+        {
+          "id": "shadow_review_recorded",
+          "title": "Shadow review recorded",
+          "passed": false,
+          "detail": "No review on file."
+        }
+      ],
+      "shadow": {
+        "since": "2026-10-06T11:54:00Z",
+        "loads": 41,
+        "unloads": 37,
+        "refusedOverBudget": 3,
+        "duplicateLoads": 21
+      }
     }
   }
 }

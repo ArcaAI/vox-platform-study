@@ -1,5 +1,10 @@
 import type {
   CreateModelResidencyPolicyRequest,
+  DismissModelResidencySuggestionResponse,
+  LinkModelResidencyRuntimeKeyRequest,
+  LinkModelResidencyRuntimeKeyResponse,
+  ModelResidencyLoadPreviewResponse,
+  ModelResidencyReadinessResponse,
   LoadModelResidencyRequest,
   ModelResidencyCatalogueResponse,
   ModelResidencyLoadResponse,
@@ -58,4 +63,16 @@ export interface IModelResidencyService {
   createPolicy(request: CreateModelResidencyPolicyRequest): Promise<ModelResidencyPolicyResponse>;
   updatePolicy(id: string, request: UpdateModelResidencyPolicyRequest): Promise<ModelResidencyPolicyResponse>;
   deletePolicy(id: string): Promise<ModelResidencyPolicyResponse>;
+
+  /** TASK-1051 — what `load(request)` would decide, without doing anything (no command, no operation, no recommendation). */
+  previewLoad(request: LoadModelResidencyRequest): Promise<ModelResidencyLoadPreviewResponse>;
+
+  /** TASK-1051 — record that `runtimeKey` (as the service reports it) IS this catalogue row; audited; 404 unknown model, 400 service mismatch. */
+  linkRuntimeKey(request: LinkModelResidencyRuntimeKeyRequest): Promise<LinkModelResidencyRuntimeKeyResponse>;
+
+  /** TASK-1051 — hide a standing recommendation until the controller's conclusion for that model changes; 404 unknown id. */
+  dismissSuggestion(id: string): Promise<DismissModelResidencySuggestionResponse>;
+
+  /** TASK-1051 — the enforce-readiness checklist (read-only). */
+  getReadiness(): Promise<ModelResidencyReadinessResponse>;
 }

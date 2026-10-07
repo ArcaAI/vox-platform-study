@@ -24,6 +24,14 @@ export class ModelResidencyFreshness {
 
   @ApiProperty({ description: 'Services whose last successful report is older than 30 s (their rows are the last known state).', type: [String] })
   staleServices!: string[];
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'TASK-1051 — when the OLDEST service report was produced (the agent`s own clock, not the gateway`s fetch); `maxAgeSeconds` is measured from it.',
+  })
+  oldestReportAt!: string | null;
 }
 
 export class ModelResidencyDevice {
@@ -85,6 +93,8 @@ export class ModelResidencyRecommendation {
   reason!: RecommendationReason;
   @ApiProperty({ enum: ['shadow', 'enforce'] }) mode!: ResidencyMode;
   @ApiProperty({ description: 'Whether the command was sent AND succeeded. Always `false` in shadow mode.' }) applied!: boolean;
+  @ApiProperty({ description: 'TASK-1051 — first time this standing recommendation was reached (`at` is the latest).' }) firstSeenAt!: string;
+  @ApiProperty({ description: 'TASK-1051 — ticks that reached it (1 = once).' }) repeats!: number;
 }
 
 export class ModelResidencyViewResponse {

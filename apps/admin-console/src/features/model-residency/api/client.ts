@@ -3,9 +3,16 @@
  * Platform-admin only (D-11); every call is a gateway route behind the BFF proxy.
  */
 
-import { getJson, patchWithEtag, postJson } from '@/shared/api';
+import { getJson, patchWithEtag, postJson, putJson } from '@/shared/api';
+import type { LoadModelResidencyRequest } from '@/shared/residency';
 import type {
   CreatePolicyRequest,
+  DismissSuggestionResponse,
+  LinkRuntimeKeyRequest,
+  LinkRuntimeKeyResponse,
+  ModelResidencyLoadPreview,
+  ModelResidencyReadiness,
+  PinModelRequest,
   ModelResidencyCatalogueResponse,
   ResidencyPolicy,
   UnloadModelRequest,
@@ -39,4 +46,29 @@ export function updateResidencyPolicy(id: string, patch: UpdatePolicyRequest, ex
   return patchWithEtag<ResidencyPolicy>(`${BASE}/policies/${encodeURIComponent(id)}`, { ...patch, expectedVersion }, `"${expectedVersion}"`).then(
     (result) => result.data,
   );
+}
+
+// ── TASK-1051 ──────────────────────────────────────────────────────────────
+
+/** Dry-run admission for the Load dialog — same body as a load; changes nothing. */
+export function previewModelLoad(body: LoadModelResidencyRequest): Promise<ModelResidencyLoadPreview> {
+  return postJson(`${BASE}/load/preview`, body);
+}
+
+/** Record that a reported engine key IS a catalogue row (audited). */
+export function linkRuntimeKey(body: LinkRuntimeKeyRequest): Promise<LinkRuntimeKeyResponse> {
+  return postJson(`${BASE}/links`, body);
+}
+
+export function dismissResidencySuggestion(id: string): Promise<DismissSuggestionResponse> {
+  return postJson(`${BASE}/suggestions/${encodeURIComponent(id)}/dismiss`, {});
+}
+
+/** Pin / unpin on the running service (the operator pin, not a policy row). */
+export function pinResidencyModel(body: PinModelRequest): Promise<unknown> {
+  return putJson(`${BASE}/pins`, body);
+}
+
+export function getModelResidencyReadiness(): Promise<ModelResidencyReadiness> {
+  return getJson(`${BASE}/readiness`);
 }
