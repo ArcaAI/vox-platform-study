@@ -288,7 +288,7 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
     expect(toast.error).toHaveBeenCalledTimes(1);
   });
 
-  it('an already-loaded admission tracks nothing and toasts nothing (the dialog owns that toast)', async () => {
+  it('an already-loaded admission tracks nothing and says so once (the dialog toasts only its failures)', async () => {
     const { calls } = await renderScreen();
     fireEvent.click(within(row(/Whisper Large Code-Switch/)).getByRole('button', { name: /Load…/ }));
     act(() =>
@@ -298,7 +298,8 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
       }),
     );
     expect(calls.some((call) => call.url.includes('/operations/'))).toBe(false);
-    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/already loaded/));
   });
 
   it('a drawer reload posts replace + options and tracks the operation', async () => {

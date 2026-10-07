@@ -1943,7 +1943,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     // A model pinned ONLY as an ASR pipeline stage (VAD, denoise, …) loads with its ASR agent, never on its own (lane B3):
     // it stays PINNED (never idle-unloaded) but is not a load candidate.
     const stageOnly = (aiModelId: string) =>
-      ledger.livePath.filter((l) => l.aiModelId === aiModelId).every((l) => (l as { role?: string }).role === 'pipeline_stage');
+      ledger.livePath.filter((l) => l.aiModelId === aiModelId).every((l) => l.role === 'pipeline_stage');
     const candidates: Array<{ service: string; modelRef: string | null; aiModelId: string; loadable: boolean }> = [
       ...ledger.policies
         .filter((p) => p.class !== ModelResidencyClass.ON_DEMAND)
