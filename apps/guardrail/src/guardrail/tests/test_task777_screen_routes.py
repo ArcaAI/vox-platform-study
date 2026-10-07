@@ -120,13 +120,17 @@ async def test_jailbreak_label_blocks_inbound() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_nlp_outage_blocks_it_never_allows() -> None:
+async def test_an_nlp_outage_is_unverified_it_never_reads_as_a_clean_allow() -> None:
+    # TASK-1050 OD-23: was "blocks". An outage now degrades to `unverified` with a
+    # `guardrail.unverified` notice; the four-valued decision never says `allow`.
     result = await screen_inbound(
         InboundScreenRequest(text="anything at all"),
         _FakeRequest(_state(_StubAnalyzer(raises=True))),  # type: ignore[arg-type]
     )
-    assert result.decision == "block"
+    assert result.guardrail_decision == "unverified"
+    assert result.decision == "allow"  # legacy binary field
     assert any(c["outcome"] == "undetermined" for c in result.checks)
+    assert result.notices and all(n["type"] == "guardrail.unverified" for n in result.notices)
 
 
 @pytest.mark.asyncio

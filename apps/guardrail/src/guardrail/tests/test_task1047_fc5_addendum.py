@@ -296,7 +296,10 @@ async def test_an_nlp_413_is_undetermined_logged_and_never_retried(caplog) -> No
     assert calls == 1
 
 
-async def test_an_nlp_413_blocks_the_screen(monkeypatch) -> None:
+async def test_an_nlp_413_is_unverified_never_a_clean_allow(monkeypatch) -> None:
+    # TASK-1050 OD-23: a check that could not run DEGRADES to `unverified` (a
+    # `guardrail.unverified` notice) instead of blocking. It is still never a clean
+    # `allow`, and every region sent is still listed as screened.
     import guardrail.api.endpoints.screen as screen_mod
 
     class _Overlong(_Analyzer):
@@ -314,7 +317,13 @@ async def test_an_nlp_413_blocks_the_screen(monkeypatch) -> None:
             headers={"X-Tenant-Id": TENANT},
         ),
     )
-    assert result.decision == "block"
+    assert result.guardrail_decision == "unverified"
+    assert result.decision == "allow"  # the legacy binary field reads a degrade as allow
+    assert all(
+        c["actionTaken"] == "unverified" for c in result.checks if c["outcome"] == "undetermined"
+    )
+    assert [n["type"] for n in result.notices] == ["guardrail.unverified"] * len(result.notices)
+    assert result.notices
     assert result.screened_regions == ["user"]
 
 
