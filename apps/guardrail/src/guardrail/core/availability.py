@@ -263,7 +263,13 @@ def _effective(
     directions = {d: ten_dirs.get(d, sys_dirs.get(d, True)) for d in DIRECTIONS}
     policies: dict[str, dict[str, Any]] = {}
     for check_id, default in CATALOGUE_DEFAULTS.items():
-        tiers = (ten_checks.get(check_id, {}), sys_checks.get(check_id, {}))
+        sys_entry = sys_checks.get(check_id, {})
+        # A platform lock on the SYSTEM row wins at runtime too (TASK-1050 §11.1): a tenant
+        # entry written before the lock must not keep overriding it.
+        if sys_entry.get("locked") is True:
+            tiers: tuple[dict[str, Any], ...] = (sys_entry,)
+        else:
+            tiers = (ten_checks.get(check_id, {}), sys_entry)
 
         def _pick(name: str, fallback: Any, tiers: tuple[dict[str, Any], ...] = tiers) -> Any:
             for tier in tiers:
