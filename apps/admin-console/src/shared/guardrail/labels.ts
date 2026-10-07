@@ -101,11 +101,9 @@ export function legacyBlockCopy(code: string | null | undefined): string {
   switch (code) {
     case 'CONTENT_BLOCKED_NOT_MEDICAL':
       return 'The content was not classified as clinical, so it was not processed.';
-    case 'CONTENT_BLOCKED':
-      return 'A safety check stopped this request.';
     case 'EGRESS_REDACTION_UNAVAILABLE':
       return GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.blocked.redaction_unavailable'];
     default:
-      return 'A safety check stopped this request.';
+      return 'The guardrail refused this content. Review it, then retry.';
   }
 }

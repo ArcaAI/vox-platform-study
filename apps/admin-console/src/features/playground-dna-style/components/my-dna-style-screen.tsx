@@ -17,6 +17,7 @@ import type { DnaJobStatus } from '../api';
 import { DnaErasureCard } from './dna-erasure-card';
 import { DnaRedactionCard } from './dna-redaction-card';
 import { DnaSettingsCard } from './dna-settings-card';
+import { dnaGuardrailFromError, dnaGuardrailFromJob, type DnaGuardrailState } from './generate-guardrail';
 import { GeneratePane } from './generate-pane';
 import { ImpersonationGatePanel } from './impersonation-gate-panel';
 import { IngestPane } from './ingest-pane';
@@ -74,12 +75,18 @@ function MyDnaStyleBody() {
 
   const [samplesText, setSamplesText] = useState('');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // TASK-1050 — the guardrail outcome of the last generation: a designed block panel (with retry) or
+  // the warnings of a completed job, instead of a generic toast.
+  const [guardrail, setGuardrail] = useState<DnaGuardrailState | null>(null);
   const generate = useGenerateMyStyle();
   const progress = useDnaJobProgress(activeJobId, {
     onTerminal: (job) => {
+      const outcome = dnaGuardrailFromJob(job as DnaJobStatus & Record<string, unknown>);
+      setGuardrail(outcome);
       if (job.status === 'completed') {
-        toast.success('DNA style generated');
-      } else {
+        if (outcome?.warnings.length) toast.warning('DNA style generated, with safety warnings to review');
+        else toast.success('DNA style generated');
+      } else if (!outcome?.block) {
         toast.error(job.error || 'DNA generation failed');
       }
     },
@@ -87,11 +94,17 @@ function MyDnaStyleBody() {
 
   function handleGenerate() {
     const textSamples = splitTextSamples(samplesText);
+    setGuardrail(null);
     generate.mutate(textSamples.length > 0 ? { textSamples } : {}, {
       onSuccess: (job) => setActiveJobId(job.jobId),
       onError: (error) => {
         if (error instanceof GatewayError && error.status === 403) {
           setGateHit(true);
+          return;
+        }
+        const outcome = dnaGuardrailFromError(error);
+        if (outcome) {
+          setGuardrail(outcome);
           return;
         }
         toast.error(error instanceof GatewayError ? error.message : 'Could not queue the generation job.');
@@ -157,6 +170,7 @@ function MyDnaStyleBody() {
           gated={gated}
           activeJobId={activeJobId}
           progress={progress}
+          guardrail={guardrail}
         />
         <IngestPane gated={gated} onGate={() => setGateHit(true)} />
         <MyReportsCard reports={mine} myStyleReportId={myStyle.data?.data.id ?? null} gated={gated} onGate={() => setGateHit(true)} />
