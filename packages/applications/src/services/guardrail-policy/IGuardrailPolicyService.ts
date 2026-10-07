@@ -38,6 +38,8 @@ export interface IGuardrailPolicyService {
   resetLane(lane: string): Promise<GuardrailPolicyLaneResetResponse>;
   listRevisions(key: string, limit?: number, taskKey?: string): Promise<GuardrailPolicyRevisionsResponse>;
   restoreRevision(key: string, revisionId: string, taskKey?: string): Promise<GuardrailPolicyKeyResponse>;
+  /** `{ modelId, slug, version, judge, judgeDefaults, isDefault, defaultChangedSinceEdit }`; 404 without `_metadata.judge`. */
+  getJudgeMeta(modelId: string): Promise<GuardrailJudgeMetaResponse>;
   updateJudgeMeta(modelId: string, request: UpdateGuardrailJudgeMetaRequest): Promise<GuardrailJudgeMetaResponse>;
   resetJudgeMeta(modelId: string): Promise<GuardrailJudgeMetaResponse>;
   getJudgeLanes(): Promise<GuardrailJudgeLanesResponse>;
