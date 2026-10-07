@@ -100,13 +100,26 @@ describe('granite-guardian-4.1-8b: the four safety-judge criteria (README §6, �
 });
 
 describe('qwen3guard-gen-0.6b: the native-protocol judge row (README §12, §12.2a)', () => {
-  it('is the pinned official checkpoint, served by nlp through transformers', () => {
+  // Owner decision 2026-10-07 (overrides OD-40): served by LM Studio from the pinned Q8_0 GGUF, shaped like
+  // the other LM Studio rows (granite-guardian-4.1-8b): sourceUri = wireModelId = the LM Studio model key,
+  // the Hub repo in metaData.hubArtifact. Id and slug are unchanged.
+  it('is the pinned Q8_0 GGUF, served by LM Studio through llama.cpp', () => {
     const qwen = row(QWEN);
-    expect(qwen.sourceUri).toBe('Qwen/Qwen3Guard-Gen-0.6B');
-    expect(qwen.sourceRevision).toBe('fada3b2f655b89601929198343c94cd2f64d93cc');
+    expect(qwen.id).toBe('80000000-0000-0000-0007-000000000027');
+    expect(qwen.servedBy).toBe('lmstudio');
+    expect(qwen.provider).toBe('lm-studio');
+    expect(qwen.libraryName).toBe('llama.cpp');
+    expect(qwen.format).toBe('GGUF');
+    expect(qwen.modelType).toBe('QUANTIZED_MODEL');
+    expect(qwen.computeType).toBe('q8_0');
+    expect(qwen.source).toBe('LOCAL');
+    expect(qwen.deploymentKind).toBe('SELF_HOSTED');
+    expect(qwen.sourceUri).toBe('qwen3guard-gen-0.6b');
+    expect(qwen.wireModelId).toBe(qwen.sourceUri);
+    expect(meta(QWEN).hubArtifact).toBe('mradermacher/Qwen3Guard-Gen-0.6B-GGUF');
+    expect(qwen.sourceRevision).toBe('2a59799e089fba3807d534a89c6b95bdf38ee76a');
     expect(qwen.license).toBe('apache-2.0');
-    expect(qwen.servedBy).toBe('nlp');
-    expect(qwen.libraryName).toBe('transformers');
+    expect(qwen.baseModel).toBe('Qwen/Qwen3Guard-Gen-0.6B');
     expect(qwen.taskType).toBe(ModelTaskType.GUARDRAIL);
     // Not a platform-default election and not preloaded: it serves only a lane an admin points at it.
     expect(qwen.isPlatformDefaultFor ?? []).toEqual([]);
