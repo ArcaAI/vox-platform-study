@@ -438,10 +438,37 @@ The judge's latency is dominated by output tokens: the verdict's free-text `reas
    - **Measure on the A6000 itself**: this Mac is not a proxy for it.
 5. If the single judge must run on constrained hardware, use GLiGuard (CPU, one pass for harm + toxicity + jailbreak, ~3 windows/s ≈ 2.4× the 1.25 windows/s need), record-only on data.
 
+## 13. Implementation review against the owner's four rules (2026-10-07)
+
+Owner rules:
+- **R1:** every prompt is validated when created or composed, never in call-time guardrail checks.
+- **R2:** guardrail and safety checks run on medical context only.
+- **R3:** NER runs on medical context only.
+- **R4:** 25 concurrent consultations, near real time.
+
+Method: three read-only opus reviewers (call path, guardrail service, NER and authoring); the load-bearing claims were re-verified by the orchestrator at the cited lines.
+
+| # | Finding | Rule | Evidence |
+|---|---|---|---|
+| F1 | Platform/contract pieces (live directives, DocumentTemplate `promptInstruction`) are registered fire-and-forget. The first call of each new piece set, and every call after a policy-version change, sends an ungoverned ~53k-char system prompt that is screened as blocking instruction (~54 NLP calls). | R1, R4 | `text-request-enrichment.service.ts:168,187-195` (`void Promise.resolve(...)`) |
+| F2 | A tenant policy change never triggers a re-screen pass, so that tenant's content stays ungoverned and is screened at call time. Injection then blocks on instruction regions, so the 12 GLiGuard-flagged sources refuse. A SYSTEM change re-screens 135 sources one at a time after 60 s. | R1 | `governed-prompt-registry.service.ts:394-399`, `BACKFILL_CONCURRENCY=1` |
+| F3 | Call sites bypass the composer and send prompts and clinical text as blocking `user`/`system` instruction regions every call: live grammar/findings/translate, harness `guard.*`/corrections/findings/graph nodes, legacy generate, DNA ingest. | R1, R2 | `live-documentation.service.ts:7228-7425`; `_llm_policy.py:190-210`; `egress.py:240-241` |
+| F4 | Text appended outside EXTERNAL_DATA (note-plan directive, regen feedback, RAG instruction block) is screened as instruction and judged. The note-plan repair call carries no governance (~22k chars re-screened). | R1, R2 | `executor.py:339-340,372,425-441` (plan calls pass `system_governance` at :375, repair does not) |
+| F5 | The medical judge's skip list names only `*dna_style_text` / `*dna_redaction_rules_text`. It misses `style_reference` (DNA style, redaction rules, exemplars) and FC-1 configuration blocks (`document_headings`, `language_name`, …). They are judged and screened every call: the V7-5 refusal on another path. | R2 | `policy.py:210-216`; `style-reference.ts:10`; `note-plan-governance.ts:26` |
+| F6 | The inbound classifier cannot block on a governed call (decision = instruction regions only), yet it sits on the critical path. Cost: 1 GLiNER2 call per uncached data window, and an NLP timeout fails the LLM call (V4: 22 % shed at 25 consultations). | R2, R4 | `screening.py:444-450,421-440` |
+| F7 | The live lane re-screens and re-judges its own previous note (`current_note`) on every flush. It is rewritten each flush, so the cache misses: ~2–3 extra judge windows per flush on a judge already at 29 % of the needed throughput (§12). | R2, R4 | `live-documentation.service.ts:6352` |
+| F8 | PII spans run on instruction regions, and are computed inbound on LOCAL providers where they decide nothing. | R3, R4 | `screen.py:220-247`; `egress.py:560`; `output_gate.py:258` |
+| F9 | Note plan fans out up to 10 calls over an identical block prefix with no in-flight de-duplication of window checks. | R4 | `executor.py:365-392`; `windowing.py:146-173` |
+| F10 | NER: medical NER never sees prompts (conforms). But `nlp.ner.windowChars` (2,000) applies only above 8,192 chars; there is no NER result cache; at note time the whole transcript is re-extracted (`nerPriorsEnabled` off); generated notes are extracted per regeneration. | R3, R4 | `classify.py:231-236`; `activities.py:1350-1352` |
+| F11 | Authoring check is effectively a PII scanner: injection and safety flags are advisory by design. DNA_ANALYSIS templates, WorkflowDefinition node prompts and harness constants are never validated. | R1 | `governed-prompt-registry.service.ts:538-560`; `dna-writing-style.processor.ts:372-381` |
+
+Conforms: the composer boundary (governed static system, runtime values in EXTERNAL_DATA); apps/text skips a digest-verified system prompt entirely; data regions are record-only inbound (FC-5b); outbound screens the response only; HMAC window cache; NLP memory bounds; live NER is delta-only and cannot see the note.
+
 ## 10. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | Implementation review against the owner's four rules (R1 prompts validated at authoring only, R2/R3 guardrail and NER on medical context only, R4 25 consultations): findings F1–F11 (§13). |
 | 2026-10-07 | Single-judge load test (granite-guardian 4.1 8B, 25 consultations, 5 parallel/context configs) and interactive report (§12). Loads owner-requested; stop rule continued through macOS warn (owner decision). |
 | 2026-10-07 | Laya comparison (T1 injection, T2 safety vs GLiGuard, T3 medical scope vs granite) and production sizing for 25 concurrent consultations (§11). Owner-approved: laya package (isolated venv), laya/typed-decisions/multilingual loads, Aegis 2.0 + Dolly-15k, granite load/unload. Memory guard now stops on macOS kernel pressure (warn+). |
 | 2026-10-06 | **Evaluation complete → Review.** All five candidates scored on a+b1+b2+b3+c1+c2 (window and, for PG2-86M, line granularity), governed instruction texts (62) and CPU latency. Verdict: no candidate meets OD-13; FC-5b stays record-only. Recommendations R1–R5 (§9). b2 generated with `gemma-4-e2b-it-qat` (owner-approved; unloaded afterwards). Memory guard: swap-growth stop added; every run stayed under the ceilings (peak 3.9 GB). |
