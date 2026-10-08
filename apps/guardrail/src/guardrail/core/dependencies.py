@@ -383,6 +383,7 @@ def _nlp_client(
     labels: list[str] | None = None,
     threshold: float = 0.5,
     deadline_s: float,
+    classifier_timeout_s: float | None = None,
 ) -> NlpGuardClientT:
     """Build a tenant-bound `apps/nlp` client for one resolved selection.
 
@@ -390,7 +391,9 @@ def _nlp_client(
     call's budget, every attempt included. It replaced the judge's
     ``guardrail.judge.timeoutSeconds`` here: an NLP window and an 8B-model
     judgement have nothing in common but the word "peer". A row's own
-    ``configJson`` timeout may only SHORTEN it, never extend it.
+    ``configJson`` timeout may only SHORTEN it, never extend it — and so may
+    ``classifier_timeout_s`` (the `guardrail.safety` row's ``classifierTimeoutSeconds``,
+    TASK-1050 follow-up G), passed for the three CLASSIFIER clients only; ``None`` = no opinion.
     """
     from guardrail.services.external_nlp_client import NlpGuardClient
 
@@ -412,8 +415,12 @@ def _nlp_client(
         # TASK-1050 / TASK-1049 Track R: the row's serving library, so apps/nlp binds
         # the loader the platform admin chose (e.g. `seq-cls`), never a guessed one.
         **_library_kwarg(NlpGuardClient, getattr(cfg, "library_name", None)),
-        timeout_s=(
-            min(float(cfg.timeout_s), float(deadline_s)) if cfg.timeout_s else float(deadline_s)
+        timeout_s=min(
+            [
+                float(deadline_s),
+                *([float(cfg.timeout_s)] if cfg.timeout_s else []),
+                *([float(classifier_timeout_s)] if classifier_timeout_s else []),
+            ]
         ),
         breaker=_breaker(app_state, "nlp"),
     )
@@ -496,16 +503,22 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             policy_kwargs[key] = float(value)
 
     policy = SafetyPolicy(**policy_kwargs)
-    deadline_s = _row_policy(safety_cfg).nlp_deadline_seconds
+    safety_policy = _row_policy(safety_cfg)
+    deadline_s = safety_policy.nlp_deadline_seconds
+    # Follow-up G: one classifier budget, on the `guardrail.safety` row, for all three clients.
+    classifier_timeout_s = safety_policy.classifier_timeout_seconds
     return SafetyAnalyzer(
         policy,
-        injection=await _resolve_injection_route(app_state, tenant_id),
+        injection=await _resolve_injection_route(
+            app_state, tenant_id, classifier_timeout_s=classifier_timeout_s
+        ),
         safety_client=_nlp_client(
             app_state,
             tenant_id,
             safety_cfg,
             threshold=policy.classification_threshold,
             deadline_s=deadline_s,
+            classifier_timeout_s=classifier_timeout_s,
         ),
         pii_client=_nlp_client(
             app_state,
@@ -514,11 +527,14 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             labels=policy.pii_labels,
             threshold=policy.pii_threshold,
             deadline_s=_row_policy(pii_cfg).nlp_deadline_seconds,
+            classifier_timeout_s=classifier_timeout_s,
         ),
     )
 
 
-async def _resolve_injection_route(app_state: Any, tenant_id: str) -> Any:
+async def _resolve_injection_route(
+    app_state: Any, tenant_id: str, *, classifier_timeout_s: float | None = None
+) -> Any:
     """The `guardrail.injection` route for ``tenant_id`` (TASK-1049 R1), or ``None``.
 
     ``None`` ONLY when no row resolves at either tier — `jailbreak_detection` then stays
@@ -588,6 +604,7 @@ async def _resolve_injection_route(app_state: Any, tenant_id: str) -> Any:
                 else SafetyPolicy.classification_threshold
             ),
             deadline_s=_row_policy(cfg).nlp_deadline_seconds,
+            classifier_timeout_s=classifier_timeout_s,
         ),
     )
 
