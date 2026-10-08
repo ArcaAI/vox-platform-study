@@ -61,31 +61,34 @@ def test_default_messages_are_the_frozen_labels() -> None:
 
 
 def test_dedupe_key_shape() -> None:
+    # TASK-1050 follow-up E: one notice per (direction, notice type, target), not per check.
     assert (
         notice_dedupe_key(
             consultation_id=CONSULTATION,
             request_id="req-1",
-            check_id="unsafe_content_judge",
+            direction="inbound",
+            notice_type="guardrail.warning",
             target=ITEM,
             policy_version="pv-1",
         )
-        == f"{CONSULTATION}:unsafe_content_judge:{ITEM}:pv-1"
+        == f"{CONSULTATION}:inbound:guardrail.warning:{ITEM}:pv-1"
     )
     # Without a consultation the request id scopes it.
     assert (
         notice_dedupe_key(
             consultation_id=None,
             request_id="req-1",
-            check_id="pii_leak",
+            direction="outbound",
+            notice_type="guardrail.blocked",
             target="response",
             policy_version="pv-1",
         )
-        == "req-1:pii_leak:response:pv-1"
+        == "req-1:outbound:guardrail.blocked:response:pv-1"
     )
 
 
 def test_notice_id_is_a_deterministic_uuid_of_tenant_and_dedupe_key() -> None:
-    key = f"{CONSULTATION}:unsafe_content_judge:{ITEM}:pv-1"
+    key = f"{CONSULTATION}:inbound:guardrail.warning:{ITEM}:pv-1"
     first = notice_id_for(TENANT, key)
     assert first == notice_id_for(TENANT, key)
     assert str(uuid.UUID(first)) == first
@@ -116,7 +119,7 @@ def test_warn_notice_shape_and_severity() -> None:
     )
     assert notice == {
         "schemaVersion": 1,
-        "noticeId": notice_id_for(TENANT, f"{CONSULTATION}:unsafe_content_judge:{ITEM}:pv-1"),
+        "noticeId": notice_id_for(TENANT, f"{CONSULTATION}:inbound:guardrail.warning:{ITEM}:pv-1"),
         "type": "guardrail.warning",
         "direction": "inbound",
         "action": "warn",

@@ -36,7 +36,7 @@ def _row(**kw: Any) -> Any:
         "tenant_id": TENANT,
         "status": "RESOLVED",
         "resolution": "acknowledged",
-        "dedupe_key": "c-1:prompt_safety:item-1:pv-1",
+        "dedupe_key": "c-1:inbound:guardrail.blocked:item-1:pv-1",
         "created_at": NOW - timedelta(hours=1),
         "resolved_at": NOW - timedelta(minutes=5),
     }
@@ -67,7 +67,7 @@ def _resolver(row: Any = None, *, fail: bool = False) -> TenantConfigResolver:
 async def test_a_resolved_acknowledged_notice_of_the_same_tenant_verifies() -> None:
     verdict = await _resolver(_row()).verify_guardrail_override(TENANT, NOTICE, now=NOW)
     assert verdict.ok
-    assert verdict.dedupe_key == "c-1:prompt_safety:item-1:pv-1"
+    assert verdict.dedupe_key == "c-1:inbound:guardrail.blocked:item-1:pv-1"
 
 
 @pytest.mark.parametrize(
@@ -135,17 +135,22 @@ CORRELATION = GuardrailCorrelation(request_id="req-1", consultation_id="c-1")
 
 def test_dedupe_keys_of_a_check_are_the_notice_keys() -> None:
     keys = check_dedupe_keys(
-        _blocked("prompt_safety"), correlation=CORRELATION, policy_version="pv-1"
+        _blocked("prompt_safety"),
+        correlation=CORRELATION,
+        policy_version="pv-1",
+        direction="inbound",
     )
-    assert keys == ["c-1:prompt_safety:item-1:pv-1"]
+    assert keys == ["c-1:inbound:guardrail.blocked:item-1:pv-1"]
 
 
 def test_a_verified_override_downgrades_only_the_matching_check() -> None:
-    decision = _decision(_blocked("prompt_safety"), _blocked("prompt_toxicity"))
+    # TASK-1050 follow-up E: checks on the SAME target share one notice; a check on another
+    # item is on another notice and keeps its block.
+    decision = _decision(_blocked("prompt_safety"), _blocked("prompt_toxicity", item="item-2"))
     out = apply_guardrail_override(
         decision,
         correlation=CORRELATION,
-        dedupe_key="c-1:prompt_safety:item-1:pv-1",
+        dedupe_key="c-1:inbound:guardrail.blocked:item-1:pv-1",
         notice_id=NOTICE,
     )
     by_name = {c.name: c for c in out.checks}
@@ -157,7 +162,7 @@ def test_a_verified_override_downgrades_only_the_matching_check() -> None:
     alone = apply_guardrail_override(
         _decision(_blocked("prompt_safety")),
         correlation=CORRELATION,
-        dedupe_key="c-1:prompt_safety:item-1:pv-1",
+        dedupe_key="c-1:inbound:guardrail.blocked:item-1:pv-1",
         notice_id=NOTICE,
     )
     assert alone.guardrail_decision == "warn"
@@ -170,7 +175,7 @@ def test_the_locked_medical_check_is_never_downgraded() -> None:
     out = apply_guardrail_override(
         _decision(medical),
         correlation=CORRELATION,
-        dedupe_key="c-1:medical_validation:item-1:pv-1",
+        dedupe_key="c-1:inbound:guardrail.blocked:item-1:pv-1",
         notice_id=NOTICE,
     )
     assert out.checks[0].action_taken == "block"
@@ -184,7 +189,7 @@ def test_the_record_marks_the_overridden_check() -> None:
     out = apply_guardrail_override(
         _decision(_blocked("prompt_safety")),
         correlation=CORRELATION,
-        dedupe_key="c-1:prompt_safety:item-1:pv-1",
+        dedupe_key="c-1:inbound:guardrail.blocked:item-1:pv-1",
         notice_id=NOTICE,
     )
     notices = build_notices(
@@ -261,7 +266,9 @@ async def test_the_route_honours_a_verified_override(monkeypatch: Any) -> None:
     class _Resolver:
         async def verify_guardrail_override(self, tenant_id: str, notice_id: str, **_: Any) -> Any:
             assert (tenant_id, notice_id) == (TENANT, NOTICE)
-            return SimpleNamespace(ok=True, reason="", dedupe_key="c-1:prompt_safety:item-1:pv-1")
+            return SimpleNamespace(
+                ok=True, reason="", dedupe_key="c-1:inbound:guardrail.blocked:item-1:pv-1"
+            )
 
     response = await _route(monkeypatch, _Resolver(), {"X-Hope-Guardrail-Override": NOTICE})
     assert response.decision == "allow"
