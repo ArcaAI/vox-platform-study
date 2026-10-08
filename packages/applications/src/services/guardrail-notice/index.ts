@@ -3,6 +3,7 @@ export * from './guardrail-hold.rules';
 export * from './guardrail-hold.service';
 export * from './guardrail-hold.service.module';
 export * from './guardrail-item-exclusion';
+export * from './guardrail-override-release';
 export * from './guardrail-notice.service';
 export * from './guardrail-notice.service.module';
 export * from './guardrail-wire';
