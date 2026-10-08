@@ -82,6 +82,7 @@ from guardrail.services.injection_defense import (
 )
 from guardrail.services.pii_extraction import windowed_spans
 from guardrail.services.safety_analyzer import _DEFAULT_BENIGN as _ANALYZER_DEFAULT_BENIGN
+from guardrail.services.window_cache import answers_every_task
 from guardrail.services.windowing import WindowGeometry, WindowRunner, region_windows
 
 logger = get_logger(__name__)
@@ -659,6 +660,17 @@ class Screener:
             reason=reason,
         )
 
+    def _asked_tasks(self, tasks: tuple[str, ...]) -> tuple[str, ...]:
+        """The tasks a classify call over ``tasks`` actually SENDS (the model declares them).
+
+        Read off the analyzer (`SafetyAnalyzer.declared_tasks`); an analyzer that does not say
+        is taken to send every task — the strict reading, so an omission is never cached.
+        """
+        getter = getattr(self._analyzer, "declared_tasks", None)
+        if callable(getter):
+            return tuple(getter(tasks))
+        return tasks
+
     def _scored_seam(self) -> Any:
         seam = getattr(self._analyzer, "classify_tasks_scored", None)
         return seam if inspect.iscoroutinefunction(seam) else None
@@ -710,7 +722,12 @@ class Screener:
             return {"labels": labels, "scores": scores}
 
         verdicts = await self.window_runner.run(
-            f"classify:{','.join(selected)}", model, windows, _compute
+            f"classify:{','.join(selected)}",
+            model,
+            windows,
+            _compute,
+            # Follow-up I: an answer that omits a task this call asked for is never cached.
+            complete=answers_every_task(self._asked_tasks(selected)),
         )
         per_labels: list[list[dict[str, list[str]]]] = [[] for _ in range(max(1, len(texts)))]
         per_scores: list[list[dict[str, float]]] = [[] for _ in range(max(1, len(texts)))]
