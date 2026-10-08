@@ -174,7 +174,16 @@ export class FactLedgerService {
     for (const [callIndex, chunk] of chunks.entries()) {
       const startedAt = new Date();
       try {
-        const result = await this.agentInvocation.invokeText(agent, tenantId, { message: chunk.map(renderLine).join('\n') }, 'blocking');
+        // TASK-1050 — the guardrail attribution: the consultation, the items this chunk renders (the
+        // `input` region) at their rendered version, and the run key the call's run is recorded under.
+        // The FACT_LEDGER item the output becomes is written only after every chunk, so none is named.
+        const result = await this.agentInvocation.invokeText(agent, tenantId, { message: chunk.map(renderLine).join('\n') }, 'blocking', {
+          attribution: {
+            consultationId,
+            regionItems: { input: chunkItemRefs(chunk) },
+            correlation: { runKey: runKeyOf(callIndex) },
+          },
+        });
         outcomes.push({ ...parseModelOutput(result.text), result, startedAt, endedAt: new Date() });
       } catch (error) {
         const endedAt = new Date();
@@ -424,6 +433,18 @@ function mmss(ms: number): string {
 
 function oneLine(text: string): string {
   return text.replace(/\s*\n\s*/g, ' ');
+}
+
+/** The distinct items a chunk renders, in render order, at the version rendered. */
+function chunkItemRefs(chunk: readonly LabelledLine[]): Array<{ itemId: string; itemVersion: number }> {
+  const seen = new Set<string>();
+  const refs: Array<{ itemId: string; itemVersion: number }> = [];
+  for (const line of chunk) {
+    if (seen.has(line.itemId)) continue;
+    seen.add(line.itemId);
+    refs.push({ itemId: line.itemId, itemVersion: line.versionNumber });
+  }
+  return refs;
 }
 
 function renderLine(line: LabelledLine): string {
