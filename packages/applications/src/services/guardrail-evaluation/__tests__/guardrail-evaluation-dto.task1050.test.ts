@@ -39,6 +39,14 @@ describe('GuardrailEvaluationBatchRequestDto', () => {
     expect(await errorsOf(GuardrailEvaluationBatchRequestDto, { evaluations: [record] })).toEqual([]);
   });
 
+  it('accepts the optional machine `reason` on a check (skipped / undetermined / recorded-as-finding)', async () => {
+    const record = fixture.batch.evaluations[0];
+    const withReason = { ...record, checks: [{ ...record.checks[0], verdict: 'skipped', reason: 'not_selected_for_tenant' }] };
+    expect(await errorsOf(GuardrailEvaluationBatchRequestDto, { evaluations: [withReason] })).toEqual([]);
+    const notAString = { ...record, checks: [{ ...record.checks[0], reason: 7 }] };
+    expect(await errorsOf(GuardrailEvaluationBatchRequestDto, { evaluations: [notAString] })).toContain('evaluations.0.checks.0.reason');
+  });
+
   it('refuses an undeclared field, an unknown check id and an empty batch', async () => {
     const record = fixture.batch.evaluations[0];
     expect(await errorsOf(GuardrailEvaluationBatchRequestDto, { evaluations: [{ ...record, judgeReasoning: 'quotes PHI' }] })).toContain('evaluations.0.judgeReasoning');

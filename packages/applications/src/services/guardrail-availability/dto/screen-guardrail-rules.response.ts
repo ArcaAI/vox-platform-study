@@ -22,6 +22,9 @@ export class GuardrailScreenCheckResponse {
 
   @ApiPropertyOptional({ description: 'A machine reason code, when the check gives one.', nullable: true })
   reason!: string | null;
+
+  @ApiPropertyOptional({ description: 'The model that decided this check, when one did.', nullable: true })
+  model!: string | null;
 }
 
 /** `POST admin/guardrail/screen` — the full verdict, as guardrail decided it for the working tenant. */

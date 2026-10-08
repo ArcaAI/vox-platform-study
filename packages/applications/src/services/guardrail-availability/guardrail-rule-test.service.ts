@@ -124,6 +124,7 @@ function toCheck(raw: unknown): GuardrailScreenCheckResponse | null {
     score: typeof check.score === 'number' && Number.isFinite(check.score) ? check.score : null,
     category: str(check.category),
     reason: str(check.reason),
+    model: str(check.model),
   };
 }
 

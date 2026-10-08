@@ -59,6 +59,7 @@ export class GuardrailEvaluationCheckResponse {
   @ApiPropertyOptional() category?: string;
   @ApiPropertyOptional() confidence?: number;
   @ApiProperty({ enum: ['none', 'ignore', 'warn', 'block', 'unverified'] }) actionTaken!: string;
+  @ApiPropertyOptional({ description: 'Why the check was skipped / undetermined / recorded as a finding (machine code).' }) reason?: string;
   @ApiProperty({ type: String, nullable: true }) model!: string | null;
   @ApiProperty() latencyMs!: number;
   @ApiProperty({ type: [String] }) regionKeys!: string[];

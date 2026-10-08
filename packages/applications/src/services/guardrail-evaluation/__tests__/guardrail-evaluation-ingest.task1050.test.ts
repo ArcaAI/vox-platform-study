@@ -467,3 +467,47 @@ describe('GuardrailEvaluationIngestService.ingest — withheld output', () => {
     expect(entities[0].encryptedWithheldContent ?? null).toBeNull();
   });
 });
+
+describe('GuardrailEvaluationIngestService.ingest — check reason', () => {
+  it('stores a check`s `reason` on the evaluation row', async () => {
+    const h = makeHarness();
+    const base = record();
+    const checks = [{ ...base.checks[0], verdict: 'skipped', actionTaken: 'none', reason: 'not_selected_for_tenant' }] as never;
+    await h.service.ingest(TENANT, { evaluations: [record({ checks, notices: [], noticeIds: [], decision: 'allow' })] });
+    const [entities] = h.evaluations.createManyIdempotent.mock.calls[0] as unknown as [Array<{ checks: Array<{ reason?: string }> }>];
+    expect(entities[0].checks[0].reason).toBe('not_selected_for_tenant');
+  });
+});
+
+describe('GuardrailEvaluationIngestService.ingest — one notice listing three checks (E)', () => {
+  it('stores ONE notice with all three checks, enters ONE hold, and marks the items every check flagged', async () => {
+    const checks = [
+      { checkId: 'injection_judge', category: 'instruction_override', severity: 'high' },
+      { checkId: 'unsafe_content_judge', category: 'violence', severity: 'medium' },
+      { checkId: 'leakage_judge', category: 'secret', severity: 'low' },
+    ] as GuardrailNotice['checks'];
+    const n = blockNotice({ checks, itemIds: [SEG, SEG2] });
+    const base = record().checks[0];
+    const evalChecks = checks.map((one, index) => ({
+      ...base,
+      checkId: one.checkId,
+      actionTaken: 'block' as const,
+      items: index === 2 ? [{ itemId: SEG2, itemVersion: 1 }] : [{ itemId: SEG, itemVersion: 2 }],
+    }));
+    const h2 = makeHarness({
+      items: [
+        { id: SEG, tenantId: TENANT, consultationId: CONSULTATION, currentVersionNumber: 2 },
+        { id: SEG2, tenantId: TENANT, consultationId: CONSULTATION, currentVersionNumber: 1 },
+      ],
+    });
+    await h2.service.ingest(TENANT, { evaluations: [record({ decision: 'block', checks: evalChecks, noticeIds: [n.noticeId], notices: [n] })] });
+
+    expect(h2.notices.upsertByDedupeKey).toHaveBeenCalledTimes(1);
+    const [stored] = h2.notices.upsertByDedupeKey.mock.calls[0] as unknown as [{ checks: Array<{ checkId: string }>; severity: string }];
+    expect(stored.checks.map((check) => check.checkId)).toEqual(['injection_judge', 'unsafe_content_judge', 'leakage_judge']);
+    expect(stored.severity).toBe('high');
+    expect(h2.consultations.setProcessing).toHaveBeenCalledTimes(1);
+    const marked = h2.contextItems.setGuardrailStatusMany.mock.calls.flatMap(([ids]) => ids as string[]).sort();
+    expect(marked).toEqual([SEG, SEG2].sort());
+  });
+});

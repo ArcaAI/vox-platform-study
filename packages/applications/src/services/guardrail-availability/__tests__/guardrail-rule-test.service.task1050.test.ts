@@ -92,8 +92,8 @@ describe('GuardrailRuleTestService', () => {
       direction: 'inbound',
       decision: 'warn',
       checks: [
-        { name: 'prompt_safety', verdict: 'pass', action: 'block', actionTaken: 'none', score: 0.02, category: null, reason: null },
-        { name: 'unsafe_content_judge', verdict: 'flag', action: 'warn', actionTaken: 'warn', score: 0.91, category: 'self_harm', reason: 'unsafe_content' },
+        { name: 'prompt_safety', verdict: 'pass', action: 'block', actionTaken: 'none', score: 0.02, category: null, reason: null, model: 'm' },
+        { name: 'unsafe_content_judge', verdict: 'flag', action: 'warn', actionTaken: 'warn', score: 0.91, category: 'self_harm', reason: 'unsafe_content', model: null },
       ],
       notices: [WARNING],
       evaluationId: 'ev-1',
