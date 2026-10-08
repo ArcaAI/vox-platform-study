@@ -551,6 +551,7 @@ class Screener:
         policy_version: str = "",
         screen_policy: GuardrailPolicy | None = None,
         medical_skip: frozenset[str] = frozenset(),
+        pii_leak_quasi_identifier_labels: frozenset[str] = frozenset(),
     ) -> None:
         if not (tenant_id or "").strip():
             raise ValueError("Screener requires a tenant: decisions must be attributable")
@@ -582,6 +583,11 @@ class Screener:
         self._screen_policy = screen_policy
         #: The region keys the medical lane skips (`medicalJudgeConfigRegions`).
         self.medical_skip = frozenset(medical_skip)
+        #: `piiLeakQuasiIdentifierLabels` (follow-up A), case-folded: a pii_leak flag on these
+        #: labels ALONE is taken at `warn` under a `block` action. Empty ⇒ no downgrade.
+        self.pii_leak_quasi_identifier_labels = frozenset(
+            label.strip().casefold() for label in pii_leak_quasi_identifier_labels if label.strip()
+        )
         self.policy_version = policy_version
 
     @property
@@ -1531,17 +1537,43 @@ class Screener:
                 # The LABEL is recorded, never the fragment — the fragment is the PHI.
                 leaked.append(str(span.label))
 
+        latency_ms = int((time.monotonic() - started) * 1000)
+        if not leaked:
+            return CheckOutcome(
+                name=name,
+                outcome=OUTCOME_PASS,
+                fail_mode=_DECLARED_FAIL_MODES[name],
+                model=self._model(name),
+                latency_ms=latency_ms,
+                region_keys=(REGION_RESPONSE,),
+                items=refs,
+            )
+        action = self._availability.action_for(name, DIRECTION_OUTBOUND)
+        taken = action_taken_for(OUTCOME_FLAG, action)
+        quasi_only = bool(self.pii_leak_quasi_identifier_labels) and all(
+            label.strip().casefold() in self.pii_leak_quasi_identifier_labels for label in leaked
+        )
+        if taken == TAKEN_BLOCK and quasi_only:
+            # Follow-up A: quasi-identifiers alone warn — never stricter than configured, and an
+            # unlisted label (a direct identifier, a secret) keeps the configured action.
+            taken = TAKEN_WARN
+        acted = taken != TAKEN_NONE
         return CheckOutcome(
             name=name,
-            outcome=OUTCOME_FLAG if leaked else OUTCOME_PASS,
+            outcome=OUTCOME_FLAG,
             fail_mode=_DECLARED_FAIL_MODES[name],
             model=self._model(name),
-            reason="pii_absent_from_source" if leaked else "",
+            reason="pii_absent_from_source",
             labels=tuple(leaked),
-            category=leaked[0] if leaked else None,
-            latency_ms=int((time.monotonic() - started) * 1000),
+            verdict=OUTCOME_FLAG,
+            action=action,
+            action_taken=taken,
+            category=leaked[0],
+            latency_ms=latency_ms,
             region_keys=(REGION_RESPONSE,),
+            flagged_regions=(REGION_RESPONSE,) if acted else (),
             items=refs,
+            flagged_items=refs if acted else (),
         )
 
     def _check_containment_echo(

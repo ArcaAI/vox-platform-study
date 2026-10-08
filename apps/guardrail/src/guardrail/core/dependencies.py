@@ -692,11 +692,13 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
     """
     from guardrail.core.availability import JUDGE_IDS
     from guardrail.core.policy import GuardrailPolicy
-    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_PII, TASK_KEY_GUARDRAIL_SAFETY
     from guardrail.services.screening import Screener
 
     analyzer = await build_safety_analyzer(app_state, tenant_id)
     safety_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
+    # Follow-up A: the quasi-identifier list is the PII row's own (its label names).
+    pii_policy = _row_policy(await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_PII))
     raw_policy = getattr(safety_cfg, "policy", None)
     policy = GuardrailPolicy.from_blob(
         raw_policy,
@@ -726,6 +728,7 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         # Bands are read through `GuardrailPolicy.judge_band` (fail-closed) by the screener.
         screen_policy=policy,
         medical_skip=policy.medical_judge_config_regions,
+        pii_leak_quasi_identifier_labels=pii_policy.pii_leak_quasi_identifier_labels,
         policy_version=await _policy_version_or_unavailable(app_state, tenant_id),
     )
 
