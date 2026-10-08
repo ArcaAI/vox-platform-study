@@ -53,6 +53,7 @@ const GRANITE = 'granite-guardian-4.1-8b';
 const QWEN = 'qwen3guard-gen-0.6b';
 const PG2 = 'llama-prompt-guard-2-86m';
 const GLIGUARD = 'gliguard-llm-guardrails-300m';
+const PII = 'gliner2-privacy-filter-pii-multi';
 
 /** The four `criteria_json` lane keys and the lane whose verdict enum each must match. */
 const CRITERIA_LANES = {
@@ -189,12 +190,55 @@ describe('gliguard-llm-guardrails-300m: judgeBands (behaviour-neutral until Trac
   });
 });
 
+describe('gliguard-llm-guardrails-300m: follow-ups (owner 2026-10-08)', () => {
+  it('no longer carries outboundRecordOnlyChecks (outbound checks follow the configured rule)', () => {
+    expect(meta(GLIGUARD).policy).not.toHaveProperty('outboundRecordOnlyChecks');
+    expect(meta(GLIGUARD).policyDefaults).not.toHaveProperty('outboundRecordOnlyChecks');
+  });
+
+  it('declares classifierTimeoutSeconds: 10 in policy and policyDefaults', () => {
+    expect(meta(GLIGUARD).policy.classifierTimeoutSeconds).toBe(10);
+    expect(meta(GLIGUARD).policyDefaults.classifierTimeoutSeconds).toBe(10);
+  });
+});
+
+describe('gliner2-privacy-filter-pii-multi: piiLeakQuasiIdentifierLabels', () => {
+  // Mirrors the EXPLICIT quasi branch of piiIdentifierClass (packages/applications/.../pii-value.ts). The
+  // function's fall-through default (credentials, postal_code) is deliberately NOT seeded: a leaked secret
+  // must stay a block.
+  const QUASI = /(date|birth|dob|age|city|state|country|region|location|facility|gender|nationality|religion)/;
+  const labels = () => meta(PII).labelTaxonomy.labels as string[];
+
+  it('is exactly the taxonomy labels the quasi-identifier rule names, in policy and policyDefaults', () => {
+    const expected = labels().filter((l) => QUASI.test(l.toLowerCase()));
+    expect(expected.length).toBeGreaterThan(0);
+    expect(meta(PII).policy.piiLeakQuasiIdentifierLabels).toEqual(expected);
+    expect(meta(PII).policyDefaults.piiLeakQuasiIdentifierLabels).toEqual(expected);
+    expect(meta(PII).policyDefaults).not.toBe(meta(PII).policy);
+  });
+
+  it('never lists a direct identifier or a credential, and only labels the model declares', () => {
+    const list = meta(PII).policy.piiLeakQuasiIdentifierLabels as string[];
+    for (const l of list) expect(labels()).toContain(l);
+    for (const l of ['person', 'email', 'phone_number', 'medical_record_number', 'password', 'api_key', 'postal_code']) expect(list).not.toContain(l);
+    expect(list).toContain('healthcare_facility');
+  });
+});
+
+describe('gliner2-guardrails-pii-multi: keeps the six moderation tasks the model card declares (finding K)', () => {
+  it('declares all six GLiGuard tasks in its taxonomy', () => {
+    expect(Object.keys(meta('gliner2-guardrails-pii-multi').labelTaxonomy.tasks).sort()).toEqual(
+      ['jailbreak_detection', 'prompt_safety', 'prompt_toxicity', 'response_refusal', 'response_safety', 'response_toxicity'],
+    );
+  });
+});
+
 describe('defaults are data (README §11.3 C): reset copies policyDefaults / judgeDefaults', () => {
   const withPolicy = DEFAULT_AI_MODELS.filter((m) => m.metaData?.policy !== undefined);
   const withJudge = DEFAULT_AI_MODELS.filter((m) => (m.metaData as Record<string, unknown> | undefined)?.judge !== undefined);
 
   it('finds the policy and judge rows', () => {
-    expect(withPolicy.map((m) => m.slug).sort()).toEqual([GLIGUARD, GRANITE, QWEN].sort());
+    expect(withPolicy.map((m) => m.slug).sort()).toEqual([GLIGUARD, GRANITE, PII, QWEN].sort());
     expect(withJudge.map((m) => m.slug).sort()).toEqual([GRANITE, QWEN].sort());
   });
 

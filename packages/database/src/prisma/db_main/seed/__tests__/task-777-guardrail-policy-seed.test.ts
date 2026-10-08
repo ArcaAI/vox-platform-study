@@ -104,11 +104,12 @@ describe('SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob',
 
   it('only the judge rows and the guardrail.safety row carry a policy blob (no accidental spread onto other rows)', () => {
     const withPolicy = DEFAULT_AI_MODELS.filter((m) => m.metaData?.policy !== undefined);
-    // TASK-1047: guardrail reads `outboundRecordOnlyChecks` from the guardrail.safety row's policy (gliguard).
+    // TASK-1050: the guardrail.safety row (gliguard) carries bands + classifier timeout; the PII row carries piiLeakQuasiIdentifierLabels.
     // TASK-1050: the Qwen3Guard judge row carries its own model-coupled judge hyperparameters.
     expect(withPolicy.map((m) => `${m.tenantId}::${m.slug}`).sort()).toEqual(
       [
         `${SYSTEM_TENANT_ID}::gliguard-llm-guardrails-300m`,
+        `${SYSTEM_TENANT_ID}::gliner2-privacy-filter-pii-multi`,
         `${SYSTEM_TENANT_ID}::granite-guardian-4.1-8b`,
         `${SYSTEM_TENANT_ID}::qwen3guard-gen-0.6b`,
       ].sort(),

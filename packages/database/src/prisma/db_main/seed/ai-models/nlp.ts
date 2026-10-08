@@ -15,10 +15,11 @@ import {
 /**
  * The SYSTEM GLiGuard (`guardrail.safety`) row's governed policy blob (`apps/guardrail/.../core/policy.py::_SPECS`).
  *
- * `outboundRecordOnlyChecks` — TASK-1047 (owner approved 2026-10-06): this classifier false-flags clinical
- * notes, so its outbound checks are RECORDED (guardrail `data_findings`), not refusing, until a
- * better-calibrated model is approved. pii_leak, containment echo, response_refusal and any undetermined
- * check still block.
+ * `outboundRecordOnlyChecks` (TASK-1047) is RETIRED (owner 2026-10-08): outbound checks follow the rule the
+ * tenant/platform admin configured. A reseed drops the key from existing rows (`RETIRED_POLICY_KEYS` in
+ * `06-ai-models.ts`).
+ *
+ * `classifierTimeoutSeconds` — owner 2026-10-08: the per-call wall-clock bound on this classifier.
  *
  * `judgeBands` — TASK-1050 (README §3.1, OD-3 (b), OD-42): the per-check borderline band over this model's
  * score. FAIL-CLOSED with no code default, so it must be seeded. Every band is EMPTY (`low === high`): below
@@ -30,8 +31,24 @@ const GLIGUARD_JUDGE_BAND_CHECKS = ['prompt_safety', 'prompt_toxicity', 'jailbre
 // Built from the check list rather than written as `<check>: {…}` literals: `apps/nlp/tests/test_task1049_models.py`
 // locates GLiGuard's label taxonomy below by the first `<task>: {` in this file.
 const GLIGUARD_POLICY: Record<string, GuardrailPolicySeedValue> = {
-  outboundRecordOnlyChecks: ['jailbreak_detection', 'response_safety', 'response_toxicity'],
+  classifierTimeoutSeconds: 10,
   judgeBands: Object.fromEntries(GLIGUARD_JUDGE_BAND_CHECKS.map((check) => [check, { low: 0.5, high: 0.5 }])),
+};
+
+/** `gliner2-privacy-filter-pii-multi` (`guardrail.pii`) — the quasi-identifier labels of its own taxonomy. */
+const PII_LEAK_POLICY: Record<string, GuardrailPolicySeedValue> = {
+  piiLeakQuasiIdentifierLabels: [
+    'date_of_birth',
+    'city',
+    'state_or_region',
+    'country',
+    'sensitive_date',
+    'document_date',
+    'expiration_date',
+    'transaction_date',
+    'healthcare_facility',
+    'date_of_service',
+  ],
 };
 
 /**
@@ -593,6 +610,12 @@ const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
           'date_of_service',
         ],
       },
+      // Owner 2026-10-08 — a `pii_leak` flag on QUASI-identifier labels only is taken at warn, not block.
+      // Quasi = the explicit branch of `piiIdentifierClass` (applications/.../governed-prompt/pii-value.ts):
+      // dates, birth, age, place, facility. Credentials and `postal_code` are NOT listed (they fall through to
+      // 'quasi' in that function by default; a leaked secret must stay a block).
+      policy: PII_LEAK_POLICY,
+      policyDefaults: structuredClone(PII_LEAK_POLICY),
     },
   },
   // The JOINT checkpoint. Same PII types as the privacy filter (42 from the card, plus six clinical)
@@ -804,7 +827,7 @@ const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
       // "scanned, found nothing". Selecting this row for `guardrail.pii` would
       // therefore silently disable redaction. Never do it.
       capabilities: ['classify_text'],
-      // TASK-1047 `outboundRecordOnlyChecks` + TASK-1050 `judgeBands` — see `GLIGUARD_POLICY` above.
+      // TASK-1050 `judgeBands` + `classifierTimeoutSeconds` — see `GLIGUARD_POLICY` above.
       policy: GLIGUARD_POLICY,
       // TASK-1050 (README §11.3 C) — the factory defaults Reset copies back; a separate equal object.
       policyDefaults: structuredClone(GLIGUARD_POLICY),

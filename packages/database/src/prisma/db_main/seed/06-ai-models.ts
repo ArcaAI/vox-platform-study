@@ -47,6 +47,9 @@ type SeedMetaData = NonNullable<AiModelSeed['metaData']>;
 /** `_metadata` keys whose CURRENT value a platform admin edits (W2h); the seed never overwrites them. */
 const ADMIN_EDITABLE_METADATA_KEYS = ['policy', 'judge'] as const;
 
+/** `policy` keys the runtime no longer reads; a reseed removes them from an existing row (and its defaults). */
+const RETIRED_POLICY_KEYS = ['outboundRecordOnlyChecks'] as const;
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
@@ -63,6 +66,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => type
  * The merge is one level deep on purpose: a nested object (`judgeBands`, `categoryMap`) is one admin-edited
  * value, so an entry an admin removed from it is not re-added by a re-seed.
  *
+ * Keys in {@link RETIRED_POLICY_KEYS} are removed from the stored `policy`/`policyDefaults` (an explicit list).
+ *
  * `labelTaxonomy` is the seed's, with the stored classifier thresholds kept ({@link mergeLabelTaxonomy});
  * `labelTaxonomyDefaults` is refreshed to the seed.
  */
@@ -77,6 +82,10 @@ export function mergeSeedMetaDataForUpdate(existing: unknown, seed: SeedMetaData
       continue;
     }
     merged[key] = structuredClone({ ...(isPlainObject(fromSeed) ? fromSeed : {}), ...current });
+  }
+  for (const key of ['policy', 'policyDefaults'] as const) {
+    const blob = merged[key];
+    if (isPlainObject(blob)) for (const retired of RETIRED_POLICY_KEYS) delete blob[retired];
   }
   if (seed.labelTaxonomy !== undefined) merged.labelTaxonomy = mergeLabelTaxonomy(stored.labelTaxonomy, seed.labelTaxonomy);
   return merged as SeedMetaData;
