@@ -196,9 +196,9 @@ describe('gliguard-llm-guardrails-300m: follow-ups (owner 2026-10-08)', () => {
     expect(meta(GLIGUARD).policyDefaults).not.toHaveProperty('outboundRecordOnlyChecks');
   });
 
-  it('declares classifierTimeoutSeconds: 10 in policy and policyDefaults', () => {
-    expect(meta(GLIGUARD).policy.classifierTimeoutSeconds).toBe(10);
-    expect(meta(GLIGUARD).policyDefaults.classifierTimeoutSeconds).toBe(10);
+  it('declares classifierTimeoutSeconds: 20 in policy and policyDefaults', () => {
+    expect(meta(GLIGUARD).policy.classifierTimeoutSeconds).toBe(20);
+    expect(meta(GLIGUARD).policyDefaults.classifierTimeoutSeconds).toBe(20);
   });
 });
 

@@ -361,8 +361,16 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
 
     const passing = new Set((await this.repository.findPassing(tenantId, misses, policyVersion)).map((row) => row.digest));
     for (const digest of misses) if (passing.has(digest)) this.verdicts.set(this.verdictKey(tenantId, digest, policyVersion), true);
-    // A platform piece still being screened is governed pending its verdict (R1) — never cached.
-    return misses.every((digest) => passing.has(digest) || this.platformInFlight.has(`${policyVersion}|${digest}`));
+    // R1 (owner, TASK-1050): authored text is validated at authoring time, never at call time. A platform piece
+    // still being screened, or a piece that PASSED under an earlier policy version and has no verdict yet under
+    // this one (its re-screen is pending), is governed — never cached. A FAIL under this version is not.
+    const pending = misses.filter((digest) => !passing.has(digest) && !this.platformInFlight.has(`${policyVersion}|${digest}`));
+    if (pending.length === 0) return true;
+    const verdicts = (await this.repository.findVerdicts?.(tenantId, pending)) ?? [];
+    return pending.every((digest) => {
+      const rows = verdicts.filter((row) => row.digest === digest);
+      return !rows.some((row) => row.policyVersion === policyVersion) && rows.some((row) => String(row.verdict) === 'PASS');
+    });
   }
 
   async currentPolicyVersion(tenantId: string = SYSTEM_TENANT_ID): Promise<string | null> {

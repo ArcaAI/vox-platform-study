@@ -31,7 +31,9 @@ const GLIGUARD_JUDGE_BAND_CHECKS = ['prompt_safety', 'prompt_toxicity', 'jailbre
 // Built from the check list rather than written as `<check>: {…}` literals: `apps/nlp/tests/test_task1049_models.py`
 // locates GLiGuard's label taxonomy below by the first `<task>: {` in this file.
 const GLIGUARD_POLICY: Record<string, GuardrailPolicySeedValue> = {
-  classifierTimeoutSeconds: 10,
+  // e2e 2026-10-08: classify calls reached 15 s (queue wait, CPU) under one consultation burst; 10 s cut healthy
+  // calls off. A sustained outage is shed by the breaker (5 failures), not by this bound.
+  classifierTimeoutSeconds: 20,
   judgeBands: Object.fromEntries(GLIGUARD_JUDGE_BAND_CHECKS.map((check) => [check, { low: 0.5, high: 0.5 }])),
 };
 

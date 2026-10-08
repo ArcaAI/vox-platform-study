@@ -257,16 +257,18 @@ describe('areGoverned / currentPolicyVersion', () => {
     expect(repository.findPassing).toHaveBeenCalledTimes(2);
   });
 
-  it('a policy-version change ⇒ false until the pieces are re-screened under the new version', async () => {
+  it('a policy-version change: a piece PASSED under the old version stays governed while its re-screen is pending (R1), a never-screened one is not', async () => {
     vi.useFakeTimers();
     try {
       const { service, repository, client } = makeHarness();
       repository.findPassing.mockImplementation((async (_t: string, _d: string[], pv: string) => (pv === 'pv-1' ? [{ digest: 'd1' }] : [])) as never);
+      (repository as unknown as { findVerdicts: unknown }).findVerdicts = vi.fn(async () => [{ digest: 'd1', policyVersion: 'pv-1', verdict: 'PASS' }]);
       expect(await service.areGoverned(TENANT, ['d1'])).toBe(true);
       client.fetchPolicyVersion.mockResolvedValue('pv-2');
       vi.advanceTimersByTime(61_000);
       expect(await service.currentPolicyVersion()).toBe('pv-2');
-      expect(await service.areGoverned(TENANT, ['d1'])).toBe(false);
+      expect(await service.areGoverned(TENANT, ['d1'])).toBe(true);
+      expect(await service.areGoverned(TENANT, ['d-never'])).toBe(false);
       // Re-screened under pv-2 → governed again.
       repository.findPassing.mockImplementation((async () => []) as never);
       await service.screenAndRegister(TENANT, [piece('Write a note.')]);
@@ -331,6 +333,25 @@ describe('per-tenant policy versions (guardrail resolves the version per tenant 
     await service.registerPlatformPieces([rules]);
     await service.drainBackground();
     expect(repository.upsertVerdict).toHaveBeenCalledWith(expect.objectContaining({ tenantId: SYSTEM_TENANT_ID, policyVersion: 'pv-1' }));
+  });
+});
+
+describe('areGoverned — R1 across a policy-version change (TASK-1050)', () => {
+  const row = (digest: string, policyVersion: string, verdict: string) => ({ digest, policyVersion, verdict });
+
+  it('a piece that PASSED under an earlier version and has no verdict yet under the current one is governed (re-screen pending)', async () => {
+    const { service, repository } = makeHarness();
+    repository.findPassing.mockResolvedValue([]);
+    (repository as unknown as { findVerdicts: ReturnType<typeof vi.fn> }).findVerdicts = vi.fn(async () => [row('d1', 'pv-0', 'PASS')]);
+    expect(await service.areGoverned(TENANT, ['d1'])).toBe(true);
+  });
+
+  it('a FAIL under the current version, or no verdict at all, is not governed', async () => {
+    const { service, repository } = makeHarness();
+    repository.findPassing.mockResolvedValue([]);
+    (repository as unknown as { findVerdicts: ReturnType<typeof vi.fn> }).findVerdicts = vi.fn(async () => [row('d1', 'pv-0', 'PASS'), row('d1', 'pv-1', 'FAIL')]);
+    expect(await service.areGoverned(TENANT, ['d1'])).toBe(false);
+    expect(await service.areGoverned(TENANT, ['never'])).toBe(false);
   });
 });
 

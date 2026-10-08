@@ -91,6 +91,21 @@ export class GovernedPromptPieceRepository extends Repository<GovernedPromptPiec
     return rows.map((row) => this.toEntity(row));
   }
 
+  /**
+   * Every verdict (any policy version) for `digests`, owned by the tenant or SYSTEM — the registry reads
+   * it to tell "re-screen pending after a policy change" (a PASS under an earlier version, nothing yet
+   * under the current one) from "never screened" or "FAILED now" (TASK-1050 R1).
+   */
+  async findVerdicts(tenantId: string, digests: readonly string[]): Promise<GovernedPromptPieceEntity[]> {
+    const unique = [...new Set(digests)];
+    if (unique.length === 0) return [];
+    const tenants = tenantId === SYSTEM_TENANT_ID ? [SYSTEM_TENANT_ID] : [tenantId, SYSTEM_TENANT_ID];
+    const rows: GovernedPromptPiece[] = await this.client('governedPromptPiece').findMany({
+      where: { tenantId: { in: tenants }, digest: { in: unique }, resourceStatus: { not: ResourceStatusType.DELETED } },
+    });
+    return rows.map((row) => this.toEntity(row));
+  }
+
   /** Record one verdict: ONE row per (tenant, digest, policyVersion); a re-screen refreshes it. */
   async upsertVerdict(input: GovernedPromptVerdictInput): Promise<GovernedPromptPieceEntity> {
     const fields = {
