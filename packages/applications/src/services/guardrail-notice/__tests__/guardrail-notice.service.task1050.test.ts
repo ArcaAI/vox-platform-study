@@ -319,3 +319,53 @@ describe('GuardrailNoticeService.resumeHold', () => {
     expect(h.dispatch.supersedeGoverningRun).not.toHaveBeenCalled();
   });
 });
+
+/** A notice that lists every check that raised it (one per direction, type and target). */
+const THREE_CHECKS = [
+  { checkId: 'injection_judge', category: 'instruction_override', severity: 'high' },
+  { checkId: 'unsafe_content_judge', category: 'violence', severity: 'medium' },
+  { checkId: 'leakage_judge', category: 'secret', severity: 'low' },
+];
+
+describe('GuardrailNoticeService — a notice listing three checks (E)', () => {
+  it('list: the view carries every check of the notice, in order', async () => {
+    const h = makeHarness({ notice: makeNotice({ checks: THREE_CHECKS }) });
+    const result = await h.service.list(CONSULTATION);
+    expect(result.notices).toHaveLength(1);
+    expect(result.notices[0].checks.map((check) => check.checkId)).toEqual(['injection_judge', 'unsafe_content_judge', 'leakage_judge']);
+  });
+
+  it('acknowledge: one call acknowledges the single notice, however many checks it lists', async () => {
+    const h = makeHarness({ notice: makeNotice({ type: GuardrailNoticeType.WARNING, messageKey: 'guardrail.warning.generic', checks: THREE_CHECKS }) });
+    const result = await h.service.acknowledge(CONSULTATION, h.notice.id, { expectedVersion: 7, caller: human });
+    expect(result.notice.status).toBe('acknowledged');
+    expect(result.notice.checks).toHaveLength(3);
+    expect(h.notices.updateWithVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('resume (acknowledged): ONE resume releases the hold; the SAFETY_OVERRIDE records all three checks', async () => {
+    const h = makeHarness({ notice: makeNotice({ checks: THREE_CHECKS }) });
+    const result = await h.service.resumeHold(CONSULTATION, { noticeId: h.notice.id, resolution: 'acknowledged' }, { expectedVersion: 7, caller: human });
+    expect(result).toMatchObject({ processing: ConsultationProcessing.IDLE, resolvedNoticeId: h.notice.id });
+    expect(h.notices.updateWithVersion).toHaveBeenCalledTimes(1);
+    const [audit] = h.harnessAudit.append.mock.calls[0] as unknown as [{ sensorScores: { checks: Array<{ checkId: string }> } }];
+    expect(audit.sensorScores.checks.map((check) => check.checkId)).toEqual(['injection_judge', 'unsafe_content_judge', 'leakage_judge']);
+  });
+
+  it('resume (acknowledged): refused (409) when ANY listed check is catalogue-locked at block', async () => {
+    const checks = [THREE_CHECKS[0], { checkId: 'medical_validation', category: 'not_medical', severity: 'high' }, THREE_CHECKS[2]];
+    const h = makeHarness({ notice: makeNotice({ checks }) });
+    const error = await rejectionOf(h.service.resumeHold(CONSULTATION, { noticeId: h.notice.id, resolution: 'acknowledged' }, { expectedVersion: 7, caller: human }));
+    expect(codeOf(error)).toBe('GUARDRAIL_OVERRIDE_NOT_ALLOWED');
+    expect(h.notices.updateWithVersion).not.toHaveBeenCalled();
+    expect(h.harnessAudit.append).not.toHaveBeenCalled();
+  });
+
+  it('resume (item_excluded): a locked check among three still resumes with the item resolutions', async () => {
+    const checks = [THREE_CHECKS[0], { checkId: 'medical_validation', category: 'not_medical', severity: 'high' }, THREE_CHECKS[2]];
+    const h = makeHarness({ notice: makeNotice({ checks }) });
+    await expect(
+      h.service.resumeHold(CONSULTATION, { noticeId: h.notice.id, resolution: 'item_excluded' }, { expectedVersion: 7, caller: human }),
+    ).resolves.toMatchObject({ processing: ConsultationProcessing.IDLE });
+  });
+});
