@@ -1201,7 +1201,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const sampleInput = dto.goldenCaseId ? await this.loadGoldenCaseSampleInput(dto.goldenCaseId) : dto.sampleInput;
 
     const prompt = this.renderTestPrompt(content, dto.variables, sampleInput, declaredVariables, id);
-    const { provider, model, generation } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model, modelId: dto.modelId });
+    const { provider, model, generation, agentSlug } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model, modelId: dto.modelId });
 
     // Defect 4 — a dry run generates NOTHING. The author gets the exact prompt
     // that would have been sent; no job, no tokens, no cost.
@@ -1217,7 +1217,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
     }
 
-    const { taskId, streamUrl } = await this.submitTextGenerationJob(prompt, provider, model, generation);
+    const { taskId, streamUrl } = await this.submitTextGenerationJob(prompt, provider, model, generation, agentSlug);
     return { mode: 'stream', provider, model, assembledPrompt: prompt, taskId, streamUrl };
   }
 
@@ -1555,7 +1555,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     provider?: string;
     model?: string;
     modelId?: string;
-  }): Promise<{ provider: string; model: string; generation?: Record<string, unknown> }> {
+  }): Promise<{ provider: string; model: string; generation?: Record<string, unknown>; agentSlug?: string }> {
     if (override.modelId !== undefined) {
       if (override.provider !== undefined || override.model !== undefined) {
         throw new ArgumentInvalidException('modelId is mutually exclusive with provider/model.');
@@ -1593,6 +1593,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
         model: spec.primary.model,
         generation:
           typeof generation === 'object' && generation !== null && !Array.isArray(generation) ? (generation as Record<string, unknown>) : undefined,
+        // TASK-1050 — the agent the bench runs on, for the guardrail evaluation's `agent_slug`.
+        ...(spec.primary.agent?.slug ? { agentSlug: spec.primary.agent.slug } : {}),
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -1712,6 +1714,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
     provider: string,
     model: string,
     generation?: Record<string, unknown>,
+    // TASK-1050 — the agent the run is on (absent for a caller-pinned registry row).
+    agentSlug?: string,
   ): Promise<{ taskId: string; streamUrl: string }> {
     if (!this.httpService) {
       throw new BadRequestException('TEXT/text-generation client is not configured');
@@ -1722,7 +1726,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       // caller-pinned `provider`/`model`/`modelId` names a raw registry row with no agent behind
       // it, so there is no authored posture to apply and none is invented here.
       await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, generation);
-      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, { phase: 'test' });
+      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, { phase: 'test', agentSlug: agentSlug ?? null });
     }
 
     let taskId: string;
