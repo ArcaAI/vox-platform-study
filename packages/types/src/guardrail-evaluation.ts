@@ -60,6 +60,13 @@ export interface GuardrailEvaluationCheck {
   readonly regionKeys: readonly string[];
   /** The context items behind those regions, at the screened version. */
   readonly items: readonly GuardrailEvaluationItemRef[];
+  /**
+   * Why the check did not act (TASK-1050 follow-up H, additive): present ONLY on a `skipped` check
+   * (`not_selected_for_tenant`, `no_source_context`, `not_in_taxonomy`, `not_in_band`, …), an
+   * `undetermined` one (the outage code, e.g. `engine_error`), or a flag taken at `ignore`
+   * (`recorded_as_finding`). A fixed code, never content.
+   */
+  readonly reason?: string;
 }
 
 export interface GuardrailEvaluationRecord {

@@ -6,7 +6,9 @@
     "One record per request x direction. No judged text and no judge reasoning anywhere in a record:",
     "`withheldContent` is the ONLY content field, present only on an outbound block, plaintext on this",
     "internal wire, and encrypted by the gateway before it is stored.",
-    "`batch` is a VALID request body (<= batchMax records). TypeScript: packages/types/src/guardrail-evaluation.ts."
+    "`batch` is a VALID request body (<= batchMax records). TypeScript: packages/types/src/guardrail-evaluation.ts.",
+    "TASK-1050 follow-up H: a check's optional `reason` (a fixed code) explains a skipped / undetermined /",
+    "recorded-only (flag taken at ignore) check, and is absent on every other check."
   ],
   "batchMax": 100,
   "batch": {
@@ -67,7 +69,8 @@
             "model": null,
             "latencyMs": 0,
             "regionKeys": [],
-            "items": []
+            "items": [],
+            "reason": "not_selected_for_tenant"
           }
         ],
         "policyVersion": "pv-3f9a1c",
@@ -107,7 +110,8 @@
             "model": "gliguard-base",
             "latencyMs": 5002,
             "regionKeys": ["response"],
-            "items": []
+            "items": [],
+            "reason": "engine_error"
           }
         ],
         "policyVersion": "pv-3f9a1c",
