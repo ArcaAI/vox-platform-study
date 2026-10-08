@@ -1,0 +1,1711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vox Platform — LLM Service End-to-End Architecture Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0d14;
+      --bg-secondary: #111622;
+      --bg-tertiary: #182032;
+      --bg-card: rgba(24, 32, 50, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-focus: #38bdf8;
+      
+      --accent-cyan: #38bdf8;
+      --accent-indigo: #818cf8;
+      --accent-purple: #c084fc;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #f43f5e;
+      --accent-blue: #60a5fa;
+
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+
+      --code-bg: #0d1117;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --shadow-glow: 0 0 25px rgba(56, 189, 248, 0.15);
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-dim);
+    }
+
+    /* Container */
+    .app-container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px 32px 80px;
+    }
+
+    /* Header & Navigation */
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 32px;
+    }
+
+    .badge-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border: 1px solid transparent;
+    }
+    .badge-cyan { background: rgba(56, 189, 248, 0.12); color: var(--accent-cyan); border-color: rgba(56, 189, 248, 0.3); }
+    .badge-emerald { background: rgba(52, 211, 153, 0.12); color: var(--accent-emerald); border-color: rgba(52, 211, 153, 0.3); }
+    .badge-indigo { background: rgba(129, 140, 248, 0.12); color: var(--accent-indigo); border-color: rgba(129, 140, 248, 0.3); }
+    .badge-amber { background: rgba(251, 191, 36, 0.12); color: var(--accent-amber); border-color: rgba(251, 191, 36, 0.3); }
+    .badge-rose { background: rgba(244, 63, 94, 0.12); color: var(--accent-rose); border-color: rgba(244, 63, 94, 0.3); }
+
+    .header-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+      max-width: 800px;
+      margin-top: 4px;
+    }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-secondary);
+      padding: 6px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-color);
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-btn.active {
+      background: var(--accent-cyan);
+      color: #041019;
+      font-weight: 600;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+    }
+
+    /* Section Views */
+    .tab-pane {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Card styling */
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-subtitle {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    /* Grid layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 20px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    /* Interactive Diagram Canvas */
+    .diagram-container {
+      background: radial-gradient(circle at center, #151b29 0%, #0c101a 100%);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      position: relative;
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+
+    .topology-flow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 1050px;
+      padding: 20px 0;
+    }
+
+    .topology-node {
+      background: var(--bg-secondary);
+      border: 1.5px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      width: 190px;
+      min-height: 160px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .topology-node:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 15px rgba(56, 189, 248, 0.2);
+    }
+
+    .topology-node.active-node {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+      background: rgba(24, 32, 50, 0.9);
+    }
+
+    .node-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
+    .node-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .node-port {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .node-role {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      line-height: 1.35;
+    }
+
+    .node-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .node-tag {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-dim);
+    }
+
+    .flow-connector {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .flow-arrow {
+      width: 48px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.2), var(--accent-cyan));
+      position: relative;
+    }
+    .flow-arrow::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: -3px;
+      width: 0;
+      height: 0;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 6px solid var(--accent-cyan);
+    }
+
+    /* Stepper Interactive Simulator */
+    .stepper-container {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 992px) {
+      .stepper-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 620px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+
+    .step-item {
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .step-item:hover {
+      background: var(--bg-tertiary);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .step-item.active {
+      background: rgba(56, 189, 248, 0.1);
+      border-color: var(--accent-cyan);
+    }
+
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.15);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-item.active .step-number {
+      background: var(--accent-cyan);
+      color: #041019;
+    }
+
+    .step-title-text {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 2px;
+    }
+
+    .step-scope {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .step-detail-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      min-height: 580px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step-detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .step-detail-badge {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .step-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .control-btn {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .control-btn:hover:not(:disabled) {
+      background: var(--accent-cyan);
+      color: #041019;
+    }
+
+    .control-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Code & Log Blocks */
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #e2e8f0;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-top-left-radius: var(--radius-sm);
+      border-top-right-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    /* Tables */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .data-table th, .data-table td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .data-table th {
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    .path-link {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-cyan);
+      text-decoration: none;
+      word-break: break-all;
+    }
+
+    .method-tag {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .method-post { background: rgba(52, 211, 153, 0.15); color: var(--accent-emerald); }
+    .method-get { background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); }
+    .method-del { background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); }
+
+    /* Interactive Comparison Columns */
+    .compare-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 840px) {
+      .compare-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .compare-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 20px;
+    }
+    .compare-card.highlight {
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    .pill-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .pill {
+      font-size: 11px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      padding: 4px 10px;
+      border-radius: 999px;
+      color: var(--text-muted);
+    }
+
+    /* Modal / Drawer for Node Inspection */
+    .node-drawer {
+      display: none;
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 460px;
+      height: 100vh;
+      background: #0f1420;
+      border-left: 1px solid var(--border-color);
+      box-shadow: -15px 0 35px rgba(0, 0, 0, 0.6);
+      padding: 28px;
+      z-index: 1000;
+      overflow-y: auto;
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .node-drawer.open {
+      display: block;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+
+    .drawer-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 999;
+    }
+
+    .drawer-overlay.open {
+      display: block;
+    }
+
+    .drawer-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 22px;
+      cursor: pointer;
+      position: absolute;
+      top: 20px;
+      right: 20px;
+    }
+    .drawer-close:hover {
+      color: #fff;
+    }
+
+    .search-input {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: #fff;
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      width: 100%;
+      margin-bottom: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus {
+      border-color: var(--accent-cyan);
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- Header Section -->
+  <header>
+    <div class="badge-bar">
+      <span class="badge badge-cyan">Architecture Walkthrough</span>
+      <span class="badge badge-emerald">FastAPI :8862</span>
+      <span class="badge badge-indigo">NestJS Gateway :3000</span>
+      <span class="badge badge-amber">Guardrail :8861</span>
+      <span class="badge badge-rose">Zero-PHI Error Boundary</span>
+    </div>
+
+    <div class="header-title-row">
+      <div>
+        <h1>LLM Service End-to-End Architecture Explorer</h1>
+        <p class="header-desc">
+          Interactive deep-dive into the request lifecycle, multi-tenant credential injection (BYOK), 
+          medical safety guardrails, decoupled streaming producers, and usage metering across the Vox Platform.
+        </p>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-tabs">
+        <button class="tab-btn active" onclick="switchTab('simulator')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Request Simulator
+        </button>
+        <button class="tab-btn" onclick="switchTab('topology')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M3 12h6M15 12h6M12 3v6M12 15v6"/></svg>
+          System Topology
+        </button>
+        <button class="tab-btn" onclick="switchTab('streaming')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Streaming vs Non-Streaming
+        </button>
+        <button class="tab-btn" onclick="switchTab('guardrails')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Safety & Guardrails
+        </button>
+        <button class="tab-btn" onclick="switchTab('api-ref')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          API Reference
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- TAB 1: INTERACTIVE STEPPED REQUEST SIMULATOR -->
+  <div id="tab-simulator" class="tab-pane active">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            <span>Lifecycle Stepper (Client → API → Service → LLM → Response)</span>
+          </div>
+          <div class="card-subtitle">Click through the exact sequence of checks, transformations, and calls that occur on every generation request.</div>
+        </div>
+        <div class="step-controls">
+          <button class="control-btn" id="prev-step-btn" onclick="stepPrev()" disabled>Previous</button>
+          <button class="control-btn" id="next-step-btn" onclick="stepNext()">Next Step</button>
+        </div>
+      </div>
+
+      <div class="stepper-container">
+        <!-- Step Navigation List -->
+        <div class="step-list" id="step-nav-list">
+          <!-- Dynamically populated by JS -->
+        </div>
+
+        <!-- Step Details Panel -->
+        <div class="step-detail-card" id="step-detail-card">
+          <!-- Dynamically populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: SYSTEM TOPOLOGY & INTERACTIVE NODES -->
+  <div id="tab-topology" class="tab-pane">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Interactive System Topology & Component Linkages</div>
+          <div class="card-subtitle">Click on any component node to inspect its runtime responsibility, port, failover posture, and source files.</div>
+        </div>
+      </div>
+
+      <div class="diagram-container">
+        <div class="topology-flow">
+          <!-- Client Node -->
+          <div class="topology-node" onclick="inspectNode('client')">
+            <div class="node-header">
+              <span class="node-title">External Client</span>
+              <span class="node-port">HTTPS</span>
+            </div>
+            <p class="node-role">Browser UI, Clinician Consultation App, or SDK issuing generation calls with JWT.</p>
+            <div class="node-tags">
+              <span class="node-tag">Bearer JWT</span>
+              <span class="node-tag">SSE Client</span>
+            </div>
+          </div>
+
+          <div class="flow-connector">
+            <span>REST / SSE</span>
+            <div class="flow-arrow"></div>
+          </div>
+
+          <!-- Gateway Node -->
+          <div class="topology-node" onclick="inspectNode('gateway')">
+            <div class="node-header">
+              <span class="node-title">API Gateway</span>
+              <span class="node-port">:3000</span>
+            </div>
+            <p class="node-role">NestJS. Enforces tenant scope, auth guards, quota ceilings, BYOK injection, and usage ledger.</p>
+            <div class="node-tags">
+              <span class="node-tag">apps/api</span>
+              <span class="node-tag">ValidationPipe</span>
+              <span class="node-tag">BYOK</span>
+            </div>
+          </div>
+
+          <div class="flow-connector">
+            <span>Internal HTTP</span>
+            <div class="flow-arrow"></div>
+          </div>
+
+          <!-- Text Service Node -->
+          <div class="topology-node" onclick="inspectNode('text-service')">
+            <div class="node-header">
+              <span class="node-title">Text Service</span>
+              <span class="node-port">:8862</span>
+            </div>
+            <p class="node-role">FastAPI. Stateless engine runner. Rate limiters, queues, circuit breakers, semaphores & hub.</p>
+            <div class="node-tags">
+              <span class="node-tag">apps/text</span>
+              <span class="node-tag">AsyncIO</span>
+              <span class="node-tag">GenerationHub</span>
+            </div>
+          </div>
+
+          <div class="flow-connector">
+            <span>Validate</span>
+            <div class="flow-arrow"></div>
+          </div>
+
+          <!-- Guardrail Node -->
+          <div class="topology-node" onclick="inspectNode('guardrail')">
+            <div class="node-header">
+              <span class="node-title">Guardrail</span>
+              <span class="node-port">:8861</span>
+            </div>
+            <p class="node-role">Medical validation service. Screens input clinical intent and post-receive output toxicity/PII.</p>
+            <div class="node-tags">
+              <span class="node-tag">apps/guardrail</span>
+              <span class="node-tag">Fail-Closed</span>
+            </div>
+          </div>
+
+          <div class="flow-connector">
+            <span>Inference</span>
+            <div class="flow-arrow"></div>
+          </div>
+
+          <!-- Provider Node -->
+          <div class="topology-node" onclick="inspectNode('providers')">
+            <div class="node-header">
+              <span class="node-title">LLM Providers</span>
+              <span class="node-port">Cloud/Self</span>
+            </div>
+            <p class="node-role">Multi-model execution adapters: OpenAI, Anthropic, Bedrock, Vertex, vLLM, Ollama, LM Studio.</p>
+            <div class="node-tags">
+              <span class="node-tag">OpenAI</span>
+              <span class="node-tag">Anthropic</span>
+              <span class="node-tag">vLLM</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Infrastructure / Databases Row -->
+      <div class="grid-3">
+        <div class="card" onclick="inspectNode('redis')" style="cursor: pointer;">
+          <div class="node-header">
+            <span class="node-title">Redis 7 (Streams & State)</span>
+            <span class="node-port">:6379</span>
+          </div>
+          <p class="node-role" style="margin-top: 8px;">
+            Holds task states (<code style="font-size:11px;">text:task:{id}</code>), 
+            idempotency replay caches (<code style="font-size:11px;">text:idem:{key}</code>, TTL 24h), 
+            and resumable stream buffers (<code style="font-size:11px;">text:stream:{id}</code> via XADD).
+          </p>
+        </div>
+
+        <div class="card" onclick="inspectNode('postgres')" style="cursor: pointer;">
+          <div class="node-header">
+            <span class="node-title">PostgreSQL (Prisma ORM)</span>
+            <span class="node-port">:5432</span>
+          </div>
+          <p class="node-role" style="margin-top: 8px;">
+            Stores tenant records, prompt templates, consultation context items (transcripts/notes), 
+            encrypted doctor DNA style reports, and BYOK provider credentials.
+          </p>
+        </div>
+
+        <div class="card" onclick="inspectNode('ledger')" style="cursor: pointer;">
+          <div class="node-header">
+            <span class="node-title">Usage Ledger & Billing</span>
+            <span class="node-port">Internal</span>
+          </div>
+          <p class="node-role" style="margin-top: 8px;">
+            Collects metered usage events (tokens, reasoning, cache read/write, wire bytes, and compute device) 
+            to produce auditable tenant billing and cost-of-goods (COGS) reporting.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: STREAMING VS NON-STREAMING COMPARISON -->
+  <div id="tab-streaming" class="tab-pane">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Streaming vs. Non-Streaming Flow Mechanics</div>
+          <div class="card-subtitle">Detailed breakdown of how the architecture executes, buffers, gates, and bills synchronous vs. Server-Sent Events generation.</div>
+        </div>
+      </div>
+
+      <div class="compare-container">
+        <!-- Non-Streaming Column -->
+        <div class="compare-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="color:var(--accent-emerald); font-size:16px;">Non-Streaming Execution (JSON)</h3>
+            <span class="badge badge-emerald">stream: false</span>
+          </div>
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+            Synchronous single-call HTTP lifecycle returning a complete <code style="font-size:11px;">GenerateResponse</code> JSON document.
+          </p>
+
+          <div style="display:flex; flex-direction:column; gap:12px; font-size:13px;">
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>1. Concurrency Permit:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">Acquires a permit on <code style="color:var(--accent-cyan);">ResizableSemaphore</code> (timeout 30s). Returns 503 if pool saturated.</p>
+            </div>
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>2. Permit-Dropping Retries:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">If provider returns 429, drops concurrency permit during sleep backoff and re-acquires upon retry to avoid capacity starvation.</p>
+            </div>
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>3. Post-Receive Safety Gate:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">Screens the completed text via <code style="color:var(--accent-amber);">ExternalGuardrailClient.screen_output()</code>. If rejected, raises 422/503 before caching or returning.</p>
+            </div>
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>4. Metering & Response:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">Gateway calls <code style="color:var(--accent-indigo);">emitSyncGenerationUsage()</code> immediately upon receiving the response data to credit the Usage Ledger.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Streaming Column -->
+        <div class="compare-card highlight">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="color:var(--accent-cyan); font-size:16px;">Streaming Execution (SSE & Hub)</h3>
+            <span class="badge badge-cyan">stream: true</span>
+          </div>
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+            Resumable, disconnected Server-Sent Events architecture powered by <code style="font-size:11px;">GenerationHub</code> and Redis Streams.
+          </p>
+
+          <div style="display:flex; flex-direction:column; gap:12px; font-size:13px;">
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>1. Detached Producer Task:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">Producer runs as an independent <code style="color:var(--accent-cyan);">asyncio.Task</code>. <em>Dropping the HTTP client socket never cancels generation</em>.</p>
+            </div>
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>2. Immediate Handshake:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">Gateway answers 200 with <code style="color:var(--accent-emerald);">stream_url</code>. Client connects to <code style="color:var(--accent-cyan);">GET /tasks/:taskId/stream</code> with <code style="color:var(--accent-amber);">Last-Event-ID</code>.</p>
+            </div>
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>3. Dual-Dispatch Flusher:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">Deltas go to subscribers immediately in-memory; <code style="color:var(--accent-indigo);">BatchFlusher</code> coalesces 16-32 deltas / 25ms to Redis stream via single <code style="color:var(--accent-cyan);">XADD</code>.</p>
+            </div>
+            <div style="padding:10px; background:var(--bg-tertiary); border-radius:6px;">
+              <strong>4. Post-Stream Output Gate & Teardown:</strong>
+              <p style="color:var(--text-muted); font-size:12px;">Assembled stream screened before terminal frame. If rejected, sends <code style="color:var(--accent-rose);">GUARDRAIL_REJECTED</code> error frame. <code style="color:var(--accent-indigo);">LlmStreamUsageCollector</code> meters usage at stream end.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: SAFETY & GUARDRAILS DEEP-DIVE -->
+  <div id="tab-guardrails" class="tab-pane">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Two-Phase Medical Guardrail & Safety Plane</div>
+          <div class="card-subtitle">How prompts and generated completions are strictly evaluated for clinical intent, safety, and PII containment.</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card" style="margin-bottom:0;">
+          <h3 style="color:var(--accent-cyan); font-size:15px; margin-bottom:8px;">Phase 1: Input Moderation Gate</h3>
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">
+            Runs in <code style="font-family:var(--font-mono); font-size:11px;">generate.py::_apply_guardrail_gate()</code> before any LLM provider invocation.
+          </p>
+          <ul style="font-size:13px; color:var(--text-muted); margin-left:18px; line-height:1.7;">
+            <li>Calls <code style="color:var(--accent-cyan);">POST /api/medical/validate</code> on Guardrail (:8861).</li>
+            <li>Checks if prompt relates to legitimate clinical/medical encounter content.</li>
+            <li><strong>Fail-Closed Policy:</strong> If guardrail is unreachable after bounded retries, raises <code style="color:var(--accent-amber);">503 GuardrailUnavailableError</code>.</li>
+            <li>If classified as non-medical, raises <code style="color:var(--accent-rose);">422 ContentBlockedError</code> (<code style="font-size:11px;">CONTENT_BLOCKED_NOT_MEDICAL</code>).</li>
+            <li>Input guardrail token spend is recorded and returned in <code style="font-size:11px;">guardrail_usage</code>.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="margin-bottom:0;">
+          <h3 style="color:var(--accent-amber); font-size:15px; margin-bottom:8px;">Phase 2: Post-Receive Output Gate (TASK-871)</h3>
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">
+            Runs in <code style="font-family:var(--font-mono); font-size:11px;">output_gate.py::gate_completion()</code> on the assembled completion before returning or caching.
+          </p>
+          <ul style="font-size:13px; color:var(--text-muted); margin-left:18px; line-height:1.7;">
+            <li>Calls <code style="color:var(--accent-amber);">POST /api/v1/guardrail/screen/outbound</code> on Guardrail (:8861).</li>
+            <li>Screens for toxicity, refusal behavior, and PII leaks against the original prompt context.</li>
+            <li><strong>Non-Streaming:</strong> If rejected, raises <code style="color:var(--accent-rose);">OutputRejectedError</code> (HTTP 422/503). Output is never cached or returned.</li>
+            <li><strong>Streaming:</strong> If rejected, replaces terminal frame with an error frame (<code style="font-size:11px;">GUARDRAIL_REJECTED</code>).</li>
+            <li><strong>Cycle Tripwire:</strong> <code style="font-size:11px;">assert_not_in_judge_scope()</code> ensures internal judge queries never trigger recursive guardrail evaluation cycles.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 5: API REFERENCE & WIRE CONTRACTS -->
+  <div id="tab-api-ref" class="tab-pane">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">API Surface & Wire Contract Directory</div>
+          <div class="card-subtitle">Searchable inventory of external gateway and internal service endpoints.</div>
+        </div>
+      </div>
+
+      <input type="text" class="search-input" id="api-search" placeholder="Filter by endpoint, method, or purpose (e.g. generate, stream, tasks)..." onkeyup="filterApiTable()">
+
+      <table class="data-table" id="api-table">
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Service</th>
+            <th>Source Location</th>
+            <th>Description & Error Behaviors</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="method-tag method-post">POST</span></td>
+            <td><code>/api/v1/text-generations/generate</code></td>
+            <td>Gateway</td>
+            <td><a class="path-link" href="#">text-proxy.controller.ts:721</a></td>
+            <td>Public generation endpoint. Injects BYOK credentials, model selection, and quota checks.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-post">POST</span></td>
+            <td><code>/api/v1/text-generations/generate/assembled</code></td>
+            <td>Gateway</td>
+            <td><a class="path-link" href="#">text-proxy.controller.ts:1166</a></td>
+            <td>Server-side assembly from ContextItemRepo, PromptTemplateRepo, and encrypted DNA writing style.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-get">GET</span></td>
+            <td><code>/api/v1/text-generations/tasks/:taskId/stream</code></td>
+            <td>Gateway</td>
+            <td><a class="path-link" href="#">text-proxy.controller.ts:981</a></td>
+            <td>Resumable SSE stream proxy. Supports <code>Last-Event-ID</code> and single-use stream tickets.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-get">GET</span></td>
+            <td><code>/api/v1/text-generations/tasks/:taskId</code></td>
+            <td>Gateway</td>
+            <td><a class="path-link" href="#">text-proxy.controller.ts:904</a></td>
+            <td>Polls status and result payload of an asynchronous generation task.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-post">POST</span></td>
+            <td><code>/api/v1/text-generations/tasks/:taskId/cancel</code></td>
+            <td>Gateway</td>
+            <td><a class="path-link" href="#">text-proxy.controller.ts:934</a></td>
+            <td>Explicit cancellation signal forwarded to Text service.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-post">POST</span></td>
+            <td><code>/api/v1/generate</code></td>
+            <td>Text Service</td>
+            <td><a class="path-link" href="#">endpoints/generate.py:404</a></td>
+            <td>Core LLM execution. Handles idempotency, input/output guardrails, rate limits, queues, and execution.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-get">GET</span></td>
+            <td><code>/api/v1/tasks/{task_id}/stream</code></td>
+            <td>Text Service</td>
+            <td><a class="path-link" href="#">endpoints/stream.py:170</a></td>
+            <td>Internal SSE subscriber endpoint. Replays buffered deltas from in-memory ring buffer or Redis stream.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-post">POST</span></td>
+            <td><code>/api/v1/judge</code></td>
+            <td>Text Service</td>
+            <td><a class="path-link" href="#">endpoints/judge.py:120</a></td>
+            <td>Dedicated judge lane for evaluation. Concurrency budget isolated from public generation pool.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-post">POST</span></td>
+            <td><code>/api/medical/validate</code></td>
+            <td>Guardrail</td>
+            <td><a class="path-link" href="#">apps/guardrail</a></td>
+            <td>Input medical relevance validation. Evaluates clinical necessity and intent.</td>
+          </tr>
+          <tr>
+            <td><span class="method-tag method-post">POST</span></td>
+            <td><code>/api/v1/guardrail/screen/outbound</code></td>
+            <td>Guardrail</td>
+            <td><a class="path-link" href="#">apps/guardrail</a></td>
+            <td>Post-receive output screening for hallucinations, toxicity, refusal, and PII containment.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Node Inspection Drawer -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="node-drawer" id="node-drawer">
+  <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+  <div id="drawer-content">
+    <!-- Populated by inspectNode() -->
+  </div>
+</div>
+
+<script>
+  // STEPPER DATA (12 Precise Steps)
+  const STEPS = [
+    {
+      num: 1,
+      title: "Client Ingress",
+      scope: "External -> API Gateway",
+      badge: "Ingress / Route Match",
+      description: "An external client (clinician frontend, playground, or worker) sends an HTTP POST request to the Gateway.",
+      details: [
+        "Endpoint: <code>POST /api/v1/text-generations/generate</code>",
+        "Headers: <code>Authorization: Bearer <JWT></code>, <code>Content-Type: application/json</code>",
+        "Body: <code>{ prompt, system_prompt, model, provider, temperature, stream }</code>",
+        "Observability: <code>httpResponseMetricsMiddleware</code> tracks request arrival before guards run."
+      ],
+      code: `POST /api/v1/text-generations/generate HTTP/1.1
+Host: api.voxplatform.com
+Authorization: Bearer eyJhbGciOi...
+Content-Type: application/json
+
+{
+  "prompt": "Summarize the patient consultation: persistent cough for 2 weeks...",
+  "system_prompt": "You are a clinical documentation assistant.",
+  "provider": "openai",
+  "model": "gpt-4o",
+  "temperature": 0.2,
+  "stream": false
+}`,
+      source: "apps/api/src/modules/streaming/text-proxy.controller.ts:721",
+      failureHandling: "401 Unauthorized if JWT missing or expired. 400 Bad Request if undeclared fields exist (ValidationPipe strict whitelist)."
+    },
+    {
+      num: 2,
+      title: "Gateway Guards & Auth Pipeline",
+      scope: "apps/api Pipeline",
+      badge: "Security & Context",
+      description: "NestJS evaluates the global guard chain in strict declaration order before controller handler executes.",
+      details: [
+        "<code>TieredThrottlerGuard</code>: Evaluates IP-level rate limit bucket to prevent volumetric attacks.",
+        "<code>ClsGuard</code>: Binds AsyncLocalStorage request context.",
+        "<code>UnifiedAuthGuard</code>: Decodes JWT / API Key / Stream ticket, extracts <code>tenantId</code> and <code>user</code>.",
+        "<code>PatientConsentGuard</code>: Evaluates patient ABAC consent constraints if annotated.",
+        "<code>OriginTenantBindingGuard</code>: Verifies browser <code>Origin</code> is registered to the tenant.",
+        "Scope Decorator: Checks <code>@RequiredScopes('consultation:report:write')</code>."
+      ],
+      code: `// Guard Execution Chain (apps/api/src/app.module.ts)
+[
+  TieredThrottlerGuard,     // 1. IP brute-force protection
+  ClsGuard,                 // 2. Request context storage
+  UnifiedAuthGuard,         // 3. Authenticate User / Tenant
+  PatientConsentGuard,      // 4. Clinical consent verification
+  TenantOwnedResourceSseGuard, // 5. SSE cross-tenant leak guard
+  OriginTenantBindingGuard  // 6. Whitelisted browser origin
+]`,
+      source: "apps/api/src/app.module.ts:192-242",
+      failureHandling: "429 from ThrottlerGuard; 401 from UnifiedAuthGuard; 403 Forbidden from Scope/Consent rejection."
+    },
+    {
+      num: 3,
+      title: "Quota Check & Model Resolution",
+      scope: "TextProxyController Pre-checks",
+      badge: "Entitlements & Policy",
+      description: "The gateway verifies that the caller's tenant has sufficient LLM token allowance, and resolves omitted model parameters.",
+      details: [
+        "<code>assertLlmAllowance()</code> calls <code>IEntitlementsService.assertMeterQuota(tenantId, 'monthlyLlmTokens')</code>.",
+        "<code>applyTextModelSelection()</code>: If provider or model was omitted by caller, resolves from <code>HarnessPolicyService</code>.",
+        "Fails closed: If tenant has no configured model policy, returns 400 (never falls back to an unverified engine default)."
+      ],
+      code: `// apps/api/src/modules/streaming/text-proxy.controller.ts
+await this.assertLlmAllowance(); // Checks monthly token allowance
+
+if (!target.model && this.harnessPolicyService) {
+  const tenantId = this.clsService.get('tenantId');
+  const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId);
+  target.provider = provider;
+  target.model = model;
+}`,
+      source: "apps/api/src/modules/streaming/text-proxy.controller.ts:394-427",
+      failureHandling: "429 Too Many Requests if monthly token ceiling exceeded. 400 Bad Request if model cannot be resolved."
+    },
+    {
+      num: 4,
+      title: "Tenant Enrichment & BYOK Credentials",
+      scope: "TextRequestEnrichmentService",
+      badge: "Secret Folding",
+      description: "Gateway injects tenant BYO cloud credentials, reasoning posture, and moderation policy into the payload.",
+      details: [
+        "Moderation Policy: Injects <code>guardrail_policy</code> (require_medical, include_reasoning) based on tenant settings.",
+        "Reasoning Profile: Injects reasoning effort (minimal, low, medium, high) if model supports it.",
+        "BYOK Secrets: Queries <code>IProviderConnectionService</code> for tenant's cloud API key or platform default.",
+        "Marks funding attribution as <code>'tenant'</code> (BYOK) or <code>'platform'</code> for downstream ledger billing."
+      ],
+      code: `// Enriched Body Forwarded to Text Service:
+{
+  "prompt": "...",
+  "provider": "openai",
+  "model": "gpt-4o",
+  "guardrail_policy": { "require_medical": true, "include_reasoning": false },
+  "provider_overrides": {
+    "openai": {
+      "api_key": "sk-proj-tenant-secret...",
+      "funding": "tenant"
+    }
+  }
+}`,
+      source: "packages/applications/src/services/text-request-enrichment.service.ts",
+      failureHandling: "409 Conflict if provider vetoed by policy. 403 Forbidden if tenant lacks provider entitlement."
+    },
+    {
+      num: 5,
+      title: "Gateway to Text Forwarding",
+      scope: "apps/api -> apps/text",
+      badge: "Inter-Service Hop",
+      description: "Gateway formats internal request with service authentication token and mandatory tenant correlation header.",
+      details: [
+        "Headers stamped: <code>X-Tenant-Id: <tenantId></code>, <code>X-Service-Token: <INTERNAL_ACCESS_TOKEN></code>.",
+        "HTTP Target: <code>${TEXT_URL}/api/v1/generate</code>.",
+        "Retry Policy: <code>withRetry()</code> will retry up to 2 times strictly on connection-phase errors (<code>ECONNREFUSED</code>, <code>ENOTFOUND</code>).",
+        "Will NEVER retry once bytes were transmitted to avoid double-billing and divergent generation states."
+      ],
+      code: `// apps/api/src/modules/streaming/text-proxy.controller.ts:472
+private getForwardHeaders(): Record<string, string> {
+  const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
+  return {
+    'Content-Type': 'application/json',
+    'X-Tenant-Id': tenantHeaderValue(this.clsService?.get('tenantId')),
+    ...(serviceToken ? { 'X-Service-Token': serviceToken } : {})
+  };
+}`,
+      source: "apps/api/src/modules/streaming/text-proxy.controller.ts:772-785",
+      failureHandling: "502 Bad Gateway / 503 Unavailable if Text service is down; upstream retry-after relayed and capped at 3600s."
+    },
+    {
+      num: 6,
+      title: "Text Service Auth Preconditions",
+      scope: "apps/text Middleware",
+      badge: "Internal Gate",
+      description: "Pure ASGI ServiceAuthMiddleware verifies caller identity and enforces tenant attribution on every internal request.",
+      details: [
+        "Compares <code>X-Service-Token</code> against <code>accepted_service_tokens</code> using constant-time <code>hmac.compare_digest</code>.",
+        "Enforces mandatory <code>X-Tenant-Id</code> header. Tenantless background tasks must declare explicit <code>tenantless:<reason></code> marker.",
+        "Binds OpenTelemetry traceparent and structured request context."
+      ],
+      code: `// apps/text/src/text/api/middleware/auth.py
+if not hmac.compare_digest(token, expected):
+    return JSONResponse(status_code=401, content={"error_code": "UNAUTHORIZED"})
+
+tenant_id = request.headers.get("x-tenant-id")
+if not tenant_id:
+    return JSONResponse(status_code=428, content={"error_code": "PRECONDITION_REQUIRED"})`,
+      source: "apps/text/src/text/api/middleware/auth.py:71-147",
+      failureHandling: "401 Unauthorized if service token mismatch; 428 Precondition Required if X-Tenant-Id header is omitted."
+    },
+    {
+      num: 7,
+      title: "Input Guardrail Gate",
+      scope: "apps/text -> apps/guardrail",
+      badge: "Clinical Safety",
+      description: "Text service calls the Guardrail service to validate prompt for clinical relevance before contacting LLM.",
+      details: [
+        "Dispatches <code>POST /api/medical/validate</code> to Guardrail (:8861).",
+        "Includes prompt text, system prompt, tenant policy, and forward provider overrides.",
+        "Fail-Closed Design: Outage or timeout raises <code>503 GuardrailUnavailableError</code>.",
+        "If prompt is not clinical content, raises <code>422 ContentBlockedError</code> (<code>CONTENT_BLOCKED_NOT_MEDICAL</code>).",
+        "Captures <code>guardrail_usage</code> tokens for margin accounting."
+      ],
+      code: `// apps/text/src/text/api/endpoints/generate.py:197
+verdict = await guardrail_client.validate(
+    prompt=request_body.prompt,
+    system_prompt=request_body.system_prompt,
+    tenant_id=x_tenant_id,
+    tenant_policy=request_body.guardrail_policy
+)
+if not verdict.get("allowed", False):
+    if reason == GUARDRAIL_UNAVAILABLE_REASON:
+        raise GuardrailUnavailableError()
+    raise ContentBlockedError("The prompt was not classified as clinical content.")`,
+      source: "apps/text/src/text/services/external_guardrail.py:99-164",
+      failureHandling: "503 if guardrail service unavailable; 422 ContentBlockedError if non-clinical or unsafe."
+    },
+    {
+      num: 8,
+      title: "Admission Control & Safeguards",
+      scope: "apps/text Internal",
+      badge: "Queues & Limits",
+      description: "Request passes through provider rate limiter, priority queue, circuit breaker, and concurrency semaphore.",
+      details: [
+        "<code>PoolHealthTracker</code>: Checks provider health; reroutes to fallback if degraded.",
+        "<code>RateLimitTracker</code>: Sliding window RPM/TPM check based on estimated prompt tokens.",
+        "<code>ProviderQueue</code>: If limited, enqueues request up to <code>queue_max_wait_s</code>.",
+        "<code>CircuitBreaker</code>: Fast-fails with 503 (Retry-After: 30) if consecutive failures threshold exceeded.",
+        "<code>ResizableSemaphore</code>: Acquires concurrency permit (max in-flight limit per engine)."
+      ],
+      code: `// Admission Pipeline (generate.py)
+if not rate_limiter.can_proceed(estimated):
+    if queue and not queue.is_full:
+        await queue.enqueue(priority=0, future=future)
+        await asyncio.wait_for(future, timeout=max_wait)
+    else:
+        raise RateLimitError("Rate limit exceeded", retry_after=wait)
+
+if cb and not cb.allow_request():
+    raise CircuitOpenError("Circuit open", provider=provider)
+
+await semaphore.acquire() # Concurrency slot`,
+      source: "apps/text/src/text/api/endpoints/generate.py:510-680",
+      failureHandling: "429 RateLimitError (with Retry-After); 429 QueueTimeoutError; 503 CircuitOpenError; 503 ConcurrencyLimitError."
+    },
+    {
+      num: 9,
+      title: "Model Execution / Streaming Hub",
+      scope: "apps/text -> Model Engine",
+      badge: "LLM Inference",
+      description: "Provider adapter constructs native SDK client and invokes model. Streaming branch starts detached producer in GenerationHub.",
+      details: [
+        "Non-Streaming: <code>provider.generate(request_body)</code>. Drops permit during backoff sleeps.",
+        "Streaming: <code>GenerationHub.start()</code> runs detached producer task. Returns SSE immediately.",
+        "Zero-Latency Push: Deltas emitted directly to in-memory subscriber queues.",
+        "Durable Coalescing: <code>BatchFlusher</code> coalesces 16-32 deltas / 25ms to Redis stream via single <code>XADD</code>.",
+        "Network byte counts tracked via <code>count_provider_bytes</code>."
+      ],
+      code: `// apps/text/src/text/routing/hub.py & streaming.py
+// Streaming Producer Loop
+async for chunk in provider.generate_stream(request_body):
+    event = GenerationEvent(seq=producer.next_seq(), event=chunk.type, payload=chunk.model_dump_json())
+    producer.publish(event)  // In-memory subscribers receive instantly
+    flusher.offer(event)     // Coalesces to Redis XADD batch (16-32 deltas / 25ms)`,
+      source: "apps/text/src/text/routing/streaming.py:96-260",
+      failureHandling: "Provider 429 retried with exponential backoff and Retry-After; 502 ProviderTimeoutError if timeout exceeded."
+    },
+    {
+      num: 10,
+      title: "Post-Receive Output Guardrail Gate",
+      scope: "apps/text -> apps/guardrail",
+      badge: "Output Safety",
+      description: "TASK-871 post-inference verification screens the completed output before returning or caching.",
+      details: [
+        "Concurrency permit dropped prior to safety check to avoid holding provider capacity.",
+        "Calls <code>POST /api/v1/guardrail/screen/outbound</code> on Guardrail (:8861).",
+        "Checks completion for toxicity, refusal behavior, and PII leakage relative to source prompt.",
+        "Non-Streaming: If rejected, raises <code>OutputRejectedError</code> (HTTP 422/503). Output is never cached or returned.",
+        "Streaming: If rejected, emits terminal <code>error</code> frame with code <code>GUARDRAIL_REJECTED</code>."
+      ],
+      code: `// apps/text/src/text/services/output_gate.py:125
+await gate_completion(
+    guardrail_client,
+    completion=assemble_completion(content, reasoning),
+    source_context=source_context_of(request_body),
+    tenant_id=x_tenant_id,
+    tenant_policy=request_body.guardrail_policy
+) // Raises OutputRejectedError if screening fails`,
+      source: "apps/text/src/text/services/output_gate.py:1-110",
+      failureHandling: "422 OutputRejectedError (code GUARDRAIL_REJECTED) if toxic/PII leak; 503 if guardrail unavailable."
+    },
+    {
+      num: 11,
+      title: "Task Persistence & Telemetry",
+      scope: "apps/text Background",
+      badge: "State & Cache",
+      description: "Text service updates task state in Redis, caches idempotency response, and logs Prometheus metrics.",
+      details: [
+        "Task marked <code>COMPLETED</code> in Redis with usage and normalized <code>GenerationStats</code>.",
+        "Idempotency Cache: Caches response in Redis under <code>text:idem:{idempotency_key}</code> (TTL 24h).",
+        "Metrics: Increments <code>GENERATION_TOTAL</code>, observes latency on <code>GENERATION_LATENCY</code>, records tokens.",
+        "Logs structured event via <code>GenerationAuditLogger.log_generation()</code>."
+      ],
+      code: `// Task & Idempotency Update (generate.py:863)
+await task_manager.update_task(
+    task.task_id,
+    status=TaskStatus.COMPLETED,
+    content=content,
+    usage_detail=usage_detail.model_dump(mode="json")
+)
+
+if cache_key and redis_client:
+    await redis_client.set(cache_key, response.model_dump_json(), ex=86400)`,
+      source: "apps/text/src/text/api/endpoints/generate.py:863-971",
+      failureHandling: "Redis cache write failure is swallowed gracefully to prevent failing an already successful generation."
+    },
+    {
+      num: 12,
+      title: "Usage Ledger Emission & Response",
+      scope: "API Gateway -> Client",
+      badge: "Metering & Return",
+      description: "Gateway meters token usage into billing ledger and delivers final payload or stream to client.",
+      details: [
+        "Non-Streaming: <code>emitSyncGenerationUsage()</code> records LLM generation and guardrail screening usage events.",
+        "Streaming: <code>LlmStreamUsageCollector</code> captures terminal frame usage when stream terminates or disconnects.",
+        "Zero-PHI Error Sanitization: Upstream errors masked using <code>RELAYABLE_ERROR_PHRASES</code>.",
+        "Relays sanitized <code>Retry-After</code> clamped at 3600 seconds.",
+        "Client receives <code>200 OK GenerateResponse</code> or completed SSE stream."
+      ],
+      code: `// apps/api/src/modules/streaming/text-proxy.controller.ts:830
+private emitSyncGenerationUsage(data: unknown): void {
+  const generation = parseTextUsageDetail(body.usage_detail);
+  const screening = parseTextUsageDetail(body.guardrail_usage);
+  
+  ledger.recordUsage(buildLlmUsageBatches({
+    usage: generation,
+    tenantId,
+    operation: 'generate',
+    device: await this.llmDeviceFor(tenantId, generation)
+  }));
+}`,
+      source: "apps/api/src/modules/streaming/text-proxy.controller.ts:830-896",
+      failureHandling: "Metering rejections are logged and alert-countered; never fails the HTTP response already delivered to user."
+    }
+  ];
+
+  // TOPOLOGY NODE INSPECTION DATA
+  const NODE_DATA = {
+    client: {
+      title: "External Client Tier",
+      subtitle: "Web Browser, Clinician App, SDK, Background Worker",
+      role: "Initiates generation requests with user JWT or stream tickets. Subscribes to SSE streams.",
+      files: [
+        "apps/admin-console",
+        "@arcaai/vox-node (Client SDK)",
+        "apps/api/src/modules/streaming/text-proxy.controller.ts"
+      ],
+      details: [
+        "Accepts either Bearer JWT or single-use stream ticket (POST /auth/stream-ticket).",
+        "Can send Last-Event-ID header to resume interrupted SSE generations from exact sequence number."
+      ]
+    },
+    gateway: {
+      title: "API Gateway (apps/api)",
+      subtitle: "NestJS Service on Port 3000 (Prefix /api/v1)",
+      role: "Edge routing, tenant boundary enforcement, token quotas, BYOK secret injection, and usage metering.",
+      files: [
+        "apps/api/src/modules/streaming/text-proxy.controller.ts",
+        "apps/api/src/modules/text-compat/text-compat.controller.ts",
+        "packages/applications/src/services/text-request-enrichment.service.ts",
+        "packages/applications/src/services/harness-policy.service.ts"
+      ],
+      details: [
+        "Guards: TieredThrottlerGuard, UnifiedAuthGuard, PatientConsentGuard, OriginTenantBindingGuard.",
+        "Entitlements check: assertLlmAllowance() enforces monthly token budget.",
+        "BYOK: Injects tenant cloud keys or platform keys as provider_overrides.",
+        "Error masking: Upstream errors filtered through RELAYABLE_ERROR_PHRASES to prevent prompt leakage."
+      ]
+    },
+    'text-service': {
+      title: "Text Service (apps/text)",
+      subtitle: "FastAPI Generation Microservice on Port 8862",
+      role: "Stateless model dispatch, circuit breaking, priority queueing, rate limiting, and resumable streaming hub.",
+      files: [
+        "apps/text/src/text/api/endpoints/generate.py",
+        "apps/text/src/text/api/endpoints/stream.py",
+        "apps/text/src/text/routing/hub.py",
+        "apps/text/src/text/services/circuit_breaker.py",
+        "apps/text/src/text/services/rate_limiter.py"
+      ],
+      details: [
+        "Auth: ServiceAuthMiddleware requires valid X-Service-Token and mandatory X-Tenant-Id.",
+        "Admission: RateLimitTracker (RPM/TPM), ProviderQueue, CircuitBreaker, ResizableSemaphore.",
+        "Streaming Hub: Detached producers survive client socket drops. Redis XADD coalescing."
+      ]
+    },
+    guardrail: {
+      title: "Medical Guardrail Service",
+      subtitle: "Microservice on Port 8861",
+      role: "Input clinical intent classification and post-receive output safety/toxicity/PII screening.",
+      files: [
+        "apps/text/src/text/services/external_guardrail.py",
+        "apps/text/src/text/services/output_gate.py"
+      ],
+      details: [
+        "Phase 1 Input: /api/medical/validate validates medical relevance. Fails closed with 503/422.",
+        "Phase 2 Output: /api/v1/guardrail/screen/outbound screens generated text against source prompt.",
+        "Cycle prevention: assert_not_in_judge_scope() prevents recursive evaluation deadlocks."
+      ]
+    },
+    providers: {
+      title: "LLM Providers & Adapters",
+      subtitle: "Multi-Cloud & Self-Hosted Engine Surface",
+      role: "SDK abstractions mapping GenerateRequest to provider-specific wire schemas.",
+      files: [
+        "apps/text/src/text/providers/openai.py",
+        "apps/text/src/text/providers/anthropic.py",
+        "apps/text/src/text/providers/azure_openai.py",
+        "apps/text/src/text/providers/bedrock.py",
+        "apps/text/src/text/providers/vertex.py",
+        "apps/text/src/text/providers/vllm.py",
+        "apps/text/src/text/providers/ollama.py",
+        "apps/text/src/text/providers/lmstudio.py"
+      ],
+      details: [
+        "CredentialPosture.BYOK requires request-injected key. Fails closed if missing.",
+        "CredentialPosture.SELF_HOST uses operator endpoint.",
+        "Wire formatting: Maps structured outputs (json_schema) and reasoning parameters."
+      ]
+    },
+    redis: {
+      title: "Redis 7 (Streams & Storage)",
+      subtitle: "In-Memory Datastore on Port 6379",
+      role: "Task states, stream replay buffers, and idempotency deduplication cache.",
+      files: [
+        "apps/text/src/text/services/task_manager.py",
+        "apps/text/src/text/routing/hub.py"
+      ],
+      details: [
+        "text:task:{id} holds status, tokens, usage_detail, and errors.",
+        "text:stream:{id} stores SSE chunks via XADD for Last-Event-ID reconnection.",
+        "text:idem:{key} caches completed GenerateResponse for 24h deduplication."
+      ]
+    },
+    postgres: {
+      title: "PostgreSQL Database",
+      subtitle: "Relational Database accessed via Prisma ORM",
+      role: "Persistent store for business plane resources, users, templates, context, and provider credentials.",
+      files: [
+        "packages/domains/src/repositories",
+        "apps/api/src/database"
+      ],
+      details: [
+        "ContextItemRepository: Consultation transcripts, case notes, and attachments.",
+        "PromptTemplateRepository: Tenant and doctor-personal prompt templates.",
+        "DnaWritingStyleReportRepository: Encrypted clinician stylistic fingerprints.",
+        "AiProviderConnection: Secure credential vault for BYOK integration."
+      ]
+    },
+    ledger: {
+      title: "Usage Ledger & Metering",
+      subtitle: "Applications-Layer Billing Infrastructure",
+      role: "Auditable accounting of LLM tokens, reasoning tokens, cache tokens, compute devices, and guardrail calls.",
+      files: [
+        "packages/applications/src/services/usageLedger",
+        "apps/api/src/modules/streaming/text-proxy.controller.ts:830"
+      ],
+      details: [
+        "Distinguishes tenant BYOK spend from platform COGS.",
+        "Logs hardware device (cpu, gpu) and pricing tier for cost accounting.",
+        "Fire-and-forget: Metering failures log alert metrics but never fail client requests."
+      ]
+    }
+  };
+
+  let currentStep = 0;
+
+  function renderStepperNav() {
+    const navList = document.getElementById('step-nav-list');
+    navList.innerHTML = STEPS.map((step, idx) => `
+      <div class="step-item ${idx === currentStep ? 'active' : ''}" onclick="goToStep(${idx})">
+        <div class="step-number">${step.num}</div>
+        <div>
+          <div class="step-title-text">${step.title}</div>
+          <div class="step-scope">${step.scope}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderStepDetail() {
+    const step = STEPS[currentStep];
+    const card = document.getElementById('step-detail-card');
+    card.innerHTML = `
+      <div class="step-detail-header">
+        <div>
+          <h2 style="font-size: 18px; color: #fff;">Step ${step.num}: ${step.title}</h2>
+          <span style="font-size: 12px; color: var(--text-dim);">${step.scope}</span>
+        </div>
+        <span class="step-detail-badge">${step.badge}</span>
+      </div>
+
+      <p style="font-size: 14px; color: var(--text-main); line-height: 1.5;">${step.description}</p>
+
+      <div style="background: rgba(255,255,255,0.02); padding: 12px 14px; border-radius: 6px; border: 1px solid var(--border-color);">
+        <strong style="font-size: 12px; text-transform: uppercase; color: var(--accent-cyan); letter-spacing: 0.05em;">Key Operations:</strong>
+        <ul style="font-size: 13px; color: var(--text-muted); margin-left: 18px; margin-top: 6px; line-height: 1.6;">
+          ${step.details.map(d => `<li>${d}</li>`).join('')}
+        </ul>
+      </div>
+
+      <div>
+        <div class="code-header">
+          <span>Wire Payload & Code Execution</span>
+          <span>${step.source}</span>
+        </div>
+        <pre class="code-block"><code>${escapeHtml(step.code)}</code></pre>
+      </div>
+
+      <div style="margin-top: auto; padding: 10px 14px; background: rgba(244, 63, 94, 0.08); border-left: 3px solid var(--accent-rose); border-radius: 4px;">
+        <span style="font-size: 12px; font-weight: 600; color: var(--accent-rose);">Failure & Fallback Handling:</span>
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">${step.failureHandling}</p>
+      </div>
+    `;
+
+    document.getElementById('prev-step-btn').disabled = currentStep === 0;
+    document.getElementById('next-step-btn').disabled = currentStep === STEPS.length - 1;
+  }
+
+  function goToStep(idx) {
+    currentStep = idx;
+    renderStepperNav();
+    renderStepDetail();
+  }
+
+  function stepNext() {
+    if (currentStep < STEPS.length - 1) {
+      goToStep(currentStep + 1);
+    }
+  }
+
+  function stepPrev() {
+    if (currentStep > 0) {
+      goToStep(currentStep - 1);
+    }
+  }
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    
+    document.getElementById('tab-' + tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  function inspectNode(nodeKey) {
+    const data = NODE_DATA[nodeKey];
+    if (!data) return;
+
+    const drawer = document.getElementById('node-drawer');
+    const overlay = document.getElementById('drawer-overlay');
+    const content = document.getElementById('drawer-content');
+
+    content.innerHTML = `
+      <div style="margin-bottom: 20px;">
+        <span class="badge badge-cyan" style="margin-bottom: 8px;">Topology Node</span>
+        <h2 style="font-size: 22px; color: #fff; margin-top: 4px;">${data.title}</h2>
+        <span style="font-size: 13px; color: var(--text-dim);">${data.subtitle}</span>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 12px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 6px;">Primary Responsibilities</h4>
+        <p style="font-size: 14px; color: var(--text-main); line-height: 1.5;">${data.role}</p>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 12px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 6px;">Key Source Files</h4>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          ${data.files.map(f => `<code style="font-size:12px; background:var(--code-bg); padding:6px 10px; border-radius:4px; color:var(--accent-cyan); word-break:break-all;">${f}</code>`).join('')}
+        </div>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 12px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 6px;">Key Invariants & Guarantees</h4>
+        <ul style="font-size: 13px; color: var(--text-muted); margin-left: 18px; line-height: 1.6;">
+          ${data.details.map(d => `<li>${d}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+  }
+
+  function closeDrawer() {
+    document.getElementById('node-drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('open');
+  }
+
+  function filterApiTable() {
+    const input = document.getElementById('api-search').value.toLowerCase();
+    const rows = document.querySelectorAll('#api-table tbody tr');
+
+    rows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(input) ? '' : 'none';
+    });
+  }
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // Initialize on page load
+  window.addEventListener('DOMContentLoaded', () => {
+    renderStepperNav();
+    renderStepDetail();
+  });
+</script>
+
+</body>
+</html>
