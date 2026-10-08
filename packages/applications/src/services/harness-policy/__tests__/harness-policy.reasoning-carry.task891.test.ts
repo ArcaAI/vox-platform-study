@@ -165,6 +165,7 @@ describe('resolveTextSelection — the resolved agent`s generation block travels
       provider: 'lm-studio',
       model: 'gemma-4-e2b-it-qat-live',
       generation: { temperature: 0.1, maxTokens: 900, reasoning: { enabled: false } },
+      agentSlug: 'platform-summarization-live',
     });
   });
 
@@ -174,6 +175,7 @@ describe('resolveTextSelection — the resolved agent`s generation block travels
       provider: 'lm-studio',
       model: 'gemma-4-e2b-it-qat',
       generation: { temperature: 0.2, maxTokens: 2048 },
+      agentSlug: 'platform-summarization',
     });
   });
 
@@ -183,10 +185,11 @@ describe('resolveTextSelection — the resolved agent`s generation block travels
    * processors, the TEXT proxy), so an agent with nothing to say must produce the shape they
    * already destructure — no `generation: undefined` key riding along to be spread onto a wire.
    */
-  it('an agent that authored no generation block returns {provider, model} and nothing else', async () => {
+  // TASK-1050 — `agentSlug` (the serving agent, for guardrail attribution) is always named.
+  it('an agent that authored no generation block returns {provider, model, agentSlug} and nothing else', async () => {
     const { policy } = chain([{ agentSlug: 'bare-summarization', selectorKey: '' }]);
     const result = (await policy.resolveTextSelection(TENANT, 'finalize')) as Record<string, unknown>;
-    expect(Object.keys(result).sort()).toEqual(['model', 'provider']);
+    expect(Object.keys(result).sort()).toEqual(['agentSlug', 'model', 'provider']);
   });
 });
 
@@ -226,6 +229,7 @@ describe('resolveTextFallbackSelection — the fallback carries ITS OWN posture'
       provider: 'lm-studio',
       model: 'reasoner-27b',
       generation: { reasoning: { enabled: true, effort: 'high' } },
+      agentSlug: 'reasoning-fallback',
     });
   });
 });

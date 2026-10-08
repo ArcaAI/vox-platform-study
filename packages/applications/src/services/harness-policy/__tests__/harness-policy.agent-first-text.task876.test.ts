@@ -89,7 +89,7 @@ beforeEach(() => {
 
 describe('resolveTextSelection — the assigned TEXT_GENERATION agent is the ONE selection seam', () => {
   it('returns the resolved primary {provider, model} for the caller tenant', async () => {
-    await expect(makeService().resolveTextSelection(TENANT, 'live')).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
+    await expect(makeService().resolveTextSelection(TENANT, 'live')).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', agentSlug: 'clinic-summarizer' });
     expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null, selectorTags: ['phase:live'] });
   });
 
@@ -140,16 +140,17 @@ describe('resolveTextSelection — the assigned TEXT_GENERATION agent is the ONE
     await expect(makeService().resolveTextSelection(TENANT)).rejects.toBeInstanceOf(ProviderVetoedException);
   });
 
-  it('returns {provider, model} and nothing else — funding stays derived downstream from the row that serves', async () => {
+  // TASK-1050 — plus the serving agent's slug, for guardrail attribution.
+  it('returns {provider, model, agentSlug} and nothing else — funding stays derived downstream from the row that serves', async () => {
     const result = (await makeService().resolveTextSelection(TENANT)) as Record<string, unknown>;
-    expect(Object.keys(result).sort()).toEqual(['model', 'provider']);
+    expect(Object.keys(result).sort()).toEqual(['agentSlug', 'model', 'provider']);
   });
 });
 
 describe('resolveTextFallbackSelection — the resolved chain, gated by the per-agent toggle', () => {
   it('returns the first fallback candidate as {provider, model}', async () => {
     textAgents.resolve.mockResolvedValue(spec({ chain: [candidate({ kind: 'fallback-model', provider: 'azure-openai', model: 'gpt-5.4-mini' }), candidate({ kind: 'platform-default' })] }));
-    await expect(makeService().resolveTextFallbackSelection(TENANT, 'finalize')).resolves.toEqual({ provider: 'azure-openai', model: 'gpt-5.4-mini' });
+    await expect(makeService().resolveTextFallbackSelection(TENANT, 'finalize')).resolves.toEqual({ provider: 'azure-openai', model: 'gpt-5.4-mini', agentSlug: 'clinic-summarizer' });
   });
 
   it('honours autoSwitch:false — the tenant turned HA fallback off for this agent, so no fallback runs', async () => {
