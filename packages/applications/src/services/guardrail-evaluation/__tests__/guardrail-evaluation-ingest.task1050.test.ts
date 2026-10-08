@@ -467,3 +467,14 @@ describe('GuardrailEvaluationIngestService.ingest — withheld output', () => {
     expect(entities[0].encryptedWithheldContent ?? null).toBeNull();
   });
 });
+
+describe('GuardrailEvaluationIngestService.ingest — check reason', () => {
+  it('stores a check`s `reason` on the evaluation row', async () => {
+    const h = makeHarness();
+    const base = record();
+    const checks = [{ ...base.checks[0], verdict: 'skipped', actionTaken: 'none', reason: 'not_selected_for_tenant' }] as never;
+    await h.service.ingest(TENANT, { evaluations: [record({ checks, notices: [], noticeIds: [], decision: 'allow' })] });
+    const [entities] = h.evaluations.createManyIdempotent.mock.calls[0] as unknown as [Array<{ checks: Array<{ reason?: string }> }>];
+    expect(entities[0].checks[0].reason).toBe('not_selected_for_tenant');
+  });
+});

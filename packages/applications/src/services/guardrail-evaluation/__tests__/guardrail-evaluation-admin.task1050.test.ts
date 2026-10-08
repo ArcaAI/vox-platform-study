@@ -19,7 +19,7 @@ import { GuardrailEvaluationAdminService } from '../guardrail-evaluation-admin.s
 const TENANT = 'tenant-1';
 const CONSULTATION = 'c-1';
 
-function evaluation(id: string, minute: number, withheld = false) {
+function evaluation(id: string, minute: number, withheld = false, checksOverride?: unknown[]) {
   return GuardrailEvaluationFactory.CreateGuardrailEvaluation({
     id,
     tenantId: TENANT,
@@ -28,7 +28,7 @@ function evaluation(id: string, minute: number, withheld = false) {
     caller: 'harness.guardrail_check',
     direction: withheld ? GuardrailDirection.OUTBOUND : GuardrailDirection.INBOUND,
     decision: withheld ? GuardrailDecision.BLOCK : GuardrailDecision.WARN,
-    checks: [{ checkId: 'leakage_judge', verdict: 'flag', actionTaken: withheld ? 'block' : 'warn', model: 'granite', latencyMs: 9, regionKeys: ['response'], items: [] }] as never,
+    checks: (checksOverride ?? [{ checkId: 'leakage_judge', verdict: 'flag', actionTaken: withheld ? 'block' : 'warn', model: 'granite', latencyMs: 9, regionKeys: ['response'], items: [] }]) as never,
     policyVersion: 'pv-1',
     noticeIds: ['n-1'],
     encryptedWithheldContent: withheld ? Buffer.from('vault:v2:c2VjcmV0', 'utf8') : null,
@@ -100,6 +100,15 @@ describe('GuardrailEvaluationAdminService.list', () => {
     const h = makeHarness();
     await expect(h.service.list(CONSULTATION, { action: 'nope' })).rejects.toBeInstanceOf(BadRequestException);
     await expect(h.service.list('foreign', {})).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('exposes a check`s `reason` (why it was skipped / undetermined) on the row', async () => {
+    const row = evaluation('e-r', 5, false, [
+      { checkId: 'leakage_judge', verdict: 'skipped', actionTaken: 'none', model: null, latencyMs: 0, regionKeys: [], items: [], reason: 'not_selected_for_tenant' },
+    ]);
+    const h = makeHarness({ rows: [row] });
+    const page = await h.service.list(CONSULTATION, {});
+    expect(page.items[0].checks[0]).toMatchObject({ verdict: 'skipped', reason: 'not_selected_for_tenant' });
   });
 
   it('marks the outbound block that holds withheld content', async () => {

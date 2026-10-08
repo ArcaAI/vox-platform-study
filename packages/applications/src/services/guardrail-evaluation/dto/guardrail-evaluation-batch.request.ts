@@ -61,6 +61,11 @@ export class GuardrailEvaluationCheckRequest {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(128) category?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(1) confidence?: number;
   @ApiProperty({ enum: GUARDRAIL_ACTIONS_TAKEN }) @IsIn(GUARDRAIL_ACTIONS_TAKEN as unknown as string[]) actionTaken!: GuardrailActionTaken;
+  @ApiPropertyOptional({ description: 'Machine reason code for a skipped / undetermined / recorded-as-finding check. Never text.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  reason?: string;
   @ApiProperty({ type: String, nullable: true }) @IsOptional() @IsString() model!: string | null;
   @ApiProperty() @IsInt() @Min(0) latencyMs!: number;
   @ApiProperty({ type: [String] }) @IsArray() @IsString({ each: true }) regionKeys!: string[];
