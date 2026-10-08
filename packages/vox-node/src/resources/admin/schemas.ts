@@ -3371,6 +3371,8 @@ export interface GuardrailEvaluationCheckResponse {
   items: GuardrailEvaluationItemRefResponse[];
   latencyMs: number;
   model: string | null;
+  /** Why the check was skipped / undetermined / recorded as a finding (machine code). */
+  reason?: string;
   regionKeys: string[];
   score?: number;
   verdict: 'pass' | 'flag' | 'undetermined' | 'skipped';
