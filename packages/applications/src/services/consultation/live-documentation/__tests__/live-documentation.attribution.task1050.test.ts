@@ -39,7 +39,13 @@ const spec = (): ResolvedTextGenerationSpec => ({
     chain: [
       candidate({
         kind: 'platform-default',
-        agent: { slug: 'platform-summarization', versionId: 'p1', versionNumber: 1, tenantId: '00000000-0000-0000-0000-000000000000', source: 'platform-default' },
+        agent: {
+          slug: 'platform-summarization',
+          versionId: 'p1',
+          versionNumber: 1,
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          source: 'platform-default',
+        },
         provider: 'lm-studio',
         model: 'gemma',
         fundingTier: 'platform',
@@ -82,14 +88,19 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
 
 const textAgents = { resolve: vi.fn() };
 const harnessPolicyService = { resolveTextSelection: vi.fn() };
-const enrichment = { applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined), applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined) };
+const enrichment = {
+  applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined),
+  applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined),
+};
 
 function buildService(opts: { graph: boolean; generate?: (call: number) => unknown }) {
   let n = 0;
   const post = vi.fn().mockImplementation((url: string) => {
     if (!url.includes('/generate')) return Promise.resolve({ data: {} });
     const answer = opts.generate ? opts.generate(n++) : NOTE;
-    return answer instanceof Error ? Promise.reject(answer) : Promise.resolve({ data: { summary: answer, stats: { provider: 'echo', model: 'echo' } } });
+    return answer instanceof Error
+      ? Promise.reject(answer)
+      : Promise.resolve({ data: { summary: answer, stats: { provider: 'echo', model: 'echo' } } });
   });
   const env: Record<string, unknown> = { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_TEXT_MAX_TOKENS: '1500' };
   const cache = {
@@ -116,7 +127,9 @@ function buildService(opts: { graph: boolean; generate?: (call: number) => unkno
     undefined,
     {
       resolveEffective: vi.fn(async (key: string) =>
-        key === CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY ? { value: opts.graph, sourceScope: 'tenant' } : { value: undefined, sourceScope: 'code-default' },
+        key === CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY
+          ? { value: opts.graph, sourceScope: 'tenant' }
+          : { value: undefined, sourceScope: 'code-default' },
       ),
     } as never,
     undefined,
@@ -157,7 +170,11 @@ const hintsOf = (call: number): Hints => enrichment.applyTenantProviderOverrides
 beforeEach(() => {
   vi.clearAllMocks();
   textAgents.resolve.mockResolvedValue(spec());
-  harnessPolicyService.resolveTextSelection.mockResolvedValue({ provider: 'vllm', model: 'tenant-default', agentSlug: 'platform-summarization-live' });
+  harnessPolicyService.resolveTextSelection.mockResolvedValue({
+    provider: 'vllm',
+    model: 'tenant-default',
+    agentSlug: 'platform-summarization-live',
+  });
 });
 
 describe('live flush — the serving agent rides the egress hints', () => {

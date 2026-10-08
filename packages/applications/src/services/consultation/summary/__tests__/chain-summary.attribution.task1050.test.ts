@@ -30,9 +30,11 @@ describe('ChainSummaryService — guardrail attribution on the invocation', () =
       findCaseNotes: vi.fn().mockResolvedValue([{ id: 'cn-1', content: 'Smoker.', currentVersionNumber: 1, createdAt: new Date() }]),
       findPreSummaries: vi.fn().mockResolvedValue([{ id: 'ps-1', content: '   ', currentVersionNumber: 1, createdAt: new Date() }]),
       findSharedContext: vi.fn().mockResolvedValue([]),
-      create: vi.fn().mockImplementation((item: { id: string; consultationId: string; type: string }) =>
-        Promise.resolve({ id: item.id, consultationId: item.consultationId, type: item.type, createdAt: new Date(), updatedAt: new Date() }),
-      ),
+      create: vi
+        .fn()
+        .mockImplementation((item: { id: string; consultationId: string; type: string }) =>
+          Promise.resolve({ id: item.id, consultationId: item.consultationId, type: item.type, createdAt: new Date(), updatedAt: new Date() }),
+        ),
       encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
     };
     const invokeText = vi.fn().mockResolvedValue({ text: 'Note.', provider: 'p', model: 'm', usage: null, usageDetail: null, promptFragments: null });

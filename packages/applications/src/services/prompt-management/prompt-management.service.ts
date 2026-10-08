@@ -1201,7 +1201,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const sampleInput = dto.goldenCaseId ? await this.loadGoldenCaseSampleInput(dto.goldenCaseId) : dto.sampleInput;
 
     const prompt = this.renderTestPrompt(content, dto.variables, sampleInput, declaredVariables, id);
-    const { provider, model, generation, agentSlug } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model, modelId: dto.modelId });
+    const { provider, model, generation, agentSlug } = await this.resolveTestTextTarget({
+      provider: dto.provider,
+      model: dto.model,
+      modelId: dto.modelId,
+    });
 
     // Defect 4 — a dry run generates NOTHING. The author gets the exact prompt
     // that would have been sent; no job, no tokens, no cost.

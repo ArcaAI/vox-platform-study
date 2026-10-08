@@ -31,12 +31,16 @@ function buildProcessor() {
       notifyFailed: vi.fn().mockResolvedValue(undefined),
     } as never,
     contextItemRepository as never,
-    { findById: vi.fn().mockResolvedValue({ id: 'consult-1', tenantId: TENANT, departmentId: null, parentConsultationId: null, doctorId: 'd-1' }) } as never,
+    {
+      findById: vi.fn().mockResolvedValue({ id: 'consult-1', tenantId: TENANT, departmentId: null, parentConsultationId: null, doctorId: 'd-1' }),
+    } as never,
     httpService as never,
     { get: vi.fn(() => 'http://text.test') } as never,
     { resolve: vi.fn().mockResolvedValue({ resolvedFrom: 'tenant', template: 'Pre-Summary', promptId: 'p1' }) } as never,
     {
-      assemble: vi.fn().mockResolvedValue({ userPrompt: 'assembled', systemPrompt: 'system', hyperparameters: {}, responseFormat: null, resolvedFrom: 'tenant' }),
+      assemble: vi
+        .fn()
+        .mockResolvedValue({ userPrompt: 'assembled', systemPrompt: 'system', hyperparameters: {}, responseFormat: null, resolvedFrom: 'tenant' }),
     } as never,
     {
       recordJobStart: vi.fn(() => () => 1),

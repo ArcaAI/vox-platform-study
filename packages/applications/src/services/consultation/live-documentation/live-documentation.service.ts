@@ -7062,7 +7062,11 @@ return 0`;
       tenantId,
       signal,
       consultationId,
-      { deploymentKind: deploymentKind ?? null, systemGovernance: liveSystemGovernance(composed, promptParts, corrective, tenantId), agentSlug: agentSlug ?? null },
+      {
+        deploymentKind: deploymentKind ?? null,
+        systemGovernance: liveSystemGovernance(composed, promptParts, corrective, tenantId),
+        agentSlug: agentSlug ?? null,
+      },
       generation,
     );
     // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this

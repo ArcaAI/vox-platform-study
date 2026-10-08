@@ -82,11 +82,15 @@ const enrichment = () => new TextRequestEnrichmentService({ get: vi.fn().mockRet
 function buildService(opts: { generation?: Record<string, unknown>; fallbackGeneration?: Record<string, unknown> | null }) {
   const httpService = { axiosRef: { post: vi.fn() } };
   const harnessPolicyService = {
-    resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'primary-provider', model: 'primary-model', generation: opts.generation, agentSlug: 'primary-agent' }),
+    resolveTextSelection: vi
+      .fn()
+      .mockResolvedValue({ provider: 'primary-provider', model: 'primary-model', generation: opts.generation, agentSlug: 'primary-agent' }),
     resolveTextFallbackSelection: vi
       .fn()
       .mockResolvedValue(
-        opts.fallbackGeneration ? { provider: 'fallback-provider', model: 'fallback-model', generation: opts.fallbackGeneration, agentSlug: 'fallback-agent' } : null,
+        opts.fallbackGeneration
+          ? { provider: 'fallback-provider', model: 'fallback-model', generation: opts.fallbackGeneration, agentSlug: 'fallback-agent' }
+          : null,
       ),
   };
 

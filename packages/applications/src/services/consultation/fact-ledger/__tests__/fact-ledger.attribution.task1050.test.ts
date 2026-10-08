@@ -30,7 +30,15 @@ describe('fact ledger — guardrail attribution on the extraction call', () => {
         findTranscripts: vi.fn(async () => []),
         findEncounterArtifact: vi.fn(async () => null),
       } as never,
-      { resolve: vi.fn(async () => ({ slug: FACT_LEDGER_AGENT_SLUG, versionNumber: 1, agentVersionId: 'v1', agentId: 'a1', task: 'TEXT_GENERATION' })) } as never,
+      {
+        resolve: vi.fn(async () => ({
+          slug: FACT_LEDGER_AGENT_SLUG,
+          versionNumber: 1,
+          agentVersionId: 'v1',
+          agentId: 'a1',
+          task: 'TEXT_GENERATION',
+        })),
+      } as never,
       { invokeText } as never,
       { upsertEncounterArtifact: vi.fn(async () => ({ contextItemId: 'ledger', versionNumber: 1 })) } as never,
       undefined,
