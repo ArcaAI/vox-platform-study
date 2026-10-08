@@ -237,11 +237,16 @@ async def test_clean_response_is_allowed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_harmful_response_label_blocks_outbound() -> None:
+async def test_harmful_response_label_warns_outbound_by_default() -> None:
+    """The platform default for the outbound classifiers is warn (owner 2026-10-08)."""
     analyzer = _StubAnalyzer(labels={"response_safety": "harmful"})
     decision = await _screener(analyzer).screen_outbound("...", source_context="")
-    assert decision.decision == DECISION_BLOCK
-    assert "response_safety" in decision.reasons
+    assert decision.decision == DECISION_ALLOW
+    assert decision.guardrail_decision == "warn"
+    assert (
+        next(c for c in decision.checks if c.name == "response_safety").effective_action_taken
+        == "warn"
+    )
 
 
 @pytest.mark.asyncio

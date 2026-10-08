@@ -98,8 +98,9 @@ CATALOGUE_DEFAULTS: Final[dict[str, CheckDefault]] = {
     "prompt_toxicity": CheckDefault(
         ("inbound",), _ALL, ACTION_BLOCK, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
     ),
-    "response_safety": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, True),
-    "response_toxicity": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, True),
+    # Owner 2026-10-08: warn by default — the classifier false-flags clinical notes.
+    "response_safety": CheckDefault(("outbound",), _ALL, ACTION_WARN, False, True),
+    "response_toxicity": CheckDefault(("outbound",), _ALL, ACTION_WARN, False, True),
     "response_refusal": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, False),
     "pii_leak": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, True),
     "containment_echo": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, True),

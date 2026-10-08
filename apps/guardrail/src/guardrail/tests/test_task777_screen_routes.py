@@ -145,14 +145,15 @@ async def test_outbound_reports_the_leak_check_as_skipped_without_a_source() -> 
 
 
 @pytest.mark.asyncio
-async def test_harmful_response_blocks_outbound() -> None:
+async def test_harmful_response_warns_outbound_by_default() -> None:
+    """The platform default for the outbound classifiers is warn (owner 2026-10-08)."""
     analyzer = _StubAnalyzer(labels={"response_toxicity": "toxic"})
     result = await screen_outbound(
         OutboundScreenRequest(response="...", source_context="chest pain"),
         _FakeRequest(_state(analyzer)),  # type: ignore[arg-type]
     )
-    assert result.decision == "block"
-    assert "response_toxicity" in result.reasons
+    assert result.decision == "allow"
+    assert result.guardrail_decision == "warn"
 
 
 @pytest.mark.asyncio

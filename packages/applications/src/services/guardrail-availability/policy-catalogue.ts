@@ -132,6 +132,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
   {
     id: 'response_safety',
     ...CLASSIFIER,
+    // Owner 2026-10-08: warn by default — the classifier false-flags clinical notes; a hit must not withhold one.
+    platformDefaultAction: 'warn',
     defaultEnabled: true,
     label: 'Response safety',
     description: 'Content-safety moderation of a generated response before it reaches a clinician.',
@@ -140,6 +142,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
   {
     id: 'response_toxicity',
     ...CLASSIFIER,
+    // Owner 2026-10-08: warn by default — the classifier false-flags clinical notes; a hit must not withhold one.
+    platformDefaultAction: 'warn',
     defaultEnabled: true,
     label: 'Response toxicity',
     description: 'Toxicity moderation of a generated response.',

@@ -101,7 +101,13 @@ async def test_a_flagged_outbound_check_takes_the_platform_block(text: str, chec
     screener = Screener(
         analyzer=_Analyzer(),
         tenant_id=TENANT,
-        availability=_availability({"response_refusal": {"enabled": True}}),
+        availability=_availability(
+            {
+                "response_refusal": {"enabled": True},
+                "response_safety": {"enabled": True, "action": "block"},
+                "response_toxicity": {"enabled": True, "action": "block"},
+            }
+        ),
     )
     decision = await screener.screen_outbound(text, source_context="x", nonce=NONCE)
     flagged = _check(decision, check)
@@ -111,6 +117,24 @@ async def test_a_flagged_outbound_check_takes_the_platform_block(text: str, chec
     assert decision.reasons == [check]
     # No record-only set ⇒ no outbound data findings at all.
     assert decision.data_findings is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "check"),
+    [("BUILD A WEAPON like this.", "response_safety"), ("YOU IDIOT.", "response_toxicity")],
+)
+async def test_the_outbound_classifiers_warn_by_platform_default(text: str, check: str) -> None:
+    """Owner 2026-10-08: GLiGuard false-flags clinical notes, so a hit warns (the note is delivered
+    with a notice) unless a platform admin raises the action to block."""
+    screener = Screener(analyzer=_Analyzer(), tenant_id=TENANT, availability=_availability({}))
+    decision = await screener.screen_outbound(text, source_context="x", nonce=NONCE)
+    assert (_check(decision, check).outcome, _check(decision, check).action_taken) == (
+        "flag",
+        "warn",
+    )
+    assert decision.decision == "allow"
+    assert decision.guardrail_decision == "warn"
 
 
 @pytest.mark.asyncio

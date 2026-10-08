@@ -97,7 +97,7 @@
         "warn",
         "block"
       ],
-      "platformDefaultAction": "block",
+      "platformDefaultAction": "warn",
       "locked": false,
       "defaultEnabled": true
     },
@@ -111,7 +111,7 @@
         "warn",
         "block"
       ],
-      "platformDefaultAction": "block",
+      "platformDefaultAction": "warn",
       "locked": false,
       "defaultEnabled": true
     },

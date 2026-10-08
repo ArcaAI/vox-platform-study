@@ -490,7 +490,20 @@ async def test_outbound_route_withholds_the_response_on_a_block(monkeypatch: Any
     outbox = _RecordingOutbox([])
 
     async def _build(app_state: Any, tenant_id: str, **_: Any) -> Screener:
-        return Screener(analyzer=_Analyzer("BAD"), tenant_id=tenant_id, policy_version="pv-1")
+        return Screener(
+            analyzer=_Analyzer("BAD"),
+            tenant_id=tenant_id,
+            policy_version="pv-1",
+            availability=GuardrailAvailability.from_tiers(
+                system_blob={
+                    "checks": {
+                        "response_safety": {"enabled": True, "action": "block"},
+                        "response_toxicity": {"enabled": True, "action": "block"},
+                    }
+                },
+                tenant_blob=None,
+            ),
+        )
 
     monkeypatch.setattr(screen_mod, "build_screener", _build)
     body = OutboundScreenRequest(
