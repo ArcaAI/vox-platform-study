@@ -7458,10 +7458,14 @@ return 0`;
     }
   }
 
-  /** TASK-1050 W2g — the PRE_SUMMARY snapshot item at its current version, when the session has one. */
+  /**
+   * TASK-1050 W2g — the PRE_SUMMARY snapshot item at its current version, when the session has one.
+   * The CONTENT version (`currentVersionNumber`), which the evaluation ingest compares before marking —
+   * never the OCC `_version`, which every write (the marker included) bumps.
+   */
   private snapshotItemRefs(session: LiveSession): GuardrailEvaluationItemRef[] {
     if (!session.snapshotId) return [];
-    const version = session.snapshotEntity?.version;
+    const version = session.snapshotEntity?.currentVersionNumber;
     return [{ itemId: session.snapshotId, itemVersion: typeof version === 'number' ? version : 1 }];
   }
 
@@ -7583,9 +7587,10 @@ return 0`;
           OR: [...(keys.length > 0 ? [{ segmentKey: { in: keys } }] : []), ...(noteIds.length > 0 ? [{ id: { in: noteIds } }] : [])],
         } as never,
       });
+      // The CONTENT version the ingest marks against (`currentVersionNumber`), not the OCC `_version`.
       const ref = (row: ContextItemEntity): GuardrailEvaluationItemRef => ({
         itemId: row.id,
-        itemVersion: typeof row.version === 'number' ? row.version : 1,
+        itemVersion: typeof row.currentVersionNumber === 'number' ? row.currentVersionNumber : 1,
       });
       const bySegmentKey = new Map<string, ContextItemEntity>();
       const byId = new Map<string, ContextItemEntity>();

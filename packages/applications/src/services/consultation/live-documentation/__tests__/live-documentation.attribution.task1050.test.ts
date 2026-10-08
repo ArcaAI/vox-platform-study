@@ -93,7 +93,7 @@ const enrichment = {
   applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined),
 };
 
-function buildService(opts: { graph: boolean; generate?: (call: number) => unknown }) {
+function buildService(opts: { graph: boolean; generate?: (call: number) => unknown; contextItems?: unknown }) {
   let n = 0;
   const post = vi.fn().mockImplementation((url: string) => {
     if (!url.includes('/generate')) return Promise.resolve({ data: {} });
@@ -121,7 +121,7 @@ function buildService(opts: { graph: boolean; generate?: (call: number) => unkno
     cache as never,
     { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() } as never,
     undefined,
-    undefined,
+    (opts.contextItems ?? undefined) as never,
     harnessPolicyService as never,
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
     undefined,
@@ -222,5 +222,64 @@ describe('live side calls — agent and consultation on the egress hints', () =>
     const { service } = buildService({ graph: false, generate: () => 'translated' });
     await (service as unknown as Private).translateSectionText('text', 'English', { tenantId: TENANT, consultationId: CID });
     expect(hintsOf(-1)).toMatchObject({ agentSlug: 'platform-summarization-live', consultationId: CID });
+  });
+});
+
+/**
+ * The item version guardrail marks against is the CONTENT version (`currentVersionNumber`), which the
+ * ingest compares before marking. `entity.version` is the OCC `_version`, bumped by every write
+ * (including the marker itself), so naming it made a flagged live item unmarkable once the two diverged.
+ */
+describe('live attribution — items are named at their content version, not the OCC version', () => {
+  type Private = {
+    postLiveText: (
+      payload: Record<string, unknown>,
+      tenantId: string,
+      consultationId: string,
+      signal?: AbortSignal,
+      regionItems?: unknown,
+      responseItems?: unknown,
+    ) => Promise<unknown>;
+    snapshotItemRefs: (session: unknown) => Array<{ itemId: string; itemVersion: number }>;
+    resolveRegionItems: (session: unknown, from: number, to: number) => Promise<Record<string, Array<{ itemId: string; itemVersion: number }>>>;
+  };
+
+  it('the PRE_SUMMARY snapshot is named at its currentVersionNumber', () => {
+    const { service } = buildService({ graph: false });
+    expect(
+      (service as unknown as Private).snapshotItemRefs({
+        snapshotId: 'snap-1',
+        snapshotEntity: { id: 'snap-1', version: 7, currentVersionNumber: 2 },
+      }),
+    ).toEqual([{ itemId: 'snap-1', itemVersion: 2 }]);
+  });
+
+  it('transcript segments and clinician notes are named at their currentVersionNumber', async () => {
+    const contextItems = {
+      findAll: vi.fn(async () => [
+        { id: 'seg-a', version: 5, currentVersionNumber: 2, segmentKey: 'stt-1:1' },
+        { id: 'note-1', version: 9, currentVersionNumber: 1 },
+      ]),
+    };
+    const { service } = buildService({ graph: false, contextItems });
+    const regions = await (service as unknown as Private).resolveRegionItems(
+      {
+        tenantId: TENANT,
+        consultationId: CID,
+        sessionId: 'stt-1',
+        transcriptSegments: [{ utteranceIndex: 1 }],
+        transcriptParts: ['cough'],
+        contextNotes: [{ contextItemId: 'note-1' }],
+      },
+      0,
+      1,
+    );
+    expect(Object.values(regions).flat()).toEqual(
+      expect.arrayContaining([
+        { itemId: 'seg-a', itemVersion: 2 },
+        { itemId: 'note-1', itemVersion: 1 },
+      ]),
+    );
+    expect(Object.values(regions).flat()).toHaveLength(2);
   });
 });
