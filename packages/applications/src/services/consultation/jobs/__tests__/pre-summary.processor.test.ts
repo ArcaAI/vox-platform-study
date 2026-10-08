@@ -438,6 +438,8 @@ describe('PreSummaryProcessor', () => {
             // default provider for a job that HAS a tenant.
             'X-Tenant-Id': 'tenant-1',
             'X-Request-ID': 'job-789',
+            // TASK-1050 — the guardrail evaluation's consultation correlation.
+            'X-Hope-Consultation-Id': 'consultation-123',
           },
         },
       );
