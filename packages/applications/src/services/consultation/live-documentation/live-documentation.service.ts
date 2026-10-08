@@ -114,6 +114,7 @@ import {
   type LiveNoticeRecord,
   type LiveRegionItems,
 } from './live-guardrail';
+import { markGeneratedItemFromNotices } from '../../guardrail-notice/guardrail-generated-item';
 // TASK-1050 W2e — the ONE exclusion rule every composer applies (WITHHELD / BLOCKED resolved `item_excluded`).
 import { guardrailKeepFilter } from '../../guardrail-notice/guardrail-item-exclusion';
 import { IGuardrailHoldService, type GuardrailHoldService } from '../../guardrail-notice/guardrail-hold.service';
@@ -1203,6 +1204,12 @@ interface LiveGuardrailTurn {
   regionItems: Promise<Record<string, GuardrailEvaluationItemRef[]>>;
   /** Every notice TEXT returned on this flush's calls (200 bodies and stop bodies), in arrival order. */
   notices: GuardrailNotice[];
+  /**
+   * TASK-1050 finding D — the notices of the calls whose OUTPUT becomes the note (the flush's note call,
+   * the translate-only splice), never a side call's (grammar, findings). A snapshot item first created
+   * by this flush is marked from them: it did not exist to be named in `response_items`.
+   */
+  outputNotices?: GuardrailNotice[];
   /** The first guardrail STOP a call of this flush met (422 block / 503 redaction hold), or null. */
   stop: LiveGuardrailStop | null;
 }
@@ -3655,6 +3662,7 @@ return 0`;
     const guardrailTurn: LiveGuardrailTurn = {
       regionItems: this.resolveRegionItems(session, delta ? deltaStart : 0, delta ? deltaEnd : flushUpTo),
       notices: [],
+      outputNotices: [],
       stop: null,
     };
     session.guardrailTurn = guardrailTurn;
@@ -6152,6 +6160,7 @@ return 0`;
           await this.contextItemRepository.update(existing.id, existing);
           session.snapshotEntity = existing;
           session.snapshotId = existing.id;
+          await this.markSnapshotFromOutputNotices(session, existing);
           this.logger.log({
             message: 'Reused existing live SOAP durable snapshot',
             consultationId: session.consultationId,
@@ -6172,6 +6181,7 @@ return 0`;
           await this.contextItemRepository.create(entity);
           session.snapshotEntity = entity;
           session.snapshotId = entity.id;
+          await this.markSnapshotFromOutputNotices(session, entity);
           this.logger.log({ message: 'Created live SOAP durable snapshot', consultationId: session.consultationId, contextItemId: entity.id });
         }
       } else {
@@ -6208,6 +6218,27 @@ return 0`;
    * lineage / dedup identity), never `.content`, so there is nothing to decrypt and
    * no behaviour change from skipping it.
    */
+  /**
+   * TASK-1050 finding D — the snapshot item this session just bound (created, or reused after a
+   * restart) could not be named in the note call's `response_items`, so it is marked from the notices
+   * that call answered with (an outbound warning → WARNED; never downgraded). Best-effort: a failed
+   * marker write never fails the snapshot write.
+   */
+  private async markSnapshotFromOutputNotices(session: LiveSession, item: ContextItemEntity): Promise<void> {
+    const notices = session.guardrailTurn?.outputNotices;
+    if (!this.contextItemRepository || !notices || notices.length === 0) return;
+    try {
+      await markGeneratedItemFromNotices({ contextItems: this.contextItemRepository }, item, notices);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Could not mark the live snapshot from its guardrail notices',
+        consultationId: session.consultationId,
+        contextItemId: item.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async findLiveSnapshotRow(consultationId: string): Promise<ContextItemEntity | null> {
     if (!this.contextItemRepository) return null;
     const { entity } = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, undefined, {
@@ -7370,6 +7401,8 @@ return 0`;
     // (`response_items`); its data regions are the flush's own (`region_items`, from the turn).
     const session = consultationId ? this.sessions.get(consultationId) : undefined;
     const response = await this.postLiveText(payload, tenantId, consultationId, signal, undefined, session ? this.snapshotItemRefs(session) : []);
+    // TASK-1050 finding D — this call's output IS the note: its notices may mark a snapshot created later.
+    session?.guardrailTurn?.outputNotices?.push(...textResponseNotices(response.data));
     this.recordLlmUsage(tenantId, response.data, consultationId, egress?.agentNode === true);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
   }
@@ -7748,6 +7781,8 @@ return 0`;
       { [LIVE_SECTION_TEXT_REGION_KEY]: snapshotRefs },
       snapshotRefs,
     );
+    // TASK-1050 finding D — the translation is spliced into the note: its notices speak for the snapshot.
+    session.guardrailTurn?.outputNotices?.push(...textResponseNotices(response.data));
     this.recordLlmUsage(tenantId, response.data, consultationId);
     return mapTextGenerateResponse(response.data).summary;
   }

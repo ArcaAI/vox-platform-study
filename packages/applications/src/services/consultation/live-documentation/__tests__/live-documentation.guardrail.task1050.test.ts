@@ -61,6 +61,8 @@ interface Harness {
   setProcessingReason: (reason: string | null) => void;
   /** W2e's `enterGuardrailHold`, when the harness wires the hold service (index 35). */
   enterGuardrailHold?: ReturnType<typeof vi.fn>;
+  /** TASK-1050 finding D — the status-column marker write. */
+  setGuardrailStatus: ReturnType<typeof vi.fn>;
 }
 
 function harness(
@@ -120,6 +122,7 @@ function harness(
       snapshotWrites.push(entity.metaData ?? {});
       return entity;
     }),
+    setGuardrailStatus: vi.fn(async () => undefined),
   };
   const enrichment = {
     applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined),
@@ -158,6 +161,7 @@ function harness(
   const service = new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
   return {
     enterGuardrailHold,
+    setGuardrailStatus: contextItems.setGuardrailStatus,
     service,
     sent,
     generates: () => sent.filter((s) => s.url.includes('/generate')),
@@ -573,5 +577,35 @@ describe("hold entry — the live lane hands a BLOCKED notice to W2e's Guardrail
     expect(payload!.degradeReason).toBe('redaction_unavailable');
     expect(JSON.stringify(payload!.sections)).toContain('cough for three days');
     expect(noticeFrames(h)).toHaveLength(1);
+  });
+});
+
+/**
+ * TASK-1050 finding D (round 2) — the FIRST flush has no snapshot item to name in `response_items`, so
+ * the snapshot it creates is marked from the notices the NOTE call answered with. A side call's notice
+ * (grammar, findings) is about its own output, never the note.
+ */
+describe('first-flush snapshot — marked from the note call`s outbound warning', () => {
+  const outboundWarning = (noticeId: string) =>
+    notice({ noticeId, direction: 'outbound', itemIds: [], checks: [{ checkId: 'pii_leak', category: 'healthcare_facility', severity: 'medium' }] });
+
+  it('an outbound warning on the note call marks the snapshot it creates WARNED', async () => {
+    const h = harness();
+    const service = begin(h);
+    h.setReply(() => ({ ...NOTE_REPLY, guardrail_notices: [outboundWarning('n-out-1')] }));
+    say(service, 'patient reports a cough for three days');
+    await service.flush(CID);
+
+    const snapshotId = String(sessionOf(service).snapshotId);
+    expect(snapshotId).not.toBe('undefined');
+    expect(h.setGuardrailStatus).toHaveBeenCalledWith(snapshotId, 'WARNED', undefined);
+  });
+
+  it('a clean note call writes no marker', async () => {
+    const h = harness();
+    const service = begin(h);
+    say(service, 'patient reports a cough for three days');
+    await service.flush(CID);
+    expect(h.setGuardrailStatus).not.toHaveBeenCalled();
   });
 });

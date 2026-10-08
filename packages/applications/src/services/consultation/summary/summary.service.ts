@@ -97,6 +97,8 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 import { guardrailCorrelationHeaders, type GuardrailRegionItems } from '../../text-request/guardrail-correlation';
 import { caseNoteRegionItems } from './case-note-region-items';
+import { markGeneratedItemFromNotices, textGenerationNotices } from '../../guardrail-notice/guardrail-generated-item';
+import type { GuardrailNotice } from '@arcaai/types';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
@@ -160,6 +162,8 @@ interface TextRepairCall extends JsonRepairCall {
   usage: TextUsageDetail | null;
   /** The guardrail call this generation triggered, forwarded by TEXT. */
   guardrailUsage: TextUsageDetail | null;
+  /** TASK-1050 — the guardrail notices TEXT answered this attempt with. */
+  guardrailNotices: GuardrailNotice[];
 }
 
 /**
@@ -213,6 +217,8 @@ type TextCallResult = LegacyTextSummaryResponse & {
   stats: TextGenerationStats | null;
   usage: TextUsageDetail | null;
   guardrailUsage: TextUsageDetail | null;
+  /** TASK-1050 — the notices of the call whose text became the stored note. */
+  guardrailNotices: GuardrailNotice[];
 };
 
 @Injectable()
@@ -590,6 +596,17 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const savedContext = await this.contextItemRepository.create(contextItem);
+    // TASK-1050 — the PRE_SUMMARY did not exist when its generation was screened: mark it from the
+    // notices TEXT answered with (an outbound warning → WARNED). Best-effort — the note is stored.
+    try {
+      await markGeneratedItemFromNotices({ contextItems: this.contextItemRepository }, savedContext, textResponse.guardrailNotices);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Could not mark the pre-summary from its guardrail notices',
+        contextItemId: savedContext.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     // Create summary metadata record
     const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
@@ -1841,6 +1858,7 @@ export class SummaryService extends BaseService implements ISummaryService {
           stats: SummaryService.parseGenerationStats(response.data),
           usage: parseTextUsageDetail(data?.usage_detail),
           guardrailUsage: parseTextUsageDetail(data?.guardrail_usage),
+          guardrailNotices: textGenerationNotices(response.data),
         };
       },
       // The summary is opaque JSON we persist verbatim, so the strict parse only
@@ -1893,6 +1911,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // per-unit sums above would silently merge two idempotency identities.
       usage: finalCall.usage,
       guardrailUsage: finalCall.guardrailUsage,
+      guardrailNotices: finalCall.guardrailNotices,
     };
   }
 

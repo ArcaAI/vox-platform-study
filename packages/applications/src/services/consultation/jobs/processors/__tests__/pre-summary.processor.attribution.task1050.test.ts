@@ -20,7 +20,15 @@ function buildProcessor() {
       { id: 'note-3', content: 'Smoker.', currentVersionNumber: 1 },
     ]),
     findById: vi.fn(),
-    create: vi.fn().mockImplementation(async (entity: { content?: string }) => ({ id: 'ctx-1', content: entity.content })),
+    create: vi
+      .fn()
+      .mockImplementation(async (entity: { content?: string }) => ({
+        id: 'ctx-1',
+        consultationId: 'consult-1',
+        guardrailStatus: 'CLEAN',
+        content: entity.content,
+      })),
+    setGuardrailStatus: vi.fn().mockResolvedValue(undefined),
     encryptContentIntoEntity: vi.fn(),
   };
   const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'PRE-SUMMARY' } }) } };
@@ -56,7 +64,7 @@ function buildProcessor() {
     undefined,
     new TextRequestEnrichmentService({ get: vi.fn().mockReturnValue(TENANT) } as never, undefined, undefined) as never,
   );
-  return { processor, httpService };
+  return { processor, httpService, contextItemRepository };
 }
 
 describe('PreSummaryProcessor — guardrail attribution on the TEXT call', () => {
@@ -77,5 +85,33 @@ describe('PreSummaryProcessor — guardrail attribution on the TEXT call', () =>
       ],
     });
     expect(config.headers['X-Hope-Consultation-Id']).toBe('consult-1');
+  });
+
+  it('marks the PRE_SUMMARY it creates WARNED when the generation raised an outbound warning', async () => {
+    const { processor, httpService, contextItemRepository } = buildProcessor();
+    const warning = {
+      schemaVersion: 1,
+      noticeId: 'n-1',
+      type: 'guardrail.warning',
+      direction: 'outbound',
+      action: 'warn',
+      checks: [],
+      consultationId: 'consult-1',
+      itemIds: [],
+      messageKey: 'guardrail.warning.generic',
+      defaultMessage: 'x',
+      requiresAcknowledgement: true,
+      resumable: false,
+      policyVersion: 'pv-1',
+      occurredAt: '2026-10-08T00:00:00.000Z',
+    };
+    httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'PRE-SUMMARY', guardrail_notices: [warning] } });
+    await processor.process({
+      id: 'bull-1',
+      timestamp: Date.now(),
+      data: { jobId: 'job-1', consultationId: 'consult-1', tenantId: TENANT, userId: 'user-1', request: {} },
+    } as never);
+
+    expect(contextItemRepository.setGuardrailStatus).toHaveBeenCalledWith('ctx-1', 'WARNED', undefined);
   });
 });

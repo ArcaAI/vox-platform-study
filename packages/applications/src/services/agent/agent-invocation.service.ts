@@ -17,13 +17,14 @@ import {
   unresolvedPromptVariables,
   type PromptScopeVariableDeclaration,
 } from '@arcaai/workflow-contract';
-import type { ResolvedAgent } from '@arcaai/types';
+import type { GuardrailNotice, ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import type { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
 import type { TextEgressHints } from '../text-request/text-request-enrichment.service';
 import { guardrailCorrelationHeaders } from '../text-request/guardrail-correlation';
+import { textGenerationNotices } from '../guardrail-notice/guardrail-generated-item';
 import { COMPUTE_DEVICES, type ComputeDevice } from '../usageLedger/usage-attributes';
 import {
   CONTEXT_NAMESPACE_ROOT,
@@ -76,6 +77,12 @@ export interface AgentTextInvocationResult {
    * ran, and it is all telemetry ever needs.
    */
   promptFragments: { selected: string[] } | null;
+  /**
+   * TASK-1050 — the guardrail notices TEXT answered this generation with (`guardrail_notices`), so a
+   * caller that persists the output as a NEW item can mark it (`markGeneratedItemFromNotices`).
+   * Blocking mode only; `[]` when none.
+   */
+  guardrailNotices?: GuardrailNotice[];
   /**
    * TASK-950 (decision 3, fast win) — the clinician this invocation acted FOR, as resolved from
    * the agent's frozen context schema for a MACHINE caller.
@@ -509,6 +516,7 @@ export class AgentInvocationService {
       usageDetail: usageBlock(data.usage_detail),
       guardrailUsage: usageBlock(data.guardrail_usage),
       promptFragments,
+      guardrailNotices: textGenerationNotices(response.data),
       ...actingUser,
     };
   }

@@ -32,6 +32,8 @@ import {
 import { applySupersession } from './fact-ledger-supersession';
 import { normaliseFactKey, normaliseFactKind, numbersFromStatement } from './fact-ledger-normalise';
 import { ENCOUNTER_RECAP_RENDERER, ENCOUNTER_RECAP_SCHEMA, renderEncounterRecap } from './encounter-recap.renderer';
+import type { GuardrailNotice } from '@arcaai/types';
+import { markGeneratedItemFromNotices } from '../../guardrail-notice/guardrail-generated-item';
 
 /** Per-call input budget (estimated tokens) for one extractor call; absent ⇒ one call per encounter. */
 export const FACT_LEDGER_CHUNK_INPUT_TOKENS_KEY = 'consultation.note.ledger.chunkInputTokens';
@@ -259,6 +261,13 @@ export class FactLedgerService {
       },
     });
 
+    // TASK-1050 — the ledger item is written after every extraction call answered, so it is marked from
+    // the notices those calls returned (an outbound warning → WARNED).
+    await this.markLedgerFromNotices(
+      stored.contextItemId,
+      outcomes.flatMap((outcome) => outcome.result.guardrailNotices ?? []),
+    );
+
     const recap = await this.transcriptRecord.upsertEncounterArtifact({
       consultationId,
       encounterSeq,
@@ -356,6 +365,25 @@ export class FactLedgerService {
       });
     }
     return lines;
+  }
+
+  /**
+   * TASK-1050 — mark the FACT_LEDGER item from its extraction calls' notices. The item's current marker
+   * is read first (never downgraded). Best-effort: the ledger is already stored.
+   */
+  private async markLedgerFromNotices(contextItemId: string, notices: readonly GuardrailNotice[]): Promise<void> {
+    if (notices.length === 0) return;
+    try {
+      const item = await this.contextItemRepository.findById(contextItemId);
+      if (!item) return;
+      await markGeneratedItemFromNotices({ contextItems: this.contextItemRepository }, item, notices);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Could not mark the fact ledger from its guardrail notices',
+        contextItemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** Earlier encounters' ledgers, for cross-encounter supersession. Unreadable ones are skipped. */
