@@ -7020,8 +7020,9 @@ return 0`;
     let model: string | undefined;
     let generation: unknown;
     let deploymentKind: string | undefined;
+    let agentSlug: string | undefined;
     if (this.harnessPolicyService) {
-      ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model, generation, deploymentKind, agentSlug } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic sectioned object (parsed by parseDocumentJson); ollama ignores it so we
@@ -7061,7 +7062,7 @@ return 0`;
       tenantId,
       signal,
       consultationId,
-      { deploymentKind: deploymentKind ?? null, systemGovernance: liveSystemGovernance(composed, promptParts, corrective, tenantId) },
+      { deploymentKind: deploymentKind ?? null, systemGovernance: liveSystemGovernance(composed, promptParts, corrective, tenantId), agentSlug: agentSlug ?? null },
       generation,
     );
     // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this
@@ -7183,6 +7184,7 @@ return 0`;
         context: triggerContext,
         agentNode: true,
         systemGovernance: liveSystemGovernance(composed, promptParts, corrective, tenantId),
+        agentSlug: candidate.agent.slug,
       },
       generation,
     );
@@ -7314,6 +7316,8 @@ return 0`;
       context?: Record<string, unknown> | null;
       agentNode?: boolean;
       systemGovernance?: SystemGovernanceHint;
+      // TASK-1050 — the agent that serves this call, for the guardrail evaluation's `agent_slug`.
+      agentSlug?: string | null;
     },
     // TASK-891 C2 — the RESOLVED agent's `parameters.generation`, when this hop is made on
     // behalf of one. Its `reasoning` block becomes the `extra` ride-along. Absent on the
@@ -7339,6 +7343,7 @@ return 0`;
       context: egress?.context ?? null,
       phase: 'live',
       systemGovernance: egress?.systemGovernance ?? null,
+      agentSlug: egress?.agentSlug ?? null,
     });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
@@ -7694,8 +7699,9 @@ return 0`;
     let model: string | undefined;
     let generation: unknown;
     let deploymentKind: string | undefined;
+    let agentSlug: string | undefined;
     if (this.harnessPolicyService)
-      ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model, generation, deploymentKind, agentSlug } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     // TASK-1049 F3 (TASK-1050 W2g) — the section text is DATA: one EXTERNAL_DATA block, never the raw
     // prompt, which TEXT screens as an INSTRUCTION. The translate-only rule is a static CONTRACT part
     // beside the platform rules, so the system is governed once its pieces are registered.
@@ -7719,6 +7725,7 @@ return 0`;
       consultationId,
       phase: 'live',
       systemGovernance: composed.systemGovernance,
+      agentSlug: agentSlug ?? null,
     });
     await this.assertLlmQuota(tenantId);
     // The section text is the snapshot's own content, and the translation is spliced back into it:
@@ -7780,8 +7787,9 @@ return 0`;
     let model: string | undefined;
     let generation: unknown;
     let deploymentKind: string | undefined;
+    let agentSlug: string | undefined;
     if (this.harnessPolicyService)
-      ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model, generation, deploymentKind, agentSlug } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     // TASK-1049 F3 (TASK-1050 W2g) — the transcript is DATA. It used to BE the prompt (a bare JSON
     // string), which TEXT screens as a blocking INSTRUCTION region on every call; it now travels as
@@ -7816,8 +7824,11 @@ return 0`;
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, {
       deploymentKind: deploymentKind ?? null,
+      // TASK-1050 — the consultation (known PHI + the composed-prompt record) and the serving agent.
+      consultationId: consultationId ?? null,
       phase: 'live',
       systemGovernance: composed.systemGovernance,
+      agentSlug: agentSlug ?? null,
     });
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
     await this.assertLlmQuota(tenantId);
@@ -7902,8 +7913,9 @@ return 0`;
     let model: string | undefined;
     let generation: unknown;
     let deploymentKind: string | undefined;
+    let agentSlug: string | undefined;
     if (this.harnessPolicyService)
-      ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model, generation, deploymentKind, agentSlug } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     // TASK-1049 F3 (TASK-1050 W2g) — the transcript and context are DATA: the SAME JSON the node's
     // instruction was written against, now carried in the `transcript` EXTERNAL_DATA block instead of
@@ -7941,8 +7953,11 @@ return 0`;
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, {
       deploymentKind: deploymentKind ?? null,
+      // TASK-1050 — the consultation (known PHI + the composed-prompt record) and the serving agent.
+      consultationId: consultationId ?? null,
       phase: 'live',
       systemGovernance: composed.systemGovernance,
+      agentSlug: agentSlug ?? null,
     });
     // TASK-890 §3.13 — Lane N's mining call is a generation too. Its usage row stays attributed to
     // the tenant alone (threading the consultation into the ledger is a follow-up); the id now only
