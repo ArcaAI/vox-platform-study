@@ -34,7 +34,8 @@ const createMockContextItemRepository = () => ({
   findLatestRawSummary: vi.fn(),
   findLatestPreSummary: vi.fn(),
   findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
-  create: vi.fn().mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
+  create: vi.fn().mockResolvedValue({ id: 'ctx-new', consultationId: 'c-1', guardrailStatus: 'CLEAN', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
+  setGuardrailStatus: vi.fn().mockResolvedValue(undefined),
   update: vi.fn(),
   encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
@@ -94,8 +95,9 @@ function buildService(opts: { generation?: Record<string, unknown>; fallbackGene
       ),
   };
 
+  const contextItemRepository = createMockContextItemRepository();
   const service = new SummaryService(
-    createMockContextItemRepository() as any,
+    contextItemRepository as any,
     createMockConsultationRepository() as any,
     createMockSummaryMetaRepository() as any,
     createMockNamedEntityRepository() as any,
@@ -125,7 +127,7 @@ function buildService(opts: { generation?: Record<string, unknown>; fallbackGene
     enrichment() as any, // textRequestEnrichment — REAL
   );
 
-  return { service, httpService, harnessPolicyService };
+  return { service, httpService, harnessPolicyService, contextItemRepository };
 }
 
 type Post = [string, Record<string, unknown>, { headers: Record<string, string> }];
@@ -154,5 +156,39 @@ describe('SummaryService (pre-summary) — guardrail attribution on the TEXT cal
     await service.generatePreSummary('c-1', {} as any);
 
     expect(lastPost(httpService)[1].agent_slug).toBe('fallback-agent');
+  });
+
+  it('marks the PRE_SUMMARY it creates WARNED when the generation raised an outbound warning', async () => {
+    const { service, httpService, contextItemRepository } = buildService({});
+    const warning = {
+      schemaVersion: 1,
+      noticeId: 'n-1',
+      type: 'guardrail.warning',
+      direction: 'outbound',
+      action: 'warn',
+      checks: [],
+      consultationId: 'c-1',
+      itemIds: [],
+      messageKey: 'guardrail.warning.generic',
+      defaultMessage: 'x',
+      requiresAcknowledgement: true,
+      resumable: false,
+      policyVersion: 'pv-1',
+      occurredAt: '2026-10-08T00:00:00.000Z',
+    };
+    httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm', guardrail_notices: [warning] } });
+
+    await service.generatePreSummary('c-1', {} as any);
+
+    expect(contextItemRepository.setGuardrailStatus).toHaveBeenCalledWith('ctx-new', 'WARNED', undefined);
+  });
+
+  it('a clean generation writes no marker', async () => {
+    const { service, httpService, contextItemRepository } = buildService({});
+    httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+
+    await service.generatePreSummary('c-1', {} as any);
+
+    expect(contextItemRepository.setGuardrailStatus).not.toHaveBeenCalled();
   });
 });

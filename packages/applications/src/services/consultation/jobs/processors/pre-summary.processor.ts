@@ -19,6 +19,8 @@ import { HarnessPolicyService } from '../../../harness-policy/harness-policy.ser
 import { TextRequestEnrichmentService } from '../../../text-request/text-request-enrichment.service';
 import { guardrailCorrelationHeaders, type GuardrailRegionItems } from '../../../text-request/guardrail-correlation';
 import { caseNoteRegionItems } from '../../summary/case-note-region-items';
+import { markGeneratedItemFromNotices, textGenerationNotices } from '../../../guardrail-notice/guardrail-generated-item';
+import type { GuardrailNotice } from '@arcaai/types';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import {
@@ -277,6 +279,17 @@ export class PreSummaryProcessor extends WorkerHost {
         );
 
         const savedContext = await this.contextItemRepository.create(contextItem);
+        // TASK-1050 — the PRE_SUMMARY did not exist when its generation was screened: mark it from the
+        // notices TEXT answered with (an outbound warning → WARNED). Best-effort — the note is stored.
+        try {
+          await markGeneratedItemFromNotices({ contextItems: this.contextItemRepository }, savedContext, textResponse.guardrailNotices);
+        } catch (markError) {
+          this.logger.warn({
+            message: 'Could not mark the pre-summary from its guardrail notices',
+            contextItemId: savedContext.id,
+            error: markError instanceof Error ? markError.message : String(markError),
+          });
+        }
 
         // Step 4: Complete (100%)
         const result: PreSummaryJobResult = {
@@ -355,6 +368,8 @@ export class PreSummaryProcessor extends WorkerHost {
     processingTimeMs?: number;
     inputTokens?: number;
     outputTokens?: number;
+    /** TASK-1050 — the guardrail notices TEXT answered with, for marking the item the output becomes. */
+    guardrailNotices: GuardrailNotice[];
   }> {
     try {
       const textStart = Date.now();
@@ -417,7 +432,7 @@ export class PreSummaryProcessor extends WorkerHost {
         }),
       });
       this.jobMetrics.recordTextCallDuration(JobQueue.GeneratePreSummary, 'text', (Date.now() - textStart) / 1000);
-      return mapTextGenerateResponse(response.data);
+      return { ...mapTextGenerateResponse(response.data), guardrailNotices: textGenerationNotices(response.data) };
     } catch (error) {
       this.logger.error({
         message: 'TEXT service call failed',
