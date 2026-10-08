@@ -56,6 +56,7 @@ from text.core.reasoning import ReasoningSupport
 from text.models.provider import ModelInfo
 from text.models.requests import GenerateRequest
 from text.providers.openai_compat import OpenAICompatProvider
+from text.services.judge_guard import in_judge_scope
 
 logger = structlog.get_logger(__name__)
 
@@ -168,7 +169,13 @@ class LMStudioProvider(OpenAICompatProvider):
         The value is the control-plane retention TTL adopted by
         ``apply_retention`` and clamped to the shared product range — one
         admin-controlled number, not LM Studio's own 60-minute default.
+
+        Never sent for the internal judge route: a judge model's residency is
+        managed explicitly on /model-residency, and an idle-TTL unload would make
+        it read "not resident" there.
         """
+        if in_judge_scope():
+            return
         kwargs["extra_body"] = {"ttl": self._retention_ttl_s}
 
     def _engine_native(self, response: Any, usage: dict[str, Any]) -> dict[str, Any]:

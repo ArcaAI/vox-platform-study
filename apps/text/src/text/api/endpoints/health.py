@@ -89,6 +89,18 @@ async def _check_redis(redis_client: aioredis.Redis | None) -> dict[str, Any]:
         }
 
 
+def _probed_endpoint(provider: Any) -> str | None:
+    """The endpoint a self-hosted adapter's probe addresses (``None`` for the rest)."""
+    probe = getattr(provider, "_probe_url", None)
+    if not callable(probe):
+        return None
+    try:
+        url = probe()
+    except Exception:
+        return None
+    return url if isinstance(url, str) and url else None
+
+
 @router.get("/health")
 async def health_check(
     registry: ProviderRegistry = Depends(get_provider_registry),
@@ -121,11 +133,11 @@ async def health_check(
             PROVIDER_HEALTH.labels(provider=name).set(1 if healthy else 0)
             # the SAME result feeds the degrade-routing cache
             # `/generate` consults before dispatch — see services/pool_health.py.
-            pool_health_tracker.record(name, healthy)
+            pool_health_tracker.record(name, healthy, endpoint=_probed_endpoint(provider))
         except Exception:
             status = "unhealthy"
             PROVIDER_HEALTH.labels(provider=name).set(0)
-            pool_health_tracker.record(name, False)
+            pool_health_tracker.record(name, False, endpoint=_probed_endpoint(provider))
         finally:
             duration_ms = round((time.monotonic() - start) * 1000, 2)
             HEALTH_CHECK_LATENCY.labels(provider=name).observe(duration_ms / 1000)

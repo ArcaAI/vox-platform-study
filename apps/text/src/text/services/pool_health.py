@@ -26,17 +26,28 @@ class PoolHealthTracker:
         self._lock = threading.Lock()
         self._state: dict[str, bool] = {}
         self._checked_at: dict[str, datetime] = {}
+        self._endpoint: dict[str, str | None] = {}
 
-    def record(self, provider: str, healthy: bool) -> None:
+    def record(self, provider: str, healthy: bool, endpoint: str | None = None) -> None:
+        """Record a health result, optionally scoped to the ``endpoint`` it was observed on."""
         with self._lock:
             self._state[provider] = healthy
             self._checked_at[provider] = datetime.now(UTC)
+            self._endpoint[provider] = endpoint
 
-    def is_healthy(self, provider: str) -> bool | None:
+    def is_healthy(self, provider: str, endpoint: str | None = None) -> bool | None:
         """``True``/``False`` if a health check has run for ``provider``; ``None`` if
         never checked (never checked ⇒ never blocks routing — see module docstring).
+
+        A verdict recorded against an endpoint says nothing about a DIFFERENT one:
+        asked about another ``endpoint`` the answer is ``None`` (unknown). Otherwise a
+        provider marked down on a stale address refuses every request, so the new
+        address is never contacted and the probe never learns it.
         """
         with self._lock:
+            recorded = self._endpoint.get(provider)
+            if endpoint is not None and recorded is not None and endpoint != recorded:
+                return None
             return self._state.get(provider)
 
     def checked_at(self, provider: str) -> datetime | None:

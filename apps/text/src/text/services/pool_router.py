@@ -19,6 +19,7 @@ def resolve_pool_route(
     tracker: PoolHealthTracker,
     fallback: str | None = None,
     fallback_registered: bool = False,
+    endpoint: str | None = None,
 ) -> str:
     """Return the provider name a request should actually dispatch to.
 
@@ -30,12 +31,15 @@ def resolve_pool_route(
       registered) → raises ``PoolUnhealthyError``. Never silently queues into
       the dead engine.
 
+    ``endpoint`` is the address the request's resolved connection names; health
+    recorded against a different address does not apply to it.
+
     ``fallback_registered`` is the caller's responsibility to establish
     (typically ``fallback in registry.list_providers()``) — this function only
     encodes the routing DECISION, not registry lookups, so it stays a plain
     hermetic function with no registry dependency.
     """
-    if tracker.is_healthy(provider) is False:
+    if tracker.is_healthy(provider, endpoint) is False:
         if fallback and fallback_registered:
             return fallback
         raise PoolUnhealthyError(
