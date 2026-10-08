@@ -184,7 +184,7 @@ describe('listing — label thresholds join their row`s group', () => {
     // No `labelTaxonomyDefaults` on this row: the current value IS the default, and the entry says so.
     expect(injection.keys.find((k) => k.key === 'labelTaxonomy.threshold')).toMatchObject({ defaultValue: 0.5, defaultSource: 'current', isDefault: true });
 
-    expect(groups.find((g) => g.taskKey === 'guardrail.pii')?.keys.map((k) => k.key)).toEqual(['labelTaxonomy.threshold']);
+    expect(groups.find((g) => g.taskKey === 'guardrail.pii')?.keys.map((k) => k.key)).toEqual(['piiLeakQuasiIdentifierLabels', 'labelTaxonomy.threshold']);
     // guardrail.pii.spans elects nothing here, so it has no group.
     expect(groups.some((g) => g.taskKey === 'guardrail.pii.spans')).toBe(false);
   });
