@@ -127,6 +127,18 @@ describe('createNoticeDeduper (OD-15: one toast per check per consultation)', ()
     expect(dedupe.firstSeen('c1', notice({ noticeId: 'w', checks: [{ checkId: 'leakage_judge', severity: 'low' }] }))).toBe(true);
   });
 
+  it('a multi-check notice fires once, then only when it brings a check not yet seen', () => {
+    const dedupe = createNoticeDeduper();
+    const three = [
+      { checkId: 'injection_judge', severity: 'high' },
+      { checkId: 'unsafe_content_judge', severity: 'medium' },
+      { checkId: 'leakage_judge', severity: 'low' },
+    ] as GuardrailNotice['checks'];
+    expect(dedupe.firstSeen('c1', notice({ noticeId: 'm1', checks: three }))).toBe(true);
+    expect(dedupe.firstSeen('c1', notice({ noticeId: 'm2', checks: three.slice(0, 2) }))).toBe(false);
+    expect(dedupe.firstSeen('c1', notice({ noticeId: 'm3', checks: [...three.slice(1), { checkId: 'prompt_safety', severity: 'low' }] }))).toBe(true);
+  });
+
   it('keys a check-less notice on its messageKey', () => {
     const dedupe = createNoticeDeduper();
     const egress = FIXTURE.notices.find((n) => n.messageKey === 'guardrail.blocked.redaction_unavailable') as GuardrailNotice;

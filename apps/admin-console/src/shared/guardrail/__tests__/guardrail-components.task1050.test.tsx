@@ -150,3 +150,48 @@ describe('GuardrailItemBadge', () => {
     expect(container.textContent).toBe('');
   });
 });
+
+// ── E: ONE notice per (direction, type, target) lists every check that raised it ─────────────────
+const threeChecks: GuardrailNotice['checks'] = [
+  { checkId: 'injection_judge', category: 'instruction_override', severity: 'high' },
+  { checkId: 'unsafe_content_judge', category: 'violence', severity: 'medium' },
+  { checkId: 'leakage_judge', category: 'system_prompt', severity: 'low' },
+];
+
+describe('a notice that lists three checks renders all three', () => {
+  it('banner: one entry, every check and category', () => {
+    render(<GuardrailNoticeBanner notices={[{ ...warning, noticeId: 'w-3', checks: threeChecks }]} />);
+    const banner = screen.getByRole('status');
+    expect(within(banner).getAllByText(GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.warning.generic'])).toHaveLength(1);
+    expect(within(banner).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(banner).getByText(/Unsafe content/)).toBeDefined();
+    expect(within(banner).getByText(/Leakage/)).toBeDefined();
+    expect(within(banner).getByText(/instruction/i)).toBeDefined();
+  });
+
+  it('block panel: every check is named, and ONE resume button set serves the whole notice', () => {
+    const onResume = vi.fn();
+    render(<GuardrailBlockPanel notice={{ ...blockedOutbound, noticeId: 'b-3', checks: threeChecks }} onResume={onResume} />);
+    const panel = screen.getByRole('alert');
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(panel).getAllByRole('button', { name: /exclude the flagged content/i })).toHaveLength(1);
+    expect(within(panel).getByRole('button', { name: /override/i })).toBeDefined();
+  });
+
+  it('block panel: a locked check among the three removes the override for the whole notice', () => {
+    const checks: GuardrailNotice['checks'] = [threeChecks[0]!, { checkId: 'medical_validation', severity: 'high' }, threeChecks[2]!];
+    render(<GuardrailBlockPanel notice={{ ...blockedOutbound, noticeId: 'b-4', direction: 'inbound', checks }} onResume={vi.fn()} />);
+    const panel = screen.getByRole('alert');
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(panel).queryByRole('button', { name: /override/i })).toBeNull();
+  });
+
+  it('warning dialog and notice list: each notice shows all its checks', () => {
+    const multi = { ...warning, noticeId: 'w-3', checks: threeChecks };
+    render(<GuardrailWarningDialog open onOpenChange={vi.fn()} notices={[multi]} onAcknowledge={vi.fn()} />);
+    expect(within(screen.getByRole('alertdialog')).getAllByRole('listitem')).toHaveLength(3 + 1);
+    cleanup();
+    render(<GuardrailNoticeList notices={[multi]} />);
+    expect(screen.getAllByText(/severity/)).toHaveLength(3);
+  });
+});
