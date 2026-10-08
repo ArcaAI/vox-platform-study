@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — evaluation complete (2026-10-06); verdict and recommendations R1–R5 in §9 await the owner. No production config was changed. |
+| Status | **Review (2026-10-08).** The evaluation is complete. R1–R4 are approved (TASK-1050 OD-32), implemented on `dev-2.2` and verified live in the TASK-1050 local e2e (§15). Open: Track S/P model scoring, which waits on owner load approvals (L-1/2/3/6), and the R5 re-open criteria. Commits are local only, never pushed. |
 | Type | research / evaluation (no production config change; the recommendation feeds a follow-up implementation ticket) |
 | Branch | `dev-2.2` |
 | Raised by | TASK-1047 §8.6 / OD-13 follow-up (FC-5b, §6.1) |
@@ -531,10 +531,24 @@ GLiGuard alone at the OD-28 bar: threshold 0.999 gives clinical FP 1.55 % but re
 
 **Consequence for OD-26 (combined call).** The medical-scope judge already reads every data window once. Adding the inbound safety and injection criteria to that same call costs prompt tokens, not calls. With the combined call, classifier-gated bands buy no load reduction, so the classifiers become an optional pre-filter or a fallback when the judge is unavailable. That also removes them from the critical path (F6). The band keys stay meaningful only for deployments that run the judge without medical scope.
 
+## 15. Production e2e through TASK-1050 (2026-10-07/08)
+
+TASK-1050's local end-to-end run (its README §14–§15) put R1–R4 in front of real consultations from ALaaS. Findings that bear on this ticket:
+
+| Topic | Live result | Action |
+|---|---|---|
+| R1 routing | Evaluation records name `meta-llama/Llama-Prompt-Guard-2-86M` for `jailbreak_detection`; GLiGuard keeps `prompt_*` / `response_*`. | Verified |
+| R3 in practice | PG2-86M **and GLiGuard** both flagged the tenant's authored system prompts at call time (e.g. PG2 0.996 "MALICIOUS"), holding every consultation, because the governance claim was missing while pieces were registering or awaiting a re-screen after a policy-version change. | Owner decision **R1 honoured** (authored prompts are validated at authoring time, never at call time): pieces mid-screen, and pieces that passed under an earlier policy version with a re-screen pending, count as governed (TASK-1050 `908fa481a`, `73621d7ea`). |
+| Track R runtime defect | The nlp guard batcher is cached per (slot, verb, lane), but its callback froze the FIRST caller's tasks / threshold / labels for the process's life (since TASK-776). Effects: GLiGuard's outbound `response_*` returned nothing (outbound moderation never ran), every `cls_threshold` edit was ignored, and PII label sets were frozen. | Fixed (`674ea3dae`). Track S numbers are unaffected: the bench scripts call the models directly, not through the batcher. Any live-stack measurement of thresholds or outbound response tasks taken before the fix is invalid. |
+| Outbound GLiGuard on clinical notes | Once outbound moderation actually ran, `response_safety` flagged a normal final note "unsafe" (the TASK-1047 false positive). | Owner: the outbound classifiers **warn** by platform default (TASK-1050 `65c875077`). |
+| Classifier latency | Under one consultation burst, classify calls reached 15 s (queue wait, CPU). | `classifierTimeoutSeconds` seeded at 20 s; the breaker sheds sustained outages. |
+| Qwen3Guard-Gen-0.6B | LM Studio `native_chat` dry run: injection flagged `instruction_override` (tier warn), benign passed, 0.3 s vs granite 3.2 s. | Verified; the Track S scoring run is still pending its load approval. |
+
 ## 10. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | Production e2e via TASK-1050 (§15): R1 routing is verified live. The R3 risk materialised (PG2 and GLiGuard flag authored system prompts at call time), and the owner's R1 rule is honoured in the registry. A Track R batcher defect (frozen first-caller schema) is found and fixed, and the outbound classifiers now warn by default (owner). Status → Review. Not pushed. |
 | 2026-10-07 | §14.1 OD-43 top-up: `iu` criminal_planning criterion (195) and self-harm/abuse from Aegis train/validation (60 each), commit `f906e5a0f`. |
 | 2026-10-07 | Track S milestone 1 (§14): S-4 judge eval sets (`e7fd0d5b9`), S-2 guard-LLM candidate review incl. Qwen3Guard-Gen-0.6B (owner must-evaluate), band calibration from existing scores. No model loaded. |
 | 2026-10-07 | Implementation review against the owner's four rules (R1 prompts validated at authoring only, R2/R3 guardrail and NER on medical context only, R4 25 consultations): findings F1–F11 (§13). |

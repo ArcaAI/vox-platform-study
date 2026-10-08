@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress (P4 gates green; local e2e run 2026-10-07: 5 defects fixed, findings A–M open for the owner — §14).** §9 (tenant-admin rules plus playground and consultation-details results) is waiting on OD-7 to OD-38 and an explicit go. Joint 1049/1050 execution plan in §10; platform-admin vs tenant-admin split in §11. **2026-10-07: owner said go. Every OD (1–38, with OD-10 retired) is accepted at its recommendation. In Progress, executing the §10.6 phases. Commits are local only, never pushed.** |
+| Status | **Review (2026-10-08).** Local e2e (§14) and its follow-up wave (§15) are done: every finding A–M is fixed or decided, the live re-run passes, and the gates are green except for two failures outside this ticket. Open owner items: the §7.3 rollout steps (SDK release, cluster reseed + platform-admin edits, deploy order), Track S/P model scoring (load approvals L-1/2/3/6), and the §15.4 follow-ups. Commits are local only, never pushed. |
 | Type | feature (guardrail safety), plus a bugfix candidate (medical-judge prompt hardening) |
 | Branch | `dev-2.2` |
 | Services | `apps/guardrail`, seeds (`packages/database`), `packages/applications` (availability catalogue). `apps/text` and `apps/harness` change only if OD-4 widens the response. |
@@ -846,13 +846,13 @@ Stack: every HOPE service on a fresh `hope_1050_e2e` DB (`.e2e-tools/stack-1050.
 | S7 | Outage → unverified | **PASS.** With nlp paused (SIGSTOP), the screen answered `unverified` with `guardrail.unverified` notices, and nothing was blocked. It took 30 s (finding G). |
 | UI | Console | **APIs verified; the visual pass was not done** (the in-app browser pane was hidden). Verified routes: `admin/consultations/:id/guardrail-evaluations` and `metrics/{activity,health}`. `metrics/performance` reports `available: false` locally, because Prometheus is not running. |
 
-### 14.2 Defects fixed during the run (local commits, not pushed)
+### 14.2 Defects fixed during the run (local commits, not pushed; hashes after the owner's 2026-10-08 trailer-stripping rewrite)
 
-1. `5b3ed8614`: authoring-time registry screens now send `caller: governed_prompt`, and guardrail raises no client notice for them. Before the fix, 77 orphan OPEN notices existed before the first consultation.
-2. `6161969c3`: **R1 (owner decision, this run).** A platform piece whose authoring screen is still in flight counts as governed for the call. A finished FAIL (PII) still takes the call-time path.
-3. `96444ce01`: the ingest marks only the items a check's notice names. A system-region block had left 4 innocent transcript segments BLOCKED.
-4. `007d76c27`: saving the SYSTEM availability exactly as read was refused 403 `GUARDRAIL_CHECK_LOCKED`. An absent `locked` was read as `false`; it now reads the catalogue's `true`.
-5. `eb3efb38c` (**critical; pre-existing since TASK-776**): the nlp guard batcher is cached per (slot, verb, lane), but its callback closed over the FIRST request's tasks, labels and threshold. As a result:
+1. `f88d6505d`: authoring-time registry screens now send `caller: governed_prompt`, and guardrail raises no client notice for them. Before the fix, 77 orphan OPEN notices existed before the first consultation.
+2. `908fa481a`: **R1 (owner decision, this run).** A platform piece whose authoring screen is still in flight counts as governed for the call. A finished FAIL (PII) still takes the call-time path.
+3. `7c01bc20e`: the ingest marks only the items a check's notice names. A system-region block had left 4 innocent transcript segments BLOCKED.
+4. `d6ac9fa69`: saving the SYSTEM availability exactly as read was refused 403 `GUARDRAIL_CHECK_LOCKED`. An absent `locked` was read as `false`; it now reads the catalogue's `true`.
+5. `674ea3dae` (**critical; pre-existing since TASK-776**): the nlp guard batcher is cached per (slot, verb, lane), but its callback closed over the FIRST request's tasks, labels and threshold. As a result:
    - GLiGuard's outbound `response_safety` / `response_toxicity` returned nothing, so outbound response moderation never ran; a plainly harmful synthetic response was allowed;
    - every `cls_threshold` edit was ignored;
    - PII label sets were frozen to the first caller's.
@@ -878,6 +878,53 @@ Gates for each fix: own test RED, then GREEN; neighbouring suites green; `@arcaa
 | K | The `guardrail.pii.spans` lane exposes `prompt_toxicity` / `response_toxicity` / `jailbreak_detection` thresholds (seed copy?). | Check the PII-spans row's taxonomy |
 | L | Setup: the fresh DB's lm-studio connection got the cluster URL, because `SEED_LMSTUDIO_BASE_URL` is no longer in `.env.dev`. TEXT's pool then stays `POOL_UNHEALTHY` after the URL is fixed, until a restart (its probe re-checks the last endpoint). | Restore the env line; let the pool health re-resolve the endpoint |
 | M | LM Studio unloads granite after 10 min idle (TTL). The judge then reads not-resident until the next JIT call. | No TTL for judge models in LM Studio serving profiles |
+
+## 15. Follow-up wave after the e2e (owner decisions 2026-10-08)
+
+Owner: "for B, outbound checks must follow the rule configured by the tenant admin or platform admin; for the rest, follow the recommendations." During the live re-check it also decided: **the outbound safety/toxicity classifiers warn by platform default.** Six lanes ran in worktrees off `dev-2.2`: guardrail, seed, TEXT, gateway attribution, gateway notices + console, and ALaaS. Every lane was merged and gated by the orchestrator.
+
+### 15.1 Findings → resolution
+
+| Id | Resolution | Commits (dev-2.2 unless noted) |
+|---|---|---|
+| B | `outboundRecordOnlyChecks` is retired. Outbound checks decide on tenant `enabled` + platform `action`; `ignore` means record only. A stored row that still carries the key is ignored (logged once), and reseeding drops it. | x-guard `d0979df52`, x-seed `204d1d0d6` |
+| B (default) | Owner decision: `response_safety` and `response_toxicity` default to **warn**, because GLiGuard flagged a normal final note "unsafe" live. An existing SYSTEM availability row is admin-owned, so the cluster needs the same platform-admin edit. | `65c875077` |
+| A | Policy key `piiLeakQuasiIdentifierLabels` (`guardrail.pii`). A `pii_leak` hit on quasi labels only is taken at warn; any direct identifier keeps the configured action. Seeded with 10 explicit labels (dates, places, `healthcare_facility`). There is no "unknown counts as quasi" fallback, so a leaked secret still blocks. | `d0979df52`, `204d1d0d6` |
+| C (ALaaS) | A hold is a hold. New v4 frames `guardrail.notice`, `guardrail.hold` and `guardrail.ack`, and commands `guardrail.acknowledge` / `guardrail.resume`. The bell row reads "A safety check paused your consultation note". Notices are re-read on every processing change. The web_ui adds a warn banner (Acknowledge) and a blocking hold dialog that offers only the allowed resolutions, or Retry for a redaction hold. Round 3 makes the hold persist across re-reports that drop `processingReason`, and announces it once per hold. | ALaaS `refactor-hope-integaration` `c0908a9`, `66e89f8` |
+| D | All 13 gateway → TEXT call sites send consultation, agentSlug, region/response items and the run key. The live lane now names items at their content version (it used `_version`, so markers never matched). Outputs created after the response (pre-summary ×2, chain summary, fact ledger, first live snapshot) are marked WARNED from TEXT's synchronous outbound warnings. | `ae8f40879`, `7817957bf` |
+| E | One notice per (decision, direction, type), listing every check and every flagged item. The dedupe key includes the flagged-item set, so a re-screen of the same items keeps the id and a new set raises a new notice. Gateway and console cover multi-check / multi-item notices. | `d0979df52`, `c35a37d51`, `be2fc45ae` |
+| F | A note released by an outbound override is marked WARNED when the paused node re-runs (`persistDraft` → `markOverrideReleasedItem`). | `be2fc45ae`, `7817957bf` |
+| G | Policy key `classifierTimeoutSeconds` (safety, injection, PII; not redaction spans). It is seeded at **20 s**: live, classify calls reached 15 s of queue wait under one consultation burst, so 10 s cut healthy calls off. The circuit breaker (5 failures / 15 s) already counted timeouts. | `d0979df52`, `73621d7ea` |
+| H | Evaluation checks carry `reason` (for skipped, undetermined and recorded-as-finding checks); ingest accepts it and the admin reads expose it; the OpenAPI and vox-node schemas were regenerated. | `d0979df52`, `be2fc45ae`, `e53a3f86e` |
+| I | An nlp answer that omits a requested task is never cached; an incomplete entry already cached reads as a miss. | `d0979df52` |
+| J | `POST admin/guardrail/screen` returns each check's `model`. | `be2fc45ae` |
+| K | No change: the PII-spans model card declares all six guard tasks; a seed test pins them. | `204d1d0d6` |
+| L | TEXT pool health is scoped to the endpoint it was observed on, so a corrected URL is no longer refused on the old one's health. `SEED_LMSTUDIO_BASE_URL` is restored in local `.env.dev`. | `f28340168` |
+| M | TEXT judge calls (every protocol) send no LM Studio JIT `ttl`. | `f28340168` |
+| R1+ | Found in the live re-check: R1 also covers a policy-version change. A piece that passed under an earlier version stays governed while its re-screen is pending; a FAIL under the current version still takes the call-time path. | `73621d7ea` |
+| — | Override verification never matched in production (the gateway stores the dedupe key as the notice id). Guardrail now matches either form. | `d0979df52` |
+
+### 15.2 Live verification (e2e DB `hope_1050_e2e`, after a `RUN_SEED=safe` reseed and restarts)
+
+Through "Test my rules" and a full ALaaS consultation:
+- **B:** an unsafe outbound response flags `response_safety` + `response_toxicity`, as ONE notice with two checks (E). It then warns per the new default (a block with the old SYSTEM row).
+- **A:** a facility-only leak warns; a phone number blocks.
+- **G:** an nlp outage gives `unverified` in 10.0 s (was 30 s), as one notice with three checks.
+- **H:** stored records carry `reason` (`engine_error`, `not_selected_for_tenant`).
+- **J:** every check names its model.
+
+Full consultation (session G): `NOTE_READY` in 122 s, and every inbound screen was allowed. That covers R1 across a policy-version change; before the R1+ fix the same run was held, its system prompts screened at call time. The fact-ledger output was flagged `response_safety`, taken at **warn**, and its `FACT_LEDGER` item is **WARNED** (D). The client received exactly one `guardrail.notice` and the "note is ready" notification, with no review row and no repeated hold frames (C).
+
+### 15.3 Gates
+
+Orchestrator pass after the full merge: typecheck 36/36, lint 0 errors, root unit 33,282 passed, vox 3,464, console 4,828, guardrail 1,034, TEXT 2,253, harness 3,814, nlp 1,116. The remaining failures are out of scope: `cloud-asr-provider-identity.contract` (TASK-1048) and the console emphasis canon on `readiness-screen.tsx` (TASK-1051). The one in-scope failure was a pin of the new key, fixed in `de6ab2883`. **Final re-run after the last commits (`65c875077`):** typecheck 36/36, lint 0 errors, root unit 33,285 passed, vox 3,464, console 4,828, guardrail 1,039, TEXT 2,253, harness 3,814, nlp 1,116. The only failures are the same two out-of-scope tests (1 each). ALaaS (orchestrator): audio-stream-svc jest 1,326/1,329; the 3 failures are `logger.service.spec`, which passes alone (load flake, untouched). web_ui 797/797.
+
+### 15.4 Still open (owner)
+
+- **Rollout:** existing deployments keep their admin-owned SYSTEM availability row. A platform admin sets `response_safety` / `response_toxicity` to warn (or the reseed path is extended), and `classifierTimeoutSeconds` 20 where an older seed stored 10. Drain or resolve open guardrail holds before deploying, because notice ids changed format twice. ALaaS: apply `src/migrations/add-notification-type-warning.sql` wherever TypeORM `synchronize` is off.
+- **Attribution limits:** DNA (raw multi-consultation corpus), NLP topic/intent (nlp calls TEXT itself), linked-consultation items in a chain summary, and client-stated vitals/prior visits stay unattributed by design. Stored notices carry no `runId` (their evaluations do); F tolerates that.
+- **ALaaS UX:** `item_edited` stays hidden until a screen can edit items, and the bell has no warning styling yet.
+- **Not live-tested:** the console screens (APIs verified; the in-app browser pane was hidden). One `FACT_LEDGER` activity reported OK with `FACT_LEDGER_INVOCATION_FAILED` (one chunk); not investigated.
 
 ## 7. Implementation summary
 
@@ -967,3 +1014,4 @@ Run 2 (confirmation):
 | 2026-10-07 | **W2h round 2 merged** (`0d3aee4db`): editable classifier thresholds (`labelTaxonomy.threshold` and `tasks.<task>.cls_threshold` via `?taskKey=`; labels are not editable), plus a shared capability rule on `guardrail.validate` (Qwen refused; legacy undeclared granite allowed).<br>**W4 round 3 merged** (`d25e0846b`): `labelTaxonomyDefaults` seeded; reseed keeps edited thresholds and refreshes model facts.<br>**W3c merged** (`7a3387b49`, then round 2 `eca791de7`; 106 + 36 own tests, axe per tab): `/guardrails/control` with Rules / Prompts / Parameters (incl. classifier thresholds) / Monitoring; Qwen mapping editor; dry run with unsaved drafts; the "default changed since your edit" notice. `/security-policy` tab becomes a deep link; `/ai-providers` managed rows are read-only; nav +1 platform entry (and the tenant entry from W3a).<br>**Orchestrator `09653168a`:** the BFF proxy treats `admin/guardrail/{policy-keys,judge-models,judge-lanes,dry-run,metrics}` as platform-wide (no working tenant); otherwise every call is a 403. RED against the old proxy (1 failed), then GREEN (18/18).<br>**W2h round 3 merged** (`620717055`): `GET judge-models/:id/judge-meta`; `defaultChangedSinceEdit` (`defaultAtEdit` recorded on new revisions).<br>**Open:** lane-wide reset and label thresholds disagree (W2h says the lane reset includes them; W3c says only `policyDefaults` keys). To verify at P4. **Only W3b is still running.** |
 | 2026-10-07 | **W3b merged** (`8e6f3d24a`, then round 2 `37e0d070d`; 97 + 117 own tests).<ul><li>Shared `shared/guardrail/**`: banner, block panel, final-note warning dialog, notice list, badge.</li><li>LLM playground: warn banner, block panel, redaction panel, "Test my rules" on `POST admin/guardrail/screen`, streaming notices via `use-task-stream`.</li><li>Consultation playground: block panel + Resume (allowed resolutions only); final-note modal vs live toast/badge; approve with `acknowledgeGuardrailNotices`.</li><li>Inbound hold: one-action "Resolve & sign" (`resolveHold`). Outbound and redaction holds: sign stays disabled with the reason shown.</li><li>DNA generate; workflow-run trace (on demand) and Studio Test tab: guardrail panel, node badges, `run.paused` / `guardrail.notice`.</li><li>Consultation details: Guardrail tab, notices + acknowledge, hold banner, item badges (gateway `guardrailStatus`), stat card, withheld review (403 handled).</li><li>The console's 5th run-protocol copy adopts the overlay.</li></ul>Round 2 also fixed a round-1 type gap in workflow-studio `event-display.ts`.<br>**W2e round 4 merged** (`074bbc4b6`): redaction-hold `acknowledged` = retry (sys-event, no `SAFETY_OVERRIDE`; the other resolutions get 409); `runId`/`runKey` filters; `guardrailStatus` on activity items. Orchestrator `506535aec` selects the column in the domains history read.<br>**W2b round 2 merged** (`ae6e19fca`): `POST admin/guardrail/screen` (effective rules, no content echo, `heavy` throttle). Orchestrator `f1d106219` registers `guardrail.playground.screenTimeoutMs` as a governed descriptor (it was a code default).<br>**All lanes merged. P4 started:** build packages → API build → artifacts → full gates once → ledger fixes → dev DB sync → live e2e (needs L-5). |
 | 2026-10-07 | **Local e2e (1049 + 1050), §14.** Owner approved the model set (Full + Qwen3Guard-Gen-0.6B GGUF), a fresh `hope_1050_e2e` DB, and stopping the TASK-1045 stack. S1 failed first (a hold with every judge off). **Owner decision: honour R1**, meaning authored prompts are validated at authoring time and never at call time. Five fixes were committed locally: `5b3ed8614`, `6161969c3`, `96444ce01`, `007d76c27`, and `eb3efb38c` (the nlp batcher froze the first caller's schema, so outbound response moderation never ran and threshold edits were ignored; pre-existing since TASK-776). After them S1–S7 pass, S3 only partially (no item marker, finding D). Findings A–M are open for the owner. Not pushed. |
+| 2026-10-08 | **Follow-up wave (§15).** Owner: B follows the configured rule; the rest per recommendations; the outbound classifiers warn by default. Six lanes merged locally: x-text `f28340168`, x-seed `204d1d0d6`, x-gwnotice `be2fc45ae`, x-guard `d0979df52` + `c35a37d51`, x-gwattr `ae8f40879` + `7817957bf`; ALaaS `c0908a9` + `66e89f8`. Orchestrator commits: `366dcf1ac`, `e53a3f86e`, `de6ab2883`, `73621d7ea` (R1 across a policy-version change, timeout 20 s), `65c875077` (warn default). The owner's filter-branch rewrite stripped the Co-Authored-By trailers, and §14.2 hashes are updated to match. The live re-run passes (§15.2). Status → Review. Not pushed. |
