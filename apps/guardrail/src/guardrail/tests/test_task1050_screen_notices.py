@@ -186,11 +186,22 @@ def test_block_notices_name_the_direction_and_medical_has_its_own_key() -> None:
         policy_version="pv-1",
         occurred_at="t",
     )
-    keys = {n["checks"][0]["checkId"]: n["messageKey"] for n in inbound}
-    assert keys == {
-        "prompt_safety": "guardrail.blocked.inbound",
-        "medical_validation": "guardrail.blocked.not_medical",
-    }
+    # TASK-1050 follow-up E (round 2): ONE block notice lists both checks; the not-medical
+    # label is kept for a notice on which medical validation is the ONLY check.
+    (shared,) = inbound
+    assert [c["checkId"] for c in shared["checks"]] == ["prompt_safety", "medical_validation"]
+    assert shared["messageKey"] == "guardrail.blocked.inbound"
+    (medical,) = build_notices(
+        _decision(
+            "inbound",
+            _check("medical_validation", "block", category="not_medical", flagged_regions=("n",)),
+        ),
+        tenant_id=TENANT,
+        correlation=_correlation(),
+        policy_version="pv-1",
+        occurred_at="t",
+    )
+    assert medical["messageKey"] == "guardrail.blocked.not_medical"
     # Standalone (no consultation): a block is re-run, not resumed.
     assert all(n["resumable"] is False for n in inbound)
 
@@ -230,7 +241,7 @@ def test_ignore_none_and_pass_raise_no_notice() -> None:
     )
 
 
-def test_one_notice_per_item_and_duplicates_collapse() -> None:
+def test_one_notice_for_every_item_and_duplicates_collapse() -> None:
     other = "01927f6e-1111-7000-8000-000000000011"
     decision = _decision(
         "inbound",
@@ -251,8 +262,9 @@ def test_one_notice_per_item_and_duplicates_collapse() -> None:
         policy_version="pv",
         occurred_at="t",
     )
-    assert sorted(n["itemIds"][0] for n in notices) == sorted([ITEM, other])
-    assert len({n["noticeId"] for n in notices}) == 2
+    # TASK-1050 follow-up E (round 2): ONE notice per type, its items the de-duplicated union.
+    (notice,) = notices
+    assert notice["itemIds"] == [ITEM, other]
 
 
 def test_a_repeat_raise_keeps_its_id() -> None:

@@ -11,17 +11,19 @@ PHI rules, load-bearing:
   verdict category, item ids and fixed strings;
 * ``defaultMessage`` is EXACTLY the fixed label of ``messageKey``.
 
-**One notice per target (TASK-1050 follow-up E, owner 2026-10-08).** A decision raises ONE
-notice per ``(direction, notice type, target)`` — the target being the context item, else the
-region, else the request — whose ``checks[]`` lists every check that raised it. Before, each
-flagged check raised its own notice, so one block meant one resume per check and an outage
-meant one `unverified` notice per check.
+**One notice per type (TASK-1050 follow-up E, owner 2026-10-08; round 2).** A decision raises
+ONE notice per ``(direction, notice type)``: ``checks[]`` lists every check that raised that
+type and ``itemIds`` the union of their flagged items (empty when only regions flagged), so
+"one block → one resume" and an outage over twelve items is one `unverified` notice. (Before:
+one notice per flagged check, then one per item target — twelve resumes for one block.)
 
-**Deterministic ids.** ``dedupeKey = "{consultationId or requestId}:{direction}:{type}:{itemId
-or regionKey or 'request'}:{policyVersion}"`` and ``noticeId`` is a UUID derived from
-``sha256(tenantId + "|" + dedupeKey)`` (RFC 9562 version 8, the "custom" layout), so a
-live summary that re-screens the same window every few seconds raises the SAME id and the
-gateway's idempotent write keeps one notice.
+**Deterministic ids.** ``dedupeKey = "{consultationId or requestId}:{direction}:{type}:
+{targetSet}:{policyVersion}"`` (:func:`notice_target_set`: the sorted item ids, else the sorted
+region keys, else ``request``) and ``noticeId`` is a UUID derived from
+``sha256(tenantId + "|" + dedupeKey)`` (RFC 9562 version 8, the "custom" layout). The same items
+re-screened (a live summary every few seconds) raise the SAME id, so the gateway's idempotent
+write keeps one notice; a NEW item set is a new notice, so a long consultation never folds every
+later violation into one stored — possibly already resolved — notice.
 """
 
 from __future__ import annotations
@@ -90,6 +92,20 @@ def notice_dedupe_key(
     return f"{consultation_id or request_id}:{direction}:{notice_type}:{target}:{policy_version}"
 
 
+def notice_target_set(item_ids: Sequence[str], region_keys: Sequence[str]) -> str:
+    """The TARGET component of a notice's dedupe key: what the notice is about, as a set.
+
+    The sorted, de-duplicated item ids joined with ``,``; with no item, the sorted region keys
+    (``response``, ``system,user`` …); with neither, ``request``. Order-free, so the same items
+    re-screened in any order keep the notice id, and a new item set is a new notice.
+    """
+    items = sorted({str(item) for item in item_ids if item})
+    if items:
+        return ",".join(items)
+    regions = sorted({str(key) for key in region_keys if key})
+    return ",".join(regions) if regions else "request"
+
+
 def notice_id_for(tenant_id: str, dedupe_key: str) -> str:
     """A deterministic, UUID-formatted id — same tenant + key ⇒ same id, always."""
     digest = bytearray(hashlib.sha256(f"{tenant_id}|{dedupe_key}".encode()).digest()[:16])
@@ -110,8 +126,8 @@ def _message_key(direction: str, taken: str, check_ids: Sequence[str]) -> str:
     return "guardrail.blocked.outbound" if direction == "outbound" else "guardrail.blocked.inbound"
 
 
-def _targets(check: Any) -> list[tuple[str, str | None]]:
-    """`(dedupe target, itemId or None)` for each notice one check raises."""
+def _targets(check: Any) -> tuple[list[str], list[str]]:
+    """``(item ids, region keys)`` one check contributes to its notice."""
     taken = check.effective_action_taken
     if taken == "unverified":
         item_refs = list(check.items) or list(check.flagged_items)
@@ -119,11 +135,10 @@ def _targets(check: Any) -> list[tuple[str, str | None]]:
     else:
         item_refs = list(check.flagged_items)
         regions = list(check.flagged_regions) or list(check.region_keys)
-    item_ids = list(dict.fromkeys(str(ref[0]) for ref in item_refs))
-    if item_ids:
-        return [(item_id, item_id) for item_id in item_ids]
-    region_keys = list(dict.fromkeys(str(key) for key in regions))
-    return [(key, None) for key in region_keys] or [("request", None)]
+    return (
+        list(dict.fromkeys(str(ref[0]) for ref in item_refs)),
+        list(dict.fromkeys(str(key) for key in regions)),
+    )
 
 
 def _check_entry(check: Any) -> dict[str, Any]:
@@ -135,18 +150,64 @@ def _check_entry(check: Any) -> dict[str, Any]:
     return entry
 
 
+@dataclass(frozen=True)
+class _NoticeGroup:
+    """The checks of one decision that raise one notice type, and what they are about."""
+
+    notice_type: str
+    checks: tuple[Any, ...]
+    item_ids: tuple[str, ...]
+    target: str
+
+
+def _notice_groups(decision: Any) -> list[_NoticeGroup]:
+    """One group per notice type the decision raises, in first-appearance order."""
+    by_type: dict[str, tuple[list[Any], list[str], list[str]]] = {}
+    for check in getattr(decision, "checks", ()) or ():
+        taken = check.effective_action_taken
+        if taken not in _SHAPE:
+            continue
+        members, items, regions = by_type.setdefault(_SHAPE[taken][0], ([], [], []))
+        check_items, check_regions = _targets(check)
+        members.append(check)
+        items.extend(item for item in check_items if item not in items)
+        regions.extend(key for key in check_regions if key not in regions)
+    return [
+        _NoticeGroup(
+            notice_type=notice_type,
+            checks=tuple(members),
+            item_ids=tuple(items),
+            target=notice_target_set(items, regions),
+        )
+        for notice_type, (members, items, regions) in by_type.items()
+    ]
+
+
+def _group_dedupe_key(
+    group: _NoticeGroup, *, direction: str, correlation: GuardrailCorrelation, policy_version: str
+) -> str:
+    return notice_dedupe_key(
+        consultation_id=correlation.consultation_id,
+        request_id=correlation.request_id,
+        direction=direction,
+        notice_type=group.notice_type,
+        target=group.target,
+        policy_version=policy_version,
+    )
+
+
 def build_notice(
     *,
     tenant_id: str,
     direction: str,
     checks: Sequence[Any],
     target: str,
-    item_id: str | None,
+    item_ids: Sequence[str],
     correlation: GuardrailCorrelation,
     policy_version: str,
     occurred_at: str,
 ) -> dict[str, Any]:
-    """ONE notice for every check in ``checks`` — all of one action taken, on one target."""
+    """ONE notice for every check in ``checks`` — all of one notice type."""
     taken = checks[0].effective_action_taken
     notice_type, action, _severity = _SHAPE[taken]
     entries = list({entry["checkId"]: entry for entry in map(_check_entry, checks)}.values())
@@ -176,7 +237,7 @@ def build_notice(
             notice[field_name] = value
     notice.update(
         {
-            "itemIds": [item_id] if item_id else [],
+            "itemIds": list(item_ids),
             "messageKey": key,
             "defaultMessage": NOTICE_DEFAULT_MESSAGES[key],
             # A warning and a block need an attestation; an outage notice does not.
@@ -199,55 +260,26 @@ def build_notices(
     policy_version: str,
     occurred_at: str,
 ) -> list[dict[str, Any]]:
-    """Every notice one decision raises — ONE per (notice type, target), listing its checks.
+    """Every notice one decision raises — ONE per notice type, listing its checks and items.
 
     Only `warn`, `block` and `unverified` checks raise one. Order: first appearance.
     """
-    groups: dict[tuple[str, str], tuple[str | None, list[Any]]] = {}
-    checks: Sequence[Any] = getattr(decision, "checks", ()) or ()
-    for check in checks:
-        taken = check.effective_action_taken
-        if taken not in _SHAPE:
-            continue
-        for target, item_id in _targets(check):
-            _item, members = groups.setdefault((_SHAPE[taken][0], target), (item_id, []))
-            members.append(check)
     return [
         build_notice(
             tenant_id=tenant_id,
             direction=decision.direction,
-            checks=members,
-            target=target,
-            item_id=item_id,
+            checks=group.checks,
+            target=group.target,
+            item_ids=group.item_ids,
             correlation=correlation,
             policy_version=policy_version,
             occurred_at=occurred_at,
         )
-        for (_type, target), (item_id, members) in groups.items()
+        for group in _notice_groups(decision)
     ]
 
 
 # ── `X-Hope-Guardrail-Override` (contract amendment 5d0760a60) ───────────────────
-
-
-def check_dedupe_keys(
-    check: Any, *, correlation: GuardrailCorrelation, policy_version: str, direction: str
-) -> list[str]:
-    """The dedupe keys of the notices this check is listed on — the keys an override matches."""
-    taken = check.effective_action_taken
-    if taken not in _SHAPE:
-        return []
-    return [
-        notice_dedupe_key(
-            consultation_id=correlation.consultation_id,
-            request_id=correlation.request_id,
-            direction=direction,
-            notice_type=_SHAPE[taken][0],
-            target=target,
-            policy_version=policy_version,
-        )
-        for target, _item in _targets(check)
-    ]
 
 
 def _has_block_floor(check_id: str) -> bool:
@@ -268,9 +300,10 @@ def apply_guardrail_override(
     """Downgrade block → warn for EVERY check listed on the VERIFIED notice.
 
     The caller has already verified the notice (``TenantConfigResolver.
-    verify_guardrail_override``). A check is on it when one of its notice keys is the verified
-    row's dedupe key — or, since the gateway stores a guardrail notice's ``dedupeKey`` as the
-    notice id itself, when one of its notice ids is that value (or ``notice_id``). Nothing else
+    verify_guardrail_override``). A check is on it when the notice this decision raises for the
+    check's type has the verified row's dedupe key — or, since the gateway stores a guardrail
+    notice's ``dedupeKey`` as the notice id itself, that notice id (or ``notice_id``). A
+    re-screen that flags a DIFFERENT item set raises a different notice and is not overridden. Nothing else
     moves: a check with a block floor (the locked medical check) keeps its block, as does every
     check of another notice.
     """
@@ -285,15 +318,17 @@ def apply_guardrail_override(
     policy_version = getattr(decision, "policy_version", "") or "unavailable"
     tenant_id = str(getattr(decision, "tenant_id", "") or "")
     wanted = {value for value in (dedupe_key, notice_id) if value}
-
-    def _on_the_notice(check: Any) -> bool:
-        keys = check_dedupe_keys(
-            check,
+    # The checks of the ONE notice (of this decision) the verified row names.
+    on_the_notice: set[int] = set()
+    for group in _notice_groups(decision):
+        key = _group_dedupe_key(
+            group,
+            direction=decision.direction,
             correlation=correlation,
             policy_version=policy_version,
-            direction=decision.direction,
         )
-        return any(key in wanted or notice_id_for(tenant_id, key) in wanted for key in keys)
+        if key in wanted or notice_id_for(tenant_id, key) in wanted:
+            on_the_notice.update(id(check) for check in group.checks)
 
     changed = False
     checks: list[Any] = []
@@ -301,7 +336,7 @@ def apply_guardrail_override(
         if (
             check.effective_action_taken == TAKEN_BLOCK
             and not _has_block_floor(check.name)
-            and _on_the_notice(check)
+            and id(check) in on_the_notice
         ):
             checks.append(
                 dataclasses.replace(check, action_taken=TAKEN_WARN, override_notice_id=notice_id)
