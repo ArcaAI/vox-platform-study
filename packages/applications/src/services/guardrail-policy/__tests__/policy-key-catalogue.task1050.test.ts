@@ -40,7 +40,9 @@ describe('parseGuardrailPolicyKeyCatalogue', () => {
     expect(catalogue.problems).toEqual([]);
     expect(catalogue.specs.length).toBe(fixture.keys.length);
     expect(spec('injectionJudgeCriteria')).toMatchObject({ kind: 'criteria', taskKey: 'guardrail.judge.injection', editable: true });
-    expect(spec('outboundRecordOnlyChecks').editable).toBe(false);
+    expect(spec('medicalJudgeConfigRegions').editable).toBe(false);
+    // Retired by TASK-1050 follow-up B: outbound checks follow the configured rule.
+    expect(catalogue.specs.map((s) => s.key)).not.toContain('outboundRecordOnlyChecks');
     expect(spec('judgeBands')).toMatchObject({ type: 'object', min: 0, max: 1, taskKey: 'guardrail.safety' });
     expect(catalogue.specs.map((s) => s.key)).toContain('judgeTemperature');
     expect(spec('judgeTemperature')).toMatchObject({ kind: 'hyperparameter', type: 'number', min: 0, max: 2, taskKey: 'guardrail.validate' });
@@ -93,8 +95,8 @@ describe('validateGuardrailPolicyValue — bounds come from the catalogue', () =
     ['judgeBands', { injection_judge: { low: 0.2, high: 0.8 }, jailbreak_detection: { low: 0.5, high: 0.5 } }],
     ['judgeBands', {}],
     ['piiLeakMinScore', 0.5],
-    ['outboundRecordOnlyChecks', ['jailbreak_detection']],
-    ['outboundRecordOnlyChecks', []],
+    ['piiLeakQuasiIdentifierLabels', ['healthcare_facility']],
+    ['piiLeakQuasiIdentifierLabels', []],
   ])('accepts %s = %j', (key, value) => {
     expect(validateGuardrailPolicyValue(spec(key), value)).toEqual([]);
   });
@@ -107,7 +109,7 @@ describe('validateGuardrailPolicyValue — bounds come from the catalogue', () =
     ['judgeMaxTokens', 1.5, 'POLICY_VALUE_TYPE'],
     ['judgeMaxTokens', 0, 'POLICY_VALUE_OUT_OF_RANGE'],
     ['screenWindowChars', 9000, 'POLICY_VALUE_OUT_OF_RANGE'],
-    ['outboundRecordOnlyChecks', ['ok', 3], 'POLICY_VALUE_TYPE'],
+    ['piiLeakQuasiIdentifierLabels', ['ok', 3], 'POLICY_VALUE_TYPE'],
     ['medicalValidationCriteria', '   ', 'POLICY_VALUE_EMPTY'],
     ['judgeBands', { injection_judge: { low: 0.8, high: 0.2 } }, 'POLICY_VALUE_OUT_OF_RANGE'],
     ['judgeBands', { injection_judge: { low: -0.1, high: 0.2 } }, 'POLICY_VALUE_OUT_OF_RANGE'],

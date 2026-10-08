@@ -76,7 +76,7 @@ model GuardrailEvaluation {
 
 // The standard client message (`GuardrailNotice` v1, §9.7.3) plus its
 // acknowledgement/resolution state. One row per dedupe key per tenant
-// (`(consultation, checkId, itemId, policyVersion)`, composed by the writer),
+// (`(consultation or request, direction, type, target, policyVersion)`, composed by the writer),
 // so a live summary re-screened every few seconds raises ONE notice. OCC-
 // written (`_version`): acknowledge, resolve and approve race on it.
 model GuardrailNotice {

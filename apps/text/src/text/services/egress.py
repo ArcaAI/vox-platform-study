@@ -379,9 +379,10 @@ def _record_data_findings(verdict: Any, regions: list[_ScreenRegion]) -> list[di
 def record_outbound_data_findings(verdict: Any, *, where: str) -> list[dict[str, Any]]:
     """Log and count the OUTBOUND screen's ``data_findings`` (TASK-1047 FC-5c); return them.
 
-    Guardrail reports a record-only check (``outboundRecordOnlyChecks``, default
-    ``jailbreak_detection``) that flagged on the response as
-    ``[{region: "response", reasons}]`` instead of blocking. Recorded exactly like the
+    Guardrail no longer reports any: its record-only outbound key
+    (``outboundRecordOnlyChecks``) was retired by TASK-1050 follow-up B, so outbound
+    checks decide at their configured action and this normally returns ``[]``. Kept
+    for a guardrail that still sends ``[{region: "response", reasons}]``. Recorded exactly like the
     inbound findings: one ``text.egress.data_findings`` line with ``direction:
     "outbound"`` (region + check names, never text) and the same
     ``text_egress_data_findings_total`` counter. Malformed items are dropped, never

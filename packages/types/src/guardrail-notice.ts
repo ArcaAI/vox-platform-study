@@ -11,7 +11,8 @@
  * PHI rules (load-bearing): a notice carries NO content and NO judge reasoning — either can quote PHI or the
  * injection itself. `defaultMessage` is EXACTLY the fixed label of `messageKey`
  * ({@link GUARDRAIL_NOTICE_DEFAULT_MESSAGES}); the run protocol refuses any other text. Clients localise on
- * `messageKey`. Dedup is one notice per `(consultation, checkId, itemId, policyVersion)` (README §9.7.3).
+ * `messageKey`. Dedup is one notice per `(consultation or request, direction, type, target, policyVersion)`; `checks`
+ * lists every check that raised it (TASK-1050 follow-up E).
  *
  * Frozen by `tests/contracts/guardrail-vocabulary.fixture.json` (vocabulary) and
  * `tests/contracts/guardrail-run-events.fixture.json` (example notices). Mirrored in

@@ -308,7 +308,7 @@ describe('PUT policy-keys/:key — catalogue-validated, OCC on the model row, re
   it('an unknown key is 404; a non-editable key is 400 GUARDRAIL_POLICY_KEY_NOT_EDITABLE', async () => {
     const { service } = makeService();
     await expect(service.updatePolicyKey('noSuchKey', { value: 1, expectedVersion: 7 })).rejects.toBeInstanceOf(NotFoundException);
-    expect((await codeOf(service.updatePolicyKey('outboundRecordOnlyChecks', { value: [], expectedVersion: 3 }))).code).toBe('GUARDRAIL_POLICY_KEY_NOT_EDITABLE');
+    expect((await codeOf(service.updatePolicyKey('medicalJudgeConfigRegions', { value: [], expectedVersion: 3 }))).code).toBe('GUARDRAIL_POLICY_KEY_NOT_EDITABLE');
   });
 
   it('a task key with no elected SYSTEM model is 409 GUARDRAIL_POLICY_MODEL_UNRESOLVED', async () => {
@@ -371,7 +371,7 @@ describe('reset and restore', () => {
     const response = await service.resetLane('guardrail.safety');
     expect(aiModels.updateWithVersion).toHaveBeenCalledTimes(1);
     expect(response.resetKeys.sort()).toEqual(['piiLeakMinScore', 'windowCacheTtlSeconds']);
-    expect(response.skippedKeys).toEqual(expect.arrayContaining(['screenWindowChars', 'outboundRecordOnlyChecks', 'judgeBands']));
+    expect(response.skippedKeys).toEqual(expect.arrayContaining(['screenWindowChars', 'judgeBands']));
     expect(revisions.create).toHaveBeenCalledTimes(2);
     expect(store[GLIGUARD].metaData.policy).toMatchObject({ piiLeakMinScore: 0.5, windowCacheTtlSeconds: 86400 });
     expect(redis.publish).toHaveBeenCalledTimes(1);
