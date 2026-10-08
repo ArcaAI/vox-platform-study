@@ -671,6 +671,8 @@ describe('ChainSummaryService', () => {
           variables: expect.objectContaining({ current_department: 'General Medicine' }),
         }),
         'blocking',
+        // TASK-1050 — the guardrail attribution (consultation + composed items).
+        expect.objectContaining({ attribution: expect.objectContaining({ regionItems: expect.any(Object) }) }),
       );
 
       // Verify context item was persisted
