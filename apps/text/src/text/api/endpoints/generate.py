@@ -173,6 +173,15 @@ from text.routing.usage import (  # noqa: E402, F401
 _STREAM_IDEM_PREFIX = "text:idem:stream:"
 
 
+def _resolved_endpoint(request_body: GenerateRequest) -> str | None:
+    """The base URL the request's resolved connection names, if any."""
+    from text.core.connection import resolve_connection
+
+    connection = resolve_connection(request_body)
+    url = (getattr(connection, "base_url", None) or "").strip() if connection else ""
+    return url or None
+
+
 def _payload_fingerprint(request_body: GenerateRequest) -> str:
     """A stable hash of the request an idempotency key claims to identify.
 
@@ -368,6 +377,7 @@ async def generate(
         tracker=pool_health_tracker,
         fallback=fallback_name,
         fallback_registered=bool(fallback_name) and fallback_name in registry.list_providers(),
+        endpoint=_resolved_endpoint(request_body),
     )
 
     # Idempotent replay. A deterministic Idempotency-Key (set by the harness
