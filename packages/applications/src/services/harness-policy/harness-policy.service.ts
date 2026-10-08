@@ -83,6 +83,8 @@ export interface TextSelection {
   deploymentKind?: string;
   /** `parameters.generation` of the agent that served, when it authored one. */
   generation?: Record<string, unknown>;
+  /** TASK-1050 — the slug of the agent that serves, for the guardrail evaluation's `agent_slug`. */
+  agentSlug?: string;
 }
 
 /**
@@ -94,6 +96,12 @@ export interface TextSelection {
 function generationOf(candidate: { parameters?: Record<string, unknown> }): Record<string, unknown> | undefined {
   const generation = candidate.parameters?.generation;
   return typeof generation === 'object' && generation !== null && !Array.isArray(generation) ? (generation as Record<string, unknown>) : undefined;
+}
+
+/** TASK-1050 — `{ agentSlug }` of a resolved candidate, or nothing when it names no agent. */
+function agentSlugOf(candidate: { agent?: { slug?: string } }): { agentSlug?: string } {
+  const slug = candidate.agent?.slug;
+  return typeof slug === 'string' && slug.length > 0 ? { agentSlug: slug } : {};
 }
 
 /**
@@ -666,6 +674,7 @@ export class HarnessPolicyService {
         model: spec.primary.model,
         ...(spec.primary.deploymentKind ? { deploymentKind: spec.primary.deploymentKind } : {}),
         ...(generation ? { generation } : {}),
+        ...agentSlugOf(spec.primary),
       };
     } catch (error) {
       if (error instanceof NotFoundException && !agentSlug) {
@@ -745,6 +754,7 @@ export class HarnessPolicyService {
         model: next.model,
         ...(next.deploymentKind ? { deploymentKind: next.deploymentKind } : {}),
         ...(generation ? { generation } : {}),
+        ...agentSlugOf(next),
       };
     } catch (error) {
       this.logger.warn({

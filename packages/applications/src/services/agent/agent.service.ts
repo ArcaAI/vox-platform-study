@@ -959,6 +959,8 @@ export class AgentService extends BaseService implements IAgentService {
 
     const submission = await this.draftTest.submit({
       tenantId: entity.tenantId,
+      // TASK-1050 — the agent under test names the bench run's guardrail evaluation.
+      agentSlug: entity.slug,
       prompt: assembledUserPrompt,
       systemPrompt: assembledSystemPrompt,
       provider: resolved.provider,

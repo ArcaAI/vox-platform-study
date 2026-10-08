@@ -328,6 +328,14 @@ describe('testDraft — a non-dry run', () => {
     expect(mockDraftTest.submit).toHaveBeenCalledWith(expect.objectContaining({ generation: { temperature: 0.1, reasoning: { enabled: false } } }));
   });
 
+  // TASK-1050 finding D — the bench's guardrail evaluation names the agent under test.
+  it('hands the draft agent`s slug to the transport, for guardrail attribution', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    await makeService().testDraft('agent-1', { dryRun: false, context: { clinic: 'Ward B' }, input: { text: 'Summarise this.' } });
+
+    expect(mockDraftTest.submit).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'clinic-summarizer' }));
+  });
+
   it('finalize re-checks the agent (a taskId alone is not authorisation) and delegates the read-back', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     mockDraftTest.finalize.mockResolvedValue({ output: 'done', provider: 'lm-studio', model: 'gemma', usage: null });
@@ -445,6 +453,13 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
       await makeWiredTransport().submit({ ...base, generation: { temperature: 0.1 } });
 
       expect(Object.keys(sentBody())).not.toContain('reasoning');
+    });
+
+    // TASK-1050 finding D — the agent under test is the evaluation's `agent_slug`.
+    it('the draft agent`s slug rides as `agent_slug`', async () => {
+      await makeWiredTransport().submit({ ...base, agentSlug: 'clinic-summarizer' });
+
+      expect(sentBody().agent_slug).toBe('clinic-summarizer');
     });
   });
 

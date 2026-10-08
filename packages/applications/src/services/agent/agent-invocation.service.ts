@@ -22,6 +22,8 @@ import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '
 import type { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
+import type { TextEgressHints } from '../text-request/text-request-enrichment.service';
+import { guardrailCorrelationHeaders } from '../text-request/guardrail-correlation';
 import { COMPUTE_DEVICES, type ComputeDevice } from '../usageLedger/usage-attributes';
 import {
   CONTEXT_NAMESPACE_ROOT,
@@ -202,7 +204,17 @@ function legacyMessageAlias(resolved: ResolvedAgent, input: unknown): unknown {
 export interface AgentInvocationCallOptions {
   /** Aborts the upstream TEXT / NLP request (an agent run's cancel or ceiling). */
   signal?: AbortSignal;
+  /**
+   * TASK-1050 — the guardrail ATTRIBUTION the calling service knows from its OWN reads (never from a
+   * client): the consultation, the context items behind each prompt region (the input block is the
+   * `input` region), the items the output becomes, and the run correlation. Stated on the egress hints
+   * (`region_items` / `response_items`) and as the trusted `X-Hope-*` headers. Absent ⇒ none is sent.
+   */
+  attribution?: AgentInvocationAttribution;
 }
+
+/** TASK-1050 — see {@link AgentInvocationCallOptions.attribution}. */
+export type AgentInvocationAttribution = Pick<TextEgressHints, 'consultationId' | 'regionItems' | 'responseItems' | 'correlation'>;
 
 @Injectable()
 export class AgentInvocationService {
@@ -446,18 +458,23 @@ export class AgentInvocationService {
       (body as { provider_overrides?: Record<string, unknown> }).provider_overrides = { [overrideProvider]: entry };
     }
     // The primary row's `deploymentKind` decides the egress locality stamped on the body.
+    const attribution = options?.attribution ?? {};
     await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, {
       deploymentKind: resolved.models.find((entry) => entry.role === 'primary')?.deploymentKind ?? null,
       phase: 'invoke',
       agentSlug: resolved.slug,
+      // TASK-1050 — the caller's attribution; the consultation also feeds `known_phi`.
+      ...attribution,
       // TASK-1047 FC-4 — the composer's governance of `system_prompt`; the enrichment sends
       // `system_governance` only when the registry vouches for every piece (FC-3).
       systemGovernance: { governance: composed.governance ?? null, platformPieces: platformPiecesOf({ platformRules: platformRules() }), tenantId },
     });
+    const correlation = guardrailCorrelationHeaders({ ...(attribution.correlation ?? {}), consultationId: attribution.consultationId ?? null });
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),
       tenantId,
       tenantlessReason: TENANTLESS.CONTROL_PLANE,
+      ...(Object.keys(correlation).length > 0 ? { extra: correlation } : {}),
     });
 
     if (mode === 'stream') {

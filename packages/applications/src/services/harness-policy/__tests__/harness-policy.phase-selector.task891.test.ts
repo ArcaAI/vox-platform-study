@@ -176,11 +176,13 @@ describe('resolveTextSelection — the task SELECTS again', () => {
       provider: 'lm-studio',
       model: 'gemma-4-e2b-it-qat-live',
       generation: GENERATION,
+      agentSlug: 'platform-summarization-live',
     });
     await expect(policy.resolveTextSelection(TENANT, 'finalize')).resolves.toEqual({
       provider: 'lm-studio',
       model: 'gemma-4-e2b-it-qat',
       generation: GENERATION,
+      agentSlug: 'platform-summarization',
     });
   });
 
@@ -192,7 +194,7 @@ describe('resolveTextSelection — the task SELECTS again', () => {
 
   it('the default task is finalize, so a no-arg caller resolves the unqualified row exactly as before', async () => {
     const { policy, assignments } = chain(SPLIT);
-    await expect(policy.resolveTextSelection()).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', generation: GENERATION });
+    await expect(policy.resolveTextSelection()).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', generation: GENERATION, agentSlug: 'platform-summarization' });
     expect(assignments.resolve).toHaveBeenCalledWith(TENANT, AgentTask.TEXT_GENERATION, null, ['phase:finalize']);
   });
 });
@@ -206,7 +208,7 @@ describe('resolveTextSelection — the task SELECTS again', () => {
 describe('backwards compatibility — a tenant with only the unqualified assignment is untouched', () => {
   it('live, finalize and test all resolve the SAME agent it resolves today, and none of them throws', async () => {
     const { policy } = chain(UNQUALIFIED_ONLY);
-    const today = { provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', generation: GENERATION };
+    const today = { provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', generation: GENERATION, agentSlug: 'platform-summarization' };
     await expect(policy.resolveTextSelection(TENANT, 'live')).resolves.toEqual(today);
     await expect(policy.resolveTextSelection(TENANT, 'finalize')).resolves.toEqual(today);
     await expect(policy.resolveTextSelection(TENANT, 'test')).resolves.toEqual(today);

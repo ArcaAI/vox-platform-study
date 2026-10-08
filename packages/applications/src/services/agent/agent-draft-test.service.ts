@@ -76,6 +76,8 @@ export interface DraftTestSubmitInput {
    */
   connectionId?: string | null;
   connectionProvider?: string | null;
+  /** TASK-1050 — the slug of the agent under test, for the guardrail evaluation's `agent_slug`. */
+  agentSlug?: string | null;
 }
 
 /**
@@ -168,7 +170,11 @@ export class AgentDraftTestService {
       // enrichment returns early when `provider_overrides` is already set, which is
       // exactly the contract it states.
       await this.applyBoundConnection(body, input);
-      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, { deploymentKind: input.deploymentKind ?? null, phase: 'test' });
+      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, {
+        deploymentKind: input.deploymentKind ?? null,
+        phase: 'test',
+        agentSlug: input.agentSlug ?? null,
+      });
     }
 
     let taskId: string;

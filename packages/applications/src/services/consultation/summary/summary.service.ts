@@ -95,6 +95,8 @@ import { IBillingService } from '../../billing/IBillingService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
+import { guardrailCorrelationHeaders, type GuardrailRegionItems } from '../../text-request/guardrail-correlation';
+import { caseNoteRegionItems } from './case-note-region-items';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
@@ -203,6 +205,8 @@ interface TextCallPayload {
   departmentId?: string | null;
   /** The consultation this call generates for — its known PHI rides the egress enrichment as `known_phi`. */
   consultationId?: string | null;
+  /** TASK-1050 — the context items behind each data region of the assembled prompt (guardrail attribution). */
+  regionItems?: GuardrailRegionItems | null;
 }
 
 type TextCallResult = LegacyTextSummaryResponse & {
@@ -562,6 +566,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       options: request.options,
       departmentId: consultation.departmentId,
       consultationId: consultation.id,
+      regionItems: caseNoteRegionItems(caseNotes, duplicated),
       context: {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
@@ -1674,6 +1679,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
     let generation: Record<string, unknown> | undefined;
     let deploymentKind: string | undefined;
+    let agentSlug: string | undefined;
     if (this.harnessPolicyService && tenantId) {
       // The assigned `TEXT_GENERATION` agent; the A4 fallback retry below stays
       // TENANT-configured.
@@ -1681,10 +1687,11 @@ export class SummaryService extends BaseService implements ISummaryService {
       options = { ...callerOptions, textProvider: selection.provider, textModel: selection.model };
       generation = selection.generation;
       deploymentKind = selection.deploymentKind;
+      agentSlug = selection.agentSlug;
     }
 
     try {
-      return await this.executeTextGenerate(payload, options, generation, deploymentKind);
+      return await this.executeTextGenerate(payload, options, generation, deploymentKind, agentSlug);
     } catch (primaryError) {
       if (tenantId && this.harnessPolicyService && this.isTextFallbackEligible(primaryError)) {
         const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize', payload.departmentId ?? null);
@@ -1694,7 +1701,7 @@ export class SummaryService extends BaseService implements ISummaryService {
           try {
             // TASK-891 — the FALLBACK selection's own `generation`, not the primary's: a
             // different agent may serve, and it carries its own reasoning posture.
-            const result = await this.executeTextGenerate(payload, fallbackOptions, fallback.generation, fallback.deploymentKind);
+            const result = await this.executeTextGenerate(payload, fallbackOptions, fallback.generation, fallback.deploymentKind, fallback.agentSlug);
             this.logger.warn({
               message: 'Primary TEXT finalize call failed; served via tenant-configured fallback',
               fallbackProvider: fallback.provider,
@@ -1759,6 +1766,8 @@ export class SummaryService extends BaseService implements ISummaryService {
     generation?: Record<string, unknown>,
     // `AiModel.deploymentKind` of the row serving this attempt, for the egress `provider_locality`.
     deploymentKind?: string,
+    // TASK-1050 — the agent serving this attempt, for the guardrail evaluation's `agent_slug`.
+    agentSlug?: string,
   ): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
     // (OD-9 exemption: credential injection ONLY) — this path reached
@@ -1778,6 +1787,10 @@ export class SummaryService extends BaseService implements ISummaryService {
       deploymentKind: deploymentKind ?? null,
       consultationId: payload.consultationId ?? null,
       phase: 'finalize',
+      // TASK-1050 — guardrail attribution. The PRE_SUMMARY item the output becomes is created only
+      // after the response, so no `response_items` can be named here.
+      agentSlug: agentSlug ?? null,
+      regionItems: payload.regionItems ?? null,
       // TASK-1047 FC-4 — the assembly's governance of the system message this body carries.
       systemGovernance: {
         governance: payload.assembledPrompt.governance ?? null,
@@ -1792,10 +1805,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     // the platform tier instead. Both headers are built once, here, by the shared
     // contract rather than a hand-rolled literal.
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    const correlation = guardrailCorrelationHeaders({ consultationId: payload.consultationId ?? null });
     const textHeaders = internalServiceHeaders({
       serviceToken,
       tenantId: this.tenantId,
       tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+      ...(Object.keys(correlation).length > 0 ? { extra: correlation } : {}),
     });
 
     // The SAME bounded corrective retry as the live-doc flush: without it, a

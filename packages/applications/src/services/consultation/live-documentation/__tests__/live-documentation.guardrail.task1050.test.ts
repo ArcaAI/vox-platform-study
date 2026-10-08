@@ -67,8 +67,9 @@ function harness(
   opts: {
     flagged?: Array<{ id: string; guardrailStatus: string; segmentKey?: string }>;
     excludedNoticeItemIds?: string[];
-    segmentRows?: Array<{ id: string; version: number; segmentKey: string }>;
-    noteRows?: Array<{ id: string; version: number }>;
+    // TASK-1050 finding D — the CONTENT version the ingest marks against (not the OCC `_version`).
+    segmentRows?: Array<{ id: string; currentVersionNumber: number; segmentKey: string }>;
+    noteRows?: Array<{ id: string; currentVersionNumber: number }>;
     promptTemplate?: { status: string; content: string };
     /** Wire W2e's `GuardrailHoldService` (constructor index 35). Absent ⇒ the lane runs without it. */
     holdService?: boolean;
@@ -274,7 +275,7 @@ describe('F3 — grammar, findings and translate send clinical text as DATA thro
     const service = begin(h);
     const session = sessionOf(service);
     session.snapshotId = 'snap-1';
-    session.snapshotEntity = { id: 'snap-1', version: 3 };
+    session.snapshotEntity = { id: 'snap-1', currentVersionNumber: 3 };
     h.setReply(() => ({ summary: 'translated' }));
     await (
       service as unknown as { translateSectionText: (text: string, language: string, session: unknown) => Promise<string> }
@@ -323,9 +324,9 @@ describe('correlation — headers and region_items on every live flush call', ()
   it('names the consultation, the snapshot item once it exists, and the transcript segments at their versions', async () => {
     const h = harness({
       segmentRows: [
-        { id: 'seg-a', version: 1, segmentKey: `${STT}:1` },
-        { id: 'seg-b', version: 2, segmentKey: `${STT}:2` },
-        { id: 'unrelated', version: 1, segmentKey: 'other:9' },
+        { id: 'seg-a', currentVersionNumber: 1, segmentKey: `${STT}:1` },
+        { id: 'seg-b', currentVersionNumber: 2, segmentKey: `${STT}:2` },
+        { id: 'unrelated', currentVersionNumber: 1, segmentKey: 'other:9' },
       ],
     });
     const service = begin(h);

@@ -202,7 +202,7 @@ export class ChainSummaryService extends BaseService {
     });
 
     // Step 2: Gather all content sections
-    const sections = await this.gatherSections(linkedConsultations);
+    const { sections, items } = await this.gatherSectionsWithItems(linkedConsultations);
 
     if (sections.length === 0) {
       throw new BadRequestException('No content available across linked consultations for comprehensive summary');
@@ -218,10 +218,14 @@ export class ChainSummaryService extends BaseService {
     // Step 4–5: invoke the tenant's agent over the composed chain. The chain entity carries the
     // Department include the requesting row may not, so the department NAME is read off it.
     const anchor = linkedConsultations.find((c) => c.id === consultation.id) ?? consultation;
-    const result = await this.invokeAgent(consultation, {
-      text: this.composeChainText(sections, aggregatedEntities),
-      variables: await this.noteContextVariables(consultation, anchor.Department?.name ?? null),
-    });
+    const result = await this.invokeAgent(
+      consultation,
+      {
+        text: this.composeChainText(sections, aggregatedEntities),
+        variables: await this.noteContextVariables(consultation, anchor.Department?.name ?? null),
+      },
+      items,
+    );
     const usage = parseTextUsageDetail(result.usageDetail);
     const modelName = result.model ?? result.provider ?? undefined;
     const processingTimeMs = usage?.totalMs ?? undefined;
@@ -342,7 +346,20 @@ export class ChainSummaryService extends BaseService {
    * more concise and fit better in the comprehensive summary input.
    */
   async gatherSections(consultations: ConsultationEntity[]): Promise<ChainSectionDto[]> {
+    return (await this.gatherSectionsWithItems(consultations)).sections;
+  }
+
+  /**
+   * {@link gatherSections}, plus the context items each section was composed from (at their current
+   * version, in composition order) — TASK-1050: the guardrail evaluation's `input` region items.
+   */
+  private async gatherSectionsWithItems(
+    consultations: ConsultationEntity[],
+  ): Promise<{ sections: ChainSectionDto[]; items: Array<{ itemId: string; itemVersion: number }> }> {
     const sections: ChainSectionDto[] = [];
+    const items: Array<{ itemId: string; itemVersion: number }> = [];
+    const itemRef = (item: { id: string; currentVersionNumber?: number }) =>
+      items.push({ itemId: item.id, itemVersion: Number(item.currentVersionNumber ?? 1) });
 
     for (const consultation of consultations) {
       const departmentName = consultation.Department?.name ?? consultation.departmentId ?? undefined;
@@ -364,6 +381,7 @@ export class ChainSummaryService extends BaseService {
             content: latestSummary.content,
             createdAt: latestSummary.createdAt?.toISOString(),
           });
+          itemRef(latestSummary);
         }
       } else {
         // Fall back to transcripts if no summary exists. Each TRANSCRIPT
@@ -388,6 +406,7 @@ export class ChainSummaryService extends BaseService {
             createdAt: paragraph.createdAt?.toISOString(),
           });
         }
+        if (paragraphs.length > 0) for (const transcript of transcripts) if (transcript.content?.trim()) itemRef(transcript);
       }
 
       // Case notes (always include — they provide historical context)
@@ -402,6 +421,7 @@ export class ChainSummaryService extends BaseService {
             content: note.content,
             createdAt: note.createdAt?.toISOString(),
           });
+          itemRef(note);
         }
       }
 
@@ -417,11 +437,12 @@ export class ChainSummaryService extends BaseService {
             content: preSummary.content,
             createdAt: preSummary.createdAt?.toISOString(),
           });
+          itemRef(preSummary);
         }
       }
     }
 
-    return sections;
+    return { sections, items };
   }
 
   /**
@@ -666,6 +687,8 @@ export class ChainSummaryService extends BaseService {
   private async invokeAgent(
     consultation: ConsultationEntity,
     input: { text: string; variables: Record<string, string> },
+    // TASK-1050 — the items composed into the invocation text (its `input` region), for attribution.
+    inputItems: ReadonlyArray<{ itemId: string; itemVersion: number }> = [],
   ): Promise<AgentTextInvocationResult> {
     const agent = await this.agentResolver.resolve({
       tenantId: consultation.tenantId,
@@ -674,7 +697,11 @@ export class ChainSummaryService extends BaseService {
       selectorTags: textPhaseSelectorTags('finalize'),
     });
     try {
-      return await this.agentInvocation.invokeText(agent, consultation.tenantId, input, 'blocking');
+      // TASK-1050 — the guardrail attribution. The RAW_SUMMARY the output becomes is created only after
+      // the response, so no `response_items` can be named here.
+      return await this.agentInvocation.invokeText(agent, consultation.tenantId, input, 'blocking', {
+        attribution: { consultationId: consultation.id, regionItems: { input: [...inputItems] } },
+      });
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error({

@@ -100,3 +100,22 @@ describe('TASK-968 — the bench runs on the assigned agent`s reasoning posture'
     expect(Object.keys(lastBody(post))).not.toContain('extra');
   });
 });
+
+// TASK-1050 finding D — the bench run's guardrail evaluation names the agent it ran on.
+describe('TASK-1050 — the bench names the agent it ran on', () => {
+  it('an agent-resolved bench sends the agent`s slug as `agent_slug`', async () => {
+    const { svc, post } = buildService({ ...candidate({ generation: {} }), agent: { slug: 'platform-summarization' } });
+
+    await svc.startPromptTemplateTest('tpl-1', {} as never);
+
+    expect(lastBody(post).agent_slug).toBe('platform-summarization');
+  });
+
+  it('a caller-pinned provider/model has no agent behind it — none is named', async () => {
+    const { svc, post } = buildService({ ...candidate(), agent: { slug: 'platform-summarization' } });
+
+    await svc.startPromptTemplateTest('tpl-1', { provider: 'lm-studio', model: 'pinned' } as never);
+
+    expect(Object.keys(lastBody(post))).not.toContain('agent_slug');
+  });
+});

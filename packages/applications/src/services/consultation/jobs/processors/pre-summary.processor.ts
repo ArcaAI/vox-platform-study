@@ -17,6 +17,8 @@ import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildTextGeneratePayload, mapTextGenerateResponse, withoutCallerModelSelection } from '../../summary/text-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { TextRequestEnrichmentService } from '../../../text-request/text-request-enrichment.service';
+import { guardrailCorrelationHeaders, type GuardrailRegionItems } from '../../../text-request/guardrail-correlation';
+import { caseNoteRegionItems } from '../../summary/case-note-region-items';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import {
@@ -187,13 +189,17 @@ export class PreSummaryProcessor extends WorkerHost {
         // joined string: the prompt now carries them as a list, and the de-duplication below
         // compares whole notes — re-splitting a join would cut a note that contains a blank line.
         let caseNoteTexts: string[];
+        // TASK-1050 — the records themselves, so the guardrail evaluation can name the items it screened.
+        let caseNoteRecords: Array<{ id: string; content?: string | null; currentVersionNumber?: number } | null>;
         if (request.caseNoteIds?.length) {
           // Use specific case notes
           const caseNotes = await Promise.all(request.caseNoteIds.map((id) => this.contextItemRepository.findById(id)));
+          caseNoteRecords = caseNotes.filter(Boolean);
           caseNoteTexts = caseNotes.filter(Boolean).map((c) => c!.content ?? '');
         } else {
           // Get all case notes from the consultation
           const caseNotes = await this.contextItemRepository.findByConsultation(consultationId, { type: ContextItemType.CASE_NOTE });
+          caseNoteRecords = caseNotes;
           caseNoteTexts = caseNotes.map((c) => c.content ?? '');
         }
 
@@ -254,6 +260,7 @@ export class PreSummaryProcessor extends WorkerHost {
           tenantId,
           jobId,
           consultationId,
+          caseNoteRegionItems(caseNoteRecords, duplicated),
         );
 
         // Step 3: Saving results (70%)
@@ -339,6 +346,8 @@ export class PreSummaryProcessor extends WorkerHost {
     jobId?: string,
     // The consultation this pre-summary is for: its known PHI rides the egress enrichment.
     consultationId?: string,
+    // TASK-1050 — the context items behind each data region of the assembled prompt.
+    regionItems?: GuardrailRegionItems,
   ): Promise<{
     summary: string;
     llmProvider?: string;
@@ -358,11 +367,13 @@ export class PreSummaryProcessor extends WorkerHost {
       // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
       let generation: Record<string, unknown> | undefined;
       let deploymentKind: string | undefined;
+      let agentSlug: string | undefined;
       if (this.harnessPolicyService) {
         const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize');
         options = { ...callerOptions, textProvider: selection.provider, textModel: selection.model };
         generation = selection.generation;
         deploymentKind = selection.deploymentKind;
+        agentSlug = selection.agentSlug;
       }
       const textPayload = buildTextGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
@@ -383,6 +394,10 @@ export class PreSummaryProcessor extends WorkerHost {
         deploymentKind: deploymentKind ?? null,
         consultationId: consultationId ?? null,
         phase: 'pre-summary',
+        // TASK-1050 — guardrail attribution. The PRE_SUMMARY item the output becomes is created only
+        // after the response, so no `response_items` can be named here.
+        agentSlug: agentSlug ?? null,
+        regionItems: regionItems ?? null,
         // TASK-1047 FC-4 — the assembly's governance of the system message this body carries.
         systemGovernance: { governance: assembledPrompt.governance ?? null, platformPieces: assembledPrompt.platformPieces, tenantId },
       });
@@ -398,7 +413,7 @@ export class PreSummaryProcessor extends WorkerHost {
           serviceToken,
           tenantId,
           tenantlessReason: TENANTLESS.JOB_QUEUE,
-          extra: jobId ? { 'X-Request-ID': jobId } : undefined,
+          extra: { ...(jobId ? { 'X-Request-ID': jobId } : {}), ...guardrailCorrelationHeaders({ consultationId: consultationId ?? null }) },
         }),
       });
       this.jobMetrics.recordTextCallDuration(JobQueue.GeneratePreSummary, 'text', (Date.now() - textStart) / 1000);
