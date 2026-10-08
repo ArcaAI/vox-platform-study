@@ -86,9 +86,31 @@ describe('fact ledger — guardrail attribution on the extraction call', () => {
     };
     const service = new FactLedgerService(
       repo as never,
-      { resolve: vi.fn(async () => ({ slug: FACT_LEDGER_AGENT_SLUG, versionNumber: 1, agentVersionId: 'v1', agentId: 'a1', task: 'TEXT_GENERATION' })) } as never,
-      { invokeText: vi.fn(async () => ({ text: JSON.stringify({ facts: [] }), model: 'm', provider: 'p', usage: null, promptFragments: null, guardrailNotices: [warning] })) } as never,
-      { upsertEncounterArtifact: vi.fn(async (input: { type: string }) => ({ contextItemId: input.type === 'FACT_LEDGER' ? 'ledger' : 'recap', versionNumber: 2 })) } as never,
+      {
+        resolve: vi.fn(async () => ({
+          slug: FACT_LEDGER_AGENT_SLUG,
+          versionNumber: 1,
+          agentVersionId: 'v1',
+          agentId: 'a1',
+          task: 'TEXT_GENERATION',
+        })),
+      } as never,
+      {
+        invokeText: vi.fn(async () => ({
+          text: JSON.stringify({ facts: [] }),
+          model: 'm',
+          provider: 'p',
+          usage: null,
+          promptFragments: null,
+          guardrailNotices: [warning],
+        })),
+      } as never,
+      {
+        upsertEncounterArtifact: vi.fn(async (input: { type: string }) => ({
+          contextItemId: input.type === 'FACT_LEDGER' ? 'ledger' : 'recap',
+          versionNumber: 2,
+        })),
+      } as never,
       undefined,
       { record: vi.fn(async () => undefined) } as never,
     );

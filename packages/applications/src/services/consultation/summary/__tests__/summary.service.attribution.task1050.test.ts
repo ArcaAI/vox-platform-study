@@ -34,7 +34,16 @@ const createMockContextItemRepository = () => ({
   findLatestRawSummary: vi.fn(),
   findLatestPreSummary: vi.fn(),
   findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
-  create: vi.fn().mockResolvedValue({ id: 'ctx-new', consultationId: 'c-1', guardrailStatus: 'CLEAN', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
+  create: vi
+    .fn()
+    .mockResolvedValue({
+      id: 'ctx-new',
+      consultationId: 'c-1',
+      guardrailStatus: 'CLEAN',
+      content: 'S',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
   setGuardrailStatus: vi.fn().mockResolvedValue(undefined),
   update: vi.fn(),
   encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),

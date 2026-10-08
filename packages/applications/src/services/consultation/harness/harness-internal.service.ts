@@ -128,6 +128,7 @@ import type {
 } from './dto';
 import { GUARDRAIL_WITHHELD_SUBTYPE, HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
 import { isGuardrailExcludedItem, loadGuardrailExcludedItemIds } from '../../guardrail-notice/guardrail-item-exclusion';
+import { markOverrideReleasedItem } from '../../guardrail-notice/guardrail-override-release';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import { NOTE_READY_REASON } from '../lifecycle/legacy-status-projection';
 import { noteComposedSystem, styleReferenceBackground } from './note-plan-governance';
@@ -2013,6 +2014,28 @@ export class HarnessInternalService extends BaseService {
     return { contextItemId: saved.id };
   }
 
+  /**
+   * TASK-1050 follow-up F — `markOverrideReleasedItem` for the note just created. Best-effort: the note
+   * is persisted, and a marker failure must never cost the clinician it. Unwired notices ⇒ nothing.
+   */
+  private async markIfOverrideReleased(
+    consultation: ConsultationEntity | null,
+    item: { id: string; tenantId: string; consultationId?: string | null; guardrailStatus?: string | null; createdAt?: Date | null },
+  ): Promise<void> {
+    if (!this.guardrailNotices) return;
+    try {
+      await markOverrideReleasedItem({ notices: this.guardrailNotices, contextItems: this.contextItemRepository }, item, {
+        runId: readGoverningEngineMarker(consultation?.metadata)?.workflowRunId ?? null,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Could not mark an override-released note',
+        contextItemId: item.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async persistDraft(consultationId: string, dto: HarnessDraftRequest, idempotencyKey?: string): Promise<HarnessDraftResponse> {
     const tenantId = dto.tenantId;
     if (!tenantId) {
@@ -2183,6 +2206,9 @@ export class HarnessInternalService extends BaseService {
           const savedContext = await this.contextItemRepository.create(contextItem);
           contextItemId = savedContext?.id ?? contextItem.id;
           versionNumber = 1;
+          // TASK-1050 follow-up F — a note released by an `acknowledged` override of an outbound block
+          // is persisted HERE, by the paused node's re-run: mark it WARNED, scoped to the governing run.
+          await this.markIfOverrideReleased(consultation, savedContext ?? contextItem);
 
           // Capture the immutable AI-draft `v1` snapshot at
           // this (harness/optimistic) generation boundary too, so the DNA

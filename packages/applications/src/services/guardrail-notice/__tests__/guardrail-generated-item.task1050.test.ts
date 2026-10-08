@@ -43,11 +43,7 @@ describe('markGeneratedItemFromNotices', () => {
 
   it('unverified, inbound, and another consultation`s notices add no marker', async () => {
     const d = deps();
-    const none = [
-      notice({ type: 'guardrail.unverified', action: 'warn' }),
-      notice({ direction: 'inbound' }),
-      notice({ consultationId: 'c-2' }),
-    ];
+    const none = [notice({ type: 'guardrail.unverified', action: 'warn' }), notice({ direction: 'inbound' }), notice({ consultationId: 'c-2' })];
     await expect(markGeneratedItemFromNotices(d, item(), none as never)).resolves.toBe(false);
     expect(d.contextItems.setGuardrailStatus).not.toHaveBeenCalled();
   });

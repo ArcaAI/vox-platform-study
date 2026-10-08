@@ -22,7 +22,12 @@ function buildProcessor() {
     findById: vi.fn(),
     create: vi
       .fn()
-      .mockImplementation(async (entity: { content?: string }) => ({ id: 'ctx-1', consultationId: 'consult-1', guardrailStatus: 'CLEAN', content: entity.content })),
+      .mockImplementation(async (entity: { content?: string }) => ({
+        id: 'ctx-1',
+        consultationId: 'consult-1',
+        guardrailStatus: 'CLEAN',
+        content: entity.content,
+      })),
     setGuardrailStatus: vi.fn().mockResolvedValue(undefined),
     encryptContentIntoEntity: vi.fn(),
   };
