@@ -145,10 +145,6 @@ TRUST_DATA: Final = "data"
 REGION_RESPONSE: Final = "response"
 REGION_PROMPT: Final = "prompt"
 
-#: The reason on an outbound check that FLAGGED but is record-only for the tenant
-#: (FC-5c). Its outcome is `pass`; the flag rides on `data_findings`.
-REASON_RECORD_ONLY: Final = "recorded_as_finding"
-
 #: The moderation tasks each direction consults. The NAMES are part of the model
 #: contract; the LABELS behind each name come from the registry taxonomy.
 INBOUND_TASKS: Final = ("jailbreak_detection", "prompt_safety", "prompt_toxicity")
@@ -289,8 +285,10 @@ class CheckOutcome:
 
 @dataclass(frozen=True)
 class DataFinding:
-    """A `data` region on which ≥1 inbound check flagged (FC-5b), or the outbound
-    `response` on which ≥1 record-only check flagged (FC-5c). Names only, never text."""
+    """A `data` region on which ≥1 inbound check flagged (FC-5b). Names only, never text.
+
+    The outbound FC-5c finding (a record-only check) is retired with `outboundRecordOnlyChecks`
+    (TASK-1050 follow-up B): the outbound screen reports none."""
 
     region: str
     reasons: tuple[str, ...]
@@ -315,7 +313,7 @@ class GuardrailDecision:
     sanitization: SanitizationReport | None = None
     #: The delegated executor's OWN per-call usage, forwarded VERBATIM (TASK-878/G2).
     usage_detail: dict[str, Any] | None = None
-    #: FC-5b / FC-5c data findings (see the module docstring of TASK-1047).
+    #: FC-5b inbound data findings (`None` on the outbound screen since FC-5c was retired).
     data_findings: list[DataFinding] | None = None
     #: TASK-1050: `allow` | `warn` | `block` | `unverified` (`""` = same as `decision`).
     guardrail_decision: str = ""
@@ -547,7 +545,6 @@ class Screener:
         availability: GuardrailAvailability | None = None,
         window_geometry: WindowGeometry | None = None,
         window_runner: WindowRunner | None = None,
-        outbound_record_only: frozenset[str] = frozenset(),
         judge_runner: Any = None,
         judge_geometry: WindowGeometry | None = None,
         judge_bands: Mapping[str, tuple[float, float]] | None = None,
@@ -574,9 +571,6 @@ class Screener:
             policy_version=None,
             cache=None,
             concurrency=window_geometry.concurrency,
-        )
-        self.outbound_record_only = frozenset(
-            name for name in outbound_record_only if name in OUTBOUND_TASKS
         )
         # TASK-1050 judge lanes. No runner ⇒ an enabled judge lane is undetermined
         # (degrades to `unverified`), never a pass.
@@ -1471,7 +1465,6 @@ class Screener:
             direction=DIRECTION_OUTBOUND,
             items={REGION_RESPONSE: refs},
         )
-        checks, data_findings = self._record_only(checks)
         sources: list[str] | None
         if source_regions is not None:
             sources = [text for _key, text in source_regions if text and text.strip()]
@@ -1484,43 +1477,9 @@ class Screener:
         checks.extend(
             await self._outbound_judges(clean, checks, refs, prompt_context=prompt_context)
         )
-        return self._finish(DIRECTION_OUTBOUND, checks, report, data_findings)
-
-    def _record_only(
-        self, checks: list[CheckOutcome]
-    ) -> tuple[list[CheckOutcome], list[DataFinding] | None]:
-        """Turn a FLAG on a record-only outbound check into a finding (FC-5c).
-
-        A record-only check that flagged becomes a `pass` with reason
-        :data:`REASON_RECORD_ONLY` (its labels kept, its verdict still `flag`), its
-        action is `ignore`, and it is named in one ``data_findings`` item for region
-        ``response``. An UNDETERMINED check is untouched.
-        """
-        if not self.outbound_record_only:
-            return checks, None
-        kept: list[CheckOutcome] = []
-        recorded: list[str] = []
-        for check in checks:
-            if check.outcome == OUTCOME_FLAG and check.name in self.outbound_record_only:
-                recorded.append(check.name)
-                kept.append(
-                    dataclasses.replace(
-                        check,
-                        outcome=OUTCOME_PASS,
-                        reason=REASON_RECORD_ONLY,
-                        verdict=OUTCOME_FLAG,
-                        action=ACTION_IGNORE,
-                        action_taken=TAKEN_IGNORE,
-                        flagged_regions=(),
-                        flagged_items=(),
-                    )
-                )
-            else:
-                kept.append(check)
-        findings = (
-            [DataFinding(region=REGION_RESPONSE, reasons=tuple(recorded))] if recorded else []
-        )
-        return kept, findings
+        # TASK-1050 follow-up B: no record-only set any more — every outbound check decides at
+        # its configured action (`ignore` = recorded only), so there are no outbound findings.
+        return self._finish(DIRECTION_OUTBOUND, checks, report)
 
     async def _check_pii_leak(
         self, response: str, sources: list[str] | None, refs: tuple[ItemRef, ...] = ()

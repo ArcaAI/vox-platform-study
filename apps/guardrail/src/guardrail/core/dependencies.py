@@ -655,6 +655,29 @@ async def _resolve_availability(app_state: Any, tenant_id: str) -> Any:
         return PLATFORM_DEFAULT_AVAILABILITY
 
 
+#: `(task key, source tenant, key)` already logged by :func:`_log_retired_keys` in this process.
+_RETIRED_KEYS_LOGGED: set[tuple[str, str, str]] = set()
+
+
+def _log_retired_keys(policy: Any, task_key: str) -> None:
+    """Log — ONCE per row and key — a RETIRED policy key a stored row still carries.
+
+    The key is ignored (`core/policy.RETIRED_KEYS`): never read, never hashed. A row keeps it
+    only until its reseed, so this is information for the operator, never an error.
+    """
+    for key in getattr(policy, "retired_keys_present", ()) or ():
+        marker = (task_key, str(getattr(policy, "source_tenant_id", None)), key)
+        if marker in _RETIRED_KEYS_LOGGED:
+            continue
+        _RETIRED_KEYS_LOGGED.add(marker)
+        logger.info(
+            "guardrail.policy.retired_key_ignored",
+            key=key,
+            task_key=task_key,
+            source_tenant_id=getattr(policy, "source_tenant_id", None),
+        )
+
+
 async def build_screener(app_state: Any, tenant_id: str) -> Any:
     """Build the bidirectional screener for one tenant.
 
@@ -679,6 +702,7 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         raw_policy,
         source_tenant_id=getattr(safety_cfg, "source_tenant_id", None),
     )
+    _log_retired_keys(policy, TASK_KEY_GUARDRAIL_SAFETY)
     geometry = window_geometry_of(policy)
     availability = await _resolve_availability(app_state, tenant_id)
     # TASK-1050: a judge runner only when a judge lane is ON for this tenant — the
@@ -697,8 +721,6 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         availability=availability,
         window_geometry=geometry,
         window_runner=await build_window_runner(app_state, tenant_id, policy, geometry),
-        # TASK-1047 FC-5c: the outbound checks this tenant records instead of blocking.
-        outbound_record_only=policy.outbound_record_only_checks,
         judge_runner=judge_runner,
         judge_geometry=_judge_geometry(app_state, policy),
         # Bands are read through `GuardrailPolicy.judge_band` (fail-closed) by the screener.

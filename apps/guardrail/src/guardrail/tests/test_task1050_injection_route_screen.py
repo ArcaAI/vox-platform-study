@@ -289,9 +289,11 @@ async def test_outbound_jailbreak_routes_the_same_way() -> None:
     jailbreak = _check(decision, "jailbreak_detection")
     assert jailbreak.model == PG2
     assert jailbreak.verdict == "flag"
-    # Outbound jailbreak stays record-only by default (`outboundRecordOnlyChecks`, FC-5c).
-    assert jailbreak.outcome == "pass"
-    assert [f.reasons for f in decision.data_findings] == [("jailbreak_detection",)]
+    # TASK-1050 follow-up B: the FC-5c record-only default is retired — an outbound jailbreak
+    # flag takes the platform action (catalogue default `block`).
+    assert jailbreak.outcome == "flag"
+    assert jailbreak.action_taken == "block"
+    assert decision.data_findings is None
     assert _check(decision, "response_safety").model == GLIGUARD
 
 
