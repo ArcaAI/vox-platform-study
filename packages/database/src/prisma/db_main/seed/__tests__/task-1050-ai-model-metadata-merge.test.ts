@@ -87,6 +87,18 @@ describe('mergeSeedMetaDataForUpdate (pure)', () => {
     expect(mergeSeedMetaDataForUpdate(undefined, seed)).toEqual(seed);
   });
 
+  it('drops a RETIRED policy key (outboundRecordOnlyChecks) from policy and policyDefaults, keeping every other admin edit', () => {
+    const existing = {
+      policy: { outboundRecordOnlyChecks: ['response_safety'], injectionJudgeCriteria: 'ADMIN EDIT' },
+      policyDefaults: { outboundRecordOnlyChecks: ['response_safety'], injectionJudgeCriteria: 'old' },
+    };
+    const merged = mergeSeedMetaDataForUpdate(existing, seed) as Record<string, any>;
+    expect(merged.policy).not.toHaveProperty('outboundRecordOnlyChecks');
+    expect(merged.policyDefaults).not.toHaveProperty('outboundRecordOnlyChecks');
+    expect(merged.policy.injectionJudgeCriteria).toBe('ADMIN EDIT');
+    expect(existing.policy).toHaveProperty('outboundRecordOnlyChecks');
+  });
+
   it('is pure: neither input is mutated, and the result shares no policy/judge object with them', () => {
     const existing = { policy: { injectionJudgeCriteria: 'ADMIN EDIT' } };
     const before = structuredClone(existing);
