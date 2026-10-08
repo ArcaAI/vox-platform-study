@@ -312,15 +312,26 @@
       "editable": true
     },
     {
-      "key": "outboundRecordOnlyChecks",
-      "kind": "threshold",
+      "key": "classifierTimeoutSeconds",
+      "kind": "operational",
+      "type": "number",
+      "min": 1.0,
+      "max": 60.0,
+      "failMode": "open-to-default",
+      "taskKey": "guardrail.safety",
+      "inPolicyVersion": false,
+      "editable": true
+    },
+    {
+      "key": "piiLeakQuasiIdentifierLabels",
+      "kind": "operational",
       "type": "string[]",
       "min": null,
       "max": null,
       "failMode": "open-to-default",
-      "taskKey": "guardrail.safety",
+      "taskKey": "guardrail.pii",
       "inPolicyVersion": true,
-      "editable": false
+      "editable": true
     },
     {
       "key": "medicalJudgeConfigRegions",

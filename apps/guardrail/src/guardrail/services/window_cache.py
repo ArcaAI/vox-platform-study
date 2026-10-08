@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from collections.abc import Callable, Sequence
 from typing import Any, Final
 
 from guardrail.core.logging import get_logger
@@ -55,6 +56,24 @@ def window_cache_key(
     message = _SEP.join((policy_version, model_id, task, window_text)).encode("utf-8")
     digest = hmac.new(_tenant_key(secret, tenant_id), message, hashlib.sha256).hexdigest()
     return f"{CACHE_KEY_PREFIX}:{task}:{digest}"
+
+
+def answers_every_task(tasks: Sequence[str]) -> Callable[[dict[str, Any]], bool]:
+    """A completeness predicate for a CLASSIFY verdict (TASK-1050 follow-up I).
+
+    True when the verdict's ``labels`` name every task in ``tasks`` — the tasks the request
+    actually asked the model for. An answer that omits one (a peer that answered ``{}``, a
+    dropped task) must never be stored, and such an entry already in the cache is a miss:
+    otherwise every later screen of that window reads the task as `not_in_taxonomy` until the
+    TTL expires. Applied by `WindowRunner.run(complete=…)`.
+    """
+    wanted = tuple(tasks)
+
+    def _complete(value: dict[str, Any]) -> bool:
+        labels = value.get("labels") if isinstance(value, dict) else None
+        return isinstance(labels, dict) and all(task in labels for task in wanted)
+
+    return _complete
 
 
 class WindowVerdictCache:

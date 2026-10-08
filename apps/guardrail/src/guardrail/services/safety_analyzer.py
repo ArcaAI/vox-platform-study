@@ -151,6 +151,21 @@ class SafetyAnalyzer:
         injection = tuple(name for name in task_names if self._routed(name))
         return [group for group in (safety, injection) if group]
 
+    def declared_tasks(self, task_names: Sequence[str]) -> tuple[str, ...]:
+        """The subset of ``task_names`` a classify call actually SENDS, in caller order.
+
+        A task is sent only when the model that answers it declares a spec for it
+        (`_ask_safety` / `_ask_injection`); an undeclared task is simply absent from the
+        answer, which is not an omission. TASK-1050 follow-up I: the window cache stores a
+        classify answer only when it names every declared task.
+        """
+        injection = self._injection.tasks if self._injection is not None else {}
+        return tuple(
+            name
+            for name in task_names
+            if (name in injection if self._routed(name) else name in self.policy.tasks)
+        )
+
     def benign_labels_for(self, task: str) -> frozenset[str]:
         """The labels that mean "clean" for ``task`` — read off the model that answers it."""
         if self._routed(task) and self._injection is not None:

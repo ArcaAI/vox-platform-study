@@ -154,6 +154,8 @@ async def test_record_shape_matches_the_frozen_fixture() -> None:
         "latencyMs": 0,
         "regionKeys": [],
         "items": [],
+        # TASK-1050 follow-up H: a skipped check explains itself.
+        "reason": "not_selected_for_tenant",
     }
     # The medical check is the medical route's own record, never invented here.
     assert "medical_validation" not in by_id

@@ -383,6 +383,7 @@ def _nlp_client(
     labels: list[str] | None = None,
     threshold: float = 0.5,
     deadline_s: float,
+    classifier_timeout_s: float | None = None,
 ) -> NlpGuardClientT:
     """Build a tenant-bound `apps/nlp` client for one resolved selection.
 
@@ -390,7 +391,9 @@ def _nlp_client(
     call's budget, every attempt included. It replaced the judge's
     ``guardrail.judge.timeoutSeconds`` here: an NLP window and an 8B-model
     judgement have nothing in common but the word "peer". A row's own
-    ``configJson`` timeout may only SHORTEN it, never extend it.
+    ``configJson`` timeout may only SHORTEN it, never extend it — and so may
+    ``classifier_timeout_s`` (the `guardrail.safety` row's ``classifierTimeoutSeconds``,
+    TASK-1050 follow-up G), passed for the three CLASSIFIER clients only; ``None`` = no opinion.
     """
     from guardrail.services.external_nlp_client import NlpGuardClient
 
@@ -412,8 +415,12 @@ def _nlp_client(
         # TASK-1050 / TASK-1049 Track R: the row's serving library, so apps/nlp binds
         # the loader the platform admin chose (e.g. `seq-cls`), never a guessed one.
         **_library_kwarg(NlpGuardClient, getattr(cfg, "library_name", None)),
-        timeout_s=(
-            min(float(cfg.timeout_s), float(deadline_s)) if cfg.timeout_s else float(deadline_s)
+        timeout_s=min(
+            [
+                float(deadline_s),
+                *([float(cfg.timeout_s)] if cfg.timeout_s else []),
+                *([float(classifier_timeout_s)] if classifier_timeout_s else []),
+            ]
         ),
         breaker=_breaker(app_state, "nlp"),
     )
@@ -496,16 +503,22 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             policy_kwargs[key] = float(value)
 
     policy = SafetyPolicy(**policy_kwargs)
-    deadline_s = _row_policy(safety_cfg).nlp_deadline_seconds
+    safety_policy = _row_policy(safety_cfg)
+    deadline_s = safety_policy.nlp_deadline_seconds
+    # Follow-up G: one classifier budget, on the `guardrail.safety` row, for all three clients.
+    classifier_timeout_s = safety_policy.classifier_timeout_seconds
     return SafetyAnalyzer(
         policy,
-        injection=await _resolve_injection_route(app_state, tenant_id),
+        injection=await _resolve_injection_route(
+            app_state, tenant_id, classifier_timeout_s=classifier_timeout_s
+        ),
         safety_client=_nlp_client(
             app_state,
             tenant_id,
             safety_cfg,
             threshold=policy.classification_threshold,
             deadline_s=deadline_s,
+            classifier_timeout_s=classifier_timeout_s,
         ),
         pii_client=_nlp_client(
             app_state,
@@ -514,11 +527,14 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             labels=policy.pii_labels,
             threshold=policy.pii_threshold,
             deadline_s=_row_policy(pii_cfg).nlp_deadline_seconds,
+            classifier_timeout_s=classifier_timeout_s,
         ),
     )
 
 
-async def _resolve_injection_route(app_state: Any, tenant_id: str) -> Any:
+async def _resolve_injection_route(
+    app_state: Any, tenant_id: str, *, classifier_timeout_s: float | None = None
+) -> Any:
     """The `guardrail.injection` route for ``tenant_id`` (TASK-1049 R1), or ``None``.
 
     ``None`` ONLY when no row resolves at either tier — `jailbreak_detection` then stays
@@ -588,6 +604,7 @@ async def _resolve_injection_route(app_state: Any, tenant_id: str) -> Any:
                 else SafetyPolicy.classification_threshold
             ),
             deadline_s=_row_policy(cfg).nlp_deadline_seconds,
+            classifier_timeout_s=classifier_timeout_s,
         ),
     )
 
@@ -655,6 +672,29 @@ async def _resolve_availability(app_state: Any, tenant_id: str) -> Any:
         return PLATFORM_DEFAULT_AVAILABILITY
 
 
+#: `(task key, source tenant, key)` already logged by :func:`_log_retired_keys` in this process.
+_RETIRED_KEYS_LOGGED: set[tuple[str, str, str]] = set()
+
+
+def _log_retired_keys(policy: Any, task_key: str) -> None:
+    """Log — ONCE per row and key — a RETIRED policy key a stored row still carries.
+
+    The key is ignored (`core/policy.RETIRED_KEYS`): never read, never hashed. A row keeps it
+    only until its reseed, so this is information for the operator, never an error.
+    """
+    for key in getattr(policy, "retired_keys_present", ()) or ():
+        marker = (task_key, str(getattr(policy, "source_tenant_id", None)), key)
+        if marker in _RETIRED_KEYS_LOGGED:
+            continue
+        _RETIRED_KEYS_LOGGED.add(marker)
+        logger.info(
+            "guardrail.policy.retired_key_ignored",
+            key=key,
+            task_key=task_key,
+            source_tenant_id=getattr(policy, "source_tenant_id", None),
+        )
+
+
 async def build_screener(app_state: Any, tenant_id: str) -> Any:
     """Build the bidirectional screener for one tenant.
 
@@ -669,16 +709,19 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
     """
     from guardrail.core.availability import JUDGE_IDS
     from guardrail.core.policy import GuardrailPolicy
-    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_PII, TASK_KEY_GUARDRAIL_SAFETY
     from guardrail.services.screening import Screener
 
     analyzer = await build_safety_analyzer(app_state, tenant_id)
     safety_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
+    # Follow-up A: the quasi-identifier list is the PII row's own (its label names).
+    pii_policy = _row_policy(await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_PII))
     raw_policy = getattr(safety_cfg, "policy", None)
     policy = GuardrailPolicy.from_blob(
         raw_policy,
         source_tenant_id=getattr(safety_cfg, "source_tenant_id", None),
     )
+    _log_retired_keys(policy, TASK_KEY_GUARDRAIL_SAFETY)
     geometry = window_geometry_of(policy)
     availability = await _resolve_availability(app_state, tenant_id)
     # TASK-1050: a judge runner only when a judge lane is ON for this tenant — the
@@ -697,13 +740,12 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         availability=availability,
         window_geometry=geometry,
         window_runner=await build_window_runner(app_state, tenant_id, policy, geometry),
-        # TASK-1047 FC-5c: the outbound checks this tenant records instead of blocking.
-        outbound_record_only=policy.outbound_record_only_checks,
         judge_runner=judge_runner,
         judge_geometry=_judge_geometry(app_state, policy),
         # Bands are read through `GuardrailPolicy.judge_band` (fail-closed) by the screener.
         screen_policy=policy,
         medical_skip=policy.medical_judge_config_regions,
+        pii_leak_quasi_identifier_labels=pii_policy.pii_leak_quasi_identifier_labels,
         policy_version=await _policy_version_or_unavailable(app_state, tenant_id),
     )
 

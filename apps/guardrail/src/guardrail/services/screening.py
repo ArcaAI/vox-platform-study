@@ -82,6 +82,7 @@ from guardrail.services.injection_defense import (
 )
 from guardrail.services.pii_extraction import windowed_spans
 from guardrail.services.safety_analyzer import _DEFAULT_BENIGN as _ANALYZER_DEFAULT_BENIGN
+from guardrail.services.window_cache import answers_every_task
 from guardrail.services.windowing import WindowGeometry, WindowRunner, region_windows
 
 logger = get_logger(__name__)
@@ -144,10 +145,6 @@ TRUST_DATA: Final = "data"
 #: single-`text` inbound request is screened as.
 REGION_RESPONSE: Final = "response"
 REGION_PROMPT: Final = "prompt"
-
-#: The reason on an outbound check that FLAGGED but is record-only for the tenant
-#: (FC-5c). Its outcome is `pass`; the flag rides on `data_findings`.
-REASON_RECORD_ONLY: Final = "recorded_as_finding"
 
 #: The moderation tasks each direction consults. The NAMES are part of the model
 #: contract; the LABELS behind each name come from the registry taxonomy.
@@ -289,8 +286,10 @@ class CheckOutcome:
 
 @dataclass(frozen=True)
 class DataFinding:
-    """A `data` region on which ≥1 inbound check flagged (FC-5b), or the outbound
-    `response` on which ≥1 record-only check flagged (FC-5c). Names only, never text."""
+    """A `data` region on which ≥1 inbound check flagged (FC-5b). Names only, never text.
+
+    The outbound FC-5c finding (a record-only check) is retired with `outboundRecordOnlyChecks`
+    (TASK-1050 follow-up B): the outbound screen reports none."""
 
     region: str
     reasons: tuple[str, ...]
@@ -315,7 +314,7 @@ class GuardrailDecision:
     sanitization: SanitizationReport | None = None
     #: The delegated executor's OWN per-call usage, forwarded VERBATIM (TASK-878/G2).
     usage_detail: dict[str, Any] | None = None
-    #: FC-5b / FC-5c data findings (see the module docstring of TASK-1047).
+    #: FC-5b inbound data findings (`None` on the outbound screen since FC-5c was retired).
     data_findings: list[DataFinding] | None = None
     #: TASK-1050: `allow` | `warn` | `block` | `unverified` (`""` = same as `decision`).
     guardrail_decision: str = ""
@@ -547,13 +546,13 @@ class Screener:
         availability: GuardrailAvailability | None = None,
         window_geometry: WindowGeometry | None = None,
         window_runner: WindowRunner | None = None,
-        outbound_record_only: frozenset[str] = frozenset(),
         judge_runner: Any = None,
         judge_geometry: WindowGeometry | None = None,
         judge_bands: Mapping[str, tuple[float, float]] | None = None,
         policy_version: str = "",
         screen_policy: GuardrailPolicy | None = None,
         medical_skip: frozenset[str] = frozenset(),
+        pii_leak_quasi_identifier_labels: frozenset[str] = frozenset(),
     ) -> None:
         if not (tenant_id or "").strip():
             raise ValueError("Screener requires a tenant: decisions must be attributable")
@@ -575,9 +574,6 @@ class Screener:
             cache=None,
             concurrency=window_geometry.concurrency,
         )
-        self.outbound_record_only = frozenset(
-            name for name in outbound_record_only if name in OUTBOUND_TASKS
-        )
         # TASK-1050 judge lanes. No runner ⇒ an enabled judge lane is undetermined
         # (degrades to `unverified`), never a pass.
         self.judge_runner = judge_runner
@@ -588,6 +584,11 @@ class Screener:
         self._screen_policy = screen_policy
         #: The region keys the medical lane skips (`medicalJudgeConfigRegions`).
         self.medical_skip = frozenset(medical_skip)
+        #: `piiLeakQuasiIdentifierLabels` (follow-up A), case-folded: a pii_leak flag on these
+        #: labels ALONE is taken at `warn` under a `block` action. Empty ⇒ no downgrade.
+        self.pii_leak_quasi_identifier_labels = frozenset(
+            label.strip().casefold() for label in pii_leak_quasi_identifier_labels if label.strip()
+        )
         self.policy_version = policy_version
 
     @property
@@ -659,6 +660,17 @@ class Screener:
             reason=reason,
         )
 
+    def _asked_tasks(self, tasks: tuple[str, ...]) -> tuple[str, ...]:
+        """The tasks a classify call over ``tasks`` actually SENDS (the model declares them).
+
+        Read off the analyzer (`SafetyAnalyzer.declared_tasks`); an analyzer that does not say
+        is taken to send every task — the strict reading, so an omission is never cached.
+        """
+        getter = getattr(self._analyzer, "declared_tasks", None)
+        if callable(getter):
+            return tuple(getter(tasks))
+        return tasks
+
     def _scored_seam(self) -> Any:
         seam = getattr(self._analyzer, "classify_tasks_scored", None)
         return seam if inspect.iscoroutinefunction(seam) else None
@@ -710,7 +722,12 @@ class Screener:
             return {"labels": labels, "scores": scores}
 
         verdicts = await self.window_runner.run(
-            f"classify:{','.join(selected)}", model, windows, _compute
+            f"classify:{','.join(selected)}",
+            model,
+            windows,
+            _compute,
+            # Follow-up I: an answer that omits a task this call asked for is never cached.
+            complete=answers_every_task(self._asked_tasks(selected)),
         )
         per_labels: list[list[dict[str, list[str]]]] = [[] for _ in range(max(1, len(texts)))]
         per_scores: list[list[dict[str, float]]] = [[] for _ in range(max(1, len(texts)))]
@@ -1471,7 +1488,6 @@ class Screener:
             direction=DIRECTION_OUTBOUND,
             items={REGION_RESPONSE: refs},
         )
-        checks, data_findings = self._record_only(checks)
         sources: list[str] | None
         if source_regions is not None:
             sources = [text for _key, text in source_regions if text and text.strip()]
@@ -1484,43 +1500,9 @@ class Screener:
         checks.extend(
             await self._outbound_judges(clean, checks, refs, prompt_context=prompt_context)
         )
-        return self._finish(DIRECTION_OUTBOUND, checks, report, data_findings)
-
-    def _record_only(
-        self, checks: list[CheckOutcome]
-    ) -> tuple[list[CheckOutcome], list[DataFinding] | None]:
-        """Turn a FLAG on a record-only outbound check into a finding (FC-5c).
-
-        A record-only check that flagged becomes a `pass` with reason
-        :data:`REASON_RECORD_ONLY` (its labels kept, its verdict still `flag`), its
-        action is `ignore`, and it is named in one ``data_findings`` item for region
-        ``response``. An UNDETERMINED check is untouched.
-        """
-        if not self.outbound_record_only:
-            return checks, None
-        kept: list[CheckOutcome] = []
-        recorded: list[str] = []
-        for check in checks:
-            if check.outcome == OUTCOME_FLAG and check.name in self.outbound_record_only:
-                recorded.append(check.name)
-                kept.append(
-                    dataclasses.replace(
-                        check,
-                        outcome=OUTCOME_PASS,
-                        reason=REASON_RECORD_ONLY,
-                        verdict=OUTCOME_FLAG,
-                        action=ACTION_IGNORE,
-                        action_taken=TAKEN_IGNORE,
-                        flagged_regions=(),
-                        flagged_items=(),
-                    )
-                )
-            else:
-                kept.append(check)
-        findings = (
-            [DataFinding(region=REGION_RESPONSE, reasons=tuple(recorded))] if recorded else []
-        )
-        return kept, findings
+        # TASK-1050 follow-up B: no record-only set any more — every outbound check decides at
+        # its configured action (`ignore` = recorded only), so there are no outbound findings.
+        return self._finish(DIRECTION_OUTBOUND, checks, report)
 
     async def _check_pii_leak(
         self, response: str, sources: list[str] | None, refs: tuple[ItemRef, ...] = ()
@@ -1572,17 +1554,43 @@ class Screener:
                 # The LABEL is recorded, never the fragment — the fragment is the PHI.
                 leaked.append(str(span.label))
 
+        latency_ms = int((time.monotonic() - started) * 1000)
+        if not leaked:
+            return CheckOutcome(
+                name=name,
+                outcome=OUTCOME_PASS,
+                fail_mode=_DECLARED_FAIL_MODES[name],
+                model=self._model(name),
+                latency_ms=latency_ms,
+                region_keys=(REGION_RESPONSE,),
+                items=refs,
+            )
+        action = self._availability.action_for(name, DIRECTION_OUTBOUND)
+        taken = action_taken_for(OUTCOME_FLAG, action)
+        quasi_only = bool(self.pii_leak_quasi_identifier_labels) and all(
+            label.strip().casefold() in self.pii_leak_quasi_identifier_labels for label in leaked
+        )
+        if taken == TAKEN_BLOCK and quasi_only:
+            # Follow-up A: quasi-identifiers alone warn — never stricter than configured, and an
+            # unlisted label (a direct identifier, a secret) keeps the configured action.
+            taken = TAKEN_WARN
+        acted = taken != TAKEN_NONE
         return CheckOutcome(
             name=name,
-            outcome=OUTCOME_FLAG if leaked else OUTCOME_PASS,
+            outcome=OUTCOME_FLAG,
             fail_mode=_DECLARED_FAIL_MODES[name],
             model=self._model(name),
-            reason="pii_absent_from_source" if leaked else "",
+            reason="pii_absent_from_source",
             labels=tuple(leaked),
-            category=leaked[0] if leaked else None,
-            latency_ms=int((time.monotonic() - started) * 1000),
+            verdict=OUTCOME_FLAG,
+            action=action,
+            action_taken=taken,
+            category=leaked[0],
+            latency_ms=latency_ms,
             region_keys=(REGION_RESPONSE,),
+            flagged_regions=(REGION_RESPONSE,) if acted else (),
             items=refs,
+            flagged_items=refs if acted else (),
         )
 
     def _check_containment_echo(

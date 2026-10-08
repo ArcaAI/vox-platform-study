@@ -32,7 +32,7 @@ import hashlib
 import json
 from typing import Any, Final
 
-from guardrail.core.policy import OPERATIONAL_KEYS, GuardrailPolicy
+from guardrail.core.policy import OPERATIONAL_KEYS, RETIRED_KEYS, GuardrailPolicy
 
 #: Represented by the EFFECTIVE geometry instead of their raw values, so a value
 #: that resolves to the default hashes exactly like the default.
@@ -41,7 +41,9 @@ _GEOMETRY_KEYS: Final = frozenset({"screenWindowChars", "screenWindowOverlapChar
 #: Bump when screening CODE changes what a verdict means (window semantics, the
 #: merge rule, a task's role) without any configuration moving.
 #: task-1050.1: the judge's user turn is enveloped (M-1) and judge lanes combine per model.
-SCREEN_CONTRACT_VERSION: Final = "task-1050.1"
+#: task-1050.2: outbound checks follow the configured action (record-only retired), a pii_leak on
+#: quasi-identifiers alone warns, and one notice is raised per (direction, type, target).
+SCREEN_CONTRACT_VERSION: Final = "task-1050.2"
 
 #: Every routing selection whose row can change a screening verdict. The four judge-lane keys
 #: (TASK-1050 §12) are here so a lane switching model — or its model's criteria, parameters or
@@ -82,7 +84,11 @@ def _selection_component(cfg: Any) -> dict[str, Any] | None:
         "judge": getattr(cfg, "judge", None),
         "libraryName": getattr(cfg, "library_name", None),
         "policy": {
-            k: v for k, v in blob.items() if k not in OPERATIONAL_KEYS and k not in _GEOMETRY_KEYS
+            k: v
+            for k, v in blob.items()
+            # A RETIRED key decides nothing, so a row that still carries one (until its reseed)
+            # hashes exactly like the reseeded row.
+            if k not in OPERATIONAL_KEYS and k not in _GEOMETRY_KEYS and k not in RETIRED_KEYS
         },
     }
 

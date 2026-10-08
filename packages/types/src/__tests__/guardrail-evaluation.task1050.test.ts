@@ -12,6 +12,7 @@ import {
   GUARDRAIL_EVALUATION_BATCH_MAX,
   GUARDRAIL_EVALUATION_EXEMPTIONS,
   type GuardrailEvaluationBatchRequest,
+  type GuardrailEvaluationCheck,
   type GuardrailEvaluationRecord,
 } from '../guardrail-evaluation.js';
 import {
@@ -49,7 +50,19 @@ const RECORD_KEYS = new Set<keyof GuardrailEvaluationRecord>([
   'withheldContent',
   'occurredAt',
 ]);
-const CHECK_KEYS = new Set(['checkId', 'verdict', 'score', 'category', 'confidence', 'actionTaken', 'model', 'latencyMs', 'regionKeys', 'items']);
+const CHECK_KEYS = new Set<keyof GuardrailEvaluationCheck>([
+  'checkId',
+  'verdict',
+  'score',
+  'category',
+  'confidence',
+  'actionTaken',
+  'model',
+  'latencyMs',
+  'regionKeys',
+  'items',
+  'reason',
+]);
 
 describe('guardrail evaluation batch — fixture conforms to the frozen shape', () => {
   it('batch limit', () => {
@@ -68,7 +81,7 @@ describe('guardrail evaluation batch — fixture conforms to the frozen shape', 
       // withheld content exists only for an outbound block (README §9.7.6).
       if (record.withheldContent !== undefined) expect([record.direction, record.decision]).toEqual(['outbound', 'block']);
       for (const check of record.checks) {
-        for (const key of Object.keys(check)) expect(CHECK_KEYS.has(key), key).toBe(true);
+        for (const key of Object.keys(check)) expect(CHECK_KEYS.has(key as keyof GuardrailEvaluationCheck), key).toBe(true);
         expect(GUARDRAIL_CHECK_IDS).toContain(check.checkId);
         expect(GUARDRAIL_CHECK_VERDICTS).toContain(check.verdict);
         expect(GUARDRAIL_ACTIONS_TAKEN).toContain(check.actionTaken);
@@ -76,4 +89,22 @@ describe('guardrail evaluation batch — fixture conforms to the frozen shape', 
       }
     },
   );
+});
+
+describe('guardrail evaluation check — reason (TASK-1050 follow-up H)', () => {
+  const checks = fixture.batch.evaluations.flatMap((record) => record.checks);
+
+  it('a skipped, undetermined or recorded-only check explains itself; any other carries no reason', () => {
+    for (const check of checks) {
+      const explained =
+        check.verdict === 'skipped' || check.verdict === 'undetermined' || (check.verdict === 'flag' && check.actionTaken === 'ignore');
+      expect(check.reason !== undefined, check.checkId).toBe(explained);
+      if (explained) expect(typeof check.reason === 'string' && check.reason.length > 0).toBe(true);
+    }
+  });
+
+  it('the fixture exercises both a skipped and an undetermined reason', () => {
+    expect(checks.some((check) => check.verdict === 'skipped' && check.reason)).toBe(true);
+    expect(checks.some((check) => check.verdict === 'undetermined' && check.reason)).toBe(true);
+  });
 });

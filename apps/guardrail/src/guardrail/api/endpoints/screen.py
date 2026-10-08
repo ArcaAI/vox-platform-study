@@ -242,10 +242,9 @@ class ScreenResponse(BaseModel):
     #: TASK-1047 FC-5b: inbound `regions` requests carrying ≥1 `data` region — one
     #: item per data region with a flagged check (reported, never blocking). `[]`
     #: when nothing flagged; `null` when no `data` region was sent.
-    #: TASK-1047 FC-5c: on the OUTBOUND screen, `[{region: "response", reasons}]`
-    #: names the record-only checks (`outboundRecordOnlyChecks`) that flagged — they
-    #: did not block. `[]` when none flagged; `null` when the tenant's record-only
-    #: set is empty.
+    #: On the OUTBOUND screen it is always `null`: the FC-5c record-only set
+    #: (`outboundRecordOnlyChecks`) is retired (TASK-1050 follow-up B) and every outbound
+    #: check decides at its configured action.
     data_findings: list[DataFindingModel] | None = None
     #: TASK-1050: `allow` | `warn` | `block` | `unverified` (block > warn > unverified >
     #: allow). `decision` above stays BINARY — `warn` / `unverified` read `allow` there —

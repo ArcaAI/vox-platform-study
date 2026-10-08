@@ -39,6 +39,7 @@ from prometheus_client import Counter
 from guardrail.core.availability import CATALOGUE_DEFAULTS, MEDICAL_VALIDATION
 from guardrail.core.logging import get_logger
 from guardrail.services.notices import GuardrailCorrelation
+from guardrail.services.screening import REASON_NOT_SELECTED
 
 logger = get_logger(__name__)
 
@@ -95,6 +96,10 @@ def uuid7() -> str:
     return str(uuid.UUID(int=value))
 
 
+#: The `reason` of a flag taken at `ignore` — recorded only, never acted on (follow-up H).
+REASON_RECORDED_AS_FINDING: Final = "recorded_as_finding"
+
+
 def _items(refs: Sequence[tuple[str, int]]) -> list[dict[str, Any]]:
     return [{"itemId": str(item_id), "itemVersion": int(version)} for item_id, version in refs]
 
@@ -118,6 +123,12 @@ def _check_record(check: Any) -> dict[str, Any]:
             "items": _items(check.items) if ran else [],
         }
     )
+    # Follow-up H (additive): why a check did not act — a skipped / undetermined check's own
+    # reason code, or `recorded_as_finding` for a flag taken at `ignore`. Never on any other.
+    if verdict in ("skipped", "undetermined") and check.reason:
+        entry["reason"] = str(check.reason)
+    elif verdict == "flag" and entry["actionTaken"] == "ignore":
+        entry["reason"] = REASON_RECORDED_AS_FINDING
     if getattr(check, "override_notice_id", None):
         # Additive (contract amendment 5d0760a60): this block was downgraded to a warn by
         # a VERIFIED `X-Hope-Guardrail-Override` naming this resolved notice.
@@ -135,6 +146,8 @@ def _skipped_record(check_id: str) -> dict[str, Any]:
         "latencyMs": 0,
         "regionKeys": [],
         "items": [],
+        # A declared check the screen never produced is one this tenant did not turn on.
+        "reason": REASON_NOT_SELECTED,
     }
 
 

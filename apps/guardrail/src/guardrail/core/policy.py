@@ -54,6 +54,7 @@ NLP_MAX_INPUT_CHARS: Final = 8_192
 #: identifiers (the TS worker seeds the same strings), not configuration.
 _VALIDATE: Final = "guardrail.validate"
 _SAFETY: Final = "guardrail.safety"
+_PII: Final = "guardrail.pii"
 _GROUNDEDNESS: Final = "guardrail.groundedness"
 _JUDGE_INJECTION: Final = "guardrail.judge.injection"
 _JUDGE_UNSAFE_CONTENT: Final = "guardrail.judge.unsafe_content"
@@ -352,23 +353,29 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # lives inside it, and an attempt that may still be running is never retried.
     # TASK-1050: also the deadline of a `qwen3guard_native` judge call, read off THAT row.
     "nlpDeadlineSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 30.0, 1.0, 600.0, kind=KIND_OPERATIONAL),
-    # outbound record-only checks (TASK-1047 FC-5c, owner decision OD-14)
-    #
-    # Outbound checks whose FLAG is recorded as a finding (`data_findings` on the
-    # response, `guardrail_data_findings_total`, `guardrail.screen.data_findings`)
-    # instead of blocking. Every check still RUNS; an UNDETERMINED one still blocks.
-    # Only names in `OUTBOUND_TASKS` are honoured (`outbound_record_only_checks`).
-    # It DECIDES an outbound verdict, so it is NOT operational: its raw value rides
-    # the policy blob into the policy version. Flipping a check back to blocking is
-    # a config edit on the SYSTEM row (`[]` makes every outbound check blocking).
-    #
-    # Not platform-editable through the policy-key API (TASK-1050 §11.1): it names CODE identifiers
-    # (check ids), and per-check violation handling now lives on the tenant policy's `action`.
-    "outboundRecordOnlyChecks": _KeySpec(
+    # TASK-1050 follow-up G (owner, 2026-10-08) — the per-call budget of the three CLASSIFIER
+    # clients (`guardrail.safety`, `guardrail.injection`, `guardrail.pii`), read off the
+    # `guardrail.safety` row. It may only SHORTEN `nlpDeadlineSeconds` (never extend it), so a
+    # sustained apps/nlp outage costs each screen this long, not the whole peer deadline.
+    # ABSENT ⇒ no opinion: the clients keep `nlpDeadlineSeconds` exactly as before
+    # (`GuardrailPolicy.optional_number`). Operational — a budget cannot change WHICH verdict.
+    "classifierTimeoutSeconds": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, None, 1.0, 60.0, kind=KIND_OPERATIONAL, task_key=_SAFETY
+    ),
+    # TASK-1050 follow-up A (owner, 2026-10-08) — "not too strict". An outbound `pii_leak` flag
+    # whose flagged labels are ALL quasi-identifiers (a facility, a city, a date …) is taken at
+    # `warn` when the configured action is `block`; any other label keeps the configured action.
+    # Never stricter than configured (`ignore` stays `ignore`). The list is the PII row's own
+    # (`guardrail.pii`, label names of ITS taxonomy) and is matched EXACTLY — there is no
+    # "unknown label = quasi" fallback, so a leaked secret keeps blocking. Absent / empty ⇒
+    # every pii_leak flag takes the configured action (today's behaviour). It decides an
+    # outbound verdict, so it rides the policy version.
+    "piiLeakQuasiIdentifierLabels": _KeySpec(
         FAIL_OPEN_TO_DEFAULT,
-        default_names=("jailbreak_detection",),
+        default_names=(),
+        kind=KIND_OPERATIONAL,
         value_type="string[]",
-        editable=False,
+        task_key=_PII,
     ),
     # TASK-1047 V7 (owner decision): data regions that carry SETTINGS rather than the request's
     # subject — the clinician's DNA style and redaction rules — are inbound-screened as usual but
@@ -397,9 +404,20 @@ OPERATIONAL_KEYS: Final[frozenset[str]] = frozenset(
         "screenWindowConcurrency",
         "windowCacheTtlSeconds",
         "nlpDeadlineSeconds",
+        "classifierTimeoutSeconds",
         "realtimeVerdictTtlSeconds",
     }
 )
+
+#: Keys that were governed once and are RETIRED. A stored row may still carry one until its
+#: reseed; it is IGNORED (never read, never hashed into the policy version) and logged once per
+#: row by the screener's builder — never an error.
+#:
+#: `outboundRecordOnlyChecks` (TASK-1047 FC-5c) — retired by TASK-1050 follow-up B (owner,
+#: 2026-10-08): it silently overrode the platform action (the console showed `response_safety`
+#: = block while a flagged harmful response was only recorded). Outbound checks now decide like
+#: every other check — tenant `enabled` + platform `action`, `ignore` = recorded only.
+RETIRED_KEYS: Final[frozenset[str]] = frozenset({"outboundRecordOnlyChecks"})
 
 
 @dataclass(frozen=True)
@@ -609,33 +627,50 @@ class GuardrailPolicy:
     def nlp_deadline_seconds(self) -> float:
         return self.number("nlpDeadlineSeconds")
 
-    # -- outbound record-only checks (TASK-1047 FC-5c) ----------------------
-
     @property
     def medical_judge_config_regions(self) -> frozenset[str]:
         """Region keys the per-window medical judge skips (settings, not subject matter)."""
         return frozenset(self.names("medicalJudgeConfigRegions"))
 
-    @property
-    def outbound_record_only_checks(self) -> frozenset[str]:
-        """The outbound checks whose flag is recorded, not blocking.
+    # -- TASK-1050 follow-ups (owner, 2026-10-08) ----------------------------
 
-        Filtered to `OUTBOUND_TASKS`: a name the outbound screen does not run
-        (`pii_leak`, an inbound task, a typo) is ignored with ONE warning per read
-        rather than failing the screen — the key is open-to-default tuning.
+    def optional_number(self, key: str) -> float | None:
+        """A bounded tuning value with NO default: absent or out-of-range ⇒ ``None``.
+
+        ``None`` means "no opinion" — the caller keeps the value it had before the key
+        existed, so an unseeded row changes nothing.
         """
-        from guardrail.services.screening import OUTBOUND_TASKS
+        spec = _SPECS.get(key)
+        if spec is None or spec.fail_mode != FAIL_OPEN_TO_DEFAULT or spec.default is not None:
+            raise KeyError(f"{key!r} is not a declared optional numeric key")
+        value = self.blob.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        as_float = float(value)
+        if (spec.minimum is not None and as_float < spec.minimum) or (
+            spec.maximum is not None and as_float > spec.maximum
+        ):
+            return None
+        return as_float
 
-        configured = self.names("outboundRecordOnlyChecks")
-        honoured = frozenset(name for name in configured if name in OUTBOUND_TASKS)
-        ignored = sorted({name for name in configured if name not in OUTBOUND_TASKS})
-        if ignored:
-            logger.warning(
-                "guardrail.policy.outbound_record_only.unknown_checks",
-                ignored=ignored,
-                source_tenant_id=self.source_tenant_id,
-            )
-        return honoured
+    @property
+    def classifier_timeout_seconds(self) -> float | None:
+        """`classifierTimeoutSeconds` (G), or ``None`` when the row has no opinion."""
+        return self.optional_number("classifierTimeoutSeconds")
+
+    @property
+    def pii_leak_quasi_identifier_labels(self) -> frozenset[str]:
+        """`piiLeakQuasiIdentifierLabels` (A), case-folded. Empty ⇒ no quasi downgrade."""
+        return frozenset(
+            name.strip().casefold()
+            for name in self.names("piiLeakQuasiIdentifierLabels")
+            if name.strip()
+        )
+
+    @property
+    def retired_keys_present(self) -> tuple[str, ...]:
+        """The RETIRED keys this stored blob still carries (ignored; see `RETIRED_KEYS`)."""
+        return tuple(sorted(key for key in self.blob if key in RETIRED_KEYS))
 
 
 # -- borderline band (TASK-1050 OD-3 b / OD-42) ------------------------------------------------

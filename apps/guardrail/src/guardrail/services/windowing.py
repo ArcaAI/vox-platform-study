@@ -132,12 +132,17 @@ class WindowRunner:
         compute: Callable[[str], Awaitable[dict[str, Any]]],
         *,
         project: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        complete: Callable[[dict[str, Any]], bool] | None = None,
     ) -> list[dict[str, Any]]:
         """One verdict per text, in order. Any failing window fails the whole run.
 
         ``compute`` returns the full verdict; ``project`` (default: identity) is the
         TEXT-FREE part that is cached. A hit returns the projection, a miss the
         full verdict — callers read only projected fields for the decision.
+
+        ``complete`` (TASK-1050 follow-up I; default: everything is complete) says whether a
+        verdict answers everything the request asked. An INCOMPLETE computed verdict is used
+        for this request but never stored, and an incomplete cached entry is a miss.
         """
         family = task.split(":", 1)[0]
         project = project or (lambda value: value)
@@ -151,6 +156,8 @@ class WindowRunner:
                 key = cache.key(self.tenant_id, self.policy_version, model_id, task, text)
                 keys[index] = key
                 hit = await cache.get(key)
+                if hit is not None and complete is not None and not complete(hit):
+                    hit = None
                 if hit is None:
                     misses.append(index)
                 else:
@@ -167,7 +174,7 @@ class WindowRunner:
                     observe_window_latency(family, time.monotonic() - started)
             results[index] = value
             key = keys[index]
-            if cache is not None and key is not None:
+            if cache is not None and key is not None and (complete is None or complete(value)):
                 await cache.set(key, project(value))
 
         outcomes = await asyncio.gather(*(_one(i) for i in misses), return_exceptions=True)
