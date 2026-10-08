@@ -59,4 +59,43 @@ describe('fact ledger — guardrail attribution on the extraction call', () => {
       correlation: { runKey: expect.stringMatching(new RegExp(`:${CID}:e1-.*:0$`)) },
     });
   });
+
+  it('marks the FACT_LEDGER it writes WARNED when an extraction call raised an outbound warning', async () => {
+    const warning = {
+      schemaVersion: 1,
+      noticeId: 'n-1',
+      type: 'guardrail.warning',
+      direction: 'outbound',
+      action: 'warn',
+      checks: [],
+      consultationId: CID,
+      itemIds: [],
+      messageKey: 'guardrail.warning.generic',
+      defaultMessage: 'x',
+      requiresAcknowledgement: true,
+      resumable: false,
+      policyVersion: 'pv-1',
+      occurredAt: '2026-10-08T00:00:00.000Z',
+    };
+    const repo = {
+      findSegments: vi.fn(async () => [segment('seg-1', 1, 'Metformin 500 mg twice daily.', 1)]),
+      findTranscripts: vi.fn(async () => []),
+      findEncounterArtifact: vi.fn(async () => null),
+      findById: vi.fn(async (id: string) => ({ id, consultationId: CID, guardrailStatus: 'CLEAN' })),
+      setGuardrailStatus: vi.fn(async () => undefined),
+    };
+    const service = new FactLedgerService(
+      repo as never,
+      { resolve: vi.fn(async () => ({ slug: FACT_LEDGER_AGENT_SLUG, versionNumber: 1, agentVersionId: 'v1', agentId: 'a1', task: 'TEXT_GENERATION' })) } as never,
+      { invokeText: vi.fn(async () => ({ text: JSON.stringify({ facts: [] }), model: 'm', provider: 'p', usage: null, promptFragments: null, guardrailNotices: [warning] })) } as never,
+      { upsertEncounterArtifact: vi.fn(async (input: { type: string }) => ({ contextItemId: input.type === 'FACT_LEDGER' ? 'ledger' : 'recap', versionNumber: 2 })) } as never,
+      undefined,
+      { record: vi.fn(async () => undefined) } as never,
+    );
+
+    await service.buildForEncounter({ tenantId: TENANT, consultationId: CID, encounterSeq: 1 });
+
+    expect(repo.setGuardrailStatus).toHaveBeenCalledTimes(1);
+    expect(repo.setGuardrailStatus).toHaveBeenCalledWith('ledger', 'WARNED', undefined);
+  });
 });

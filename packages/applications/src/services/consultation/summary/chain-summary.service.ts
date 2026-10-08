@@ -48,6 +48,8 @@ import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition 
 import { readRecordedVisitType } from '../consultation/open-markers';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { resolvePlatformOutputLanguage } from './platform-output-language';
+import type { GuardrailNotice } from '@arcaai/types';
+import { markGeneratedItemFromNotices } from '../../guardrail-notice/guardrail-generated-item';
 
 /** The named-entity aggregate the chain carries, grouped by class. */
 type AggregatedEntities = Record<string, Array<{ text: string; confidence?: number; sourceConsultationId: string }>>;
@@ -242,6 +244,9 @@ export class ChainSummaryService extends BaseService {
     await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const savedContext = await this.contextItemRepository.create(contextItem);
+    // TASK-1050 — the RAW_SUMMARY did not exist when the generation was screened, so it is marked from
+    // the notices TEXT answered with (an outbound warning → WARNED).
+    await this.markFromGenerationNotices(savedContext, result.guardrailNotices);
 
     // Create summary metadata with source context tracking
     const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
@@ -331,6 +336,25 @@ export class ChainSummaryService extends BaseService {
     }
 
     return Array.from(chainMap.values());
+  }
+
+  /**
+   * TASK-1050 — mark a just-created output item from its generation's notices. Best-effort: the note is
+   * already persisted, and a marker write failing must not cost the clinician it.
+   */
+  private async markFromGenerationNotices(
+    item: { id: string; consultationId?: string | null; guardrailStatus?: string | null },
+    notices: readonly GuardrailNotice[] | undefined,
+  ): Promise<void> {
+    try {
+      await markGeneratedItemFromNotices({ contextItems: this.contextItemRepository }, item, notices);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Could not mark the comprehensive summary from its guardrail notices',
+        contextItemId: item.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

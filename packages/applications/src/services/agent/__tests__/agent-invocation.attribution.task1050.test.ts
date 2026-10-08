@@ -75,3 +75,31 @@ describe('invokeText — caller-known guardrail attribution', () => {
     expect(Object.keys(headers).some((name) => name.toLowerCase().startsWith('x-hope-'))).toBe(false);
   });
 });
+
+describe('invokeText — the generation`s guardrail notices reach the caller', () => {
+  it('returns the notices TEXT answered with (`guardrail_notices`)', async () => {
+    const warning = {
+      schemaVersion: 1,
+      noticeId: 'n-1',
+      type: 'guardrail.warning',
+      direction: 'outbound',
+      action: 'warn',
+      checks: [],
+      itemIds: [],
+      messageKey: 'guardrail.warning.generic',
+      defaultMessage: 'x',
+      requiresAcknowledgement: true,
+      resumable: false,
+      policyVersion: 'pv-1',
+      occurredAt: '2026-10-08T00:00:00.000Z',
+    };
+    post.mockResolvedValue({ data: { content: 'ok', guardrail_notices: [warning] } });
+    const result = await service().invokeText(textAgent, TENANT, { message: 'hi' }, 'blocking');
+    expect(result.guardrailNotices).toEqual([warning]);
+  });
+
+  it('none answered, none returned', async () => {
+    const result = await service().invokeText(textAgent, TENANT, { message: 'hi' }, 'blocking');
+    expect(result.guardrailNotices).toEqual([]);
+  });
+});
