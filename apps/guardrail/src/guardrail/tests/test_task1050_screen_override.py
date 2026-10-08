@@ -21,7 +21,7 @@ from guardrail.services.notices import (
     GuardrailCorrelation,
     apply_guardrail_override,
     build_notices,
-    check_dedupe_keys,
+    notice_id_for,
 )
 from guardrail.services.screening import CheckOutcome, GuardrailDecision, Screener
 
@@ -133,31 +133,40 @@ def _decision(*checks: CheckOutcome) -> GuardrailDecision:
 CORRELATION = GuardrailCorrelation(request_id="req-1", consultation_id="c-1")
 
 
-def test_dedupe_keys_of_a_check_are_the_notice_keys() -> None:
-    keys = check_dedupe_keys(
-        _blocked("prompt_safety"),
+def test_the_notice_key_is_the_one_its_id_is_derived_from() -> None:
+    (notice,) = build_notices(
+        _decision(_blocked("prompt_safety")),
+        tenant_id=TENANT,
         correlation=CORRELATION,
         policy_version="pv-1",
-        direction="inbound",
+        occurred_at="t",
     )
-    assert keys == ["c-1:inbound:guardrail.blocked:item-1:pv-1"]
+    assert notice["noticeId"] == notice_id_for(TENANT, "c-1:inbound:guardrail.blocked:item-1:pv-1")
 
 
-def test_a_verified_override_downgrades_only_the_matching_check() -> None:
-    # TASK-1050 follow-up E: checks on the SAME target share one notice; a check on another
-    # item is on another notice and keeps its block.
+def test_a_verified_override_downgrades_the_checks_of_its_own_notice_only() -> None:
+    # TASK-1050 follow-up E (round 2): one notice per type lists every item and check, so an
+    # override of THAT notice downgrades both blocks — while the notice of an earlier, smaller
+    # item set (item-1 alone) is another notice and moves nothing.
     decision = _decision(_blocked("prompt_safety"), _blocked("prompt_toxicity", item="item-2"))
-    out = apply_guardrail_override(
+    stale = apply_guardrail_override(
         decision,
         correlation=CORRELATION,
         dedupe_key="c-1:inbound:guardrail.blocked:item-1:pv-1",
         notice_id=NOTICE,
     )
+    assert stale is decision
+    out = apply_guardrail_override(
+        decision,
+        correlation=CORRELATION,
+        dedupe_key="c-1:inbound:guardrail.blocked:item-1,item-2:pv-1",
+        notice_id=NOTICE,
+    )
     by_name = {c.name: c for c in out.checks}
     assert by_name["prompt_safety"].action_taken == "warn"
     assert by_name["prompt_safety"].override_notice_id == NOTICE
-    assert by_name["prompt_toxicity"].action_taken == "block"
-    assert out.guardrail_decision == "block"  # the other block stands
+    assert by_name["prompt_toxicity"].action_taken == "warn"
+    assert out.guardrail_decision == "warn"
 
     alone = apply_guardrail_override(
         _decision(_blocked("prompt_safety")),
