@@ -25,6 +25,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as bcrypt from 'bcryptjs';
 import { AuthController } from '../auth.controller';
+// TASK-1057 — the worktree source (the gateway build's `@arcaai/applications` dist may predate it).
+import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
 
 const PLACEHOLDER = 'default-jwt-secret-key-change-in-production';
 const REAL_SECRET = 'a-real-32-byte-jwt-signing-secret-aaaa';
@@ -220,6 +222,10 @@ function buildController(opts: {
     {} as any,
     { lookup: vi.fn().mockResolvedValue(null) } as any,
     {} as never, // workflowRunService
+    undefined, // dnaQueue
+    undefined, // policyEngine
+    undefined, // runTraceAccess
+    new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
   );
 }
 
@@ -311,9 +317,13 @@ describe('auth.controller uses SecretsService only', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await controller.impersonate({ targetUserId: 'doctor-001' } as any, createMockRequest() as any);
+      await controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' } as any, createMockRequest() as any);
 
       expect(secrets.calls).toContain('JWT_SECRET_KEY');
       expect(appSettings.calls).not.toContain('JWT_SECRET_KEY');
@@ -416,9 +426,13 @@ describe('auth.controller — sign-path survives SecretsService TTL expiry (getS
       {} as any,
       { lookup: vi.fn().mockResolvedValue(null) } as any,
       {} as never, // workflowRunService
+      undefined, // dnaQueue
+      undefined, // policyEngine
+      undefined, // runTraceAccess
+      new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
     );
 
-    const res = await controller.impersonate({ targetUserId: 'doctor-001' } as any, createMockRequest() as any);
+    const res = await controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' } as any, createMockRequest() as any);
 
     expect(res.token).toBeTruthy();
     // sync read was attempted (fast path) and missed → async fallback fired.

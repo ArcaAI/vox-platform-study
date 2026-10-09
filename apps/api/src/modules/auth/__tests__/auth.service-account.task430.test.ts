@@ -16,6 +16,8 @@ import * as bcrypt from 'bcryptjs';
 import { AuthController } from '../auth.controller';
 import { AdminImpersonationController } from '../admin-impersonation.controller';
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
+// TASK-1057 — the worktree source (the gateway build's `@arcaai/applications` dist may predate it).
+import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
 
 const REQ = { ip: '127.0.0.1', headers: { 'user-agent': 'vitest' } } as never;
 
@@ -118,6 +120,7 @@ function buildAdminController(target: Record<string, unknown>) {
     cls as never,
     { getSecretSync: vi.fn(() => 'test-secret-key'), getSecretOptional: vi.fn(async () => undefined) } as never,
     eventEmitter as never,
+    new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
   );
 
   return { controller, eventEmitter };

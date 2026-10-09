@@ -15,6 +15,8 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SysEventType } from '@arcaai/domains';
 import { AuthController } from '../auth.controller';
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
+// The worktree source (the gateway build's `@arcaai/applications` dist may predate it).
+import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
 
 const REQ = { ip: '127.0.0.1', headers: { 'user-agent': 'vitest' } } as never;
 
@@ -74,9 +76,14 @@ function buildController(user: ClsUserStub | null) {
     {} as never,
     { lookup: vi.fn().mockResolvedValue(null) } as never,
     {} as never, // workflowRunService
+    undefined, // dnaQueue
+    undefined, // policyEngine
+    undefined, // runTraceAccess
+    // TASK-1057 — `impersonation.start` is a locked row: it never reads a setting.
+    new ActionConfirmationService({} as never),
   );
 
-  return { controller, eventEmitter, jwtRevocationService, userRepository };
+  return { controller, eventEmitter, jwtRevocationService, userRepository, authService };
 }
 
 function deniedEvents(eventEmitter: { emit: ReturnType<typeof vi.fn> }) {
@@ -104,9 +111,27 @@ describe('AuthController — legacy /auth/impersonate backports', () => {
   it('still allows a SUPER_ADMIN to impersonate a regular target (no regression)', async () => {
     const { controller } = buildController({ id: 'admin-A', tenantId: 'tenant-A' });
 
-    const response = await controller.impersonate({ targetUserId: 'target-B' } as never, REQ);
+    const response = await controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, REQ);
     expect(response.user.id).toBe('target-B');
     expect(response.impersonatedBy).toBe('admin-A');
+  });
+
+  it('TASK-1057: without a reason is 400 CONFIRMATION_REQUIRED (locked) and mints nothing', async () => {
+    const { controller, authService } = buildController({ id: 'admin-A', tenantId: 'tenant-A' });
+    const error = await controller.impersonate({ targetUserId: 'target-B' } as never, REQ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'CONFIRMATION_REQUIRED', actionId: 'impersonation.start' });
+    expect(authService.trackAuthentication).not.toHaveBeenCalled();
+  });
+
+  it('TASK-1057: with a reason, the start bracket and the started event carry the reason and the stamp', async () => {
+    const { controller, eventEmitter } = buildController({ id: 'admin-A', tenantId: 'tenant-A' });
+    await controller.impersonate({ targetUserId: 'target-B', reason: ' support ticket #7 ' } as never, REQ);
+    const stamp = { actionId: 'impersonation.start', locked: true, required: true, provided: true, note: 'reason required' };
+    const bracket = eventEmitter.emit.mock.calls.find(([name, payload]) => name !== ImpersonationEvents.Started && (payload as { phase?: string })?.phase === 'START')?.[1];
+    expect(bracket).toMatchObject({ reason: 'support ticket #7', confirmation: stamp });
+    const started = eventEmitter.emit.mock.calls.find(([name]) => name === ImpersonationEvents.Started)?.[1];
+    expect(started).toMatchObject({ reason: 'support ticket #7', confirmation: stamp });
   });
 });
 
