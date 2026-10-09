@@ -10,7 +10,9 @@ import {
   formatModelStatus,
   formatStateWhere,
   liveConsumerLines,
+  normalizeDeviceId,
   requiresUnloadReason,
+  sameDevice,
   unloadDeviceChoices,
   withMeasuredDeviceBytes,
 } from '../residency-display';
@@ -129,5 +131,22 @@ describe('live-path unload (OD-2)', () => {
     expect(unloadDeviceChoices(twoCopies)).toEqual(['gpu0', 'gpu1']);
     expect(unloadDeviceChoices(SPLIT_GRANITE)).toEqual([]);
     expect(unloadDeviceChoices(LIVE_WHISPER)).toEqual([]);
+  });
+});
+
+describe('device identity — `cpu:<service>` ≡ `cpu` (TASK-1055 R1-F8)', () => {
+  it('normalises a catalogue CPU id to the request vocabulary and leaves GPUs alone', () => {
+    expect(normalizeDeviceId('cpu:nlp')).toBe('cpu');
+    expect(normalizeDeviceId('cpu')).toBe('cpu');
+    expect(normalizeDeviceId('gpu1')).toBe('gpu1');
+    expect(normalizeDeviceId('multi')).toBe('multi');
+    expect(normalizeDeviceId(null)).toBeNull();
+  });
+
+  it('matches the two CPU spellings and never matches a missing id', () => {
+    expect(sameDevice('cpu:stt', 'cpu')).toBe(true);
+    expect(sameDevice('gpu0', 'gpu1')).toBe(false);
+    expect(sameDevice(null, null)).toBe(false);
+    expect(sameDevice(undefined, 'cpu')).toBe(false);
   });
 });

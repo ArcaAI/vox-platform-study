@@ -105,11 +105,49 @@ describe('UnloadDialog — live-path models', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it('other failures toast the server message and code', async () => {
+  it('other failures toast the model and the server message, the code only in the description (R3-3)', async () => {
     unloadAsync.mockRejectedValueOnce({ details: { code: 'SERVICE_UNREACHABLE', message: 'nlp agent did not answer' } });
     renderDialog(makeLoaded());
     fireEvent.click(screen.getByRole('button', { name: /^unload/i }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('nlp agent did not answer (SERVICE_UNREACHABLE)'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't unload Whisper Large: nlp agent did not answer", {
+        description: 'Error code: SERVICE_UNREACHABLE',
+      }),
+    );
+  });
+
+  it('a code-only failure never shows a bare code as the title', async () => {
+    unloadAsync.mockRejectedValueOnce({ details: { code: 'SERVICE_UNREACHABLE', message: '' } });
+    renderDialog(makeLoaded());
+    fireEvent.click(screen.getByRole('button', { name: /^unload/i }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't unload Whisper Large.", { description: 'Error code: SERVICE_UNREACHABLE' }),
+    );
+  });
+
+  it('says plainly it is NOT reloaded automatically and how to bring it back with its profile (R3-9 / R2-F4)', () => {
+    renderDialog();
+    const body = screen.getByRole('dialog').textContent ?? '';
+    expect(body).toMatch(/will not be reloaded automatically unless the residency controller is in enforce mode/);
+    expect(body).toMatch(/may load it on demand with default settings, not its serving profile/);
+    expect(body).toMatch(/Use Load to restore it with its serving profile/);
+  });
+
+  it('the same is said for an ordinary model', () => {
+    renderDialog(makeLoaded());
+    expect(screen.getByRole('dialog').textContent).toMatch(/will not be reloaded automatically unless the residency controller is in enforce mode/);
+  });
+
+  it('a server IN_FLIGHT after a reason was typed does not ask for one again (R3-11)', async () => {
+    unloadAsync.mockRejectedValueOnce({ details: { code: 'IN_FLIGHT', message: 'busy', inFlight: 2 } });
+    renderDialog(makeLoaded());
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'free GPU 0' } });
+    fireEvent.click(screen.getByRole('button', { name: /^unload/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/2 requests still in flight/);
+    expect(alert.textContent).not.toMatch(/Enter a reason/);
+    expect(alert.textContent).toMatch(/Unload anyway interrupts them; your reason is recorded/);
+    expect((screen.getByRole('button', { name: /unload anyway/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('separate copies on two GPUs: unloads one device, or all by default', async () => {

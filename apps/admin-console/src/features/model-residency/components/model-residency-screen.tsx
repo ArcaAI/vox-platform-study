@@ -12,7 +12,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import {
   isTerminalResidencyOperation,
   RESIDENCY_OPERATION_TIMEOUT_MS,
-  residencyErrorMessage,
+  residencyErrorToast,
   useModelResidencyOperation,
   type LmStudioResidencyLoadOptions,
   type LoadModelResidencyResponse,
@@ -31,14 +31,14 @@ import { LoadPreviewDialog } from './load-preview-dialog';
 import { ModelDetailDrawer } from './model-detail-drawer';
 import { ModelsTable, pendingKey } from './models-table';
 import { deriveAttentionItems, formatDataAge, formatReportingServices } from './residency-display';
-import { ReloadConfirmDialog } from './reload-confirm-dialog';
+import { ReloadConfirmDialog, type ReloadConfirmInput } from './reload-confirm-dialog';
 import { SuggestionsPanel } from './suggestions-panel';
 import { UnloadDialog } from './unload-dialog';
 
 /** A row addressed by its stable keys — resolved against the LATEST catalogue on every render. */
 type RowKey = { service: string; modelRef: string };
 type Resolved = { service: ResidencyServiceGroup; model: ResidencyCatalogueModel };
-type PendingOperation = { operationId: string; name: string };
+type PendingOperation = { operationId: string; name: string; action: 'load' | 'reload' };
 
 const READINESS_HREF = '/model-residency/readiness';
 const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -181,18 +181,22 @@ export function ModelResidencyScreen() {
   const [pending, setPending] = useState<Record<string, PendingOperation>>({});
   const toasted = useRef(new Set<string>());
 
-  const track = useCallback((service: string, modelRef: string, operationId: string, name: string) => {
-    setPending((current) => ({ ...current, [pendingKey(service, modelRef)]: { operationId, name } }));
+  const track = useCallback((service: string, modelRef: string, operationId: string, name: string, action: 'load' | 'reload' = 'load') => {
+    setPending((current) => ({ ...current, [pendingKey(service, modelRef)]: { operationId, name, action } }));
   }, []);
 
   const handleTerminal = useCallback(
-    (key: string, name: string, operation: ModelResidencyOperation) => {
+    (key: string, pendingOp: PendingOperation, operation: ModelResidencyOperation) => {
       if (toasted.current.has(operation.id)) return;
       toasted.current.add(operation.id);
-      if (operation.status === 'succeeded') toast.success(`${name} loaded.`);
-      else if (operation.error?.message)
-        toast.error(`Loading ${name} failed: ${operation.error.message}${operation.error.code ? ` (${operation.error.code})` : ''}`);
-      else toast.error(operation.error?.code ? `Loading ${name} failed (${operation.error.code}).` : `Loading ${name} failed.`);
+      const { name, action } = pendingOp;
+      if (operation.status === 'succeeded') toast.success(`${name} ${action === 'reload' ? 'reloaded' : 'loaded'}.`);
+      else {
+        // R3-3 — the model and the engine's words in the title, the code only in the description.
+        const failure = residencyErrorToast(operation.error, `Couldn't ${action} ${name}`);
+        if (failure.description) toast.error(failure.title, { description: failure.description });
+        else toast.error(failure.title);
+      }
       setPending((current) => {
         if (current[key]?.operationId !== operation.id) return current;
         return Object.fromEntries(Object.entries(current).filter(([candidate]) => candidate !== key));
@@ -237,26 +241,27 @@ export function ModelResidencyScreen() {
     setReloadTarget({ key: toKey(service, model), options });
   }
 
-  function confirmReload(
+  /** The dialog awaits this and handles a refusal itself (409 LIVE_PATH_REASON_REQUIRED / IN_FLIGHT, or a toast). */
+  async function confirmReload(
     service: ResidencyServiceGroup,
     model: ResidencyCatalogueModel,
     options: LmStudioResidencyLoadOptions,
-    reason: string | null,
+    { reason, force }: ReloadConfirmInput,
   ) {
-    reload.mutate(
-      { service: service.service, modelRef: model.modelRef, replace: true, options, ...(reason ? { force: true, reason } : {}) },
-      {
-        onSuccess: (response) => {
-          setReloadTarget(null);
-          if (response.outcome === 'already_loaded') {
-            toast.success(`${model.name} is already resident on that profile.`);
-            return;
-          }
-          if (response.operationId) track(service.service, model.modelRef, response.operationId, model.name);
-        },
-        onError: (error) => toast.error(residencyErrorMessage(error, `Couldn't reload ${model.name}.`)),
-      },
-    );
+    const response = await reload.mutateAsync({
+      service: service.service,
+      modelRef: model.modelRef,
+      replace: true,
+      options,
+      ...(force ? { force: true } : {}),
+      ...(reason ? { reason } : {}),
+    });
+    setReloadTarget(null);
+    if (response.outcome === 'already_loaded') {
+      toast.success(`${model.name} is already resident on that profile.`);
+      return;
+    }
+    if (response.operationId) track(service.service, model.modelRef, response.operationId, model.name, 'reload');
   }
 
   const readinessData = readiness.isError ? undefined : readiness.data;
@@ -360,7 +365,7 @@ export function ModelResidencyScreen() {
         <OperationWatcher
           key={operation.operationId}
           operationId={operation.operationId}
-          onTerminal={(result) => handleTerminal(key, operation.name, result)}
+          onTerminal={(result) => handleTerminal(key, operation, result)}
           onLost={() => handleLost(key, operation.name, operation.operationId)}
         />
       ))}
@@ -392,7 +397,7 @@ export function ModelResidencyScreen() {
           model={reloadResolved.model}
           options={reloadTarget.options}
           isPending={reload.isPending}
-          onConfirm={(reason) => confirmReload(reloadResolved.service, reloadResolved.model, reloadTarget.options, reason)}
+          onConfirm={(input) => confirmReload(reloadResolved.service, reloadResolved.model, reloadTarget.options, input)}
         />
       ) : null}
 

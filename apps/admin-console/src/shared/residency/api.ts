@@ -217,13 +217,40 @@ export function asModelResidencyConflict(error: unknown): ModelResidencyConflict
 }
 
 /**
- * The text a residency toast shows (TASK-1055 AC-6): the server's own message
- * and its code for a typed refusal, else the gateway's message, and the
- * caller's `fallback` only when the failure carried no words at all.
+ * The text a residency toast shows (TASK-1055 AC-6, R3-2): the server's own
+ * message for a typed refusal, else the gateway's message, and the caller's
+ * `fallback` whenever the failure carried no words — never a bare error code
+ * (the code goes in the toast description, see `residencyErrorToast`).
  */
 export function residencyErrorMessage(error: unknown, fallback: string): string {
   const conflict = asModelResidencyConflict(error);
-  if (conflict) return conflict.message ? `${conflict.message} (${conflict.code})` : conflict.code;
+  if (conflict) return conflict.message.trim() ? conflict.message : fallback;
   const message = (error as { message?: unknown } | null | undefined)?.message;
   return typeof message === 'string' && message.trim() ? message : fallback;
+}
+
+/** The machine code a failure carries: a typed conflict's, or an operation error's own `code`. */
+function residencyErrorCode(error: unknown): string | null {
+  const conflict = asModelResidencyConflict(error);
+  if (conflict) return conflict.code;
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  return typeof code === 'string' && code.trim() ? code : null;
+}
+
+export interface ResidencyErrorToast {
+  title: string;
+  description?: string;
+}
+
+/**
+ * TASK-1055 R3-3 — one failure toast for every load / unload / reload / pin:
+ * the title names the action and the model ("Couldn't unload Medical NER: nlp
+ * agent did not answer"); the error code, and any `extra` context, go in the
+ * description only. `what` is the action without a trailing full stop.
+ */
+export function residencyErrorToast(error: unknown, what: string, extra?: string): ResidencyErrorToast {
+  const reason = residencyErrorMessage(error, '');
+  const code = residencyErrorCode(error);
+  const description = [extra, code ? `Error code: ${code}` : null].filter((part): part is string => !!part).join(' ');
+  return { title: reason ? `${what}: ${reason}` : `${what}.`, ...(description ? { description } : {}) };
 }

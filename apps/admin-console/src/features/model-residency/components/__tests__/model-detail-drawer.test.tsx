@@ -191,7 +191,7 @@ describe('ModelDetailDrawer', () => {
     expect(screen.getByText(/live-consultation path uses this model/i)).toBeTruthy();
   });
 
-  it('Reload sends flashAttention only when the user touched it', () => {
+  it('Reload sends flashAttention only when the admin chose On or Off', () => {
     const model = makeLoaded({ actions: ['reload', 'edit_policy'] });
     const onReload = vi.fn();
     const props = { onLink: vi.fn(), onUnload: vi.fn(), onLoad: vi.fn() };
@@ -210,7 +210,7 @@ describe('ModelDetailDrawer', () => {
     fireEvent.change(screen.getByLabelText('Context length'), { target: { value: '4096' } });
     fireEvent.click(screen.getByRole('button', { name: /reload with options/i }));
     expect(onReload.mock.calls[0]![2]).toEqual({ contextLength: 4096 });
-    fireEvent.click(screen.getByRole('checkbox', { name: /flash attention/i }));
+    fireEvent.click(screen.getByRole('radio', { name: 'On' }));
     fireEvent.click(screen.getByRole('button', { name: /reload with options/i }));
     expect(onReload.mock.calls[1]![2]).toEqual({ contextLength: 4096, flashAttention: true });
   });

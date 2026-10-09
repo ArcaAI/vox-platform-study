@@ -20,7 +20,8 @@ import type { LmStudioResidencyLoadOptions, ResidencyCatalogueModel, ResidencyDe
  * and loads — un-forced when it fits, forced with a mandatory reason when not.
  * Every selected eviction is unloaded (with the reason "Make room for <name>")
  * BEFORE the load is sent. TASK-1055: a GPU picker over `candidates`
- * (defaulting to `suggestedDevice`, every pick re-checked with `device`), the
+ * (defaulting to the model's own target `device` when it fits there, else to
+ * `suggestedDevice`; every pick re-checked with `device`), the
  * capacity callout with "Load on <GPU>", and an optional `makeDefault`. On admission it calls `onAdmitted` with the load
  * response (202 `accepted` + `operationId`, or 200 `already_loaded`) and closes;
  * the SCREEN tracks the operation and toasts its outcome.
