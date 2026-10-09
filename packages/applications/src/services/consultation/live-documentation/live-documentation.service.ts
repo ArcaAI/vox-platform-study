@@ -6509,7 +6509,7 @@ return 0`;
     // document: "update the existing note" invited the model to hand back the note.
     const deltaInstruction = turnContract
       ? hasPriorNote
-        ? `Report what the new transcript adds to the ${documentTitle} in the data sections. Do not reproduce the note.`
+        ? `Report what the new transcript adds to the ${documentTitle} in the data sections, as clinical text in each section's own voice. Do not reproduce the note, and never describe the note or the update.`
         : `This is the first turn of this ${documentTitle}: report what the transcript in the data sections establishes.`
       : hasPriorNote
         ? `Update the existing ${documentTitle} in the data sections using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`

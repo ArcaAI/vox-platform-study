@@ -179,15 +179,17 @@ export function buildTurnResponseFormat(compiled: CompiledDocumentTemplate): Com
     properties[key] = {
       type: ['object', 'null'],
       additionalProperties: false,
-      description: `Your contribution to "${titles.get(key) ?? key}" THIS TURN. null if the new transcript said nothing about it.`,
+      description: `New clinical text for "${titles.get(key) ?? key}" from THIS TURN's transcript. null if the new transcript said nothing about it.`,
       properties: {
         addition: {
           type: ['string', 'null'],
-          description: 'New text to ADD to this section. Never repeat text the section already contains.',
+          description:
+            "New clinical text to ADD to this section, written in the section's own voice. Never repeat text the section already contains. Never describe the note, the previous note, or what this update adds.",
         },
         revision: {
           type: ['string', 'null'],
-          description: 'The section rewritten, ONLY when the new transcript contradicts what is already written. Requires `contradiction`.',
+          description:
+            'The section rewritten as clinical text, ONLY when the new transcript contradicts what is already written. Requires `contradiction`. Never describe the note or the change.',
         },
         contradiction: {
           type: ['string', 'null'],
@@ -220,9 +222,10 @@ export function turnInstruction(compiled: CompiledDocumentTemplate): string {
     '',
     '',
     'WHAT TO EMIT THIS TURN:',
-    'For each section, report only your CONTRIBUTION — never the section as a whole:',
-    '  • "addition": text to ADD. This is the ordinary case. Never restate anything the section already contains.',
+    'For each section, write only the NEW clinical text — never the section as a whole:',
+    '  • "addition": new text to ADD. This is the ordinary case. Never restate anything the section already contains.',
     '  • "revision" + "contradiction": the section rewritten, and what in the NEW transcript contradicts the text you are replacing. Use this ONLY for a genuine contradiction — a revision without a contradiction is discarded and your rewrite is lost.',
+    "  • Write the clinical text itself, in the section's own voice, exactly as it should read in the note. Never describe the note, the previous note, or what this update adds — such sentences are discarded.",
     '  • null for a section the new transcript said nothing about. Most sections, most turns, are null.',
     `Sections, by key: ${compiled.sectionKeys.join(', ')}.`,
     'The note already written is shown to you for context only. Do not reproduce it: the text you already wrote is kept for you automatically, and a clinician is reading it as you write.',
@@ -803,15 +806,63 @@ function placeholderForm(sentence: string): string {
   return form.replace(/[.!;:…]+$/, '').trim();
 }
 
-function isPlaceholderSentence(sentence: string): boolean {
-  const form = placeholderForm(sentence);
-  // A "sentence" of punctuation alone (a stray `-`) carries nothing either.
-  return form.length === 0 || PLACEHOLDER_SENTENCE_PATTERNS.some((pattern) => pattern.test(form));
+// =================================================================================================
+// TASK-1054 — change-narration is not content
+// =================================================================================================
+
+/**
+ * A live run (gemma-4-e2b, ArcaAI `arcaai-gen-soap-new-visit`) answered four sections with a DIFF of
+ * the note rather than the note — "The previous note stated no presenting complaints were recorded
+ * yet; this update adds the new symptoms described by the patient." — and the fold wrote it like any
+ * other addition. A sentence that describes the NOTE (the previous note, this update, what the
+ * update adds) rather than the PATIENT is dropped here, beside the placeholder guard.
+ *
+ * Deliberately NARROW, matched on the same normalised form as the placeholders. Every pattern needs
+ * a documentation subject ("the previous note", "this update", "the note") or a documentation-state
+ * clause ("… were recorded yet"); a clinical sentence that merely contains "previous" — "Previous MI
+ * in 2019.", "HbA1c was noted as 7.8 percent at a previous visit.", "Previous notes show a penicillin
+ * allergy." (plural: an older record, not this note) — matches none of them.
+ */
+const META_NOTE_SUBJECT = '(?:previous|prior|existing|current|earlier|original) (?:note|summary|section|version|draft)';
+const META_NOTE_VERB =
+  '(?:stated|states|said|says|noted|notes|recorded|records|documented|documents|had|has|contained|contains|listed|lists|mentioned|mentions|included|includes|indicated|indicates|read|reads|did not|does not|now)';
+const META_UPDATE_NOUN = '(?:update|revision|addition|turn|entry)';
+const META_UPDATE_VERB = '(?:adds|add|includes|introduces|documents|records|captures|provides|reflects|updates|revises|now)';
+const META_RECORD_VERB = '(?:recorded|documented|captured|written|entered|added)';
+
+export const META_NARRATION_PATTERNS: readonly RegExp[] = [
+  // "The previous note stated no … yet", "The existing section had no reports recorded yet".
+  new RegExp(`^(?:the |per the |in the |as per the )?${META_NOTE_SUBJECT} (?:(?:already|also|only) )?${META_NOTE_VERB}\\b`),
+  // "…; this update adds the new symptoms", "This update introduces a working diagnosis".
+  /\bthis (?:update|revision)\b/,
+  // "The update adds …", "This addition documents …".
+  new RegExp(`\\b(?:the|this) ${META_UPDATE_NOUN} ${META_UPDATE_VERB}\\b`),
+  // "The note now includes the new symptoms", "The section has been updated to …".
+  /^(?:the )?(?:note|summary|section) (?:now )?(?:includes|contains|lists|reflects|adds|has been updated|is updated|was updated)\b/,
+  // "Adds the new BP and pulse readings."
+  /^(?:it |this )?adds (?:the )?(?:new|newly|additional|further|current|latest)\b/,
+  // "No presenting complaints were recorded yet." — the NOTE's state, so `yet` is required.
+  new RegExp(`\\b(?:no|none|nothing)\\b.{0,60}?\\b${META_RECORD_VERB}\\b.{0,20}?\\byet\\b`),
+  new RegExp(`\\b(?:no|none|nothing)\\b.{0,60}?\\byet (?:been )?${META_RECORD_VERB}\\b`),
+];
+
+function isMetaNarrationForm(form: string): boolean {
+  return META_NARRATION_PATTERNS.some((pattern) => pattern.test(form));
 }
 
 /**
- * TASK-1022 — true when EVERY sentence of `text` is a "nothing stated" placeholder. Empty text is
- * `false`: it is nothing, not a placeholder.
+ * Not content: a "nothing stated" placeholder (TASK-1022) OR change-narration (TASK-1054). The name
+ * is kept from TASK-1022 because every caller wants exactly this question answered.
+ */
+function isPlaceholderSentence(sentence: string): boolean {
+  const form = placeholderForm(sentence);
+  // A "sentence" of punctuation alone (a stray `-`) carries nothing either.
+  return form.length === 0 || PLACEHOLDER_SENTENCE_PATTERNS.some((pattern) => pattern.test(form)) || isMetaNarrationForm(form);
+}
+
+/**
+ * TASK-1022 — true when EVERY sentence of `text` is a "nothing stated" placeholder (TASK-1054: or
+ * change-narration). Empty text is `false`: it is nothing, not a placeholder.
  */
 export function isNothingStatedPlaceholder(text: string): boolean {
   const sentences = splitSentences(text);
