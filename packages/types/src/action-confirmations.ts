@@ -96,17 +96,17 @@ export const ACTION_CONFIRMATION_CATALOGUE: readonly ActionConfirmationSpec[] = 
 
   // ── Agents ───────────────────────────────────────────────────────────────
   reason('agent.promoteToSystem', 'Agents', 'Promote an agent to SYSTEM', 'platform', 'required', ['POST admin/agents/promote-to-system'], { maxLength: 500 }),
-  reason('agent.sync', 'Agents', 'Sync an agent from the reference set', 'both', 'not-required', ['POST admin/agents/:id/sync'], { maxLength: 500 }),
+  reason('agent.sync', 'Agents', 'Sync an agent from the reference set', 'both', 'not-required', ['POST admin/agents/:slug/sync'], { maxLength: 500 }),
   reason('agentAssignment.set', 'Agents', 'Set an agent assignment', 'both', 'not-required', ['PUT admin/agent-assignments'], { maxLength: 500 }),
   reason('agentAssignment.remove', 'Agents', 'Remove an agent assignment', 'both', 'not-required', ['DELETE admin/agent-assignments/:id'], { maxLength: 500 }),
 
   // ── Workflows ────────────────────────────────────────────────────────────
   reason('workflowDefinition.promoteToSystem', 'Workflows', 'Promote a workflow to SYSTEM', 'platform', 'not-required', ['POST admin/workflow-definitions/promote-to-system'], { maxLength: 500 }),
-  reason('workflowDefinition.sync', 'Workflows', 'Sync a workflow from the reference set', 'both', 'not-required', ['POST admin/workflow-definitions/:id/sync'], { maxLength: 500 }),
+  reason('workflowDefinition.sync', 'Workflows', 'Sync a workflow from the reference set', 'both', 'not-required', ['POST admin/workflow-definitions/slug/:slug/sync'], { maxLength: 500 }),
   reason('workflowAssignment.set', 'Workflows', 'Set a workflow assignment', 'both', 'not-required', ['PUT admin/workflow-assignments'], { maxLength: 500 }),
-  reason('workflowReview.decide', 'Workflows', 'Decide a workflow exposure review', 'both', 'not-required', ['POST admin/workflow-exposure/…/decision'], { maxLength: 2000 }),
+  reason('workflowReview.decide', 'Workflows', 'Decide a workflow exposure review', 'both', 'not-required', ['POST workflows/:slug/runs/:runId/reviews/:nodeId/decide'], { maxLength: 2000 }),
   reason('workflowInvariantRule.save', 'Workflows', 'Create or edit a workflow invariant rule', 'both', 'not-required', ['POST|PATCH admin/workflow-invariant-rules'], { maxLength: 2000 }),
-  reason('workflowRun.cancel', 'Workflows', 'Cancel a running workflow (AI Operations)', 'platform', 'not-required', ['POST admin/harness/…/cancel'], { maxLength: 500 }),
+  reason('workflowRun.cancel', 'Workflows', 'Cancel a running workflow (AI Operations)', 'platform', 'not-required', ['POST admin/harness/workflows/:id/cancel'], { maxLength: 500 }),
 
   // ── Policies ─────────────────────────────────────────────────────────────
   reason('harnessPolicy.update', 'Policies', 'Update a harness / agentic policy', 'both', 'not-required', ['PATCH admin/harness/policy', 'PATCH admin/harness/policy/global'], { maxLength: 500 }),
@@ -114,7 +114,7 @@ export const ACTION_CONFIRMATION_CATALOGUE: readonly ActionConfirmationSpec[] = 
   reason('guardrailAvailability.update', 'Policies', 'Change guardrail availability', 'both', 'not-required', ['PATCH admin/guardrail-availability'], { maxLength: 500 }),
 
   // ── Content ──────────────────────────────────────────────────────────────
-  reason('documentTemplate.update', 'Content', 'Save a document template version', 'both', 'not-required', ['PATCH admin/document-templates/:id'], { maxLength: 500 }),
+  reason('documentTemplate.update', 'Content', 'Publish a document template version', 'both', 'not-required', ['POST admin/document-templates/:id/publish'], { maxLength: 500 }),
   reason('contextSchema.publish', 'Content', 'Publish a context schema', 'both', 'not-required', ['POST admin/consultation-context-schemas/:id/publish'], { maxLength: 500 }),
   {
     actionId: 'contextSchema.publishImpact',
@@ -127,7 +127,7 @@ export const ACTION_CONFIRMATION_CATALOGUE: readonly ActionConfirmationSpec[] = 
     modes: ON_OFF,
     routes: ['POST admin/consultation-context-schemas/:id/publish'],
   },
-  reason('dnaSettings.update', 'Content', 'Change DNA writing-style settings', 'both', 'not-required', ['PATCH admin/dna-writing-styles/settings'], { maxLength: 500 }),
+  reason('dnaSettings.update', 'Content', 'Change DNA writing-style settings', 'both', 'not-required', ['PUT dna-writing-styles/settings'], { maxLength: 500 }),
 
   // ── Consent ──────────────────────────────────────────────────────────────
   {
