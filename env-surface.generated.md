@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 113 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
-| Python declared fields | 312 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 364 |
-| `turbo.json#globalEnv` entries | 523 |
+| Python declared fields | 315 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 370 |
+| `turbo.json#globalEnv` entries | 526 |
 
 ## Variables — the TypeScript platform surface
 
@@ -214,6 +214,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT` | `apps/guardrail` | no | no | `http://localhost:4317` | commented | — |
 | `GUARDRAIL_V2_OTEL_SERVICE_NAME` | `apps/guardrail` | no | no | `guardrail` | commented | — |
 | `GUARDRAIL_V2_QUEUE_MAX_CONCURRENT` | `apps/guardrail` | no | no | `4` | commented | — |
+| `GUARDRAIL_WINDOW_CACHE_KEY` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_API_BASE_URL` | `apps/harness` | no | no | `http://localhost:8868` | commented | — |
 | `HARNESS_API_INTERNAL_PREFIX` | `apps/harness` | no | no | `/api/v1/internal/harness` | commented | — |
 | `HARNESS_API_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
@@ -419,6 +420,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STREAMING_MAX_AUDIO_BUFFER_BYTES__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500000000` | commented | — |
 | `STREAMING_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
 | `STREAMING_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
+| `STREAMING_PAUSE_MAX_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `600` | commented | — |
 | `STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.4` | commented | — |
 | `STREAMING_REAPER_INTERVAL_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `300` | commented | — |
 | `STREAMING_RESULT_STREAM_EXPIRE_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `3600` | commented | — |
@@ -449,6 +451,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TEXT_CLASSIFIER_USE_GPU` | `apps/nlp` | no | no | `true` | commented | — |
 | `TEXT_EXTERNAL_GUARDRAIL_BASE_URL` | `apps/text` | no | no | `http://localhost:8863` | commented | — |
 | `TEXT_GATEWAY_URL` | `apps/text` | no | no | `http://localhost:8868/api/v1` | commented | — |
+| `TEXT_LMSTUDIO_AGENT_URL` | `apps/text` | no | no | `http://localhost:8869` | commented | — |
 | `TEXT_LOG_LEVEL` | `apps/text` | no | no | `info` | commented | — |
 | `TEXT_OTEL_EXPORTER_ENDPOINT` | `apps/text` | no | no | `` | commented | — |
 | `TEXT_PORT` | `apps/text` | no | no | `8862` | commented | — |
@@ -521,6 +524,9 @@ promotion into its service’s `BaseSettings`.
 | `HARNESS_VERDICT_CACHE_HMAC_KEY` | `apps/harness/src/harness/sensors/inferential/verdict_cache.py` |
 | `HF_HUB_CACHE` | `apps/nlp/src/nlp/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py`, `packages/py-runtime-models/src/hope_runtime_models/resolvable.py` |
 | `HF_HUB_DISABLE_IMPLICIT_TOKEN` | `apps/vllm/src/hope_vllm/main.py` |
+| `HF_TOKEN` | `apps/nlp/scripts/injection_eval/build_guardrail_sets.py`, `apps/nlp/scripts/injection_eval/build_public_sets.py` |
+| `HOPE_1049_ALLOW_MODEL_LOAD` | `apps/nlp/scripts/pii_eval/detectors.py` |
+| `HOPE_PERF_TENANT_ID` | `apps/nlp/scripts/bench_guard_memory.py`, `scripts/perf/screening-load/screening_load.py`, `scripts/perf/screening-replay/screening_replay.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOPE_STT_APP_DIR` | `apps/stt/scripts/mlen_chunk_sweep.py` |
 | `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py`, `packages/py-runtime-models/src/hope_runtime_models/residency_agent.py` |
