@@ -4839,6 +4839,8 @@ export interface ModelResidencyCatalogueModel {
   keepPolicy: ModelResidencyKeepPolicy;
   /** TASK-1051 — `remote` (a cloud API) and `builtin` (compiled into a library) hold no memory and offer no load/unload. */
   kind: 'resident' | 'remote' | 'builtin';
+  /** TASK-1055 — present only while `actions` offers `load` and the catalogue row ALONE says the load cannot succeed (an stt stage model that loads with its ASR agent, an entailment scorer not published to the models bucket or with no calibration, a guard judge or classifier on a runtime nlp does not have). The same words the load refusal carries. Absent = nothing static stands in the way. */
+  loadBlockedReason?: string;
   /** Seconds the last load took (measured). */
   loadSeconds: number | null;
   /** The key the service holds it under (stt = slug, nlp = hub id, LM Studio = wire id) — what load / unload take. */
