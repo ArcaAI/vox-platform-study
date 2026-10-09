@@ -492,7 +492,22 @@
       "loadSpec": {
         "model_ref": "kokoro-82m",
         "load_spec": {
-          "engine": "kokoro"
+          "engine": "kokoro",
+          "model": {
+            "role": "primary",
+            "slug": "kokoro-82m",
+            "taskType": "TEXT_TO_SPEECH",
+            "format": "PYTORCH",
+            "sourceUri": "hexgrad/Kokoro-82M",
+            "sourceRevision": null,
+            "localPath": "/models/kokoro-82m",
+            "checksum": null,
+            "computeType": null,
+            "provider": "kokoro",
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "artifacts": {},
+            "voices": []
+          }
         }
       },
       "engineFromRow": "ttsEngineProvider(row) in packages/applications/src/services/agent/tts-spec.ts (slug with '-' → '_' unless the row names its engine) — the SAME name apps/tts registers the provider under",
@@ -506,7 +521,8 @@
       },
       "refusals": {
         "MODEL_UNKNOWN": "no registered local provider named load_spec.engine (or a remote engine)"
-      }
+      },
+      "$amendment": "2026-10-09 (after lane W3-TTS): a COLD console load must work on a fresh pod, so load_spec also carries `model` — the TtsSpecModel wire object (exactly ResolvedTtsCandidate.model, built by the gateway from the AiModel row with tts-spec.ts toSpecModel/the same projection). The tts agent builds the engine through the SAME builder and the SAME engine-cache key the synth request path uses, so the next request reuses that instance (never a second copy); if no engine is built yet and `model` is absent → MODEL_UNKNOWN as before."
     },
     "gateway": {
       "$comment": "RESIDENCY_CONTROLLED_SERVICES gains 'tts' (agent at TTS_URL). Catalogue: a 'Text-to-speech' section (runsOn cpu) listing self-hosted tts rows (kokoro / indic-parler / indic-f5), cloud rows `remote`. stt stage rows (VAD / denoise / diarization / embedding) are loadable (loadBlockedReason no longer refuses them); built-in rows stay `builtin`. Console labels the tts service 'Text-to-speech'.",
