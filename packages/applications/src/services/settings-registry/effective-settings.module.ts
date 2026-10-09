@@ -5,6 +5,7 @@ import { GlobalSettingServiceModule } from '../globalSetting/globalSetting.servi
 import { PlatformStorageSettingsResolver } from '../tenant-storage-config/platform-storage-settings.resolver';
 import { EffectiveSettingsService } from './effective-settings.service';
 import { FeatureAvailabilityService } from './feature-availability.service';
+import { ActionConfirmationService } from './action-confirmation.service';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingsRegistryWriteService } from './settings-registry-write.service';
 import { TenantSettingsService } from './tenant-settings.service';
@@ -29,6 +30,7 @@ import { TenantSettingsService } from './tenant-settings.service';
     TenantSettingsService,
     PlatformStorageSettingsResolver,
     FeatureAvailabilityService,
+    ActionConfirmationService,
   ],
   exports: [
     EffectiveSettingsService,
@@ -36,6 +38,7 @@ import { TenantSettingsService } from './tenant-settings.service';
     TenantSettingsService,
     PlatformStorageSettingsResolver,
     FeatureAvailabilityService,
+    ActionConfirmationService,
   ],
 })
 export class EffectiveSettingsModule implements OnModuleInit {

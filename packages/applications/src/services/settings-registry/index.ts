@@ -49,6 +49,8 @@ export * from './settings-registry-write.service';
 export * from './setting-lock';
 export * from './catalog-visibility';
 export * from './feature-availability.service';
+export * from './descriptors/action-confirmation.descriptors';
+export * from './action-confirmation.service';
 export * from './tenant-clamp';
 export * from './tenant-settings.service';
 export * from './descriptors/dna-regeneration.descriptors';

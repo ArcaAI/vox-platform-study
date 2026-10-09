@@ -57,6 +57,9 @@ export * from './llm-egress.js';
 export * from './consultation-lifecycle.js';
 export * from './citation-labels.js';
 
+// TASK-1057 — action confirmations: catalogue of reason / evidence / typed-confirmation prompts and their platform policy.
+export * from './action-confirmations.js';
+
 // TASK-1050 — the guardrail contract: check/decision vocabulary and correlation headers, the
 // `GuardrailNotice` v1 client message, the `internal/guardrail/evaluations` record, hold / resume /
 // one-action approve, tenant policy v2 (normalizer + field guard), the judge-prompt template, and the

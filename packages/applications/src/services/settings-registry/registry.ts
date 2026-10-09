@@ -24,6 +24,7 @@ import { CONSULTATION_PRE_SUMMARY_SETTINGS } from './descriptors/consultation-pr
 import { CONSULTATION_REALTIME_SETTINGS } from './descriptors/consultation-realtime.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_AVAILABILITY_SETTINGS } from './descriptors/feature-availability.descriptors';
+import { ACTION_CONFIRMATION_SETTINGS } from './descriptors/action-confirmation.descriptors';
 import { GUARDRAIL_JUDGE_SETTINGS } from './descriptors/guardrail-judge.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
@@ -78,6 +79,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // TASK-1025 — deleted-tenant bucket retention + purge schedule.
   ...TENANT_STORAGE_LIFECYCLE_SETTINGS,
   ...TENANT_CHECKPOINT_SETTINGS,
+  // TASK-1057 — platform-only policy for every reason / evidence / typed-confirmation prompt.
+  ...ACTION_CONFIRMATION_SETTINGS,
   // Composed-prompt incident records (OD-9) — retention of the encrypted per-call prompt copy.
   ...COMPOSED_PROMPTS_SETTINGS,
   // TASK-1038 — run event/result retention and the delivery plane's tuning knobs.
