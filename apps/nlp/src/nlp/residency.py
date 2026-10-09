@@ -20,6 +20,7 @@ and hands the freed blocks back to the driver (`nlp.dependencies` unload hooks).
 `tests/contracts/model-residency-agent.fixture.json` → `loadSpecExamples.nlp`:
 
     {"cache": "nlp_token_classifier" | "nlp_text_classifier" | "nlp_gliner2_guard"
+              | "nlp_seq_cls_guard" | "nlp_judge_guard"
               | "nlp_medical_suggester" | "nlp_entailment_scorer",
      "model_path": <AiModel.localPath> | null,
      "ner_model_name": ..., "ner_model_path": ...,   # nlp_medical_suggester only
@@ -28,6 +29,9 @@ and hands the freed blocks back to the driver (`nlp.dependencies` unload hooks).
 and `model_ref` is the model NAME nlp is handed per request (the gateway-injected
 `AiModel.sourceUri`). Resolution is the existing one in `nlp.dependencies` — no
 new lookup, no database read — so an agent load makes the next request a hit.
+A `{cache, model_path}` load whose weights a name-only copy on the same device
+already holds (a live request loaded it first) answers `already_loaded` — the
+same weight-identity rule the request path uses (`dependencies._reverse_alias`).
 
 Imported by `nlp.dependencies` (for `nlp_cache_residency`), so every reference
 back to that module is a deferred import.
@@ -207,6 +211,18 @@ def _optional_str(load_spec: dict[str, Any], name: str) -> str | None:
     return value
 
 
+#: Slots whose load_spec is exactly `{cache, model_path}` and whose key is the request
+#: path's `_model_cache_key(model_ref, model_path)`. The two guards joined in the
+#: TASK-1055 follow-up (Prompt Guard 2 and the generative judge are admin-managed too).
+_SINGLE_MODEL_CACHES = (
+    "nlp_token_classifier",
+    "nlp_text_classifier",
+    "nlp_gliner2_guard",
+    "nlp_seq_cls_guard",
+    "nlp_judge_guard",
+)
+
+
 async def _plan(
     model_ref: str, load_spec: dict[str, Any], *, device: str | None = None
 ) -> LoadPlan | None:
@@ -223,10 +239,12 @@ async def _plan(
     cache_name = load_spec.get("cache")
     path = _optional_str(load_spec, "model_path")
 
-    if cache_name in ("nlp_token_classifier", "nlp_text_classifier", "nlp_gliner2_guard"):
+    if cache_name in _SINGLE_MODEL_CACHES:
         _fields(load_spec, {"cache", "model_path"})
-        key = deps._model_cache_key(model_ref, path)
         cache = deps._cache_for(cache_name, placement)
+        # Follow-up: a name-only copy of these exact weights already on THIS device
+        # (a live request loaded it first) is the copy — `already_loaded`, not a second.
+        key = await deps._reverse_alias(cache_name, deps._model_cache_key(model_ref, path), [cache])
         if cache_name == "nlp_text_classifier":
             # Keeps the doc-type placeholder refusal of the request path.
             return LoadPlan(
@@ -269,8 +287,8 @@ async def _plan(
         return LoadPlan(cache=cache, key=key, load=load)
 
     raise InvalidLoadSpec(
-        f"unknown cache {cache_name!r}; one of nlp_token_classifier, nlp_text_classifier, "
-        "nlp_gliner2_guard, nlp_medical_suggester, nlp_entailment_scorer"
+        f"unknown cache {cache_name!r}; one of "
+        + ", ".join((*_SINGLE_MODEL_CACHES, "nlp_medical_suggester", "nlp_entailment_scorer"))
     )
 
 
