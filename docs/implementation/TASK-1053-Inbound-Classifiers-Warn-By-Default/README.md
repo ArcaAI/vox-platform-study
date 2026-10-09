@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress |
+| Status | Review (merged on `dev-2.2`, not pushed) |
 | Type | bugfix (policy default) |
 | Opened | 2026-10-09 |
 | Owner decision | 2026-10-09: "go with option 1" — inbound `prompt_safety` / `prompt_toxicity` default `warn` |
@@ -40,10 +40,24 @@ explicit stored `block` still blocks.
 
 ## 4. Implementation summary
 
-_Pending._
+| Commit | Change |
+|---|---|
+| `bfa0ba608` | Defaults flipped to `warn` in `availability.py`, `policy-catalogue.ts`, seed `18-guardrail-availability.ts`, both contract fixtures; tests pinning the old default re-pinned; new `test_task1053_inbound_classifiers_warn.py` (8 cases: default warn; instruction flag → warn + notice; stored `block` still blocks; data region stays `ignore`) — RED 4 failed / GREEN |
+| `13f335251` | merge into `dev-2.2` |
+| `3eacf6624` | 5 guardrail route tests that relied on the old default (FC-5b mixed regions, override, evaluation reason, one-notice-per-type) now store `block` explicitly — intent unchanged |
+| `949bd0842` | TS re-pins: fixture `fieldGuard` "tenant changes an action" now changes to `block` (a real change from the new default); `guardrailPolicyChangedFields` absent-equals-default case; v2 effective view expects `warn` |
+
+Gates (orchestrator, after merge): guardrail pytest **1047 passed**; text 1047/1050 suites **176 passed**;
+vitest — applications guardrail **486/486**, types guardrail **84/84**, database guardrail **101/101**,
+api guardrail **64/64**, admin-console guardrail **167/167**; ruff + black clean; eslint 0 errors; prettier clean.
+
+Rollout: no migration. The SYSTEM `TenantGuardrailPolicy` row on dev stores no action for these checks, so the new
+catalogue default applies as soon as guardrail + api deploy. A row that stores `block` keeps it (admin-owned).
+Re-seeding is not needed.
 
 ## 5. Change history
 
 | Date | Change |
 |---|---|
 | 2026-10-09 | Opened from the post-deploy e2e of `1042ba78`; owner chose option 1. |
+| 2026-10-09 | Implemented, merged on `dev-2.2`, gates green; awaiting owner push + deploy. |
