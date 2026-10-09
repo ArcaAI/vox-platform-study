@@ -32,8 +32,10 @@ import { fallbackOnNotFound, warnAndFallback } from '../../common/swallow-policy
 import { BaseService } from '../../common/base.service';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import type { IActiveUserContext } from '../../interfaces';
-import { LmStudioEngineClient, LmStudioEngineError, type LmStudioLoadOptions } from '../inference-engine/lmstudio-engine.client';
+import { lmStudioPreloadEntryFor, lmStudioServingContextFrom } from '../effective-config/effective-config.service';
+import type { EffectiveLmStudioPreload } from '../effective-config/IEffectiveConfigService';
 import { IPrometheusQueryService, type PrometheusSample } from '../platform-metrics/prometheus-query.service';
+import { LM_STUDIO_SERVING_DEFAULTS, type LmStudioServingKey } from '../settings-registry/descriptors/lmstudio-serving.descriptors';
 import {
   MODEL_RESIDENCY_DEFAULTS,
   RESIDENCY_SHADOW_REVIEWED_AT_KEY,
@@ -49,7 +51,9 @@ import type {
   LoadModelResidencyRequest,
   ModelResidencyCatalogueResponse,
   ModelResidencyDevice,
+  ModelResidencyDeviceShare,
   ModelResidencyFreshness,
+  ModelResidencyLoadConfig,
   ModelResidencyLoadPreviewResponse,
   ModelResidencyModel,
   ModelResidencyOperationResponse,
@@ -72,6 +76,7 @@ import { ModelUsageIndexReader, type ModelResidencyUsageIndex } from './model-us
 import {
   type CatalogueRefFields,
   type ReadinessCheckId,
+  type ReportedLoadConfig,
   type ReportedResidentModel,
   type ResidencyBytesSource,
   type ResidencyClassName,
@@ -91,9 +96,23 @@ import {
 import { PhysicalGpuLoadGate } from './physical-gpu-load-gate';
 import { type ResidencyBudget, budgetFor } from './residency-budget';
 import { ResidencyAgentClient, ResidencyAgentError } from './residency-agent.client';
-import { type CatalogueFailedEntry, buildResidencyCatalogue } from './residency-catalogue';
+import { type CatalogueFailedEntry, attributeDevice, buildResidencyCatalogue, footprintFor } from './residency-catalogue';
 import { ResidencyLoadSpecBuilder, ResidencyLoadSpecError } from './residency-load-spec.builder';
 import { residencyAdmissionRejectionsTotal, residencyDecisionsTotal } from './residency-metrics';
+import {
+  type JudgedPlacement,
+  type LmStudioPlacement,
+  type LmStudioProfileOverrides,
+  type PlacementOption,
+  type PlacementReading,
+  judgePlacement,
+  lmStudioDefaultSplit,
+  lmStudioLoadSpec,
+  lmStudioProfileIndices,
+  rankPlacements,
+  shortLabel,
+  suggestionReasonFor,
+} from './residency-placement';
 import { ResidencyOperationRegistry, ResidencyRecommendationStore } from './residency-operations';
 import {
   CooldownTracker,
@@ -103,7 +122,6 @@ import {
   type EngineSettings,
   PromotionTracker,
   planTick,
-  usableBytes,
 } from './residency-policy-engine';
 import { rankRuntimeKeyCandidates, resolveRuntimeKey, runtimeKeysFor } from './runtime-key';
 
@@ -113,10 +131,18 @@ import { rankRuntimeKeyCandidates, resolveRuntimeKey, runtimeKeysFor } from './r
  * Studio (Triton's explicit model-control mode, plan D-1). `stt-worker` has no
  * control API and is observed through Prometheus only.
  *
+ * TASK-1055 — ONE control path for every service: the residency AGENT. LM
+ * Studio's is an in-pod sidecar (`LMSTUDIO_AGENT_URL`) that loads over the SDK
+ * channel with the model's FULL serving profile, built here with the boot
+ * plan's own resolution (`lmStudioPreloadEntryFor`). A load names a DEVICE
+ * (`gpu<N>` / `multi` / `cpu`, mapped onto the agent's `cuda:<n>` by card UUID);
+ * admission judges every device the service can use and names the best one
+ * (`residency-placement.ts`), and a refusal carries that advice too.
+ *
  * ── THE LOOP (every 10 s, plan §5.3) ─────────────────────────────────────────
  *
- *   observe  → the LEDGER: each agent's `GET /internal/residency`, LM Studio's
- *              REST v1 listing, DCGM per-device memory, per-model request
+ *   observe  → the LEDGER: each agent's `GET /internal/residency` (stt, nlp,
+ *              LM Studio's sidecar), DCGM per-device memory, per-model request
  *              rates, the SYSTEM policy rows and the implicit live path. A
  *              service whose last good report is > 30 s old is listed in
  *              `freshness.staleServices` and keeps its last known rows.
@@ -132,18 +158,17 @@ import { rankRuntimeKeyCandidates, resolveRuntimeKey, runtimeKeysFor } from './r
  *
  * ── MEASURED, NEVER ESTIMATED (D-2) ──────────────────────────────────────────
  *
- * The agents measure a load's footprint themselves (free-memory delta around a
- * serialised load); LM Studio reports none, so the controller measures it as
- * the DCGM `DCGM_FI_DEV_FB_USED` delta per card around its OWN load — which is
- * only attributable because the gate holds both cards for the duration. Every
- * measured footprint is written back to `AiModel.observedMemoryMb /
- * observedLoadSeconds / observedAt`, and the admission check and the eviction
- * score read only those measured values.
+ * The agents measure a load's footprint themselves (parameter bytes, or a
+ * serialised per-device delta) and say how they know it (`bytesSource`). A
+ * `measured` footprint is written back to `AiModel.observedMemoryMb /
+ * observedLoadSeconds / observedAt` — unless it is under half the stored value
+ * (TASK-1055 E7: a polluted remeasure), which is warned about and kept out —
+ * and the admission check and the eviction score read those values.
  *
  * ── PER PROCESS ──────────────────────────────────────────────────────────────
  *
- * The gate, the operation registry, the recommendation log and LM Studio's
- * controller-side pins live in this process. The gateway runs one replica
+ * The gate, the operation registry and the recommendation log live in this
+ * process. The gateway runs one replica
  * today; a second replica would need a shared lock before `residency.enforce`
  * is turned on (see the ticket's risks).
  */
@@ -213,11 +238,11 @@ const LM_STUDIO_SPELLINGS = ['lm-studio', 'lmstudio'];
 const MiB = 1024 * 1024;
 
 const PROMQL = {
-  fbUsed: 'max by (gpu, modelName) (DCGM_FI_DEV_FB_USED)',
+  // TASK-1055 — `UUID` kept: it is how an agent's `cuda:<n>` is matched to DCGM's `gpu<N>`.
+  fbUsed: 'max by (gpu, modelName, UUID) (DCGM_FI_DEV_FB_USED)',
   fbFree: 'max by (gpu) (DCGM_FI_DEV_FB_FREE)',
   fbReserved: 'max by (gpu) (DCGM_FI_DEV_FB_RESERVED)',
   gpuUtil: 'max by (gpu) (DCGM_FI_DEV_GPU_UTIL)',
-  fbUsedAt: 'max by (gpu) (timestamp(DCGM_FI_DEV_FB_USED))',
   // The Python services label their series `service=…`, which Prometheus renames
   // `exported_service` because each scrape job sets its own `service` target
   // label; `job` is what tells stt-worker (job `stt-worker`) apart from stt.
@@ -257,6 +282,23 @@ interface LedgerEntry {
   adminPinned: boolean;
   cache: string;
   instanceId?: string;
+  /** TASK-1055 — the bytes this instance holds per card (`gpu<N>`), from the agent's own per-device measurement. */
+  deviceBytes?: ModelResidencyDeviceShare[];
+  /** TASK-1055 — LM Studio: the config the agent read back after the load. */
+  loadConfig?: ModelResidencyLoadConfig | null;
+  /** TASK-1055 — the REPORTING service's own device id (`cuda:<n>`), for a device-scoped unload. */
+  agentDevice: string;
+}
+
+/** TASK-1055 — one device a commanded service can place a model on, in both vocabularies. */
+interface ServiceDevice {
+  /** The agent's id: `cuda:<n>`, `cpu`. */
+  agentId: string;
+  /** The ledger's id: `gpu<N>` (DCGM), `cpu:<service>`. */
+  id: string;
+  kind: 'gpu' | 'cpu';
+  /** The CUDA index the process sees (LM Studio: the engine's GPU index). */
+  index: number;
 }
 
 interface CatalogueIndex {
@@ -279,6 +321,8 @@ interface Ledger {
   catalogue: CatalogueIndex;
   /** Models whose last load FAILED (TASK-1019): they hold no memory, so they are not `entries`. */
   failures: CatalogueFailedEntry[];
+  /** TASK-1055 — the devices each commanded service can place a model on (agent ↔ ledger ids). */
+  serviceDevices: Map<ResidencyControlledService, ServiceDevice[]>;
 }
 
 interface Classification {
@@ -295,8 +339,13 @@ interface LoadJob {
   pin: boolean;
   force: boolean;
   reason: string | null;
-  loadSpec: Record<string, unknown> | null;
-  options: LmStudioLoadOptions;
+  loadSpec: Record<string, unknown>;
+  /** The spec a failed replace restores the previous instance with (LM Studio: the profile WITHOUT the request's overrides). */
+  restoreSpec: Record<string, unknown>;
+  /** TASK-1055 — the agent device to send (`cuda:<n>`, `cpu`); `null` = the service's own placement. */
+  agentDevice: string | null;
+  /** The ledger device id(s) for the log / audit (`gpu1`, `multi`). */
+  device: string | null;
   aiModelId: string | null;
   /** The catalogue row (F1: an unload/replace matches the instances the engine reports for it). */
   row?: AiModelEntity;
@@ -351,20 +400,19 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
   /** Last successful report per commanded service, and when it arrived. */
   private readonly lastReports = new Map<ResidencyControlledService, { report: ServiceResidencyReport; receivedAt: number }>();
-  /** Agent GPU → physical card, per reporting instance (a pod never changes card). */
-  private readonly instanceGpu = new Map<string, string>();
   /** The cache each (service, model) was last reported in — nlp's reload needs it. */
   private readonly lastSeenCache = new Map<string, string>();
   /** Keys the controller itself pinned (enforce mode), so it only ever unpins its own. */
   private readonly controllerPinned = new Set<string>();
 
-  // LM Studio reports no pin, footprint, timestamps or usage: the controller keeps them.
-  private readonly lmsPins = new Map<string, { ttlSeconds: number | null }>();
-  private readonly lmsFootprint = new Map<string, { bytes: number; loadSeconds: number | null }>();
   /** TASK-1019 D-8 — LM Studio's failed loads, kept until the next successful load or unload of that model (in memory; a restart re-observes). */
   private readonly lmsFailures = new Map<string, ResidencyLoadError>();
-  private readonly lmsLoadedAt = new Map<string, number>();
+  /** LM Studio's agent reports no usage: its last use is when its callers' series last showed traffic. */
   private readonly lmsLastUsed = new Map<string, number>();
+  /** TASK-1055 — the DCGM cards (with their UUIDs) of the last observation, for mapping agent devices outside it. */
+  private lastGpus: GpuReading[] = [];
+  /** TASK-1055 — services whose report read is failing, so an outage is logged once at warn (then debug) rather than every tick. */
+  private readonly reportFailing = new Set<ResidencyControlledService>();
   /** First time this process saw a resident (service, model) — a residency floor when the service reports no load time. */
   private readonly firstSeen = new Map<string, number>();
 
@@ -372,15 +420,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private ticking = false;
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  /** DCGM is scraped, not live: how often, and how long, to wait for a sample newer than a load. */
-  protected measurementPollMs = 5_000;
-  protected measurementMaxWaitMs = 60_000;
-
   constructor(
     private readonly policies: ModelResidencyPolicyRepository,
     private readonly aiModels: AiModelRepository,
     private readonly agents: ResidencyAgentClient,
-    private readonly lmStudio: LmStudioEngineClient,
     // Symbol token, so the parameter type alone cannot resolve it.
     @Inject(IPrometheusQueryService) private readonly prometheus: IPrometheusQueryService,
     private readonly effectiveSettings: EffectiveSettingsService,
@@ -448,6 +491,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       }
 
       if (!settings.enforce) {
+        // E11 — a standing row the state now satisfies (the agent reports the pin, the model is resident) goes at once.
+        this.suggestions.withdraw((conclusion) => this.alreadySatisfied(conclusion, ledger));
         for (const decision of decisions) this.record(decision, 'shadow', false, ledger);
         return;
       }
@@ -492,22 +537,24 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     for (const eviction of evictions) this.record(eviction, 'enforce', await this.policyUnload(eviction.service, eviction.modelRef));
 
     try {
-      const loadSpec =
-        service === 'lm-studio'
-          ? null
-          : await this.specs.build(service, decision.modelRef, this.lastSeenCache.get(residencyKey(service, decision.modelRef)));
+      const row = ledger.catalogue.modelFor(service, decision.modelRef);
+      // The controller places a model where its profile / default says — it never picks a GPU of its own (D-2).
+      const plan = await this.loadPlan(service, decision.modelRef, row, ledger, {});
+      const loadSpec = await this.loadSpecFor(service, plan.modelRef, [], plan);
       const recommendation = this.record(decision, 'enforce', false);
       this.startLoad({
         opId,
         action: 'load',
         service,
-        modelRef: decision.modelRef,
-        pin: this.classify(service, decision.modelRef, ledger.catalogue.modelFor(service, decision.modelRef)?.id ?? null, ledger).class === 'PINNED',
+        modelRef: plan.modelRef,
+        pin: this.classify(service, decision.modelRef, row?.id ?? null, ledger).class === 'PINNED',
         force: false,
         reason: `policy:${decision.reason}`,
         loadSpec,
-        options: {},
-        aiModelId: ledger.catalogue.modelFor(service, decision.modelRef)?.id ?? null,
+        restoreSpec: plan.restoreSpec ?? loadSpec,
+        agentDevice: plan.target.agentDevice,
+        device: plan.target.device,
+        aiModelId: row?.id ?? null,
         origin: 'policy',
         recommendation,
       });
@@ -533,12 +580,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private async policyPin(service: string, modelRef: string, pinned: boolean): Promise<boolean> {
     if (!isControlled(service)) return false;
     try {
-      if (service === 'lm-studio') {
-        if (pinned) this.lmsPins.set(modelRef, { ttlSeconds: this.lmsPins.get(modelRef)?.ttlSeconds ?? null });
-        else this.lmsPins.delete(modelRef);
-      } else {
-        await this.agents.setPolicy(service, modelRef, { adminPinned: pinned });
-      }
+      await this.agents.setPolicy(service, modelRef, { adminPinned: pinned });
       const key = residencyKey(service, modelRef);
       if (pinned) this.controllerPinned.add(key);
       else this.controllerPinned.delete(key);
@@ -585,7 +627,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    * controller classifying it PINNED is the reason for the pin, not proof of it), or a load of a model
    * with a MATCHED resident instance.
    */
-  private alreadySatisfied(decision: EngineDecision, ledger: Ledger): boolean {
+  private alreadySatisfied(decision: Pick<EngineDecision, 'action' | 'service' | 'modelRef'>, ledger: Ledger): boolean {
     const modelId = ledger.catalogue.modelFor(decision.service, decision.modelRef)?.id ?? null;
     if (decision.action === 'pin') {
       return ledger.entries.some((e) => e.service === decision.service && e.modelRef === decision.modelRef && (e.adminPinned || e.reportedPinned));
@@ -617,6 +659,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const settings = await this.readSettings();
     const ledger = await this.currentLedger();
 
+    this.suggestions.withdraw((conclusion) => this.alreadySatisfied(conclusion, ledger));
     const models = ledger.entries.map((entry) => this.toViewModel(entry, ledger));
     for (const op of this.operations.running()) {
       if (!ledger.entries.some((e) => e.service === op.service && e.modelRef === op.modelRef) && isControlled(op.service)) {
@@ -692,6 +735,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       }),
     ]);
     const catalogue = rows.filter((row) => residencyServiceOf(row) !== null);
+    // E11 — a standing row the state now satisfies is not shown, even between ticks.
+    this.suggestions.withdraw((conclusion) => this.alreadySatisfied(conclusion, ledger));
     const usage = opts.withUsage
       ? await this.usage.read(
           catalogue.map((row) => row.id),
@@ -715,8 +760,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       usage,
       classify: (service, modelRef, aiModelId) => this.classify(service, modelRef, aiModelId, ledger),
       observedBytes: (service, modelRef, model) => this.observedBytes(service, modelRef, model),
-      observedLoadSeconds: (service, modelRef, model) =>
-        (service === 'lm-studio' ? this.lmsFootprint.get(modelRef)?.loadSeconds : undefined) ?? model?.observedLoadSeconds ?? null,
+      observedLoadSeconds: (_service, _modelRef, model) => model?.observedLoadSeconds ?? null,
       // F4 — only live, non-dismissed standing rows (the builder projects and caps them).
       recommendations: this.suggestions.visible(now),
     });
@@ -724,19 +768,33 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
   async load(request: LoadModelResidencyRequest): Promise<ModelResidencyLoadResult> {
     this.assertPlatformAdmin('load a model');
-    const { service, modelRef } = request;
+    const { service } = request;
     const force = request.force === true;
     const reason = request.reason?.trim() || null;
     const replace = request.replace === true;
     assertOptionsSupported(request);
+    if (request.makeDefault === true && !request.device) {
+      throw new BadRequestException({
+        code: 'DEVICE_UNAVAILABLE',
+        message: '`makeDefault` makes the chosen `device` this model`s default placement; name the device.',
+        device: null,
+      });
+    }
 
     const settings = await this.readSettings();
     const ledger = await this.currentLedger();
-    const row = await this.catalogueModel(service, modelRef, ledger);
-    const admission = this.assessAdmission(service, modelRef, replace, row, ledger, settings);
+    const row = await this.catalogueModel(service, request.modelRef, ledger);
+    const plan = await this.loadPlan(service, request.modelRef, row, ledger, {
+      device: request.device ?? null,
+      replace,
+      overrides: lmStudioOverrides(request.options),
+    });
+    const { modelRef } = plan;
+    const admission = this.assessAdmission(service, modelRef, replace, row, ledger, settings, plan);
     const { resident } = admission;
 
     if (admission.refusal === 'ALREADY_LOADED') {
+      if (request.makeDefault === true) await this.makeDefault(service, row, plan);
       return { status: 200, body: { outcome: 'already_loaded', model: this.toViewModel(resident[0], ledger) } };
     }
     if (this.operations.runningFor(service, modelRef)) {
@@ -751,17 +809,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       });
     }
 
-    const loadSpec =
-      service === 'lm-studio'
-        ? null
-        : await this.specs
-            .build(service, modelRef, resident[0]?.cache ?? this.lastSeenCache.get(residencyKey(service, modelRef)))
-            .catch((error: unknown) => {
-              throw toHttpException(error);
-            });
+    const loadSpec = await this.loadSpecFor(service, modelRef, resident, plan).catch((error: unknown) => {
+      throw toHttpException(error);
+    });
 
-    // ── budget (TASK-1051 F8): measured footprint, else the catalogue size × 1.2; no size at all is refused ──
-    const { devices, need, availableBytes } = admission;
+    // ── budget (TASK-1051 F8 + TASK-1055): judged on the CHOSEN device; the refusal carries the best alternative ──
+    const { devices, need, availableBytes, chosen } = admission;
+    const advice = { device: plan.target.device, suggestedDevice: admission.suggestedDevice, candidates: admission.candidates };
     const noSize = admission.refusal === 'NO_SIZE';
     const overBudget = admission.refusal === 'OVER_BUDGET';
     if (noSize && !(force && reason)) {
@@ -772,6 +826,20 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
           `'${modelRef}' has never been measured and its catalogue entry has no memory size, so its footprint on ${devices.join(', ')} is unknown. ` +
           'Set the model`s memory size in the catalogue, or re-send with `force: true` AND a non-empty `reason` to load it anyway (audited).',
         devices,
+        ...advice,
+      });
+    }
+    if (admission.refusal === 'EXCEEDS_DEVICE') {
+      // OD-5 — not even a forced load: the need is larger than the card's free memory outright.
+      residencyAdmissionRejectionsTotal.inc({ reason: 'exceeds_device' });
+      throw new ConflictException({
+        code: 'EXCEEDS_DEVICE',
+        message:
+          `'${modelRef}' needs ${formatBytes(need.bytes ?? 0)} — more than ${shortLabel(plan.target.device)} has free at all (${formatBytes(chosen.freeBytes ?? 0)}); ` +
+          `a forced load would OOM its card-mates, so it is refused even with \`force\`.${alternative(admission)}`,
+        needBytes: need.bytes,
+        shortfallBytes: chosen.shortfallBytes,
+        ...advice,
       });
     }
     if (overBudget && !(force && reason)) {
@@ -779,13 +847,16 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       throw new ConflictException({
         code: 'OVER_BUDGET',
         message:
-          `Loading '${modelRef}' needs ${need.bytes} bytes (${need.source}) but ${availableBytes} are free on ${devices.join(', ')} after the ${settings.headroomPercent}% headroom. ` +
-          'The cards are time-sliced and give no memory isolation, so an over-budget load can OOM every workload on them. ' +
-          'Re-send with `force: true` AND a non-empty `reason` to proceed anyway (audited).',
+          `${shortLabel(plan.target.device)} cannot hold '${modelRef}': it needs ${formatBytes(need.bytes ?? 0)} (${need.source}) and ${formatBytes(Math.max(0, availableBytes))} ` +
+          `is free above the ${settings.headroomPercent}% headroom (short ${formatBytes(chosen.shortfallBytes)}).${alternative(admission)} ` +
+          'The cards are time-sliced and give no memory isolation, so an over-budget load can OOM every workload on them; ' +
+          're-send with `force: true` AND a non-empty `reason` to proceed anyway (audited).',
         needBytes: need.bytes,
         needSource: need.source,
         availableBytes,
         devices,
+        shortfallBytes: chosen.shortfallBytes,
+        ...advice,
       });
     }
 
@@ -806,6 +877,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       throw new ConflictException({ code: 'LOAD_IN_PROGRESS', message: `A load of '${modelRef}' on ${service} is already running.` });
     }
 
+    if (request.makeDefault === true) {
+      await this.makeDefault(service, row, plan).catch((error: unknown) => {
+        this.gate.release(opId);
+        throw error;
+      });
+    }
+
     const action = replace && resident.length > 0 ? 'replace' : 'load';
     this.startLoad({
       opId,
@@ -816,7 +894,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       force,
       reason,
       loadSpec,
-      options: lmStudioOptions(request.options),
+      restoreSpec: plan.restoreSpec ?? loadSpec,
+      agentDevice: plan.target.agentDevice,
+      device: plan.target.device,
       aiModelId: row?.id ?? resident[0]?.aiModelId ?? null,
       row,
       rows: catalogueRows(ledger, row),
@@ -828,6 +908,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       operationId: opId,
       service,
       modelRef,
+      device: plan.target.device,
+      makeDefault: request.makeDefault === true,
       pin: request.pin === true,
       force,
       reason,
@@ -839,7 +921,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
     return {
       status: 202,
-      body: { outcome: 'accepted', operationId: opId, model: this.loadingView(service, modelRef, ledger, request.pin === true) },
+      body: { outcome: 'accepted', operationId: opId, model: this.loadingView(service, modelRef, ledger, request.pin === true, plan.target) },
     };
   }
 
@@ -847,16 +929,24 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    * TASK-1051 — what `load(request)` would decide, with NO side effects: no
    * command, no operation, no recommendation, no audit. The arithmetic is
    * `assessAdmission`, the same call `load` makes, so the two cannot disagree.
+   * TASK-1055 — judged on the chosen (or default) device, with every other
+   * device the service can use as a ranked `candidates` list and a suggestion.
    */
   async previewLoad(request: LoadModelResidencyRequest): Promise<ModelResidencyLoadPreviewResponse> {
     this.assertPlatformAdmin('preview a model load');
-    const { service, modelRef } = request;
+    const { service } = request;
     assertOptionsSupported(request);
 
     const settings = await this.readSettings();
     const ledger = await this.currentLedger();
-    const row = await this.catalogueModel(service, modelRef, ledger);
-    const admission = this.assessAdmission(service, modelRef, request.replace === true, row, ledger, settings);
+    const row = await this.catalogueModel(service, request.modelRef, ledger);
+    const plan = await this.loadPlan(service, request.modelRef, row, ledger, {
+      device: request.device ?? null,
+      replace: request.replace === true,
+      overrides: lmStudioOverrides(request.options),
+    });
+    const { modelRef } = plan;
+    const admission = this.assessAdmission(service, modelRef, request.replace === true, row, ledger, settings, plan);
     const inFlight = admission.resident.reduce((sum, e) => sum + (e.inFlight ?? 0), 0);
     const blocked: 'LOAD_IN_PROGRESS' | 'IN_FLIGHT' | null =
       this.operations.runningFor(service, modelRef) || admission.devices.some((d) => this.gate.holderOf(d) !== undefined)
@@ -865,13 +955,49 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
           ? 'IN_FLIGHT'
           : null;
 
-    const now = Date.now();
     const targets = new Set(admission.resident);
-    const neighbours = ledger.entries.filter((e) => !targets.has(e) && e.devices.some((d) => admission.scope.includes(d)));
+    const { evictable, pinned } = this.neighbours(admission.scope, targets, ledger);
+
+    const { chosen } = admission;
+    // EXCEEDS_DEVICE is an over-budget answer the preview spells through the chosen candidate's `exceedsDevice`.
+    const refusal = admission.refusal === 'EXCEEDS_DEVICE' ? 'OVER_BUDGET' : admission.refusal;
+    return {
+      service,
+      modelRef,
+      device: admission.device,
+      needBytes: admission.need.bytes,
+      needSource: admission.need.source,
+      freeBytes: chosen.freeBytes,
+      headroomBytes: chosen.headroomBytes,
+      unattributedBytes: admission.unattributedBytes,
+      shortfallBytes: chosen.shortfallBytes,
+      // Review finding 5 — `fits` is what an un-forced load() would answer: besides the budget, a running load of the
+      // same model and a card another load holds are LOAD_IN_PROGRESS, and a replace of a serving model is IN_FLIGHT.
+      // `refusal` names the FIRST reason an un-forced load would be refused: the budget answer, else the blocker.
+      fits: admission.refusal === null && blocked === null,
+      refusal: refusal ?? blocked,
+      evictable,
+      pinned,
+      candidates: admission.candidates,
+      suggestedDevice: admission.suggestedDevice,
+      suggestionReason: admission.suggestionReason,
+    };
+  }
+
+  /** The resident models on `scope` (the target's own instances excepted): ON_DEMAND idle ones offered for eviction, largest first; pinned ones listed with why. */
+  private neighbours(
+    scope: readonly string[],
+    targets: ReadonlySet<LedgerEntry>,
+    ledger: Ledger,
+  ): { evictable: ModelResidencyPreviewModel[]; pinned: ModelResidencyPreviewModel[]; livePath: number } {
+    const now = Date.now();
     const evictable: Array<ModelResidencyPreviewModel & { sortBytes: number }> = [];
     const pinned: ModelResidencyPreviewModel[] = [];
-    for (const entry of neighbours) {
+    let livePath = 0;
+    for (const entry of ledger.entries) {
+      if (targets.has(entry) || !entry.devices.some((d) => scope.includes(d))) continue;
       const cls = this.classify(entry.service, entry.modelRef, entry.aiModelId, ledger);
+      if (cls.class === 'PINNED') livePath += 1;
       const base = { service: entry.service, modelRef: entry.modelRef, name: entry.aiModelName ?? entry.modelRef, bytes: entry.bytes };
       if (cls.class === 'PINNED' || entry.adminPinned || entry.reportedPinned) {
         pinned.push({ ...base, reason: pinReason(cls.classSource, cls.class === 'PINNED') });
@@ -884,37 +1010,23 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         });
       }
     }
-
     return {
-      service,
-      modelRef,
-      device: admission.device,
-      needBytes: admission.need.bytes,
-      needSource: admission.need.source,
-      freeBytes: admission.freeBytes,
-      headroomBytes: admission.headroomBytes,
-      unattributedBytes: admission.unattributedBytes,
-      shortfallBytes: admission.shortfallBytes,
-      // Review finding 5 — `fits` is what an un-forced load() would answer: besides the budget, a running load of the
-      // same model and a card another load holds are LOAD_IN_PROGRESS, and a replace of a serving model is IN_FLIGHT.
-      // `refusal` names the FIRST reason an un-forced load would be refused: the budget answer, else the blocker.
-      fits: admission.refusal === null && blocked === null,
-      refusal: admission.refusal ?? blocked,
       evictable: evictable.sort((a, b) => b.sortBytes - a.sortBytes).map(({ sortBytes: _sortBytes, ...model }) => model),
       pinned,
-      // TASK-1055 wave-0 contract placeholders — filled by the gateway lane (per-device candidates + suggestion).
-      candidates: [],
-      suggestedDevice: null,
-      suggestionReason: null,
+      livePath,
     };
   }
 
   /**
    * The ONE admission computation (`load` and `previewLoad`). Need =
    * `budgetFor(measured, memorySizeMb)` — on a replace, the measured footprint is
-   * the resident one, and those bytes come back before the new load. A service
-   * that holds one card is budgeted against its mapped card, or (unmapped) the
-   * TIGHTEST candidate card; LM Studio against the pool of every card.
+   * the resident one, and those bytes come back before the new load.
+   *
+   * TASK-1055 — judged on the plan's TARGET device (the admin's pick, the
+   * model's default, else the service's default) with `judgePlacement`, and on
+   * every other device the service can place it on, ranked into `candidates`
+   * and a `suggestedDevice` (the fixture's `$suggestionRule`). `EXCEEDS_DEVICE`
+   * (need > the target's free memory outright) is the refusal force cannot lift.
    */
   private assessAdmission(
     service: ResidencyControlledService,
@@ -923,41 +1035,276 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     row: AiModelEntity | undefined,
     ledger: Ledger,
     settings: ResidencySettings,
+    plan: LoadPlan,
   ): Admission {
-    const resident = this.residentFor(service, modelRef, row, ledger);
-    const devices = resident[0]?.devices ?? this.placementDevices(service, ledger);
+    const allResident = this.residentFor(service, modelRef, row, ledger);
+    const { target } = plan;
+    // stt / nlp keep one copy PER DEVICE: an explicit device without a copy on it is a new load, not "already loaded".
+    const resident =
+      plan.explicitDevice && service !== 'lm-studio' ? allResident.filter((e) => e.devices.some((d) => target.physical.includes(d))) : allResident;
     const residentBytes = resident.reduce((sum, e) => sum + (e.bytes ?? 0), 0);
-    const credit = replace ? residentBytes : 0;
     const need = budgetFor(replace && residentBytes > 0 ? residentBytes : this.observedBytes(service, modelRef, row), row?.memorySizeMb);
 
-    const readings = devices.map((id) => this.deviceReading(id, ledger)).filter((d): d is DeviceReading => d !== undefined);
-    const headroomOf = (d: DeviceReading) => d.totalBytes * (settings.headroomPercent / 100);
-    let scope: DeviceReading[];
-    if (service === 'lm-studio') scope = readings;
-    else {
-      const tightest = [...readings].sort((a, b) => usableBytes(a, settings) - usableBytes(b, settings))[0];
-      scope = tightest ? [tightest] : [];
-    }
-    const sum = (f: (d: DeviceReading) => number) => scope.reduce((total, d) => total + f(d), 0);
-    const freeBytes = scope.length > 0 ? sum((d) => d.freeBytes) : null;
-    const headroomBytes = scope.length > 0 ? sum(headroomOf) : null;
-    const availableBytes = sum((d) => usableBytes(d, settings)) + credit;
+    const judge = (option: PlacementOption): JudgedPlacement => {
+      const readings = option.physical.map((id) => this.deviceReading(id, ledger)).filter((d): d is PlacementReading => d !== undefined);
+      const credit = replace ? residentBytesOn(resident, option.physical) : 0;
+      const { evictable, livePath } = this.neighbours(option.physical, new Set(resident), ledger);
+      return judgePlacement({
+        option,
+        readings,
+        needBytes: need.bytes,
+        creditBytes: credit,
+        headroomPercent: settings.headroomPercent,
+        livePathModels: livePath,
+        evictable,
+      });
+    };
+    const chosen = judge(target);
+    const ranked = rankPlacements(plan.options.map((option) => (option.device === target.device ? chosen : judge(option))));
+    const candidates = ranked.map(({ order: _order, ...candidate }) => candidate);
 
-    const ids = scope.map((d) => d.id);
-    const attributed = ledger.entries
-      .filter((e) => e.bytesSource === 'measured' && e.bytes && e.devices.length > 0)
-      .reduce((total, e) => total + ((e.bytes ?? 0) / e.devices.length) * e.devices.filter((d) => ids.includes(d)).length, 0);
-    const unattributedBytes = scope.length > 0 ? Math.max(0, Math.round(sum((d) => d.usedBytes) - attributed)) : null;
+    const devices = target.physical;
+    const scope = devices.filter((id) => this.deviceReading(id, ledger) !== undefined);
+    const gpuDevices = ledger.devices.filter((d) => d.kind === 'gpu');
+    const footprintOf = (e: LedgerEntry) => {
+      const model = e.aiModelId ? ledger.catalogue.byId.get(e.aiModelId) : ledger.catalogue.modelFor(e.service, e.modelRef);
+      return footprintFor(e, this.observedBytes(e.service, e.modelRef, model), model?.memorySizeMb);
+    };
+    const unattributedBytes =
+      scope.length > 0
+        ? scope.reduce((sum, id) => {
+            const reading = this.deviceReading(id, ledger)!;
+            return sum + attributeDevice(reading, ledger.entries, gpuDevices, footprintOf).unattributedBytes;
+          }, 0)
+        : null;
 
-    // Review finding 5 — the SAME per-card clamped availability `refusal` is decided on (a card below its headroom offers 0, never a negative).
-    const shortfallBytes = need.bytes === null ? 0 : Math.max(0, Math.round(need.bytes - availableBytes));
     let refusal: Admission['refusal'] = null;
     if (resident.length > 0 && !replace) refusal = 'ALREADY_LOADED';
     else if (need.bytes === null) refusal = 'NO_SIZE';
-    else if (need.bytes > availableBytes) refusal = 'OVER_BUDGET';
+    else if (chosen.exceedsDevice) refusal = 'EXCEEDS_DEVICE';
+    else if (!chosen.fits) refusal = 'OVER_BUDGET';
 
-    const device = service === 'lm-studio' ? 'multi' : (resident[0]?.device ?? (devices.length === 1 ? devices[0] : null));
-    return { resident, devices, device, scope: ids, need, freeBytes, headroomBytes, unattributedBytes, availableBytes, shortfallBytes, refusal };
+    const availableBytes = need.bytes === null || chosen.remainingBytes === null ? 0 : chosen.remainingBytes + need.bytes;
+    const device =
+      refusal === 'ALREADY_LOADED' && resident[0] ? resident[0].device : target.device === 'cpu' ? `cpu:${service}` : (target.device ?? null);
+    return {
+      resident,
+      devices,
+      device,
+      scope,
+      need,
+      chosen,
+      unattributedBytes,
+      availableBytes,
+      refusal,
+      candidates,
+      suggestedDevice: ranked[0]?.device ?? null,
+      suggestionReason: suggestionReasonFor(ranked),
+    };
+  }
+
+  // ── TASK-1055 — placement ────────────────────────────────────────────────
+
+  /**
+   * Where a load goes and what it sends. `modelRef` comes back CANONICAL for
+   * LM Studio (an engine key `<ref>@<quant>` resolving to a row is loaded under
+   * the row's catalogue ref, which is the identifier the agent loads it as).
+   * The target is, in order: the admin's `device` (400 DEVICE_UNAVAILABLE when
+   * the service has no such device); on a replace, where the instance is now;
+   * the row's `_metadata.residency.defaultDevice`; the service's default
+   * (LM Studio: the profile's own placement; stt / nlp: their first device,
+   * with no device SENT so the agent's own placement stands).
+   */
+  private async loadPlan(
+    service: ResidencyControlledService,
+    requestedRef: string,
+    row: AiModelEntity | undefined,
+    ledger: Ledger,
+    request: { device?: string | null; replace?: boolean; overrides?: LmStudioProfileOverrides },
+  ): Promise<LoadPlan> {
+    const modelRef = service === 'lm-studio' ? (refFor(service, row) ?? requestedRef) : requestedRef;
+    const lms = service === 'lm-studio' ? await this.lmStudioEntryFor(modelRef, row) : undefined;
+    const options = this.placementOptions(service, ledger);
+    const allowed = [...options, ...this.extraDevices(service, ledger, options)];
+    const find = (device: string) => allowed.find((o) => o.device === device);
+
+    let target: PlacementOption | undefined;
+    // Where the target came from decides what is SENT: only the service's own default leaves the agent to place it.
+    let source: 'request' | 'replace' | 'default' | 'service' = 'service';
+    if (request.device) {
+      target = find(request.device);
+      if (!target) {
+        throw new BadRequestException({ code: 'DEVICE_UNAVAILABLE', message: `${service} has no device ${request.device}`, device: request.device });
+      }
+      source = 'request';
+    }
+    if (!target && request.replace) {
+      // A reload stays where the instance is now.
+      const current = this.residentFor(service, modelRef, row, ledger)[0];
+      // LM Studio split across cards reloads as its PROFILE places it (AC-2); one card stays that card.
+      const keepsProfile = service === 'lm-studio' && current?.device === 'multi';
+      const device = keepsProfile ? undefined : current?.device.startsWith('cpu:') ? 'cpu' : current?.device;
+      target = device ? find(device) : undefined;
+      if (target) source = 'replace';
+    }
+    if (!target) {
+      const preferred = defaultDeviceOf(row);
+      target = preferred ? find(preferred) : undefined;
+      if (preferred && !target) this.logger.warn({ message: 'residency.default_device.unavailable', service, modelRef, device: preferred });
+      if (target) source = 'default';
+    }
+    if (!target) target = this.serviceDefault(service, options, lms, ledger);
+    const explicitDevice = source === 'request' || source === 'default';
+    const send = source !== 'service';
+
+    const gpuCount =
+      options.filter((o) => o.device !== 'multi' && o.device !== 'cpu').length || ledger.devices.filter((d) => d.kind === 'gpu').length;
+    let loadSpec: Record<string, unknown> | undefined;
+    let restoreSpec: Record<string, unknown> | undefined;
+    if (lms) {
+      const placement: LmStudioPlacement = !send
+        ? { kind: 'profile' }
+        : target.device === 'multi'
+          ? { kind: 'multi' }
+          : { kind: 'gpu', index: target.lmsIndices?.[0] ?? 0 };
+      loadSpec = lmStudioLoadSpec(lms, modelRef, gpuCount, request.overrides ?? {}, placement);
+      restoreSpec = lmStudioLoadSpec(lms, modelRef, gpuCount, {}, placement);
+    }
+    // `multi` sends no device (the split in the spec is the instruction); the service default sends none at all.
+    if (!send || target.device === 'multi') target = { ...target, agentDevice: null };
+    return { modelRef, target, options, explicitDevice, loadSpec, restoreSpec, gpuCount };
+  }
+
+  /** The stt / nlp `load_spec` (the builder), or LM Studio's resolved-profile spec from the plan. */
+  private async loadSpecFor(
+    service: ResidencyControlledService,
+    modelRef: string,
+    resident: LedgerEntry[],
+    plan: LoadPlan,
+  ): Promise<Record<string, unknown>> {
+    if (service === 'lm-studio') return plan.loadSpec ?? {};
+    return this.specs.build(service, modelRef, resident[0]?.cache ?? this.lastSeenCache.get(residencyKey(service, modelRef)));
+  }
+
+  /**
+   * Every device a service can place a model on (the candidates): the GPUs its
+   * agent reports, mapped to DCGM's ids; a service with no GPU offers its host
+   * memory; LM Studio adds `multi` (split across every card). A service that has
+   * not reported yet falls back to DCGM's cards (index mapping), and nlp to host memory.
+   */
+  private placementOptions(service: ResidencyControlledService, ledger: Ledger): PlacementOption[] {
+    let gpus = (ledger.serviceDevices.get(service) ?? []).filter((d) => d.kind === 'gpu' && /^gpu\d+$/.test(d.id));
+    if (gpus.length === 0 && service !== 'nlp') {
+      gpus = ledger.devices
+        .filter((d) => d.kind === 'gpu')
+        .map((d) => ({ agentId: `cuda:${d.id.slice(3)}`, id: d.id, kind: 'gpu' as const, index: Number(d.id.slice(3)) }));
+    }
+    const options: PlacementOption[] = gpus.map((d) => ({
+      device: d.id,
+      physical: [d.id],
+      agentDevice: d.agentId,
+      order: Number(d.id.slice(3)),
+      ...(service === 'lm-studio' ? { lmsIndices: [d.index] } : {}),
+    }));
+    if (service === 'lm-studio') {
+      if (options.length > 1) {
+        options.push({
+          device: 'multi',
+          physical: options.map((o) => o.device),
+          agentDevice: null,
+          order: 1_000,
+          lmsIndices: gpus.map((d) => d.index),
+        });
+      }
+      return options;
+    }
+    if (options.length === 0) {
+      const cpu = (ledger.serviceDevices.get(service) ?? []).find((d) => d.kind === 'cpu');
+      if (cpu || service === 'nlp') options.push({ device: 'cpu', physical: [`cpu:${service}`], agentDevice: cpu?.agentId ?? 'cpu', order: 2_000 });
+    }
+    return options;
+  }
+
+  /** Devices a service accepts on request without offering them (stt / nlp host memory beside their GPUs). */
+  private extraDevices(service: ResidencyControlledService, ledger: Ledger, options: PlacementOption[]): PlacementOption[] {
+    if (service === 'lm-studio' || options.some((o) => o.device === 'cpu')) return [];
+    const cpu = (ledger.serviceDevices.get(service) ?? []).find((d) => d.kind === 'cpu');
+    return cpu ? [{ device: 'cpu', physical: [`cpu:${service}`], agentDevice: cpu.agentId, order: 2_000 }] : [];
+  }
+
+  /** The service's own placement: LM Studio's profile (one card, or `multi` when the split spans several); stt / nlp their first device. */
+  private serviceDefault(
+    service: ResidencyControlledService,
+    options: PlacementOption[],
+    lms: EffectiveLmStudioPreload | undefined,
+    ledger: Ledger,
+  ): PlacementOption {
+    if (service === 'lm-studio' && lms) {
+      const gpuOptions = options.filter((o) => o.device !== 'multi');
+      const indices = lmStudioProfileIndices(lms, gpuOptions.length || ledger.devices.filter((d) => d.kind === 'gpu').length);
+      const cards = gpuOptions.filter((o) => indices.includes(o.lmsIndices?.[0] ?? -1));
+      if (cards.length === 1) return cards[0];
+      if (cards.length > 1) return { device: 'multi', physical: cards.map((c) => c.device), agentDevice: null, order: 1_000, lmsIndices: indices };
+    }
+    const [first] = [...options].sort((a, b) => a.order - b.order);
+    if (first) return first;
+    // Nothing known about this service's devices at all: budget against every card (the gate stays conservative).
+    const gpus = ledger.devices.filter((d) => d.kind === 'gpu').map((d) => d.id);
+    return { device: 'multi', physical: gpus.length > 0 ? gpus : ['gpu?'], agentDevice: null, order: 1_000 };
+  }
+
+  /** The LM Studio boot-plan entry for a model: its row's profile resolved against the platform `lmStudio.serving.*` (no row = platform defaults). */
+  private async lmStudioEntryFor(modelRef: string, row: AiModelEntity | undefined): Promise<EffectiveLmStudioPreload> {
+    const keys = Object.keys(LM_STUDIO_SERVING_DEFAULTS).filter((key) => key.startsWith('lmStudio.serving.')) as LmStudioServingKey[];
+    const values = Object.fromEntries(await Promise.all(keys.map(async (key) => [key, await this.lmStudioServingValue(key)] as const)));
+    const { entry, problems } = lmStudioPreloadEntryFor(row ?? { metaData: {}, sourceUri: modelRef }, lmStudioServingContextFrom(values));
+    if (problems.length > 0) this.logger.warn({ message: 'residency.lmstudio.profile_incoherent', modelRef, problems });
+    return entry;
+  }
+
+  /** One `lmStudio.serving.*` key on the SYSTEM tier; an unresolved or mistyped value is the declared default (the boot plan's `open-to-default`). */
+  private async lmStudioServingValue(key: LmStudioServingKey): Promise<unknown> {
+    const fallback: unknown = LM_STUDIO_SERVING_DEFAULTS[key];
+    const resolved = await this.effectiveSettings
+      .resolveEffective(key, { tenantId: SYSTEM_TENANT_ID })
+      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'LM Studio serving setting read failed', meta: { key } }));
+    const value = resolved?.value;
+    const sameShape = Array.isArray(fallback) ? Array.isArray(value) : value !== null && value !== undefined && typeof value === typeof fallback;
+    if (sameShape) return value;
+    return Array.isArray(fallback) ? [...fallback] : fallback;
+  }
+
+  /**
+   * OD-4 — "make this the model's default placement": `_metadata.residency.defaultDevice`
+   * (and, for LM Studio, `_metadata.serving.gpuSplit`, so the boot plan follows), as a
+   * versioned write merged into the row's LATEST `_metadata` (one drift re-reads and retries).
+   */
+  private async makeDefault(service: ResidencyControlledService, row: AiModelEntity | undefined, plan: LoadPlan): Promise<void> {
+    if (!row) throw new NotFoundException({ code: 'MODEL_UNKNOWN', message: `No catalogue model to make ${plan.target.device} the default of.` });
+    const device = plan.target.device;
+    const split =
+      service === 'lm-studio' && device !== 'cpu'
+        ? lmStudioDefaultSplit(device === 'multi' ? { kind: 'multi' } : { kind: 'gpu', index: plan.target.lmsIndices?.[0] ?? 0 }, plan.gpuCount)
+        : null;
+    const write = async (current: AiModelEntity): Promise<void> => {
+      const metaData: Record<string, unknown> = { ...((current.metaData as Record<string, unknown> | null | undefined) ?? {}) };
+      const residency: Record<string, unknown> = {
+        ...((metaData.residency as Record<string, unknown> | null | undefined) ?? {}),
+        defaultDevice: device,
+      };
+      const next: Record<string, unknown> = { ...metaData, residency };
+      if (split) next.serving = { ...((metaData.serving as Record<string, unknown> | null | undefined) ?? {}), gpuSplit: split };
+      current.metaData = next;
+      if (this.requestUserId) current.updatedBy = this.requestUserId;
+      await this.aiModels.updateWithVersion(current.id, current, current.version);
+    };
+    try {
+      await write(await this.aiModels.findById(row.id));
+    } catch (error) {
+      if (!(error instanceof OptimisticConcurrencyException)) throw error;
+      await write(await this.aiModels.findById(row.id));
+    }
+    this.ledger = null;
   }
 
   /** A device's memory reading: a DCGM card or a listed host pool, else the host pool a service reports even with nothing loaded. */
@@ -998,6 +1345,33 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     }
     const ledger = await this.currentLedger();
     const row = await this.catalogueModel(service, modelRef, ledger);
+
+    // TASK-1055 — `device` scopes the unload to the copy on that card.
+    let scope: PlacementOption | undefined;
+    if (request.device) {
+      const options = this.placementOptions(service, ledger);
+      scope = [...options, ...this.extraDevices(service, ledger, options)].find((o) => o.device === request.device);
+      if (!scope) {
+        throw new BadRequestException({ code: 'DEVICE_UNAVAILABLE', message: `${service} has no device ${request.device}`, device: request.device });
+      }
+    }
+
+    // OD-2 — a live-path model (implicit, or a PINNED policy) MAY be unloaded, but only with a reason, which is audited.
+    // The unload never touches the policy: the model stays PINNED and an enforcing controller loads it back.
+    const cls = this.classify(service, modelRef, row?.id ?? null, ledger);
+    const livePath = cls.class === 'PINNED';
+    if (livePath && !reason) {
+      const name = row?.name ?? modelRef;
+      throw new ConflictException({
+        code: 'LIVE_PATH_REASON_REQUIRED',
+        message:
+          cls.classSource === 'policy'
+            ? `${name} is kept always loaded by its residency policy; give a reason to unload it`
+            : `${name} is on the live consultation path; give a reason to unload it`,
+        consumers: await this.consumersOf(row, cls),
+      });
+    }
+
     if (service === 'lm-studio' && !force) {
       // LM Studio refuses nothing on its own; the in-flight guard is the controller's (from `model_running_instances`).
       const inFlight = this.residentFor(service, modelRef, row, ledger).reduce((sum, e) => sum + (e.inFlight ?? 0), 0);
@@ -1010,13 +1384,41 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       }
     }
 
-    const outcome = await this.unloadInternal(service, modelRef, force, 'admin', row, catalogueRows(ledger, row)).catch((error: unknown) => {
-      throw toHttpException(error);
-    });
+    const outcome = await this.unloadInternal(service, modelRef, force, 'admin', row, catalogueRows(ledger, row), undefined, scope).catch(
+      (error: unknown) => {
+        this.logger.warn({ message: 'residency.unload.failed', service, modelRef, device: request.device ?? null, ...failureFields(error) });
+        throw toHttpException(error);
+      },
+    );
 
     // F10 — the operator's reason is on the audit event whether or not the unload was forced (the agent wire keeps its `admin` verb).
-    this.audit('model-residency.unload', { service, modelRef, force, reason, outcome });
+    this.audit('model-residency.unload', { service, modelRef, device: request.device ?? null, force, reason, livePath, outcome });
     return { outcome, service, modelRef };
+  }
+
+  /** Who uses a live-path model, in plain words (the 409's `consumers`), from the cross-tenant usage index. */
+  private async consumersOf(row: AiModelEntity | undefined, cls: Classification): Promise<string[]> {
+    const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+    const words: string[] = [];
+    const usage = row
+      ? await this.usage
+          .read([row.id], Date.now())
+          .then((index) => index.get(row.id))
+          .catch(warnAndFallback(undefined, { logger: this.logger, message: 'Residency usage read failed' }))
+      : undefined;
+    if (usage) {
+      if (usage.agentCount > 0) {
+        words.push(
+          `${plural(usage.agentCount, 'agent')} · ${plural(usage.tenantCount, 'tenant')}${usage.liveConsultation ? ' (live consultations)' : ''}`,
+        );
+      }
+      const { routingPolicies, pipelineStages, workflowNodes } = usage.consumers;
+      if (routingPolicies > 0) words.push(plural(routingPolicies, 'routing policy', 'routing policies'));
+      if (pipelineStages > 0) words.push(plural(pipelineStages, 'speech-to-text pipeline stage'));
+      if (workflowNodes > 0) words.push(plural(workflowNodes, 'workflow node'));
+    }
+    if (cls.classSource === 'policy') words.push('its PINNED residency policy');
+    return words.length > 0 ? words : ['the live consultation path'];
   }
 
   async pin(request: PinModelResidencyRequest): Promise<ModelResidencyPinResponse> {
@@ -1024,30 +1426,23 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const { service, modelRef, pinned } = request;
     const key = residencyKey(service, modelRef);
 
-    let reported: ReportedResidentModel | null = null;
+    let target = modelRef;
     if (service === 'lm-studio') {
+      // The agent pins an INSTANCE under the key it reports (F1: the request may name the catalogue ref or the engine key).
       const ledger = await this.currentLedger();
-      if (this.residentFor(service, modelRef, ledger.catalogue.modelFor(service, modelRef), ledger).length === 0) {
-        throw new NotFoundException({ code: 'MODEL_UNKNOWN', message: `LM Studio holds no loaded instance of '${modelRef}'.` });
-      }
-      if (pinned)
-        this.lmsPins.set(modelRef, {
-          ttlSeconds: request.ttlSeconds !== undefined ? request.ttlSeconds : (this.lmsPins.get(modelRef)?.ttlSeconds ?? null),
-        });
-      else {
-        // F1 — a pin may have been taken under the engine's key or the catalogue ref; an unpin clears both.
-        this.lmsPins.delete(modelRef);
-        for (const e of this.residentFor(service, modelRef, ledger.catalogue.modelFor(service, modelRef), ledger)) this.lmsPins.delete(e.modelRef);
-      }
-    } else {
-      reported = await this.agents
-        .setPolicy(service, modelRef, { adminPinned: pinned, ...(request.ttlSeconds !== undefined ? { ttlSeconds: request.ttlSeconds } : {}) })
-        .catch((error: unknown) => {
-          throw toHttpException(error);
-        });
+      const instance = this.residentFor(service, modelRef, ledger.catalogue.modelFor(service, modelRef), ledger)[0];
+      if (!instance) throw new NotFoundException({ code: 'MODEL_UNKNOWN', message: `LM Studio holds no loaded instance of '${modelRef}'.` });
+      target = instance.modelRef;
     }
+    const reported = await this.agents
+      .setPolicy(service, target, { adminPinned: pinned, ...(request.ttlSeconds !== undefined ? { ttlSeconds: request.ttlSeconds } : {}) })
+      .catch((error: unknown) => {
+        this.logger.warn({ message: 'residency.pin.failed', service, modelRef, ...failureFields(error) });
+        throw toHttpException(error);
+      });
     // An operator's pin is the operator's; the controller must never later "unpin its own" over it.
     this.controllerPinned.delete(key);
+    this.controllerPinned.delete(residencyKey(service, target));
 
     this.audit(pinned ? 'model-residency.pin' : 'model-residency.unpin', { service, modelRef, ttlSeconds: request.ttlSeconds ?? null });
 
@@ -1390,7 +1785,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         unloadFinished = true;
       }
 
-      const measured = await this.loadOnce(service, modelRef, job.options, job.loadSpec, job.pin);
+      const measured = await this.loadOnce(service, modelRef, job.loadSpec, job.pin, null, job.agentDevice);
       if (measured.bytes && job.aiModelId) await this.writeObserved(job.aiModelId, measured.bytes, measured.loadSeconds);
 
       if (service === 'lm-studio') this.lmsFailures.delete(modelRef);
@@ -1402,29 +1797,39 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         operationId: job.opId,
         service,
         modelRef,
+        device: job.device,
         bytes: measured.bytes,
         loadSeconds: measured.loadSeconds,
       });
     } catch (error) {
       let failure = describeError(error);
       // F9 (owner default OD-5) — a replace that unloaded the old instance(s) and then failed — to load the new one,
-      // or part-way through unloading several — puts back what it unloaded (same model, default load settings, its
+      // or part-way through unloading several — puts back what it unloaded (same model, its profile / spec, its
       // previous pin and TTL), so "Apply & reload" never leaves the model gone.
       let restored: boolean | null = null;
-      const toRestore = [...new Map(unloaded.map((instance) => [instance.modelRef, instance])).values()];
+      let toRestore = [...new Map(unloaded.map((instance) => [instance.modelRef, instance])).values()];
+      // LM Studio: the MODEL comes back once, under its catalogue ref (the identifier the profile loads it as), with
+      // the pin / TTL any of its instances had — never one load per `<key>:<n>` duplicate.
+      if (service === 'lm-studio' && toRestore.length > 0) {
+        const pinned = toRestore.find((instance) => instance.pinned);
+        toRestore = [{ modelRef, pinned: pinned !== undefined, ttlSeconds: (pinned ?? toRestore[0]).ttlSeconds }];
+      }
       if (toRestore.length > 0) {
         const errors: string[] = [];
         for (const instance of toRestore) {
-          await this.loadOnce(service, instance.modelRef, {}, job.loadSpec, instance.pinned, instance.ttlSeconds).catch((restoreError: unknown) => {
-            this.logger.warn({
-              message: 'residency.replace.restore_failed',
-              operationId: job.opId,
-              service,
-              modelRef: instance.modelRef,
-              ...describeError(restoreError),
-            });
-            errors.push(describeError(restoreError).message);
-          });
+          await this.loadOnce(service, instance.modelRef, job.restoreSpec, instance.pinned, instance.ttlSeconds, job.agentDevice).catch(
+            (restoreError: unknown) => {
+              this.logger.warn({
+                message: 'residency.replace.restore_failed',
+                operationId: job.opId,
+                service,
+                modelRef: instance.modelRef,
+                code: describeError(restoreError).code,
+                reason: describeError(restoreError).message,
+              });
+              errors.push(describeError(restoreError).message);
+            },
+          );
         }
         restored = errors.length === 0;
         const what = unloadFinished ? 'the replacement failed to load' : 'the replace failed part-way through unloading';
@@ -1439,93 +1844,54 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         this.lmsFailures.set(modelRef, { ...failure, message: failure.message.slice(0, 500), at: iso(Date.now()) });
       }
       this.operations.fail(job.opId, failure);
-      this.logger.warn({ message: 'residency.load.failed', operationId: job.opId, service, modelRef, ...failure });
-      this.audit(`model-residency.${job.action}.failed`, { operationId: job.opId, service, modelRef, error: failure, restored });
+      // AC-6 — the engine's own reason, at warn, with what was asked and where.
+      this.logger.warn({
+        message: 'residency.load.failed',
+        operationId: job.opId,
+        service,
+        modelRef,
+        device: job.device,
+        code: failure.code,
+        reason: failure.message,
+      });
+      this.audit(`model-residency.${job.action}.failed`, { operationId: job.opId, service, modelRef, device: job.device, error: failure, restored });
     }
   }
 
-  /** One load on the serving process (no bookkeeping beyond what the adapters keep). */
-  private loadOnce(
+  /**
+   * One load through the service's residency agent (stt, nlp and LM Studio alike). The footprint is the
+   * agent's own, and it counts as a measurement only when the agent says it is one (`measured`).
+   */
+  private async loadOnce(
     service: ResidencyControlledService,
-    modelRef: string,
-    options: LmStudioLoadOptions,
-    loadSpec: Record<string, unknown> | null,
-    pin: boolean,
-    ttlSeconds: number | null = null,
-  ): Promise<{ bytes: number | null; loadSeconds: number | null }> {
-    return service === 'lm-studio'
-      ? this.loadLmStudio(modelRef, options, pin, ttlSeconds)
-      : this.loadViaAgent(service, modelRef, loadSpec ?? {}, pin, ttlSeconds);
-  }
-
-  private async loadViaAgent(
-    service: 'stt' | 'nlp',
     modelRef: string,
     loadSpec: Record<string, unknown>,
     pin: boolean,
     ttlSeconds: number | null = null,
+    agentDevice: string | null = null,
   ): Promise<{ bytes: number | null; loadSeconds: number | null }> {
-    const result = await this.agents.load(service, { modelRef, loadSpec, pin, ttlSeconds });
+    const result = await this.agents.load(service, { modelRef, loadSpec, pin, ttlSeconds, ...(agentDevice ? { device: agentDevice } : {}) });
     const model = result.model;
+    if (result.outcome === 'already_loaded') return { bytes: null, loadSeconds: null };
     return { bytes: model.bytesSource === 'measured' ? model.bytes : null, loadSeconds: model.loadSeconds };
   }
 
   /**
-   * LM Studio reports no footprint, so it is MEASURED here: the DCGM used-memory
-   * delta per card around this load, summed over both cards (the daemon splits
-   * the model). Valid only because the gate holds both cards; a delta that is not
-   * positive, or no DCGM sample newer than the load, leaves it unmeasured.
+   * Write a MEASURED footprint back to the catalogue — unless it is under half the stored measurement
+   * (TASK-1055 E7: a remeasure polluted by the caching allocator, a card-mate or a not-yet-freed baseline
+   * shrank GLiGuard 947 → 376 MB and Granite 4.9 GB → 178 MB, and admission then under-budgeted them).
+   * Such a reading is warned about and the stored value kept.
    */
-  private async loadLmStudio(
-    modelRef: string,
-    options: LmStudioLoadOptions,
-    pin: boolean,
-    ttlSeconds: number | null = null,
-  ): Promise<{ bytes: number | null; loadSeconds: number | null }> {
-    const before = await this.readGpuUsed();
-    const started = Date.now();
-    const result = await this.lmStudio.load(modelRef, options);
-    const finished = Date.now();
-    if (pin) this.lmsPins.set(modelRef, { ttlSeconds: ttlSeconds ?? this.lmsPins.get(modelRef)?.ttlSeconds ?? null });
-    if (result.outcome === 'already_loaded') return { bytes: null, loadSeconds: null };
-
-    this.lmsLoadedAt.set(result.model.instanceId, finished);
-    const loadSeconds = result.model.loadSeconds ?? (finished - started) / 1000;
-    const after = await this.readGpuUsedAfter(finished);
-    let bytes: number | null = null;
-    if (before && after) {
-      const delta = [...after].reduce((sum, [gpu, used]) => sum + Math.max(0, used - (before.get(gpu) ?? used)), 0);
-      bytes = delta > 0 ? delta : null;
-    }
-    if (bytes) this.lmsFootprint.set(modelRef, { bytes, loadSeconds });
-    return { bytes, loadSeconds };
-  }
-
-  private async readGpuUsed(): Promise<Map<string, number> | null> {
-    const samples = await this.prometheus
-      .instantVector(PROMQL.fbUsed)
-      .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU used-memory metric read failed' }));
-    if (samples.length === 0) return null;
-    return new Map(samples.map((s) => [`gpu${s.metric.gpu}`, s.value * MiB]));
-  }
-
-  /** Wait (bounded) for a DCGM sample of every card taken after `sinceMs`, then read used memory. */
-  private async readGpuUsedAfter(sinceMs: number): Promise<Map<string, number> | null> {
-    const deadline = Date.now() + this.measurementMaxWaitMs;
-    for (;;) {
-      const stamps = await this.prometheus
-        .instantVector(PROMQL.fbUsedAt)
-        .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU sample-time metric read failed' }));
-      if (stamps.length > 0 && stamps.every((s) => s.value * 1000 >= sinceMs)) return this.readGpuUsed();
-      if (Date.now() >= deadline) return null;
-      await new Promise((resolve) => setTimeout(resolve, this.measurementPollMs));
-    }
-  }
-
   private async writeObserved(aiModelId: string, bytes: number, loadSeconds: number | null): Promise<void> {
     try {
       const entity = await this.aiModels.findById(aiModelId);
-      entity.observedMemoryMb = Math.max(1, Math.round(bytes / MiB));
+      const measuredMb = Math.max(1, Math.round(bytes / MiB));
+      const storedMb = entity.observedMemoryMb ?? null;
+      if (storedMb !== null && storedMb > 0 && measuredMb < storedMb * MEASUREMENT_FLOOR_RATIO) {
+        this.logger.warn({ message: 'residency.observed.implausible', aiModelId, measuredMb, storedMb, kept: storedMb });
+        return;
+      }
+      entity.observedMemoryMb = measuredMb;
       entity.observedLoadSeconds = loadSeconds;
       entity.observedAt = new Date();
       await this.aiModels.update(aiModelId, entity);
@@ -1536,10 +1902,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   /**
-   * Unload every instance of (service, model). F1: `modelRef` may be the
-   * catalogue ref while the service holds the model under its own key — the
-   * command always goes out with the key the SERVICE reports (exact match first,
-   * else every instance tied to `row`).
+   * Unload every instance of (service, model) — or, with `scope`, only the copy on that device. F1:
+   * `modelRef` may be the catalogue ref while the service holds the model under its own key — the
+   * command always goes out with the key the SERVICE reports (exact match first, else every instance tied to `row`).
    */
   private async unloadInternal(
     service: ResidencyControlledService,
@@ -1550,40 +1915,37 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     rows: readonly AiModelEntity[] = [],
     /** Filled with each instance as it is unloaded (pin + TTL as they were), so a failed replace can restore them. */
     unloaded?: RestorableInstance[],
+    scope?: PlacementOption,
   ): Promise<'unloaded' | 'not_loaded'> {
     let outcome: 'unloaded' | 'not_loaded' = 'not_loaded';
     const keys = new Set<string>([modelRef]);
-    if (service === 'lm-studio') {
-      // A fresh listing, not the ledger: every instance of the key must go, including a `:2` created since the last tick.
-      const report = await this.lmStudio.report();
-      const instances = reportedInstances(service, report.models, modelRef, row, rows);
-      for (const instance of instances) {
-        keys.add(instance.modelRef);
-        const instanceId = instance.instanceId;
-        const pin = this.lmsPins.get(instance.modelRef) ?? this.lmsPins.get(modelRef);
-        if ((await this.lmStudio.unload(instanceId)).outcome === 'unloaded') {
-          outcome = 'unloaded';
-          unloaded?.push({ modelRef: instance.modelRef.replace(/:\d+$/, ''), pinned: pin !== undefined, ttlSeconds: pin?.ttlSeconds ?? null });
-        }
-        this.lmsLoadedAt.delete(instanceId);
-      }
-      for (const key of keys) {
-        this.lmsPins.delete(key);
-        this.lmsFailures.delete(key);
-      }
-    } else {
-      const reported = this.lastReports.get(service)?.report.models.filter(isResident) ?? [];
-      const instances = reportedInstances(service, reported, modelRef, row, rows);
-      const refs = [...new Set(instances.map((m) => m.modelRef))];
-      for (const ref of refs.length > 0 ? refs : [modelRef]) {
-        keys.add(ref);
-        if ((await this.agents.unload(service, { modelRef: ref, force, reason })).outcome === 'unloaded') {
-          outcome = 'unloaded';
-          const was = instances.find((m) => m.modelRef === ref);
-          unloaded?.push({ modelRef: ref, pinned: was?.adminPinned ?? false, ttlSeconds: was?.ttlSeconds ?? null });
-        }
+    // LM Studio: a fresh report, not the ledger — every instance of the key must go, including a `:2` created since the last tick.
+    const report =
+      service === 'lm-studio'
+        ? await this.agents.report('lm-studio').catch(() => this.lastReports.get(service)?.report)
+        : this.lastReports.get(service)?.report;
+    const reported = report?.models.filter(isResident) ?? [];
+    let instances = reportedInstances(service, reported, modelRef, row, rows);
+    if (scope && report) {
+      const onScope = (m: ReportedResidentModel) => {
+        const mapped = this.reportDeviceMap(report).get(m.device);
+        return m.device === scope.agentDevice || (mapped !== undefined && scope.physical.includes(mapped));
+      };
+      instances = instances.filter(onScope);
+    }
+    const refs = [...new Set(instances.map((m) => m.modelRef))];
+    const agentDevice = scope?.agentDevice ?? undefined;
+    for (const ref of refs.length > 0 ? refs : [modelRef]) {
+      keys.add(ref);
+      if (
+        (await this.agents.unload(service, { modelRef: ref, force, reason, ...(agentDevice ? { device: agentDevice } : {}) })).outcome === 'unloaded'
+      ) {
+        outcome = 'unloaded';
+        const was = instances.find((m) => m.modelRef === ref);
+        unloaded?.push({ modelRef: ref, pinned: was?.adminPinned ?? false, ttlSeconds: was?.ttlSeconds ?? null });
       }
     }
+    if (service === 'lm-studio') for (const key of keys) this.lmsFailures.delete(key);
     for (const key of keys) {
       const ledgerKey = residencyKey(service, key);
       this.cooldown.noteUnloaded(ledgerKey, Date.now());
@@ -1670,7 +2032,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       this.livePath.read(now),
       this.refreshReport('stt', () => this.agents.report('stt'), now),
       this.refreshReport('nlp', () => this.agents.report('nlp'), now),
-      this.refreshReport('lm-studio', async () => (await this.lmStudio.report()) as ServiceResidencyReport, now),
+      this.refreshReport('lm-studio', () => this.agents.report('lm-studio'), now),
     ]);
 
     const staleServices = RESIDENCY_CONTROLLED_SERVICES.filter((service) => {
@@ -1686,6 +2048,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const catalogue = await this.readCatalogue(reports, workerRefs, policies, livePath);
 
     const gpuIds = gpus.map((g) => g.id);
+    this.lastGpus = gpus;
     const devices: Ledger['devices'] = gpus.map(({ id, name, totalBytes, usedBytes, freeBytes, utilisationPercent }) => ({
       id,
       kind: 'gpu' as const,
@@ -1696,9 +2059,20 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       utilisationPercent,
     }));
 
-    // A service reports its device even with an empty cache: map its card now, so a first load is placed and budgeted on it.
+    // TASK-1055 — every device each commanded service reports, in both vocabularies (a service reports its devices even
+    // with an empty cache, so a first load is placed and budgeted on the right card).
+    const serviceDevices = new Map<ResidencyControlledService, ServiceDevice[]>();
     for (const report of reports) {
-      for (const device of report.devices) if (report.service !== 'lm-studio' && device.kind === 'gpu') this.physicalGpu(report, device.id, gpus);
+      if (!isControlled(report.service)) continue;
+      const mapping = this.reportDeviceMap(report, gpus);
+      serviceDevices.set(
+        report.service,
+        report.devices.flatMap((d, i): ServiceDevice[] => {
+          if (d.kind === 'cpu') return [{ agentId: d.id, id: `cpu:${report.service}`, kind: 'cpu' as const, index: d.index ?? i }];
+          const id = mapping.get(d.id);
+          return id ? [{ agentId: d.id, id, kind: 'gpu' as const, index: d.index ?? agentIndex(d.id) ?? i }] : [];
+        }),
+      );
     }
 
     const usage = indexModelMetrics(metrics);
@@ -1727,7 +2101,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       failures.push({ service: 'lm-studio', modelRef, aiModelId: aiModel?.id ?? null, aiModelName: aiModel?.name ?? null, error });
     }
 
-    const ledger: Ledger = { at: now, devices, entries, staleServices, oldestReportMs, policies, livePath, catalogue, failures };
+    const ledger: Ledger = { at: now, devices, entries, staleServices, oldestReportMs, policies, livePath, catalogue, failures, serviceDevices };
     this.ledger = ledger;
     return ledger;
   }
@@ -1735,8 +2109,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private async refreshReport(service: ResidencyControlledService, read: () => Promise<ServiceResidencyReport>, now: number): Promise<void> {
     try {
       this.lastReports.set(service, { report: await read(), receivedAt: now });
+      this.reportFailing.delete(service);
     } catch (error) {
-      this.logger.debug({ message: 'residency.report.unavailable', service, error: error instanceof Error ? error.message : String(error) });
+      // AC-6 — an outage is a warn ONCE (with the agent's code and reason), then debug per tick until it recovers.
+      const entry = { message: 'residency.report.unavailable', service, ...failureFields(error) };
+      if (this.reportFailing.has(service)) this.logger.debug(entry);
+      else this.logger.warn(entry);
+      this.reportFailing.add(service);
     }
   }
 
@@ -1756,49 +2135,44 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     this.lastSeenCache.set(key, model.cache);
 
     const aiModel = (model.aiModelId ? catalogue.byId.get(model.aiModelId) : undefined) ?? catalogue.modelFor(service, model.modelRef);
-    // F1 — LM Studio's callers (text, guardrail, harness) name the model by its catalogue wire id, and the console pins and the
-    // controller measures under the key a load was sent with; the engine reports its own key. Both name this instance.
+    // F1 — LM Studio's callers (text, guardrail, harness) name the model by its catalogue wire id; the agent may report an
+    // engine key (a JIT load). Both name this instance.
     const catalogueRef = service === 'lm-studio' ? refFor(service, aiModel) : null;
-    const lmsKey = <T>(map: Map<string, T>): T | undefined => map.get(model.modelRef) ?? (catalogueRef ? map.get(catalogueRef) : undefined);
     let stats = usage.get(service, model.modelRef);
     if (catalogueRef && catalogueRef !== model.modelRef && stats.inFlight === null && stats.requestsPerMin === null)
       stats = usage.get(service, catalogueRef);
 
+    // TASK-1055 — the agent's `cuda:<n>` → DCGM's `gpu<N>` (card UUID, else index); `multi` = the cards its per-device bytes name.
+    const mapping = this.reportDeviceMap(report, gpus);
+    const deviceBytes = model.deviceBytes
+      ? Object.entries(model.deviceBytes).flatMap(([agentId, bytes]) => {
+          const id = mapping.get(agentId);
+          return id ? [{ device: id, bytes }] : [];
+        })
+      : undefined;
     let device = model.device;
     let physical: string[];
-    if (service === 'lm-studio') {
-      device = 'multi';
-      physical = gpuIds.length > 0 ? gpuIds : ['gpu?'];
-    } else if (model.device.startsWith('cpu')) {
+    if (model.device.startsWith('cpu')) {
       device = `cpu:${service}`;
       physical = [device];
       this.ensureCpuPool(service, report, devices);
+    } else if (model.device === 'multi') {
+      device = 'multi';
+      physical = deviceBytes && deviceBytes.length > 0 ? deviceBytes.map((d) => d.device) : gpuIds.length > 0 ? gpuIds : ['gpu?'];
     } else {
-      const mapped = this.physicalGpu(report, model.device, gpus);
+      const mapped = mapping.get(model.device) ?? null;
       device = mapped ?? model.device;
       physical = mapped ? [mapped] : gpuIds.length > 0 ? gpuIds : ['gpu?'];
     }
 
-    let bytes = model.bytes;
-    let bytesSource = model.bytesSource;
     let inFlight = model.inFlight;
     let lastUsedAt = model.lastUsedAt;
-    let loadedAt = model.loadedAt;
-    let loadSeconds = model.loadSeconds;
-    let adminPinned = model.adminPinned;
     if (service === 'lm-studio') {
-      const footprint = lmsKey(this.lmsFootprint);
-      const observed = footprint?.bytes ?? (aiModel?.observedMemoryMb ? aiModel.observedMemoryMb * MiB : null);
-      bytes = observed;
-      bytesSource = observed ? 'measured' : 'unknown';
-      inFlight = stats.inFlight;
-      loadSeconds = footprint?.loadSeconds ?? aiModel?.observedLoadSeconds ?? null;
+      // LM Studio's agent counts no requests: its callers' series do.
+      inFlight = model.inFlight ?? stats.inFlight;
       if ((stats.inFlight ?? 0) > 0 || (stats.requestsPerMin ?? 0) > 0) this.lmsLastUsed.set(model.modelRef, now);
       const used = this.lmsLastUsed.get(model.modelRef);
-      lastUsedAt = used ? iso(used) : null;
-      const loaded = model.instanceId ? this.lmsLoadedAt.get(model.instanceId) : undefined;
-      loadedAt = loaded ? iso(loaded) : null;
-      adminPinned = lmsKey(this.lmsPins) !== undefined;
+      lastUsedAt = model.lastUsedAt ?? (used ? iso(used) : null);
     }
 
     return {
@@ -1810,19 +2184,57 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       device,
       devices: physical,
       state: model.state,
-      bytes,
-      bytesSource,
+      bytes: model.bytes,
+      bytesSource: model.bytesSource,
       inFlight,
       requestsPerMin: stats.requestsPerMin,
       p50LatencyMs: stats.p50LatencyMs,
-      loadedAt,
+      loadedAt: model.loadedAt,
       lastUsedAt,
-      loadSeconds,
-      ttlSeconds: service === 'lm-studio' ? (lmsKey(this.lmsPins)?.ttlSeconds ?? null) : model.ttlSeconds,
+      loadSeconds: model.loadSeconds,
+      ttlSeconds: model.ttlSeconds,
       reportedPinned: model.pinned,
-      adminPinned,
+      adminPinned: model.adminPinned,
       cache: model.cache,
+      agentDevice: model.device,
       ...(model.instanceId ? { instanceId: model.instanceId } : {}),
+      ...(deviceBytes ? { deviceBytes } : {}),
+      ...(model.loadConfig ? { loadConfig: this.loadConfigView(model.loadConfig, device, mapping, report) } : {}),
+    };
+  }
+
+  /** The agent's read-back load config in the console's shape; its `device` is where the split actually puts it. */
+  private loadConfigView(
+    config: ReportedLoadConfig,
+    device: string,
+    mapping: Map<string, string>,
+    report: ServiceResidencyReport,
+  ): ModelResidencyLoadConfig {
+    let placed: string | null = device.startsWith('gpu') || device === 'multi' ? device : null;
+    const split = config.gpuSplit;
+    if (split) {
+      const count = report.devices.filter((d) => d.kind === 'gpu').length || 1;
+      const indices = lmStudioProfileIndices(
+        {
+          gpuSplit: {
+            strategy: split.strategy ?? 'evenly',
+            priority: split.priority,
+            disabledGpus: split.disabledGpus,
+            customRatio: split.customRatio,
+          },
+          gpu: null,
+        },
+        count,
+      );
+      placed = indices.length === 1 ? (mapping.get(`cuda:${indices[0]}`) ?? `gpu${indices[0]}`) : 'multi';
+    }
+    return {
+      contextLength: config.contextLength ?? null,
+      parallel: config.parallel ?? null,
+      flashAttention: config.flashAttention ?? null,
+      kvCacheQuantK: config.kvCacheQuant?.k ?? null,
+      kvCacheQuantV: config.kvCacheQuant?.v ?? null,
+      device: placed,
     };
   }
 
@@ -1883,30 +2295,34 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       reportedPinned: false,
       adminPinned: false,
       cache: 'asr',
+      agentDevice: sample.metric.device ?? 'unknown',
     };
   }
 
   /**
-   * An agent's `cuda:0` is its OWN card, whose physical index a time-sliced pod
-   * cannot know. It is matched to the DCGM card whose free memory is closest to
-   * the agent's own reading — accepted only when the match is unambiguous — and
-   * remembered per pod (a pod never changes card). Unmatched ⇒ the load gate
-   * conservatively claims every card.
+   * TASK-1055 — an agent's `cuda:<n>` → DCGM's `gpu<N>` (fixture `deviceIds`): the card whose DCGM `UUID` is
+   * the agent device's `uuid`; with no uuid from the agent, index `n` → `gpu<n>`; with ONE card, that card.
+   * Unmatched ⇒ absent (the gate then conservatively claims every card).
    */
-  private physicalGpu(report: ServiceResidencyReport, agentDevice: string, gpus: GpuReading[]): string | null {
-    const stickyKey = `${report.service}|${report.instance}|${agentDevice}`;
-    const sticky = this.instanceGpu.get(stickyKey);
-    if (sticky && gpus.some((g) => g.id === sticky)) return sticky;
-    if (gpus.length === 1) return gpus[0].id;
-
-    const reading = report.devices.find((d) => d.id === agentDevice && d.kind === 'gpu');
-    if (!reading || gpus.length === 0) return null;
-    const ranked = gpus.map((g) => ({ id: g.id, diff: Math.abs(g.freeBytes - reading.freeBytes) })).sort((a, b) => a.diff - b.diff);
-    const [best, second] = ranked;
-    const tolerance = Math.max(1024 * MiB, reading.totalBytes * 0.1);
-    if (best.diff > tolerance || (second && second.diff - best.diff < 512 * MiB)) return null;
-    this.instanceGpu.set(stickyKey, best.id);
-    return best.id;
+  private reportDeviceMap(report: ServiceResidencyReport, gpus: ReadonlyArray<Pick<GpuReading, 'id' | 'uuid'>> = this.lastGpus): Map<string, string> {
+    const cards = gpus;
+    const mapping = new Map<string, string>();
+    const ids = new Set(cards.map((g) => g.id));
+    const agentIds = new Set([...report.devices.map((d) => d.id), ...report.models.flatMap((m) => [m.device, ...Object.keys(m.deviceBytes ?? {})])]);
+    for (const agentId of agentIds) {
+      if (!agentId.startsWith('cuda')) continue;
+      const reading = report.devices.find((d) => d.id === agentId);
+      let mapped: string | undefined;
+      if (reading?.uuid) mapped = cards.find((g) => g.uuid !== undefined && g.uuid === reading.uuid)?.id;
+      // Index fallback only when there is no uuid to match on (the agent sent none, or DCGM carries none).
+      if (!mapped && (!reading?.uuid || !cards.some((g) => g.uuid))) {
+        const index = reading?.index ?? agentIndex(agentId);
+        if (index !== null && ids.has(`gpu${index}`)) mapped = `gpu${index}`;
+      }
+      if (!mapped && cards.length === 1) mapped = cards[0].id;
+      if (mapped) mapping.set(agentId, mapped);
+    }
+    return mapping;
   }
 
   private ensureCpuPool(service: string, report: ServiceResidencyReport, devices: Ledger['devices']): void {
@@ -1948,6 +2364,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         const freeMib = freeBy.get(s.metric.gpu) ?? 0;
         return {
           id: `gpu${s.metric.gpu}`,
+          ...(s.metric.UUID ? { uuid: s.metric.UUID } : {}),
           name: s.metric.modelName ?? 'unknown',
           usedBytes: Math.round(usedMib * MiB),
           freeBytes: Math.round(freeMib * MiB),
@@ -2044,7 +2461,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         bytes: entry.bytes,
         inFlight: entry.inFlight ?? 0,
         pinned: cls.class === 'PINNED' || entry.adminPinned,
-        agentPinned: entry.adminPinned,
+        // E11 — the runtime's own pin (`pinned`, e.g. a live-path pin the agent holds) satisfies "pin" exactly like an admin pin.
+        agentPinned: entry.adminPinned || entry.reportedPinned,
         desiredClass: cls.class,
         classSource: cls.classSource,
         priority: cls.policy?.priority ?? 0,
@@ -2149,37 +2567,24 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     );
   }
 
-  /** The devices a not-yet-resident model of `service` would occupy (D-7: within the workload's visible devices). */
+  /**
+   * The devices a not-yet-resident model of `service` would occupy for the POLICY loop (D-7: within the
+   * workload's visible devices): the service's default device — stt / nlp their first card (nlp without
+   * one: host memory); LM Studio, whose per-model placement is its profile, conservatively every card.
+   */
   private placementDevices(service: ResidencyControlledService | string, ledger: Ledger): string[] {
     const gpuIds = ledger.devices.filter((d) => d.kind === 'gpu').map((d) => d.id);
     const allGpus = gpuIds.length > 0 ? gpuIds : ['gpu?'];
     if (service === 'stt' || service === 'nlp') {
-      // The card the service's pod was matched to (TASK-1031: nlp may hold a GPU); nlp without one loads into host memory.
-      const mapped = [...this.instanceGpu].filter(([key]) => key.startsWith(`${service}|`)).map(([, gpu]) => gpu);
-      if (mapped.length > 0) return [mapped[0]];
+      const [first] = this.placementOptions(service, ledger).sort((a, b) => a.order - b.order);
+      if (first) return first.physical;
       return service === 'nlp' ? ['cpu:nlp'] : allGpus;
     }
     return allGpus;
   }
 
-  /**
-   * Headroom-adjusted free memory for a load on `devices`. LM Studio splits a
-   * model over both cards, so its budget is the POOL; any other service holds
-   * one card, so when its card is not yet mapped the budget is the SMALLEST
-   * candidate card — never the pool, which it could not use.
-   */
-  private availableBytes(service: string, devices: string[], ledger: Ledger, settings: ResidencySettings): number {
-    const usable = ledger.devices.filter((d) => devices.includes(d.id)).map((d) => usableBytes(d, settings));
-    if (usable.length === 0) return 0;
-    return service === 'lm-studio' ? usable.reduce((sum, bytes) => sum + bytes, 0) : Math.min(...usable);
-  }
-
-  /** A MEASURED footprint for a model, or `undefined`: this process's own LM Studio measurement, else the catalogue's observed size. */
-  private observedBytes(service: string, modelRef: string, model: { observedMemoryMb?: number | null } | undefined): number | undefined {
-    if (service === 'lm-studio') {
-      const footprint = this.lmsFootprint.get(modelRef);
-      if (footprint) return footprint.bytes;
-    }
+  /** A MEASURED footprint for a model, or `undefined`: the catalogue's observed size (every agent measures its own loads). */
+  private observedBytes(_service: string, _modelRef: string, model: { observedMemoryMb?: number | null } | undefined): number | undefined {
     return model?.observedMemoryMb ? model.observedMemoryMb * MiB : undefined;
   }
 
@@ -2214,9 +2619,15 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   /** A `state: loading` row for a model an admitted operation is loading. */
-  private loadingView(service: ResidencyControlledService, modelRef: string, ledger: Ledger, pin: boolean): ModelResidencyModel {
+  private loadingView(
+    service: ResidencyControlledService,
+    modelRef: string,
+    ledger: Ledger,
+    pin: boolean,
+    target?: Pick<PlacementOption, 'device' | 'physical'>,
+  ): ModelResidencyModel {
     const model = ledger.catalogue.modelFor(service, modelRef);
-    const devices = this.placementDevices(service, ledger);
+    const devices = target?.physical ?? this.placementDevices(service, ledger);
     const bytes = this.observedBytes(service, modelRef, model) ?? null;
     const entry: LedgerEntry = {
       service,
@@ -2224,7 +2635,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       modelRef,
       aiModelId: model?.id ?? null,
       aiModelName: model?.name ?? null,
-      device: service === 'lm-studio' ? 'multi' : devices.length === 1 ? devices[0] : 'unknown',
+      device: target ? (target.device === 'cpu' ? `cpu:${service}` : target.device) : devices.length === 1 ? devices[0] : 'multi',
       devices,
       state: 'loading',
       bytes,
@@ -2239,6 +2650,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       reportedPinned: pin,
       adminPinned: pin,
       cache: 'unknown',
+      agentDevice: 'unknown',
     };
     return this.toViewModel(entry, ledger);
   }
@@ -2268,10 +2680,11 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       loadedAt: reported?.loadedAt ?? null,
       lastUsedAt: reported?.lastUsedAt ?? null,
       loadSeconds: reported?.loadSeconds ?? null,
-      ttlSeconds: reported?.ttlSeconds ?? this.lmsPins.get(modelRef)?.ttlSeconds ?? null,
-      reportedPinned: reported?.pinned ?? this.lmsPins.has(modelRef),
-      adminPinned: reported?.adminPinned ?? this.lmsPins.has(modelRef),
+      ttlSeconds: reported?.ttlSeconds ?? null,
+      reportedPinned: reported?.pinned ?? false,
+      adminPinned: reported?.adminPinned ?? false,
       cache: reported?.cache ?? 'unknown',
+      agentDevice: reported?.device ?? 'unknown',
     };
   }
 }
@@ -2280,6 +2693,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
 interface GpuReading {
   id: string;
+  /** DCGM's `UUID` label — what an agent device's `uuid` is matched against (TASK-1055). */
+  uuid?: string;
   name: string;
   usedBytes: number;
   freeBytes: number;
@@ -2288,40 +2703,105 @@ interface GpuReading {
 }
 
 /** A device's memory, as admission reads it (a DCGM card or a host pool). */
-interface DeviceReading {
-  id: string;
-  kind: 'gpu' | 'cpu';
-  totalBytes: number;
-  freeBytes: number;
-  usedBytes: number;
+type DeviceReading = PlacementReading;
+
+/** TASK-1055 — where a load goes, and what is sent for it. */
+interface LoadPlan {
+  /** Canonical: LM Studio loads under the catalogue ref (the agent's identifier). */
+  modelRef: string;
+  /** The chosen device — the admin's, the model's default, or the service's. `agentDevice: null` = send no device. */
+  target: PlacementOption;
+  /** Every device the service can place it on (the preview's candidates). */
+  options: PlacementOption[];
+  /** The target was named (by the admin or the model's stored default), not the service's own default. */
+  explicitDevice: boolean;
+  /** LM Studio only — the resolved-profile spec (with the request's overrides), and the one a failed replace restores with. */
+  loadSpec?: Record<string, unknown>;
+  restoreSpec?: Record<string, unknown>;
+  gpuCount: number;
 }
 
-/** The ONE admission computation `load` and `previewLoad` share (TASK-1051). */
+/** The ONE admission computation `load` and `previewLoad` share (TASK-1051, device-aware since TASK-1055). */
 interface Admission {
-  /** The resident instances of the model (F1: matched by catalogue row, not only by key). */
+  /** The resident instances of the model (F1: matched by catalogue row, not only by key) — on the target device when one was named. */
   resident: LedgerEntry[];
-  /** Physical devices the load gate claims. */
+  /** Physical devices the load gate claims (the target's). */
   devices: string[];
   /** Display device: `gpu<N>`, `multi`, `cpu:<service>`, or null when the card is not known. */
   device: string | null;
   /** The device ids whose memory the numbers below describe. */
   scope: string[];
   need: ResidencyBudget;
-  freeBytes: number | null;
-  headroomBytes: number | null;
+  /** The target judged with the placement arithmetic (free, headroom, remaining, shortfall, exceeds). */
+  chosen: JudgedPlacement;
   unattributedBytes: number | null;
-  /** Headroom-adjusted free memory (+ the resident bytes a replace returns). */
+  /** Free memory above headroom on the target (+ the resident bytes a replace returns). */
   availableBytes: number;
-  shortfallBytes: number;
-  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | null;
+  refusal: 'NO_SIZE' | 'OVER_BUDGET' | 'EXCEEDS_DEVICE' | 'ALREADY_LOADED' | null;
+  candidates: ModelResidencyLoadPreviewResponse['candidates'];
+  suggestedDevice: string | null;
+  suggestionReason: string | null;
 }
 
-/** `options` are LM Studio REST v1 load keys only. */
+/** A remeasure under this share of the stored measurement is implausible and is not written (TASK-1055 E7). */
+const MEASUREMENT_FLOOR_RATIO = 0.5;
+
+/** `cuda:<n>` → n. */
+function agentIndex(agentId: string): number | null {
+  const match = /^cuda:(\d+)$/.exec(agentId);
+  return match ? Number(match[1]) : null;
+}
+
+/** `AiModel._metadata.residency.defaultDevice` (OD-4), when it is a device id at all. */
+function defaultDeviceOf(row: { metaData?: unknown } | undefined): string | null {
+  const meta = row?.metaData as { residency?: { defaultDevice?: unknown } } | null | undefined;
+  const device = meta?.residency?.defaultDevice;
+  return typeof device === 'string' && /^(gpu\d+|multi|cpu)$/.test(device) ? device : null;
+}
+
+/** The bytes the given resident instances hold on `devices` (per-device bytes when the agent sent them). */
+function residentBytesOn(resident: readonly LedgerEntry[], devices: readonly string[]): number {
+  return resident.reduce((sum, e) => {
+    if (e.deviceBytes?.length) return sum + e.deviceBytes.filter((d) => devices.includes(d.device)).reduce((t, d) => t + d.bytes, 0);
+    const overlap = e.devices.filter((d) => devices.includes(d)).length;
+    return sum + (e.devices.length > 0 ? ((e.bytes ?? 0) / e.devices.length) * overlap : 0);
+  }, 0);
+}
+
+/** ` GPU 1 can hold it.` — the alternative a refusal names, when there is one. */
+function alternative(admission: Admission): string {
+  const best = admission.candidates[0];
+  if (!best || best.device === admission.chosen.device) return '';
+  return best.fits
+    ? ` ${shortLabel(best.device)} can hold it (${formatBytes(best.remainingBytes ?? 0)} to spare).`
+    : ` ${shortLabel(best.device)} is the closest.`;
+}
+
+/** `{code, reason}` of an agent / engine failure, for a warn line (AC-6). */
+function failureFields(error: unknown): { code: string; reason: string; status?: number } {
+  if (error instanceof ResidencyAgentError) return { code: error.code, reason: error.message, status: error.status };
+  const described = describeError(error);
+  return { code: described.code, reason: described.message };
+}
+
+/**
+ * `options` are LM Studio's, and since TASK-1055 only what the agent's profile `load_spec` carries
+ * (`contextLength`, `flashAttention`); the REST-only keys have no place on the SDK load path.
+ */
 function assertOptionsSupported(request: LoadModelResidencyRequest): void {
   if (request.options && request.service !== 'lm-studio') {
     throw new BadRequestException({
       code: 'OPTIONS_UNSUPPORTED',
-      message: `\`options\` are LM Studio REST v1 load keys; service '${request.service}' takes none.`,
+      message: `\`options\` are LM Studio load keys; service '${request.service}' takes none.`,
+    });
+  }
+  const unsupported = (['evalBatchSize', 'numExperts', 'offloadKvCacheToGpu'] as const).filter((key) => request.options?.[key] != null);
+  if (unsupported.length > 0) {
+    throw new BadRequestException({
+      code: 'OPTIONS_UNSUPPORTED',
+      message:
+        `LM Studio loads carry the model's serving profile; only \`contextLength\` and \`flashAttention\` may override it. ` +
+        `Not supported: ${unsupported.join(', ')} (set them on the model's serving profile instead).`,
     });
   }
 }
@@ -2461,15 +2941,11 @@ function indexModelMetrics(metrics: ModelMetrics): ModelUsageIndex {
   };
 }
 
-/** DTO options (nullable) → the adapter's documented REST keys (absent when null). */
-function lmStudioOptions(options: LmStudioResidencyLoadOptions | null | undefined): LmStudioLoadOptions {
-  const out: LmStudioLoadOptions = {};
-  if (!options) return out;
-  if (options.contextLength != null) out.contextLength = options.contextLength;
-  if (options.evalBatchSize != null) out.evalBatchSize = options.evalBatchSize;
-  if (options.flashAttention != null) out.flashAttention = options.flashAttention;
-  if (options.numExperts != null) out.numExperts = options.numExperts;
-  if (options.offloadKvCacheToGpu != null) out.offloadKvCacheToGpu = options.offloadKvCacheToGpu;
+/** DTO options (nullable) → the overrides an LM Studio `load_spec` takes on top of the profile (absent when null). */
+function lmStudioOverrides(options: LmStudioResidencyLoadOptions | null | undefined): LmStudioProfileOverrides {
+  const out: LmStudioProfileOverrides = {};
+  if (options?.contextLength != null) out.contextLength = options.contextLength;
+  if (options?.flashAttention != null) out.flashAttention = options.flashAttention;
   return out;
 }
 
@@ -2510,7 +2986,7 @@ function describeError(error: unknown): { code: string; message: string } {
 }
 
 /**
- * The typed failures of the agents, the LM Studio adapter and the spec builder
+ * The typed failures of the agents (LM Studio's included) and the spec builder
  * as HTTP, in the admin fixture's error vocabulary (`{ code, message, … }`).
  */
 function toHttpException(error: unknown): unknown {
@@ -2526,28 +3002,18 @@ function toHttpException(error: unknown): unknown {
         return new ConflictException({
           ...body,
           code: 'OVER_BUDGET',
+          ...(error.device ? { agentDevice: error.device } : {}),
+          ...(error.neededBytes !== undefined ? { needBytes: error.neededBytes } : {}),
           ...(error.retryAfterSeconds ? { retryAfterSeconds: error.retryAfterSeconds } : {}),
         });
+      case 'DEVICE_UNAVAILABLE':
+        return new BadRequestException({ ...body, ...(error.device ? { agentDevice: error.device } : {}) });
       case 'LOAD_FAILED':
         return error.status >= 500 ? new BadGatewayException(body) : new BadRequestException(body);
       case 'SERVICE_UNREACHABLE':
         return new ServiceUnavailableException(body);
       default:
         return new BadGatewayException({ ...body, code: 'SERVICE_UNREACHABLE' });
-    }
-  }
-  if (error instanceof LmStudioEngineError) {
-    const body = { code: error.code as string, message: error.message };
-    switch (error.code) {
-      case 'MODEL_UNKNOWN':
-        return new NotFoundException(body);
-      case 'LOAD_IN_PROGRESS':
-        return new ConflictException(body);
-      case 'ENGINE_NOT_CONFIGURED':
-      case 'ENGINE_UNREACHABLE':
-        return new ServiceUnavailableException({ ...body, code: 'SERVICE_UNREACHABLE' });
-      default:
-        return new BadGatewayException({ ...body, code: 'LOAD_FAILED' });
     }
   }
   if (error instanceof ResidencyLoadSpecError) {

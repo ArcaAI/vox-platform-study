@@ -6,6 +6,7 @@ import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { register } from 'prom-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { ResidencyAgentError } from '../residency-agent.client';
 import { RESIDENCY_DECISIONS_TOTAL } from '../residency-metrics';
 
@@ -160,11 +161,11 @@ function build(opts: { enforce?: boolean } = {}) {
   const livePath = { read: vi.fn(async () => state.livePath) };
   const specs = { build: vi.fn(async () => ({ resolved_spec: { models: { asr: { slug: LIVE_ASR } } } })) };
 
+  routeLmStudioThroughAgent(agents as never, lmStudio as never);
   const service = new ModelResidencyService(
     policies as never,
     aiModels as never,
     agents as never,
-    lmStudio as never,
     prometheus as never,
     effectiveSettings as never,
     livePath as never,
@@ -353,7 +354,8 @@ describe('ModelResidencyService (TASK-1005)', () => {
 
       expect(h.agents.unload).toHaveBeenCalledWith('nlp', { modelRef: NER, force: false, reason: 'policy' });
       expect(h.agents.setPolicy).toHaveBeenCalledWith('stt', LIVE_ASR, { adminPinned: true });
-      expect(h.lmStudio.load).toHaveBeenCalledWith(GEMMA, {});
+      // TASK-1055 — through the LM Studio agent, with the model's resolved serving profile as its load_spec.
+      expect(h.lmStudio.load).toHaveBeenCalledWith(GEMMA, expect.objectContaining({ identifier: GEMMA }));
       const view = await h.service.getView();
       expect(view.mode).toBe('enforce');
       expect(view.recommendations.find((r) => r.modelRef === GEMMA)).toMatchObject({ mode: 'enforce', applied: true });
@@ -362,7 +364,8 @@ describe('ModelResidencyService (TASK-1005)', () => {
 
   // ── the one-load-per-physical-GPU gate ────────────────────────────────────
 
-  it('an LM Studio load holds BOTH cards: an stt load is refused 409 LOAD_IN_PROGRESS until it settles', async () => {
+  // TASK-1055 — the gate claims the CHOSEN devices: a split (`multi`) LM Studio load holds both cards.
+  it('an LM Studio load split across cards holds BOTH cards: an stt load is refused 409 LOAD_IN_PROGRESS until it settles', async () => {
     h.state.sttModels = [];
     const engine = deferred<unknown>();
     h.lmStudio.load.mockImplementationOnce(async (modelKey: string) => {
@@ -370,7 +373,7 @@ describe('ModelResidencyService (TASK-1005)', () => {
       return { outcome: 'loaded', model: { modelRef: modelKey, instanceId: modelKey, loadSeconds: 98.4, cache: 'llm' } };
     });
 
-    const lms = await h.service.load({ service: 'lm-studio', modelRef: GEMMA });
+    const lms = await h.service.load({ service: 'lm-studio', modelRef: GEMMA, device: 'multi' });
     expect(lms.status).toBe(202);
 
     const refused = await httpBody(h.service.load({ service: 'stt', modelRef: LIVE_ASR }));
@@ -428,8 +431,9 @@ describe('ModelResidencyService (TASK-1005)', () => {
 
     it('OVER_BUDGET (409) without force — and still without a non-empty reason — then admitted and audited with force + reason', async () => {
       h.state.sttModels = [];
-      // 14 GiB measured footprint vs 12 000 MiB free − 15 % of 16 380 MiB headroom.
-      h.state.catalogue[0].observedMemoryMb = 14 * 1024;
+      // 11 GiB measured footprint vs 12 000 MiB free − 15 % of 16 380 MiB headroom: over budget, but inside the card's
+      // free memory (TASK-1055 OD-5 — a need beyond FREE memory is EXCEEDS_DEVICE, which no force lifts).
+      h.state.catalogue[0].observedMemoryMb = 11 * 1024;
 
       expect(await httpBody(h.service.load({ service: 'stt', modelRef: LIVE_ASR }))).toMatchObject({ status: 409, body: { code: 'OVER_BUDGET' } });
       expect(await httpBody(h.service.load({ service: 'stt', modelRef: LIVE_ASR, force: true }))).toMatchObject({
@@ -474,7 +478,7 @@ describe('ModelResidencyService (TASK-1005)', () => {
       await h.service.drain();
 
       expect(h.lmStudio.unload).toHaveBeenCalledWith(GEMMA);
-      expect(h.lmStudio.load).toHaveBeenCalledWith(GEMMA, { contextLength: 8192, flashAttention: true });
+      expect(h.lmStudio.load).toHaveBeenCalledWith(GEMMA, expect.objectContaining({ context_length: 8192, flash_attention: true }));
       expect(h.lmStudio.unload.mock.invocationCallOrder[0]).toBeLessThan(h.lmStudio.load.mock.invocationCallOrder[0]);
       await expect(h.service.getOperation(result.body.operationId!)).resolves.toMatchObject({ action: 'replace', status: 'succeeded' });
     });
@@ -485,7 +489,12 @@ describe('ModelResidencyService (TASK-1005)', () => {
       expect(refused).toMatchObject({ status: 409, body: { code: 'IN_FLIGHT', inFlight: 2 } });
     });
 
-    it('MEASURES an LM Studio load as the DCGM used-memory delta over both cards and writes it back (D-2)', async () => {
+    // TASK-1055 — the DCGM-delta measurement is retired: the LM Studio agent measures its own load per card.
+    it('writes back the footprint the LM Studio AGENT measured (D-2)', async () => {
+      h.lmStudio.load.mockImplementationOnce(async (modelKey: string) => ({
+        outcome: 'loaded',
+        model: { modelRef: modelKey, instanceId: modelKey, loadSeconds: 98.4, cache: 'llm', bytes: 4_096 * 1024 * 1024, bytesSource: 'measured' },
+      }));
       const result = await h.service.load({ service: 'lm-studio', modelRef: GEMMA });
       await h.service.drain();
 

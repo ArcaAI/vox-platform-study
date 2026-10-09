@@ -43,7 +43,10 @@ export class ModelResidencyPlacementCandidate {
   @ApiProperty() fits!: boolean;
   @ApiProperty({ description: 'Need > free memory: refused even with force.' }) exceedsDevice!: boolean;
   @ApiProperty({ description: 'Live-path models already resident on this card.' }) livePathModels!: number;
-  @ApiProperty({ type: [ModelResidencyPreviewModel], description: 'ON_DEMAND models on this card that could be unloaded to make room, largest first.' })
+  @ApiProperty({
+    type: [ModelResidencyPreviewModel],
+    description: 'ON_DEMAND models on this card that could be unloaded to make room, largest first.',
+  })
   evictable!: ModelResidencyPreviewModel[];
 }
 
@@ -83,7 +86,8 @@ export class ModelResidencyLoadPreviewResponse {
 
   @ApiProperty({
     type: [ModelResidencyPlacementCandidate],
-    description: 'TASK-1055 — every device this service can place the model on, best first. Empty for a service with a single device.',
+    description:
+      'TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`.',
   })
   candidates!: ModelResidencyPlacementCandidate[];
 
@@ -91,7 +95,7 @@ export class ModelResidencyLoadPreviewResponse {
     nullable: true,
     type: String,
     description:
-      'TASK-1055 — the most suitable device: one that fits with the most remaining memory (ties: fewer live-path models, then lower index); if none fits, the smallest shortfall. `null` only when no device is known.',
+      'TASK-1055 — the most suitable device: one that fits with the most remaining memory (ties: fewer live-path models, then lower index); if none fits, the smallest shortfall. Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`).',
   })
   suggestedDevice!: string | null;
 

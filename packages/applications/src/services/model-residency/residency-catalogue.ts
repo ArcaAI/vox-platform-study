@@ -1,4 +1,6 @@
 import type {
+  ModelResidencyDeviceShare,
+  ModelResidencyLoadConfig,
   ModelResidencyCatalogueDevice,
   ModelResidencyIdentity,
   ModelResidencyCatalogueModel,
@@ -86,6 +88,10 @@ export interface CatalogueResidentEntry {
   loadSeconds: number | null;
   ttlSeconds: number | null;
   adminPinned: boolean;
+  /** TASK-1055 — bytes per card (`gpu<N>`), as the service measured them; a split model's real per-card footprint. */
+  deviceBytes?: ModelResidencyDeviceShare[];
+  /** TASK-1055 — LM Studio: the config the instance was actually loaded with. */
+  loadConfig?: ModelResidencyLoadConfig | null;
 }
 
 /** A model whose last load FAILED (TASK-1019): it holds no memory, so it is not an entry. */
@@ -252,48 +258,22 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
     };
   });
 
-  const footprintOf = (e: CatalogueResidentEntry): { bytes: number; source: CatalogueDeviceBytesSource } | null => {
+  const footprintOf = (e: CatalogueResidentEntry): ResidencyFootprint | null => {
     const model = entryModel.get(e);
-    if (e.bytes !== null && e.bytes > 0) return { bytes: e.bytes, source: e.bytesSource === 'measured' ? 'measured' : 'estimated' };
-    const observed = input.observedBytes(e.service, e.modelRef, model);
-    if (observed) return { bytes: observed, source: 'estimated' };
-    if (model?.memorySizeMb) return { bytes: model.memorySizeMb * MiB, source: 'estimated' };
-    return null;
+    return footprintFor(e, input.observedBytes(e.service, e.modelRef, model), model?.memorySizeMb);
   };
   const gpuDevices = input.devices.filter((d) => d.kind === 'gpu');
-  // One model split over every card (LM Studio `multi`): its footprint divided in proportion to each card's used bytes.
-  const splitShare = (footprint: number, device: { id: string }): number => {
-    const usedTotal = gpuDevices.reduce((sum, d) => sum + d.usedBytes, 0);
-    const weight = (d: { usedBytes: number }): number => (usedTotal > 0 ? d.usedBytes / usedTotal : 1 / gpuDevices.length);
-    let allocated = 0;
-    for (let i = 0; i < gpuDevices.length; i++) {
-      const share = i === gpuDevices.length - 1 ? footprint - allocated : Math.floor(footprint * weight(gpuDevices[i]));
-      if (gpuDevices[i].id === device.id) return share;
-      allocated += share;
-    }
-    return 0;
-  };
 
   const devices: ModelResidencyCatalogueDevice[] = input.devices.map((device) => {
-    const seen = new Set<string>();
-    const models: ModelResidencyCatalogueDevice['models'] = [];
-    for (const e of input.entries) {
-      const multi = e.device === 'multi' && device.kind === 'gpu';
-      const here = e.device === device.id || multi;
-      const key = residencyKey(e.service, e.modelRef);
-      if (!here || seen.has(key)) continue;
-      seen.add(key);
-      const footprint = footprintOf(e);
-      let bytes: number | null = null;
-      let bytesSource: CatalogueDeviceBytesSource = 'unknown';
-      if (footprint) {
-        bytes = multi ? splitShare(footprint.bytes, device) : footprint.bytes;
-        bytesSource = multi ? 'estimated' : footprint.source;
-      }
-      models.push({ service: e.service, modelRef: e.modelRef, name: nameOf(e.service, e.modelRef), bytes, bytesSource });
-    }
+    const attribution = attributeDevice(device, input.entries, gpuDevices, footprintOf);
+    const models: ModelResidencyCatalogueDevice['models'] = attribution.models.map(({ entry: e, bytes, bytesSource }) => ({
+      service: e.service,
+      modelRef: e.modelRef,
+      name: nameOf(e.service, e.modelRef),
+      bytes,
+      bytesSource,
+    }));
     const headroomBytes = Math.floor((device.totalBytes * input.headroomPercent) / 100);
-    const attributedBytes = models.reduce((sum, m) => sum + (m.bytes ?? 0), 0);
     return {
       id: device.id,
       kind: device.kind,
@@ -305,8 +285,8 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
       headroomPercent: input.headroomPercent,
       headroomBytes,
       overHeadroom: device.freeBytes < headroomBytes,
-      attributedBytes,
-      unattributedBytes: Math.max(0, device.usedBytes - attributedBytes),
+      attributedBytes: attribution.attributedBytes,
+      unattributedBytes: attribution.unattributedBytes,
       models,
     };
   });
@@ -340,6 +320,90 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
     });
 
   return { mode: input.mode, reportedAt: input.reportedAt, freshness: input.freshness, devices, services, suggestions };
+}
+
+/** A resident instance's whole footprint and how it is known. */
+export interface ResidencyFootprint {
+  bytes: number;
+  source: CatalogueDeviceBytesSource;
+}
+
+/** The slice of an entry per-device attribution reads. */
+export interface AttributableEntry {
+  service: string;
+  modelRef: string;
+  device: string;
+  bytes: number | null;
+  bytesSource: ResidencyBytesSource;
+  deviceBytes?: ModelResidencyDeviceShare[];
+}
+
+/**
+ * The ONE footprint rule for a resident instance (catalogue and admission preview, TASK-1055):
+ * its reported bytes (`measured` stays measured; anything else is an estimate), else the model's
+ * observed size, else its catalogue size — both estimates for an instance that reports none.
+ */
+export function footprintFor(
+  entry: Pick<AttributableEntry, 'bytes' | 'bytesSource'>,
+  observedBytes: number | null | undefined,
+  memorySizeMb: number | null | undefined,
+): ResidencyFootprint | null {
+  if (entry.bytes !== null && entry.bytes > 0) return { bytes: entry.bytes, source: entry.bytesSource === 'measured' ? 'measured' : 'estimated' };
+  if (observedBytes) return { bytes: observedBytes, source: 'estimated' };
+  if (memorySizeMb) return { bytes: memorySizeMb * MiB, source: 'estimated' };
+  return null;
+}
+
+/**
+ * TASK-1055 — what each resident instance holds on ONE device, and the ONE unattributed formula
+ * the catalogue and the admission preview share: `device.usedBytes − Σ per-device bytes of every
+ * instance on it`, floored at 0.
+ *
+ * Per-device bytes come from the service's own per-card measurement (`deviceBytes`) when it sent
+ * one — an instance is then "on" exactly the cards it names. Without it: the whole footprint on
+ * the instance's device, and an LM Studio `multi` instance's footprint split in proportion to each
+ * card's used bytes (estimated; the TASK-1051 fallback for an agent that predates per-card bytes).
+ */
+export function attributeDevice<E extends AttributableEntry>(
+  device: { id: string; kind: 'gpu' | 'cpu'; usedBytes: number },
+  entries: readonly E[],
+  gpuDevices: ReadonlyArray<{ id: string; usedBytes: number }>,
+  footprintOf: (entry: E) => ResidencyFootprint | null,
+): {
+  models: Array<{ entry: E; bytes: number | null; bytesSource: CatalogueDeviceBytesSource }>;
+  attributedBytes: number;
+  unattributedBytes: number;
+} {
+  const splitShare = (footprint: number): number => {
+    const usedTotal = gpuDevices.reduce((sum, d) => sum + d.usedBytes, 0);
+    const weight = (d: { usedBytes: number }): number => (usedTotal > 0 ? d.usedBytes / usedTotal : 1 / gpuDevices.length);
+    let allocated = 0;
+    for (let i = 0; i < gpuDevices.length; i++) {
+      const share = i === gpuDevices.length - 1 ? footprint - allocated : Math.floor(footprint * weight(gpuDevices[i]));
+      if (gpuDevices[i].id === device.id) return share;
+      allocated += share;
+    }
+    return 0;
+  };
+  const seen = new Set<string>();
+  const models: Array<{ entry: E; bytes: number | null; bytesSource: CatalogueDeviceBytesSource }> = [];
+  for (const e of entries) {
+    const key = residencyKey(e.service, e.modelRef);
+    const share = e.deviceBytes?.find((d) => d.device === device.id);
+    const multi = !e.deviceBytes?.length && e.device === 'multi' && device.kind === 'gpu';
+    const here = e.deviceBytes?.length ? share !== undefined : e.device === device.id || multi;
+    if (!here || seen.has(key)) continue;
+    seen.add(key);
+    if (share) {
+      models.push({ entry: e, bytes: share.bytes, bytesSource: e.bytesSource === 'measured' ? 'measured' : 'estimated' });
+      continue;
+    }
+    const footprint = footprintOf(e);
+    if (!footprint) models.push({ entry: e, bytes: null, bytesSource: 'unknown' });
+    else models.push({ entry: e, bytes: multi ? splitShare(footprint.bytes) : footprint.bytes, bytesSource: multi ? 'estimated' : footprint.source });
+  }
+  const attributedBytes = models.reduce((sum, m) => sum + (m.bytes ?? 0), 0);
+  return { models, attributedBytes, unattributedBytes: Math.max(0, Math.round(device.usedBytes - attributedBytes)) };
 }
 
 /** Where the service actually runs: any GPU-placed instance → gpu; instances all on CPU → cpu; nothing resident → the static default. */
@@ -385,6 +449,8 @@ function modelRow(
         p50LatencyMs: primary.p50LatencyMs,
         loadedAt: primary.loadedAt,
         lastUsedAt: primary.lastUsedAt,
+        ...(primary.deviceBytes ? { deviceBytes: primary.deviceBytes.map((d) => ({ ...d })) } : {}),
+        ...(primary.loadConfig !== undefined ? { loadConfig: primary.loadConfig ? { ...primary.loadConfig } : null } : {}),
       }
     : null;
 

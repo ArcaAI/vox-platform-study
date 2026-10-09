@@ -16,7 +16,7 @@ describe('ModelResidencyService observation reads (documented best-effort)', () 
     const outage = new Error('prometheus unreachable');
     const { service, logger } = build({ prometheus: { instantVector: vi.fn().mockRejectedValue(outage) } });
 
-    await expect(service.readGpuUsed()).resolves.toBeNull();
+    await expect(service.readGpus()).resolves.toEqual([]);
     expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ error: outage }));
     expect(logger.error).not.toHaveBeenCalled();
   });
@@ -24,7 +24,7 @@ describe('ModelResidencyService observation reads (documented best-effort)', () 
   it('a healthy Prometheus with no samples degrades silently', async () => {
     const { service, logger } = build({ prometheus: { instantVector: vi.fn().mockResolvedValue([]) } });
 
-    await expect(service.readGpuUsed()).resolves.toBeNull();
+    await expect(service.readGpus()).resolves.toEqual([]);
     expect(logger.warn).not.toHaveBeenCalled();
   });
 });

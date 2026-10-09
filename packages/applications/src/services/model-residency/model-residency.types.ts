@@ -82,6 +82,21 @@ export interface ReportedResidentModel {
   loadSeconds: number | null;
   /** LM Studio only — the handle an unload takes. */
   instanceId?: string;
+  /** TASK-1055 — LM Studio only: the engine key the instance was loaded from (`<ref>@<quant>`). */
+  engineKey?: string;
+  /** TASK-1055 — bytes per REPORTING device id (`cuda:<n>`), as the agent measured or estimated them. */
+  deviceBytes?: Record<string, number>;
+  /** TASK-1055 — LM Studio only: the config the instance was ACTUALLY loaded with (read back by the agent). */
+  loadConfig?: ReportedLoadConfig;
+}
+
+/** TASK-1055 — an LM Studio instance's applied load config (agent `load_config`, camelCased). */
+export interface ReportedLoadConfig {
+  contextLength?: number;
+  parallel?: number;
+  flashAttention?: boolean;
+  kvCacheQuant?: { k?: string; v?: string };
+  gpuSplit?: { strategy?: string; priority?: number[]; disabledGpus?: number[]; customRatio?: number[] };
 }
 
 export interface ReportedDevice {
@@ -89,6 +104,13 @@ export interface ReportedDevice {
   kind: 'gpu' | 'cpu';
   totalBytes: number;
   freeBytes: number;
+  /** TASK-1055 — the CUDA index the process sees (PCI-bus order). */
+  index?: number;
+  name?: string;
+  /** TASK-1055 — the card's UUID: the key the gateway maps `cuda:<n>` onto DCGM's `gpu<N>` with. */
+  uuid?: string;
+  /** TASK-1055 — what THIS process holds on the card; absent when unknowable. */
+  processBytes?: number | null;
 }
 
 /** One service's `GET /internal/residency` (or the LM Studio adapter's `report()`), camelCased. */

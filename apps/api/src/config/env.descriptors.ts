@@ -91,6 +91,14 @@ const TOPOLOGY: SettingDescriptor[] = [
     'Clinical Documentation Harness base URL (apps/harness, port 8866).',
     'http://localhost:8866',
   ),
+  // TASK-1055 — no default on purpose: unset means "LM Studio is not controllable", never a guessed address.
+  envKnob(
+    'lmstudioAgent.url',
+    'string',
+    'Topology',
+    'LM Studio residency agent URL',
+    'LM Studio residency agent base URL — the in-pod sidecar (port 8869, k8s `http://hope-lmstudio:8869`) the residency controller commands LM Studio through (TASK-1055). Unset: LM Studio is reported unreachable for residency and cannot be loaded / unloaded / pinned from the console; there is deliberately no fallback to the LM Studio REST API.',
+  ),
   envKnob(
     'adminConsole.url',
     'string',

@@ -51,6 +51,8 @@ export interface IAppConfig {
   HARNESS_URL: string;
   TTS_PORT: string;
   TTS_URL: string;
+  /** TASK-1055 — LM Studio's in-pod residency agent; unset = LM Studio is not controllable (no default, no REST fallback). */
+  LMSTUDIO_AGENT_URL?: string;
 
   //=========== MQTT ============//
   MQTT_HOST: string;
