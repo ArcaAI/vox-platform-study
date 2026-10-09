@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Review |
+| Status | Completed (awaiting owner sign-off) |
 | Type | infrastructure (bugfix) |
-| Repo | `arca/hope-v2-deployment`, branch `task-1052/vault-approle-rotation` (off `origin/main` `70d1f87`) |
+| Repo | `arca/hope-v2-deployment` `main`: `4797dbe` (rotation + consumer switch), `1a0d259` (CI gates) |
 | Opened | 2026-10-09 |
 
 ## 1. Requirement analysis
@@ -45,10 +45,25 @@ Revoking the root token (the sidecar's own advice) disables rotation as well; a 
 - `sh -n` on the sidecar script: OK. BusyBox `date -D` verified in the live sidecar image.
 - Live (2026-10-09): a fresh secret_id was minted inside `hope-vault-0` with the same login + encrypt canary and
   published to `hope-vault-approle` (expires 2026-11-08T05:27Z).
-- Pending: deploy of this branch, then `hope-api` boots on `1042ba78`, `verify-dev` re-run green.
+- `hope-secrets` could not be patched (the sidecar's Role cannot write it), so the consumer switch was the deploy path.
+- Deployed 2026-10-09 05:32Z via Argo auto-sync of `4797dbe`: Synced / Healthy, operation Succeeded; `hope-vault-0`
+  restarted and self-unsealed; `hope-api` booted on `0.0.0-dev-2-2.1042ba78`; checkpoint-worker and model-publisher
+  re-rolled onto the new Secret (their pre-rollout pods had logged "Vault token renewal DEGRADED").
+- Rotation logic proven against the live store with the exact `vault.yaml` quoting: lookup reads
+  `exp=2026-11-08T05:27:26 left_h=719 due=no`; an unknown/expired id parses as empty and takes the re-mint path.
+  `kubectl auth can-i patch deployment/hope-api` = yes, `deployment/hope-text` = no (scoped as intended).
+- CI: deployment pipeline #1407 green (all gates). hope-v2 pipeline #1404 green after `verify-dev` re-run.
+
+### CI gates fixed in `1a0d259`
+
+| Gate | Cause | Fix |
+|---|---|---|
+| `secret-keys` (red on `4797dbe`) | consumers now read `hope-vault-approle`, undeclared in the inventory | declared it (`VAULT_ROLE_ID`, `VAULT_SECRET_ID` required); dropped the keys from `hope-secrets` |
+| `capacity` (red since 2026-10-02, TASK-1031) | STT pinned with `CUDA_VISIBLE_DEVICES` instead of an `nvidia.com/gpu` request, so rules 8/9 counted it as CPU plane (+40 GiB ceiling) | `GPU_ROLE` membership classifies a workload as GPU plane, as before |
 
 ## 5. Change history
 
 | Date | Change |
 |---|---|
-| 2026-10-09 | Opened from the TASK-1045 rollout incident; rotation + consumer switch implemented on the deployment branch; live secret_id re-minted into `hope-vault-approle`. |
+| 2026-10-09 | Opened from the TASK-1045 rollout incident; rotation + consumer switch implemented; live secret_id re-minted into `hope-vault-approle`. |
+| 2026-10-09 | Deployment repo aligned (local `main` tracked `arcaai/main`; re-pointed to `origin/main`, gemma 32768/q4_0 commit rebased on top); `4797dbe` + `1a0d259` pushed (owner-approved); deployed and verified; CI green. |
