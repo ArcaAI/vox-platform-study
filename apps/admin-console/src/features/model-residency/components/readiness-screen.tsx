@@ -119,7 +119,7 @@ export function ReadinessScreen() {
                   {!check.passed && CHECK_CTA[check.id] ? (
                     <Link
                       href={CHECK_CTA[check.id]!.href}
-                      className="text-primary inline-flex min-h-8 items-center text-sm underline-offset-4 hover:underline"
+                      className="text-foreground inline-flex min-h-8 items-center text-sm font-medium underline underline-offset-4"
                     >
                       {CHECK_CTA[check.id]!.label}
                     </Link>
