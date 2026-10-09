@@ -302,10 +302,26 @@ All pods on `27cc1535`; stt/stt-worker/nlp `CUDA_VISIBLE_DEVICES=0,1`; LM Studio
 
 End state = start state for the five owner-approved models (Whisper, Medical NER, GLiGuard, Granite on GPU 0; Gemma on GPU 1); no keep-policy rows or default placements written.
 
+### 8c. Fixes for the cluster e2e defects (merged on `dev-2.2`, not pushed)
+
+| Defect | Fix | Merge |
+|---|---|---|
+| D1 nlp cache derivation after a restart | gateway builder derives the slot from the catalogue row: `gliner2` → `nlp_gliner2_guard`; `_metadata.entailment` → `nlp_entailment_scorer` (+ path + calibration, fail-closed); the SYSTEM `nlp.diagnosis` election → `nlp_medical_suggester` with the `nlp.ner` election's NER; reported slots still win (12 tests on real seed rows) | `376e3921e` |
+| D2 admin copy not serving name-only callers | nlp `_serving_key`: a request with no `model_path` is served by the ONE resident/in-flight `name+path` copy of the same model; a request naming a path is never aliased (8 tests). Root cause: clinical NER callers (`resolveNerModelInjection`, harness `activities.py:1309`) send the name only, the admin load sends name+path | `ef338ab31` |
+| D4 no per-copy choice in the console | catalogue `residency.deviceBytes` lists every copy of an stt/nlp model; console labels a host-memory copy and sends `cpu` | `117b40696` |
+| D3 "26.6 GB vs 28.55 GB" | not a defect — the reason is binary GB (28.55 × 10⁹ B = 26.6 GiB); pinned by a characterisation test | `117b40696` |
+
+Gate after merge: applications 18,676 passed (1 flaky TASK-1038 test, `consultation-read.service.task1038.test.ts`, fails ~1 in 3 runs in isolation — untouched here) · admin-console 4,920 passed · nlp 1,164 passed · applications + console tsc clean · lint 0 errors.
+
+**Open follow-ups (owner decision):** (a) reverse duplicate — if a name-only clinical request loads first, a later admin load still makes a second copy; the full fix is caller consistency (send `model_path` from `resolveNerModelInjection` and the harness NER activity, whose comment deliberately sends the name only); (b) D5 LM Studio agent exports no Prometheus metrics, so LM Studio is absent from "Resident bytes"; (c) Prompt Guard 2 / judge caches are not in nlp's residency `_plan`, so they cannot be loaded from the console; (d) the `deviceBytes` DTO description still talks about LM Studio splits only.
+
+**Re-test after the next push + promotion:** GLiGuard Load on GPU 1 from the console; a live clinical NER request reuses the admin copy (no second copy); the per-copy unload choice in the console.
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
 | 2026-10-09 | Ticket opened from the live e2e; findings E1–E13; plan and owner decisions written (status Pending). |
+| 2026-10-09 | Pushed by owner; CI #1414 green; cluster e2e (§8b): core flows pass, defects D1/D2/D4 fixed and merged (§8c), D3 retracted. Awaiting the next push for re-test. |
 | 2026-10-09 | Waves 1–2 merged (7 lanes), gate green; review R1/R2/R3 (30 findings); fix wave FG/FP/FA/FC/FD merged; final gate green; deployment merged to local `main`. Status Review. |
 | 2026-10-09 | Owner: "go, align agents for maximizing parallel tasks" — all six ODs as recommended. Wave 0 contract: `tests/contracts/model-residency-task1055.fixture.json`; py-runtime-models `device` on load/unload, `Planner` protocol, `DeviceUnavailable`, `accelerator.py`, `ModelCache(measure=)`; stt/nlp planners accept `device`; gateway DTOs (`device`, `makeDefault`, preview `candidates`/`suggestedDevice`, placement `deviceBytes`/`loadConfig`, new error codes); console wire types. Lanes widened to seven (§4.2). Status In Progress. |
