@@ -1,0 +1,196 @@
+{
+  "$comment": "TASK-1055 — additions to the model-residency contracts, PINNED by the orchestrator before the lanes branched (wave 0). Additive to model-residency-agent.fixture.json / -admin / -catalogue: every TASK-1005/1051 shape stays valid. Lanes: L-KERNEL (packages/py-runtime-models), L-STT, L-NLP, L-LMS-AGENT (infrastructure/docker/lmstudio/agent), L-GATEWAY, L-CONSOLE, L-DEPLOY.",
+
+  "deviceIds": {
+    "$comment": "Two vocabularies, one mapping. Agents speak `cuda:<n>` = the n-th GPU the PROCESS sees with CUDA_DEVICE_ORDER=PCI_BUS_ID (deployment sets it on stt, stt-worker, nlp, lmstudio). The gateway/console speak the catalogue id `gpu<n>` = DCGM's `gpu` label (PCI order on this node). Mapping rule in the gateway: match the agent device's `uuid` against DCGM's `UUID` label; fall back to `cuda:<n>` -> `gpu<n>` only when the agent reports no uuid. `multi` (LM Studio split per profile) and `cpu` pass through unchanged.",
+    "agent": ["cuda:0", "cuda:1", "cpu"],
+    "gateway": ["gpu0", "gpu1", "multi", "cpu"]
+  },
+
+  "python": {
+    "$comment": "Residency agent v2 (stt, nlp — and the LM Studio agent speaks the SAME snake_case shapes). New fields are optional; an absent `device` keeps TASK-1005 behaviour.",
+    "loadRequest": {
+      "model_ref": "fastino/gliguard-LLMGuardrails-300M",
+      "load_spec": { "cache": "nlp_gliner2_guard", "model_path": null },
+      "pin": false,
+      "ttl_seconds": null,
+      "device": "cuda:1"
+    },
+    "unloadRequest": { "model_ref": "fastino/gliguard-LLMGuardrails-300M", "force": false, "reason": "admin", "device": "cuda:1" },
+    "report": {
+      "service": "nlp",
+      "instance": "hope-nlp-98c7fb9b4-55z22",
+      "reported_at": "2026-10-09T09:00:00Z",
+      "devices": [
+        {
+          "id": "cuda:0",
+          "kind": "gpu",
+          "total_bytes": 17175674880,
+          "free_bytes": 5636096000,
+          "index": 0,
+          "name": "NVIDIA RTX 2000 Ada Generation",
+          "uuid": "GPU-be50f6fc-59ec-9c5b-c925-c962344c734c",
+          "process_bytes": 1946157056
+        },
+        {
+          "id": "cuda:1",
+          "kind": "gpu",
+          "total_bytes": 17175674880,
+          "free_bytes": 14501806080,
+          "index": 1,
+          "name": "NVIDIA RTX 2000 Ada Generation",
+          "uuid": "GPU-55c35bac-8291-a08a-2cb2-a43648336aa5",
+          "process_bytes": 0
+        }
+      ],
+      "models": [
+        {
+          "model_ref": "fastino/gliguard-LLMGuardrails-300M",
+          "ai_model_id": null,
+          "cache": "nlp_gliner2_guard",
+          "state": "loaded",
+          "device": "cuda:1",
+          "bytes": 993001472,
+          "bytes_source": "measured",
+          "in_flight": 0,
+          "pinned": false,
+          "admin_pinned": false,
+          "ttl_seconds": 900,
+          "loaded_at": "2026-10-09T08:59:50Z",
+          "last_used_at": null,
+          "load_seconds": 9.8,
+          "error": null
+        }
+      ]
+    },
+    "$reportNotes": "`devices[]` lists EVERY GPU the process sees (not only the ones holding a model) — the gateway ranks them. `process_bytes` = what this process holds on the card (torch.cuda.memory_reserved for torch services; null when unknowable). The same model loaded on two devices is TWO entries, distinguished by `device`. `bytes_source`: `measured` = parameter+buffer bytes (torch) or a clean, serialised per-device delta; `estimated` = file size / polluted delta; `unknown`.",
+    "errors": {
+      "INSUFFICIENT_MEMORY": {
+        "error": {
+          "code": "INSUFFICIENT_MEMORY",
+          "message": "no room to load X on cuda:0: ...",
+          "device": "cuda:0",
+          "needed_bytes": 1191182336,
+          "free_bytes": 524288000,
+          "headroom_bytes": 2576980377
+        }
+      },
+      "DEVICE_UNAVAILABLE": {
+        "error": { "code": "DEVICE_UNAVAILABLE", "message": "nlp sees no device cuda:2", "device": "cuda:2" }
+      }
+    },
+    "unloadSemantics": "An unload MUST return the memory to the driver before it answers: drop every reference (cache entry, service shutdown(), weight registry), gc, then `release_accelerator_memory(device)` (torch empty_cache on that device). The next load's measurement starts from a clean baseline."
+  },
+
+  "lmStudioAgent": {
+    "$comment": "L-LMS-AGENT: a sidecar container in the hope-lmstudio pod, Node, listening on :8869, talking to the daemon over loopback ws://127.0.0.1:1234 with the SDK `loadModel` channel (reusing infrastructure/docker/lmstudio/loader/kvconfig.mjs). Routes and snake_case bodies are the `python` block's, prefixed /internal/residency. Auth: `X-Service-Token` = INTERNAL_ACCESS_TOKEN (constant-time compare; empty = dev bypass, as the python services). The gateway reaches it at env LMSTUDIO_AGENT_URL (k8s: http://hope-lmstudio:8869). GET /health answers 200 when the daemon greets — this is what the pod's readiness becomes (OD-6).",
+    "loadRequest": {
+      "model_ref": "gemma-4-e2b-it-qat",
+      "load_spec": {
+        "identifier": "gemma-4-e2b-it-qat",
+        "context_length": 65536,
+        "parallel": 10,
+        "flash_attention": true,
+        "kv_cache_quant": { "k": "f16", "v": "f16" },
+        "gpu_split": { "strategy": "priorityOrder", "priority": [1], "disabled_gpus": [0], "custom_ratio": [] },
+        "ttl_seconds": null
+      },
+      "pin": false,
+      "ttl_seconds": null,
+      "device": "cuda:1"
+    },
+    "$loadNotes": "`model_ref` is the catalogue ref (AiModel.wireModelId, the bare name). The AGENT resolves the engine key with the boot loader's `selectModelKey` rules (exact key, else the unique `<ref>@<quant>`, never `@?`). `load_spec` is the model's resolved serving profile, built by the gateway with the SAME resolution as the boot plan (effective-config lmStudioServing.preload entry). `device`: `cuda:<n>` overrides gpu_split to `{priorityOrder, priority:[n], disabled_gpus:[all others]}`; absent = the profile's gpu_split; the gateway sends `multi` as an absent device + profile split `evenly` when the admin picks 'split across cards'. The agent loads with `identifier`, verifies the applied config by read-back (strict), and answers like the python agent. An instance with that identifier already loaded = `already_loaded`.",
+    "reportModel": {
+      "model_ref": "gemma-4-e2b-it-qat",
+      "engine_key": "gemma-4-e2b-it-qat@q4_0",
+      "instance_id": "gemma-4-e2b-it-qat",
+      "ai_model_id": null,
+      "cache": "llm",
+      "state": "loaded",
+      "device": "cuda:1",
+      "bytes": 4294967296,
+      "bytes_source": "measured",
+      "device_bytes": { "cuda:1": 4294967296 },
+      "in_flight": null,
+      "pinned": false,
+      "admin_pinned": false,
+      "ttl_seconds": null,
+      "loaded_at": "2026-10-09T08:15:10Z",
+      "last_used_at": null,
+      "load_seconds": 24.1,
+      "error": null,
+      "load_config": {
+        "context_length": 65536,
+        "parallel": 10,
+        "flash_attention": true,
+        "kv_cache_quant": { "k": "f16", "v": "f16" },
+        "gpu_split": { "strategy": "priorityOrder", "priority": [1], "disabled_gpus": [0], "custom_ratio": [] }
+      }
+    },
+    "$reportNotes": "`device` = `cuda:<n>` when the instance sits on one card, `multi` when split. `device_bytes` = per-card delta measured by nvidia-smi around the agent's OWN serialised load (one load at a time per daemon); instances loaded before the agent started (boot plan) report `bytes_source: estimated` with the file size split by the configured split. Instances in the daemon that no `identifier` names (JIT loads) are reported with model_ref = their engine key."
+  },
+
+  "gateway": {
+    "loadRequest": { "service": "nlp", "modelRef": "fastino/gliguard-LLMGuardrails-300M", "device": "gpu1", "makeDefault": false, "force": false, "reason": null },
+    "loadPreviewResponseAdditions": {
+      "candidates": [
+        {
+          "device": "gpu1",
+          "label": "GPU 1 · NVIDIA RTX 2000 Ada Generation",
+          "totalBytes": 17175674880,
+          "freeBytes": 14501806080,
+          "headroomBytes": 2576351232,
+          "remainingBytes": 10734272512,
+          "shortfallBytes": 0,
+          "fits": true,
+          "exceedsDevice": false,
+          "livePathModels": 0,
+          "evictable": []
+        },
+        {
+          "device": "gpu0",
+          "label": "GPU 0 · NVIDIA RTX 2000 Ada Generation",
+          "totalBytes": 17175674880,
+          "freeBytes": 1932735283,
+          "headroomBytes": 2576351232,
+          "remainingBytes": -1834798285,
+          "shortfallBytes": 1834798285,
+          "fits": false,
+          "exceedsDevice": false,
+          "livePathModels": 4,
+          "evictable": []
+        }
+      ],
+      "suggestedDevice": "gpu1",
+      "suggestionReason": "GPU 1 has 10.0 GB free above headroom; GPU 0 is 1.7 GB short."
+    },
+    "$suggestionRule": "Candidates = every device the service can place on (stt/nlp: the GPUs their agent reports; lm-studio: every GPU plus `multi`). Order: fits first; among fits the most `remainingBytes`; ties -> fewer `livePathModels` -> lower index. If none fits: smallest `shortfallBytes` (its `evictable` says what to unload). `exceedsDevice` = need > freeBytes (ignoring headroom).",
+    "loadRefusals": {
+      "OVER_BUDGET": {
+        "status": 409,
+        "body": { "code": "OVER_BUDGET", "message": "GPU 0 cannot hold … (short 1.7 GB). GPU 1 can.", "device": "gpu0", "shortfallBytes": 1834798285, "suggestedDevice": "gpu1", "candidates": "<loadPreviewResponseAdditions.candidates>" },
+        "note": "Un-forced load over the chosen device's budget. `force: true` + reason proceeds unless EXCEEDS_DEVICE."
+      },
+      "EXCEEDS_DEVICE": {
+        "status": 409,
+        "body": { "code": "EXCEEDS_DEVICE", "message": "…needs more than GPU 0 has free at all; a forced load would OOM its card-mates", "device": "gpu0", "suggestedDevice": "gpu1", "candidates": "<…>" },
+        "note": "OD-5 hard refusal, even with force."
+      },
+      "DEVICE_UNAVAILABLE": { "status": 400, "body": { "code": "DEVICE_UNAVAILABLE", "message": "nlp has no device gpu2", "device": "gpu2" } }
+    },
+    "unloadRefusals": {
+      "LIVE_PATH_REASON_REQUIRED": {
+        "status": 409,
+        "body": { "code": "LIVE_PATH_REASON_REQUIRED", "message": "Medical NER is on the live consultation path; give a reason to unload it", "consumers": ["10 agents · 10 tenants (live consultations)"] },
+        "note": "OD-2: a live-path model (implicit or PINNED policy) may be unloaded with a non-empty reason, audited. No policy row is created or changed by an unload."
+      }
+    },
+    "makeDefault": "OD-4: `makeDefault: true` (requires `device`) writes `AiModel._metadata.residency.defaultDevice = <gpuN|multi|cpu>` with OCC; for lm-studio it ALSO writes `_metadata.serving.gpuSplit` (priorityOrder [n] / evenly) so the boot plan follows. A load without `device` uses `defaultDevice`, else the service default.",
+    "catalogueAdditions": {
+      "placement.deviceBytes": [ { "device": "gpu1", "bytes": 4294967296 } ],
+      "placement.loadConfig": { "contextLength": 65536, "parallel": 10, "flashAttention": true, "kvCacheQuantK": "f16", "kvCacheQuantV": "f16", "device": "gpu1" },
+      "bytesSource": ["measured", "estimated", "unknown"]
+    },
+    "measurementRule": "A new measurement replaces `AiModel.observedMemoryMb` only when it is `measured` AND >= 50 % of the stored value (else it is logged at warn and the stored value kept). One unattributed formula: device.usedBytes - sum(per-device bytes of every instance on it), shared by catalogue and preview."
+  }
+}

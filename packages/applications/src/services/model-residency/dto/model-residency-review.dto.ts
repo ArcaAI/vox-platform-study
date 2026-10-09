@@ -26,6 +26,27 @@ export class ModelResidencyPreviewModel {
   @ApiProperty({ example: 'On demand · idle 5 h', description: 'Why it is (or is not) offered, in plain words.' }) reason!: string;
 }
 
+/**
+ * TASK-1055 — one device the load could go to, judged with the same admission
+ * arithmetic as the chosen one. `fits` = admitted without force; `exceedsDevice` =
+ * the need is larger than the card's FREE memory outright, so even a forced load
+ * would OOM its card-mates and is refused (OD-5).
+ */
+export class ModelResidencyPlacementCandidate {
+  @ApiProperty({ example: 'gpu1' }) device!: string;
+  @ApiProperty({ example: 'GPU 1 · NVIDIA RTX 2000 Ada Generation' }) label!: string;
+  @ApiProperty({ nullable: true, type: Number }) totalBytes!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) freeBytes!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) headroomBytes!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Free minus headroom minus the need; negative = short.' }) remainingBytes!: number | null;
+  @ApiProperty() shortfallBytes!: number;
+  @ApiProperty() fits!: boolean;
+  @ApiProperty({ description: 'Need > free memory: refused even with force.' }) exceedsDevice!: boolean;
+  @ApiProperty({ description: 'Live-path models already resident on this card.' }) livePathModels!: number;
+  @ApiProperty({ type: [ModelResidencyPreviewModel], description: 'ON_DEMAND models on this card that could be unloaded to make room, largest first.' })
+  evictable!: ModelResidencyPreviewModel[];
+}
+
 export class ModelResidencyLoadPreviewResponse {
   @ApiProperty() service!: string;
   @ApiProperty() modelRef!: string;
@@ -59,6 +80,23 @@ export class ModelResidencyLoadPreviewResponse {
     description: 'Resident models on the same device that are pinned (live path or policy) and are NOT offered.',
   })
   pinned!: ModelResidencyPreviewModel[];
+
+  @ApiProperty({
+    type: [ModelResidencyPlacementCandidate],
+    description: 'TASK-1055 — every device this service can place the model on, best first. Empty for a service with a single device.',
+  })
+  candidates!: ModelResidencyPlacementCandidate[];
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'TASK-1055 — the most suitable device: one that fits with the most remaining memory (ties: fewer live-path models, then lower index); if none fits, the smallest shortfall. `null` only when no device is known.',
+  })
+  suggestedDevice!: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'GPU 1 has 9.4 GB free above headroom; GPU 0 is 0.6 GB short.' })
+  suggestionReason!: string | null;
 }
 
 // ── POST links — confirm which catalogue row a reported engine key is ──

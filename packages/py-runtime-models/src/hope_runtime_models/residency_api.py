@@ -31,6 +31,7 @@ from .cache import UNSET
 from .residency_agent import ResidencyAgent, ResidencyError
 
 _STRICT = ConfigDict(extra="forbid", protected_namespaces=())
+_DEVICE_PATTERN = r"^(cuda:\d+|cpu)$"
 
 
 class LoadRequest(BaseModel):
@@ -40,6 +41,9 @@ class LoadRequest(BaseModel):
     load_spec: dict[str, Any] = Field(default_factory=dict)
     pin: bool = False
     ttl_seconds: int | None = Field(default=None, ge=1)
+    #: TASK-1055 — the device to load ON (``cuda:<n>`` = the n-th GPU this process
+    #: sees, PCI-bus order; ``cpu``). ``None`` = the service's default placement.
+    device: str | None = Field(default=None, pattern=_DEVICE_PATTERN)
 
 
 class UnloadRequest(BaseModel):
@@ -50,6 +54,8 @@ class UnloadRequest(BaseModel):
     #: Not in the pinned fixture: optional, so the controller may label its own
     #: policy-engine unloads (`model_evictions_total{reason="policy"}`).
     reason: Literal["admin", "policy"] = "admin"
+    #: TASK-1055 — unload only the copy on this device; ``None`` = every copy.
+    device: str | None = Field(default=None, pattern=_DEVICE_PATTERN)
 
 
 class PolicyRequest(BaseModel):
@@ -89,6 +95,7 @@ def build_residency_router(agent: ResidencyAgent | Callable[[], ResidencyAgent])
                 request.load_spec,
                 pin=request.pin,
                 ttl_seconds=request.ttl_seconds,
+                device=request.device,
             )
         except ResidencyError as exc:
             return _error(exc)
@@ -97,7 +104,10 @@ def build_residency_router(agent: ResidencyAgent | Callable[[], ResidencyAgent])
     async def residency_unload(request: UnloadRequest) -> dict[str, Any] | JSONResponse:
         try:
             return await current().unload(
-                request.model_ref, force=request.force, reason=request.reason
+                request.model_ref,
+                force=request.force,
+                reason=request.reason,
+                device=request.device,
             )
         except ResidencyError as exc:
             return _error(exc)

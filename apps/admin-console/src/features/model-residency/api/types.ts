@@ -110,6 +110,21 @@ export interface ResidencyLiveState {
   p50LatencyMs: number | null;
   loadedAt: string | null;
   lastUsedAt: string | null;
+  /** TASK-1055 — bytes per card as the service measured them (LM Studio splits a model). */
+  deviceBytes?: Array<{ device: string; bytes: number }>;
+  /** TASK-1055 — LM Studio only: the config the instance was actually loaded with. */
+  loadConfig?: ResidencyLoadConfig | null;
+}
+
+/** TASK-1055 — LM Studio load config as reported by the engine (prefills Reload with options). */
+export interface ResidencyLoadConfig {
+  contextLength: number | null;
+  parallel: number | null;
+  flashAttention: boolean | null;
+  kvCacheQuantK: string | null;
+  kvCacheQuantV: string | null;
+  /** `gpu<N>` when pinned to one card, `multi` when split. */
+  device: string | null;
 }
 
 /**
@@ -278,6 +293,28 @@ export interface ModelResidencyLoadPreview {
   evictable: ResidencyPreviewModel[];
   /** Pinned resident models on the same device — shown, never offered. */
   pinned: ResidencyPreviewModel[];
+  /** TASK-1055 — every device the model could go to, best first (empty for a single-device service). */
+  candidates: ResidencyPlacementCandidate[];
+  /** TASK-1055 — the most suitable device (fits with most room; else smallest shortfall). */
+  suggestedDevice: string | null;
+  suggestionReason: string | null;
+}
+
+/** TASK-1055 — one device judged with the same admission arithmetic as the chosen one. */
+export interface ResidencyPlacementCandidate {
+  device: string;
+  label: string;
+  totalBytes: number | null;
+  freeBytes: number | null;
+  headroomBytes: number | null;
+  /** Free minus headroom minus the need; negative = short. */
+  remainingBytes: number | null;
+  shortfallBytes: number;
+  fits: boolean;
+  /** Need > free memory: refused even with force (OD-5). */
+  exceedsDevice: boolean;
+  livePathModels: number;
+  evictable: ResidencyPreviewModel[];
 }
 
 /** TASK-1051 — POST admin/model-residency/links */
@@ -331,7 +368,10 @@ export interface UnloadModelRequest {
   service: string;
   modelRef: string;
   force?: boolean;
+  /** TASK-1055 (OD-2) — required for a live-path model. */
   reason?: string | null;
+  /** TASK-1055 — unload only the copy on this device. */
+  device?: string | null;
 }
 
 export interface UnloadModelResponse {

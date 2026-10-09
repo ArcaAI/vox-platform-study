@@ -27,7 +27,7 @@ import time
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from .cache import UNSET, AdmissionRejected, LoadFailure, ModelInFlightError, ResidentModel
 
@@ -61,11 +61,26 @@ class LoadPlan:
     load: Callable[[], Awaitable[Any]]
 
 
-Planner = Callable[[str, dict[str, Any]], Awaitable[LoadPlan | None]]
+class Planner(Protocol):
+    """Turns ``(model_ref, load_spec, device)`` into a :class:`LoadPlan` (TASK-1055).
+
+    ``device`` is the requested device id (``cuda:<n>`` / ``cpu``) or ``None`` for the
+    service's default placement. A planner that cannot place on ``device`` raises
+    :class:`DeviceUnavailable`; the returned plan's ``cache`` MUST be bound to that
+    device (``plan.cache.residency.device.id == device``).
+    """
+
+    def __call__(
+        self, model_ref: str, load_spec: dict[str, Any], *, device: str | None = None
+    ) -> Awaitable[LoadPlan | None]: ...
 
 
 class InvalidLoadSpec(ValueError):
     """A planner could not read the ``load_spec`` it was given (HTTP 400)."""
+
+
+class DeviceUnavailable(ValueError):
+    """The requested device does not exist in this process or cannot host the model (HTTP 400 ``DEVICE_UNAVAILABLE``)."""
 
 
 class ResidencyError(Exception):
@@ -171,11 +186,17 @@ class ResidencyAgent:
     # ── verbs ───────────────────────────────────────────────────────────────
 
     async def load(
-        self, model_ref: str, load_spec: dict[str, Any], *, pin: bool, ttl_seconds: int | None
+        self,
+        model_ref: str,
+        load_spec: dict[str, Any],
+        *,
+        pin: bool,
+        ttl_seconds: int | None,
+        device: str | None = None,
     ) -> dict[str, Any]:
-        plan = await self._plan(model_ref, load_spec)
+        plan = await self._plan(model_ref, load_spec, device)
         if plan is None:
-            found = self._find(model_ref)
+            found = self._find(model_ref, device)
             if not found:
                 raise _model_unknown(model_ref)
             await self._apply_load_policy(found, pin=pin, ttl_seconds=ttl_seconds)
@@ -200,6 +221,12 @@ class ResidencyAgent:
                 "INSUFFICIENT_MEMORY",
                 str(exc),
                 status=503,
+                extra={
+                    "device": exc.device_id,
+                    "needed_bytes": exc.needed_bytes,
+                    "free_bytes": exc.free_bytes,
+                    "headroom_bytes": exc.headroom_bytes,
+                },
                 retry_after_seconds=exc.retry_after_seconds,
             ) from exc
         except ResidencyError:
@@ -221,8 +248,10 @@ class ResidencyAgent:
         await self._apply_load_policy([loaded], pin=pin, ttl_seconds=ttl_seconds)
         return {"outcome": "loaded", "model": self._model_json_for(loaded)}
 
-    async def unload(self, model_ref: str, *, force: bool, reason: str) -> dict[str, Any]:
-        found = self._find(model_ref)
+    async def unload(
+        self, model_ref: str, *, force: bool, reason: str, device: str | None = None
+    ) -> dict[str, Any]:
+        found = self._find(model_ref, device)
         in_flight = sum(item.model.in_flight for item in found)
         if in_flight and not force:
             raise _in_flight(model_ref, in_flight)
@@ -234,6 +263,7 @@ class ResidencyAgent:
                 if (
                     model.state == "failed"
                     and binding.describe(model.key, model.instance).model_ref == model_ref
+                    and (device is None or binding.cache.residency.device.id == device)
                 ):
                     await _settle(binding.cache.unload(model.key, force=force, reason=reason))
 
@@ -269,18 +299,35 @@ class ResidencyAgent:
     def _live_bindings(self) -> list[CacheBinding]:
         return [b for b in self._bindings() if getattr(b.cache, "residency", None) is not None]
 
-    async def _plan(self, model_ref: str, load_spec: dict[str, Any]) -> LoadPlan | None:
+    async def _plan(
+        self, model_ref: str, load_spec: dict[str, Any], device: str | None = None
+    ) -> LoadPlan | None:
         if self._planner is None:
+            if device is not None:
+                raise ResidencyError(
+                    "DEVICE_UNAVAILABLE",
+                    f"{self._service} cannot place a load on {device}",
+                    status=400,
+                    extra={"device": device},
+                )
             return None
         try:
-            return await self._planner(model_ref, load_spec)
+            if device is None:  # a pre-TASK-1055 planner takes two arguments
+                return await self._planner(model_ref, load_spec)
+            return await self._planner(model_ref, load_spec, device=device)
         except InvalidLoadSpec as exc:
             raise ResidencyError("LOAD_FAILED", f"invalid load_spec: {exc}", status=400) from exc
+        except DeviceUnavailable as exc:
+            raise ResidencyError(
+                "DEVICE_UNAVAILABLE", str(exc), status=400, extra={"device": device}
+            ) from exc
 
-    def _find(self, model_ref: str) -> list[_Found]:
-        """Every LOADED slot whose key is named ``model_ref`` (any cache)."""
+    def _find(self, model_ref: str, device: str | None = None) -> list[_Found]:
+        """Every LOADED slot whose key is named ``model_ref`` (any cache; one device if given)."""
         found: list[_Found] = []
         for binding in self._live_bindings():
+            if device is not None and binding.cache.residency.device.id != device:
+                continue
             for model in binding.cache.residency_snapshot():
                 if model.state != "loaded":
                     continue

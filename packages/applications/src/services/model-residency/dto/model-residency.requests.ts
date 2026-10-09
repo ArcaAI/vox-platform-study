@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { MODEL_RESIDENCY_SERVICES, ModelResidencyClass } from '@arcaai/domains';
 import { RESIDENCY_CONTROLLED_SERVICES, type ResidencyControlledService } from '../model-residency.types';
 
@@ -48,6 +48,9 @@ export class LmStudioResidencyLoadOptions {
   @IsBoolean()
   offloadKvCacheToGpu?: boolean | null;
 }
+
+/** TASK-1055 — a device a load may be placed on: `gpu<N>` (catalogue id, PCI-bus order), `multi` (LM Studio split across cards per the model's profile), `cpu`. */
+export const RESIDENCY_DEVICE_PATTERN = /^(gpu\d+|multi|cpu)$/;
 
 export class LoadModelResidencyRequest {
   @ApiProperty({ enum: RESIDENCY_CONTROLLED_SERVICES, description: 'The serving workload. `stt-worker` has no control API and is read-only.' })
@@ -98,6 +101,25 @@ export class LoadModelResidencyRequest {
   @ValidateNested()
   @Type(() => LmStudioResidencyLoadOptions)
   options?: LmStudioResidencyLoadOptions | null;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1055 — where to load: `gpu<N>`, `multi` (LM Studio only: split across cards) or `cpu`. Absent = the model`s default placement (its `_metadata.residency.defaultDevice`, else the service default). A device that cannot hold the model answers 409 `OVER_BUDGET` with `candidates` + `suggestedDevice`.',
+    nullable: true,
+    example: 'gpu1',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(RESIDENCY_DEVICE_PATTERN)
+  device?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'TASK-1055 (OD-4) — also make `device` this model`s default placement (written to the catalogue row; used at boot and by the controller). Requires `device`.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  makeDefault?: boolean;
 }
 
 export class UnloadModelResidencyRequest {
@@ -116,11 +138,22 @@ export class UnloadModelResidencyRequest {
   @IsBoolean()
   force?: boolean;
 
-  @ApiPropertyOptional({ description: 'Why — recorded on the audit event.', nullable: true, maxLength: 500 })
+  @ApiPropertyOptional({
+    description:
+      'Why — recorded on the audit event. TASK-1055 (OD-2): REQUIRED to unload a live-path model (409 `LIVE_PATH_REASON_REQUIRED` with its `consumers` otherwise).',
+    nullable: true,
+    maxLength: 500,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   reason?: string | null;
+
+  @ApiPropertyOptional({ description: 'TASK-1055 — unload only the copy on this device (`gpu<N>`); absent = every copy.', nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(RESIDENCY_DEVICE_PATTERN)
+  device?: string | null;
 }
 
 export class PinModelResidencyRequest {

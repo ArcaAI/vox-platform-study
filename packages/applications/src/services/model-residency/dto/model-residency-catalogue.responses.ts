@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type {
   CatalogueAction,
   CatalogueDeviceBytesSource,
@@ -80,12 +80,38 @@ export class ModelResidencyPlacement {
   device!: string;
   @ApiProperty({ description: 'Pod name, or the LM Studio instance id.' }) instance!: string;
   @ApiProperty({ nullable: true, type: Number }) bytes!: number | null;
-  @ApiProperty({ enum: ['measured', 'unknown'] }) bytesSource!: ResidencyBytesSource;
+  @ApiProperty({ enum: ['measured', 'estimated', 'unknown'] }) bytesSource!: ResidencyBytesSource;
   @ApiProperty({ nullable: true, type: Number }) inFlight!: number | null;
   @ApiProperty({ nullable: true, type: Number }) requestsPerMin!: number | null;
   @ApiProperty({ nullable: true, type: Number }) p50LatencyMs!: number | null;
   @ApiProperty({ nullable: true, type: String }) loadedAt!: string | null;
   @ApiProperty({ nullable: true, type: String }) lastUsedAt!: string | null;
+  @ApiPropertyOptional({
+    type: () => ModelResidencyDeviceShare,
+    isArray: true,
+    description: 'TASK-1055 — bytes this instance holds per card, as the service measured them (LM Studio splits one model over several).',
+  })
+  deviceBytes?: ModelResidencyDeviceShare[];
+  @ApiPropertyOptional({
+    type: () => ModelResidencyLoadConfig,
+    nullable: true,
+    description: 'TASK-1055 — LM Studio only: the config the instance was ACTUALLY loaded with (prefills Reload with options).',
+  })
+  loadConfig?: ModelResidencyLoadConfig | null;
+}
+
+export class ModelResidencyDeviceShare {
+  @ApiProperty({ example: 'gpu0' }) device!: string;
+  @ApiProperty() bytes!: number;
+}
+
+export class ModelResidencyLoadConfig {
+  @ApiProperty({ nullable: true, type: Number }) contextLength!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) parallel!: number | null;
+  @ApiProperty({ nullable: true, type: Boolean }) flashAttention!: boolean | null;
+  @ApiProperty({ nullable: true, type: String, example: 'q8_0' }) kvCacheQuantK!: string | null;
+  @ApiProperty({ nullable: true, type: String, example: 'q8_0' }) kvCacheQuantV!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: '`gpu<N>` when pinned to one card, `multi` when split.' }) device!: string | null;
 }
 
 export class ModelResidencyUse {

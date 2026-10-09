@@ -267,8 +267,12 @@ class _CacheCore(Generic[T]):
         name: str = "model_cache",
         residency: CacheResidency | None = None,
         wall_clock: Callable[[], float] = time.time,
+        measure: Callable[[T], int | None] | None = None,
     ) -> None:
         self._factory = factory
+        #: TASK-1055 — sizes a loaded instance (e.g. ``torch_module_bytes``); when it
+        #: returns an int it wins over the device free-memory delta.
+        self._measure = measure
         self._unload = unload
         self._ttl_seconds = clamp_cache_ttl_seconds(ttl_seconds)
         self._max_size = max_size
@@ -855,6 +859,7 @@ class ModelCache(_CacheCore[T]):
         name: str = "model_cache",
         residency: CacheResidency | None = None,
         wall_clock: Callable[[], float] = time.time,
+        measure: Callable[[T], int | None] | None = None,
     ) -> None:
         super().__init__(
             factory=factory,
@@ -870,6 +875,7 @@ class ModelCache(_CacheCore[T]):
             name=name,
             residency=residency,
             wall_clock=wall_clock,
+            measure=measure,
         )
         self._lock = asyncio.Lock()
         # key → future of the load in progress (single-flight).
@@ -1100,6 +1106,7 @@ class SyncModelCache(_CacheCore[T]):
         name: str = "model_cache",
         residency: CacheResidency | None = None,
         wall_clock: Callable[[], float] = time.time,
+        measure: Callable[[T], int | None] | None = None,
     ) -> None:
         super().__init__(
             factory=factory,
@@ -1115,6 +1122,7 @@ class SyncModelCache(_CacheCore[T]):
             name=name,
             residency=residency,
             wall_clock=wall_clock,
+            measure=measure,
         )
         self._lock = threading.Lock()
         # key → the load in progress (single-flight).

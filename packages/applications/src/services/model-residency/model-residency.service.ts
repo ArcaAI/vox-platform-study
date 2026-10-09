@@ -902,6 +902,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       refusal: admission.refusal ?? blocked,
       evictable: evictable.sort((a, b) => b.sortBytes - a.sortBytes).map(({ sortBytes: _sortBytes, ...model }) => model),
       pinned,
+      // TASK-1055 wave-0 contract placeholders — filled by the gateway lane (per-device candidates + suggestion).
+      candidates: [],
+      suggestedDevice: null,
+      suggestionReason: null,
     };
   }
 

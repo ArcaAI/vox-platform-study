@@ -26,11 +26,18 @@ export type ResidencyModelState = 'loading' | 'loaded' | 'unloading';
 export type ReportedModelState = ResidencyModelState | 'failed';
 export type ResidencyClassName = 'PINNED' | 'WARM' | 'ON_DEMAND';
 export type ResidencyClassSource = 'policy' | 'implicit-live-path' | 'default';
-export type ResidencyBytesSource = 'measured' | 'unknown';
+// TASK-1055 — `estimated`: sized from the file / a per-card delta that could not be isolated, not a clean measurement.
+export type ResidencyBytesSource = 'measured' | 'estimated' | 'unknown';
 export type RecommendationAction = 'load' | 'unload' | 'pin' | 'unpin';
 export type RecommendationReason = 'idle_ttl_expired' | 'promotion_rate' | 'live_path_pin' | 'make_room' | 'admission_rejected';
 export type ResidencyErrorCode =
+  // TASK-1055 — the requested device does not exist for the service, or cannot host the model.
+  | 'DEVICE_UNAVAILABLE'
+  // TASK-1055 (OD-5) — the need exceeds the device's FREE memory outright; refused even with force.
+  | 'EXCEEDS_DEVICE'
   | 'IN_FLIGHT'
+  // TASK-1055 (OD-2) — unloading a live-path model needs a reason; the 409 lists its consumers.
+  | 'LIVE_PATH_REASON_REQUIRED'
   | 'LOAD_FAILED'
   | 'LOAD_IN_PROGRESS'
   | 'MODEL_UNKNOWN'

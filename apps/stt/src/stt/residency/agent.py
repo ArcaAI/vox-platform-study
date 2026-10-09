@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import APIRouter
 from hope_runtime_models.residency_agent import (
     CacheBinding,
+    DeviceUnavailable,
     InvalidLoadSpec,
     LoadPlan,
     ModelIdentity,
@@ -47,7 +48,17 @@ def _bindings() -> list[CacheBinding]:
     return [CacheBinding(cache=get_model_cache(), describe=_describe)]
 
 
-async def _plan(model_ref: str, load_spec: dict[str, Any]) -> LoadPlan | None:
+def _default_device_id() -> str:
+    return stt_device().id
+
+
+async def _plan(
+    model_ref: str, load_spec: dict[str, Any], *, device: str | None = None
+) -> LoadPlan | None:
+    # TASK-1055 wave-0 contract: `device` is accepted; placing on a chosen GPU is
+    # implemented by the device lane. Until then only the default device is honoured.
+    if device is not None and device != _default_device_id():
+        raise DeviceUnavailable(f"{SERVICE} cannot place a load on {device} yet")
     if not load_spec:
         return None
     if set(load_spec) != {"resolved_spec"}:

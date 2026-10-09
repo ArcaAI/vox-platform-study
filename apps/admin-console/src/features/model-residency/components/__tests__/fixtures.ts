@@ -109,6 +109,9 @@ export function makePreview(overrides: Partial<ModelResidencyLoadPreview> = {}):
       { service: 'nlp', modelRef: 'big-one', name: 'Big One', bytes: 4 * GIB, reason: 'On demand' },
     ],
     pinned: [{ service: 'stt', modelRef: 'radiology-asr-en', name: 'Radiology ASR', bytes: 2 * GIB, reason: 'Used by a live-consultation agent' }],
+    candidates: [],
+    suggestedDevice: null,
+    suggestionReason: null,
     ...overrides,
   };
 }

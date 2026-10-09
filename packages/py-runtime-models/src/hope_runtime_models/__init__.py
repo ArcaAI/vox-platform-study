@@ -23,6 +23,7 @@ from .cache import (
     SyncModelCache,
     clamp_cache_ttl_seconds,
 )
+from .accelerator import release_accelerator_memory, torch_module_bytes
 from .devices import Device, cpu_device, default_device, gpu_device
 from .metrics import (
     EVICTIONS_TOTAL,
@@ -118,9 +119,11 @@ __all__ = [
     "make_vram_info_probe",
     "make_vram_probe",
     "probe_state",
+    "release_accelerator_memory",
     "reset_nvml_detection",
     "reset_probe_state",
     "reset_warmup_state",
+    "torch_module_bytes",
     "warm_cache_roots",
     "warmup_state",
 ]

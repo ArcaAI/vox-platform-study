@@ -41,6 +41,7 @@ from hope_runtime_models import (
 )
 from hope_runtime_models.residency_agent import (
     CacheBinding,
+    DeviceUnavailable,
     InvalidLoadSpec,
     LoadPlan,
     ModelIdentity,
@@ -114,7 +115,17 @@ def _optional_str(load_spec: dict[str, Any], name: str) -> str | None:
     return value
 
 
-async def _plan(model_ref: str, load_spec: dict[str, Any]) -> LoadPlan | None:
+def _default_device_id() -> str:
+    return nlp_device().id
+
+
+async def _plan(
+    model_ref: str, load_spec: dict[str, Any], *, device: str | None = None
+) -> LoadPlan | None:
+    # TASK-1055 wave-0 contract: `device` is accepted; placing on a chosen GPU is
+    # implemented by the device lane. Until then only the default device is honoured.
+    if device is not None and device != _default_device_id():
+        raise DeviceUnavailable(f"{SERVICE} cannot place a load on {device} yet")
     if not load_spec:
         return None
 

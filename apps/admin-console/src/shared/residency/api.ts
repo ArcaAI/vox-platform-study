@@ -60,6 +60,10 @@ export interface LoadModelResidencyRequest {
   /** "Apply & reload": unload the resident instance(s) of this `modelRef` first, then load. */
   replace?: boolean;
   options?: LmStudioResidencyLoadOptions;
+  /** TASK-1055 — `gpu<N>`, `multi` (LM Studio split) or `cpu`; absent = the model's default placement. */
+  device?: string | null;
+  /** TASK-1055 (OD-4) — also make `device` this model's default placement. */
+  makeDefault?: boolean;
 }
 
 export interface LoadModelResidencyResponse {
@@ -74,13 +78,28 @@ export function loadModelResidency(body: LoadModelResidencyRequest): Promise<Loa
 }
 
 export type ModelResidencyErrorCode =
-  'IN_FLIGHT' | 'LOAD_FAILED' | 'LOAD_IN_PROGRESS' | 'MODEL_UNKNOWN' | 'NO_SIZE' | 'OPTIONS_UNSUPPORTED' | 'OVER_BUDGET' | 'SERVICE_UNREACHABLE';
+  | 'DEVICE_UNAVAILABLE'
+  | 'EXCEEDS_DEVICE'
+  | 'IN_FLIGHT'
+  | 'LIVE_PATH_REASON_REQUIRED'
+  | 'LOAD_FAILED'
+  | 'LOAD_IN_PROGRESS'
+  | 'MODEL_UNKNOWN'
+  | 'NO_SIZE'
+  | 'OPTIONS_UNSUPPORTED'
+  | 'OVER_BUDGET'
+  | 'SERVICE_UNREACHABLE';
 
 /** The gateway house error form: `ConflictException`'s object body — `{ code, message, ...details }`. */
 export interface ModelResidencyConflict {
   code: ModelResidencyErrorCode;
   message: string;
   inFlight?: number;
+  /** TASK-1055 — OVER_BUDGET / EXCEEDS_DEVICE: the device asked for and the best one instead. */
+  device?: string;
+  suggestedDevice?: string | null;
+  /** TASK-1055 — LIVE_PATH_REASON_REQUIRED: who uses the model, in plain words. */
+  consumers?: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,7 +107,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const RESIDENCY_ERROR_CODES: ReadonlySet<string> = new Set<ModelResidencyErrorCode>([
+  'DEVICE_UNAVAILABLE',
+  'EXCEEDS_DEVICE',
   'IN_FLIGHT',
+  'LIVE_PATH_REASON_REQUIRED',
   'LOAD_FAILED',
   'LOAD_IN_PROGRESS',
   'MODEL_UNKNOWN',
@@ -110,5 +132,16 @@ export function asModelResidencyConflict(error: unknown): ModelResidencyConflict
   if (typeof code !== 'string' || !RESIDENCY_ERROR_CODES.has(code)) return null;
   const message = typeof details['message'] === 'string' ? details['message'] : '';
   const inFlight = typeof details['inFlight'] === 'number' ? details['inFlight'] : undefined;
-  return { code: code as ModelResidencyErrorCode, message, inFlight };
+  const device = typeof details['device'] === 'string' ? details['device'] : undefined;
+  const suggestedDevice =
+    typeof details['suggestedDevice'] === 'string' || details['suggestedDevice'] === null ? (details['suggestedDevice'] as string | null) : undefined;
+  const consumers = Array.isArray(details['consumers']) ? details['consumers'].filter((c): c is string => typeof c === 'string') : undefined;
+  return {
+    code: code as ModelResidencyErrorCode,
+    message,
+    inFlight,
+    ...(device !== undefined ? { device } : {}),
+    ...(suggestedDevice !== undefined ? { suggestedDevice } : {}),
+    ...(consumers !== undefined ? { consumers } : {}),
+  };
 }
