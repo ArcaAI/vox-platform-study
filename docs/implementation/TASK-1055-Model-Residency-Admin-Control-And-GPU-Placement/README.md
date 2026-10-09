@@ -323,11 +323,23 @@ Gate after merge: applications 18,676 passed (1 flaky TASK-1038 test, `consultat
 - **DDL not in a migration:** TASK-1050's partial index `GuardrailEvaluation_tenant_violation_at_idx` → new migration `20261009124500_task_1050_guardrail_violation_partial_index` (shadow-proven).
 - **Ticket scripts (15 in docs/implementation):** covered by migrations — 1020 draft, 1036 freeze trigger, 1038 read model; covered by the seed — rollouts 1022, 1034, 1045, 1054, the 1047 backfill, the 1036 tag backfill; never run — 1038 load tool + superseded proposal, 1045 recovery record, 1049 manual test. **One thing to redo after a reseed:** ArcaAI `consultation.appointmentDay.timeZone = Asia/Kolkata` (the TASK-1020 rollout's last step; no seed writes it) — set with one admin settings call, NOT by re-running rollout.mjs (it could republish the seeded agents and break the workflows pinned to v1).
 
+### 8e. Push, dev reset + reseed, re-test (2026-10-09, build `81f8eaf3`)
+
+- CI #1417 green (incl. verify-dev); the new migration applied by `hope-db-migrate` before the reset.
+- `hope-reset-20261009a` (out-of-band, promoted database image `sha256:c241febc…`): confirmation, seed-mode and Vault canary passed, `core` dropped, 67 migrations replayed (0 failed / rolled back), full seed `RUN_SEED=all` completed in 27 s; the TASK-1050 partial index exists; 46 agents, 6 tenant buckets.
+- ArcaAI `consultation.appointmentDay.timeZone` set to `Asia/Kolkata` (tenant scope, v1; was `UTC` code-default after the reseed).
+- **D1 verified:** after an nlp restart, console Load of GLiGuard on GPU 1 → `nlp_gliner2_guard` on cuda:1, 834 MB measured.
+- **D2 verified:** a name-only `/api/v1/classify/tokens` request was served by the admin-loaded cuda:1 Medical NER copy; no second copy.
+- **D4 verified (after pinning nlp to one replica):** with copies on both GPUs the unload dialog offers "All copies / Only GPU 0 / Only GPU 1"; "Only GPU 1" removed just that copy.
+- **New finding → owner decision:** the nlp HPA had scaled to 2 replicas; residency is per pod behind a load-balanced Service, so console actions landed on random pods and models were duplicated in VRAM. Owner chose to pin hope-nlp to 1 replica (deployment `2a9612c`; hope-stt was already 1). Per-pod residency is a follow-up if scale-out is ever wanted.
+- End state: GPU 0 Medical NER, GLiGuard, Whisper ML-EN, Granite; GPU 1 Gemma. GPU 1 carries ~1 GB more than before (nlp's CUDA context/allocator on cuda:1 persists for the process lifetime after it was used) — harmless.
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
 | 2026-10-09 | Ticket opened from the live e2e; findings E1–E13; plan and owner decisions written (status Pending). |
+| 2026-10-09 | Migration audit (+ TASK-1050 partial-index migration), pushed `81f8eaf3`, dev reset + reseed, ArcaAI timezone restored, D1/D2/D4 verified on the cluster, hope-nlp pinned to 1 replica (owner). |
 | 2026-10-09 | Pushed by owner; CI #1414 green; cluster e2e (§8b): core flows pass, defects D1/D2/D4 fixed and merged (§8c), D3 retracted. Awaiting the next push for re-test. |
 | 2026-10-09 | Waves 1–2 merged (7 lanes), gate green; review R1/R2/R3 (30 findings); fix wave FG/FP/FA/FC/FD merged; final gate green; deployment merged to local `main`. Status Review. |
 | 2026-10-09 | Owner: "go, align agents for maximizing parallel tasks" — all six ODs as recommended. Wave 0 contract: `tests/contracts/model-residency-task1055.fixture.json`; py-runtime-models `device` on load/unload, `Planner` protocol, `DeviceUnavailable`, `accelerator.py`, `ModelCache(measure=)`; stt/nlp planners accept `device`; gateway DTOs (`device`, `makeDefault`, preview `candidates`/`suggestedDevice`, placement `deviceBytes`/`loadConfig`, new error codes); console wire types. Lanes widened to seven (§4.2). Status In Progress. |
