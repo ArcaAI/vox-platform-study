@@ -45,8 +45,12 @@ import { SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT } from '../prisma/db_main/seed/07d
  * `{{context.language_name}}` localization block here as in
  * `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`; `language_name` is retained, neutralised.
  * Previous pin: 076241d02f41cef8cebde7a7e559dfd8b1d802b52b58f127f50f9083514ab898.
+ *
+ * Updated 2026-10-09 (TASK-1054 lane C): FORMAT gained "Allergies & Contraindications" and "Family History"
+ * and CAPTURE the two matching mandatory bullets (the live e2e dropped a documented allergy).
+ * Previous pin: 1df4d44694b7ffe3a2defb5516ac425f7ed01c6cdd8f4989127ec0961b588e92.
  */
-const PINNED_SHA256 = '1df4d44694b7ffe3a2defb5516ac425f7ed01c6cdd8f4989127ec0961b588e92';
+const PINNED_SHA256 = 'd1199546916ce6231046c2a167c56030a49141b59840f662dd18114b68f620db';
 
 function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');

@@ -25,8 +25,12 @@
  *   - FORMAT headings: "(Latest Department Note)" → "(Latest Note)" (3
  *     occurrences — Investigations, Plan of Care, Medications Prescribed). RF-1
  *     permitted this: native never went through the compat title-matching mapper.
- *   - Nothing else changed: the FORMAT section order, the five FORMAT items,
- *     the STYLE/INSTRUCTIONS/EXCLUDE blocks, and the remaining seven variables
+ *   - TASK-1054: FORMAT gained "Allergies & Contraindications" (first) and "Family History"
+ *     (after the diagnoses) and CAPTURE gained the two matching mandatory bullets, mirroring
+ *     the ArcaAI v3 pre-summary — the live e2e dropped a documented allergy because no heading
+ *     existed for it.
+ *   - Nothing else changed: the FORMAT section order (apart from the TASK-1054 headings above),
+ *     the remaining FORMAT items, the STYLE/INSTRUCTIONS/EXCLUDE blocks, and the remaining seven variables
  *     (`safe_age`, `safe_dob`, `safe_gender`, `safe_vitals`,
  *     `formatted_test_results`, `formatted_previous_visits`, `language_name`)
  *     are byte-identical to the v1-parity body.
@@ -82,6 +86,8 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT =
   '- The Plan of Care from the latest note, documented in full\n\n' +
   '- All investigation results reported in the latest note\n\n' +
   '- All medications prescribed in the latest note, including doses and schedules\n\n' +
+  '- Every allergy and contraindication stated in any supplied case note (drug, agent or food, with the reaction where the record gives one), under Allergies & Contraindications. Where a supplied record explicitly states that there are no known allergies, write `No known allergies documented`. Where no record says anything about allergies, omit the heading — silence is not a negative finding.\n\n' +
+  '- Every family-history item stated in any supplied case note, under Family History, as the record writes it.\n\n' +
   '### INCLUDE ONLY clinically significant items:\n\n' +
   '- Active or ongoing conditions\n\n' +
   '- Key treatments and responses\n\n' +
@@ -105,7 +111,9 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT =
   '---\n\n' +
   '## FORMAT\n\n' +
   'Pre-Summary of Medical History  \n\n' +
+  '- Allergies & Contraindications:  \n\n' +
   '- Confirmed & Provisional Diagnoses:  \n\n' +
+  '- Family History:  \n\n' +
   '- Plan of Care (Latest Note):  \n\n' +
   '- Investigations (Latest Note):  \n\n' +
   '- Medications Prescribed (Latest Note):  \n\n' +
