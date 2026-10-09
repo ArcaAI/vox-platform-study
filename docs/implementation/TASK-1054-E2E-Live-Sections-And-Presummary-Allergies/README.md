@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress |
+| Status | Review (merged on `dev-2.2`, not pushed) |
 | Type | bugfix |
 | Opened | 2026-10-09 |
 | Owner decision | 2026-10-09: "go with all three, then re-run both tests" |
@@ -39,10 +39,31 @@ sections, pre-summary allergy line, `FACT_LEDGER` / `ENCOUNTER_RECAP` items and 
 
 ## 3. Implementation summary
 
-_Pending._
+| Commit | Lane | Change |
+|---|---|---|
+| `49b6c8a4f` | A | `META_NARRATION_PATTERNS` in `turn-contract.ts`, folded into `isPlaceholderSentence`, so a narration sentence never reaches section content (parse + apply paths); an all-narration turn is a no-op; a body holding only earlier narration is replaced, not appended to. `turnInstruction`, schema descriptions and `deltaInstruction` reworded ("write the clinical text itself … never describe the note or the update"). `contradiction` text and `wholeDocumentAsTurn` deliberately untouched. New `turn-contract.meta-narration.task1054.test.ts` (30 tests; 21 RED → GREEN; 9 clinical "previous …" survivors pinned). |
+| `7722e77d1` | A | merge |
+| `49a520d2f` | B | ArcaAI pre-summary (seed 07b v3, `PRE_SUMMARY_CONTENT_V3`): FORMAT adds **Allergies & Contraindications** (first) and **Family History**; CAPTURE adds mandatory allergy (with "No known allergies documented" when a record says so) and family-history bullets; "five headings" → "the headings below". New `pre-summary-allergies.task1054.test.ts` (3 RED → GREEN). `rollout.mjs` republishes the ArcaAI template + every agent pinning it on a non-reset environment (admin API, DRY_RUN, idempotent). |
+| `70ff18809` | B | merge |
+
+Gates (orchestrator, after both merges): applications live-documentation **97 files / 1036 tests** passed; database seed +
+pre-summary incl. `seed.test.ts` **7 files / 310 tests** passed; `@arcaai/applications` typecheck clean; eslint 0 errors
+(9 pre-existing `no-silent-catch` warnings in `live-documentation.service.ts`, none on changed lines); prettier clean on
+changed files (07b is a generated single-literal file that already failed prettier at HEAD).
+
+Known follow-ups:
+- `packages/database/scripts/generate-arcaai-clinical-content-v3.mjs` regenerates 07b from
+  `~/Downloads/v3/PRE_SUMMARY_PROMPT_v3.md` (outside the repo) — regenerating would revert lane B. Update the source md
+  or mark 07b hand-maintained.
+- Stale "five headings" comments: `seed/25-agents.ts:789,799`, `pre-summary-agent.task932.test.ts:142`,
+  `live-pre-summary.port.ts:15`.
+
+Rollout order (owner, credentials): push `dev-2.2` → pipeline promotes lane A → run `TASK-1045 rollout.mjs` (fact-ledger
+agent; closes defect C) and `TASK-1054 rollout.mjs` (ArcaAI pre-summary) against `api.taphuynh.dev`, DRY_RUN first.
 
 ## 4. Change history
 
 | Date | Change |
 |---|---|
 | 2026-10-09 | Opened from the ALaaS → cluster e2e; owner approved all three fixes and a re-run. |
+| 2026-10-09 | Lanes A + B merged, gates green; awaiting push, deploy and the two rollouts, then the e2e re-run. |
