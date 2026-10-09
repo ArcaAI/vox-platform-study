@@ -70,6 +70,228 @@
         },
         "type": "object"
       },
+      "ActionConfirmationErrorResponse": {
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "description": "The status this cell would have produced alone (412 drift, 400 refused).",
+            "example": 400,
+            "type": "number"
+          }
+        },
+        "required": [
+          "actionId",
+          "status",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationPlatformRowResponse": {
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "audience": {
+            "enum": [
+              "platform",
+              "tenant",
+              "both"
+            ],
+            "type": "string"
+          },
+          "default": {
+            "description": "Today’s behaviour — the code default.",
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "type": "string"
+          },
+          "domain": {
+            "description": "Grouping label (the domain).",
+            "type": "string"
+          },
+          "enforcement": {
+            "description": "Where the requirement is enforced.",
+            "enum": [
+              "server",
+              "console"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reason",
+              "evidence",
+              "acknowledgement",
+              "typeToConfirm",
+              "reasonCode",
+              "breakGlass",
+              "stepUp"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "maxLength": {
+            "type": "number"
+          },
+          "minLength": {
+            "type": "number"
+          },
+          "mode": {
+            "description": "The effective mode.",
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "type": "string"
+          },
+          "modes": {
+            "description": "The modes this row may hold.",
+            "items": {
+              "enum": [
+                "required",
+                "when-risky",
+                "not-required"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "routes": {
+            "description": "Gateway route(s) the action reaches.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "source": {
+            "description": "Which tier supplied the mode.",
+            "enum": [
+              "system",
+              "default",
+              "locked"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Backing SYSTEM row version, read fresh; 0 when no row is stored. Echo as `expectedVersion`.",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "actionId",
+          "domain",
+          "label",
+          "kind",
+          "audience",
+          "enforcement",
+          "default",
+          "modes",
+          "locked",
+          "routes",
+          "mode",
+          "source",
+          "version"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationPlatformRowsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationPlatformRowResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationWriteBatchRequest": {
+        "properties": {
+          "cells": {
+            "description": "The edits to apply, in order. Capped at 200.",
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationWriteRequest"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "cells"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationWriteRequest": {
+        "properties": {
+          "actionId": {
+            "example": "promptTemplate.update",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "The `version` from the prior read. Omit for a row that has no stored value.",
+            "example": 3,
+            "minimum": 1,
+            "type": "number"
+          },
+          "mode": {
+            "description": "The new mode. `null` resets the row to the catalogue default.",
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionId",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationWriteResponse": {
+        "properties": {
+          "errors": {
+            "description": "Per-cell failures; the batch is ordered and partial.",
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationErrorResponse"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "description": "The touched rows, re-read AFTER the batch.",
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationPlatformRowResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "errors"
+        ],
+        "type": "object"
+      },
       "ActiveVoiceProfileDto": {
         "properties": {
           "createdAt": {
@@ -448,7 +670,7 @@
             "type": "number"
           },
           "reason": {
-            "description": "Optional free-text justification. Recorded on the audit trail (start bracket + forced audit row); never embedded in the token.",
+            "description": "Why the impersonation is needed. Required (owner decision, TASK-1057: 400 `CONFIRMATION_REQUIRED` without it). Recorded on the audit trail (start bracket + forced audit row); never embedded in the token.",
             "maxLength": 500,
             "type": "string"
           },
@@ -8212,6 +8434,11 @@
             ],
             "type": "string"
           },
+          "changeReason": {
+            "description": "Why the template is being created (recorded on version 1 and the audit event). Required when the platform policy says so.",
+            "maxLength": 500,
+            "type": "string"
+          },
           "content": {
             "description": "Prompt content text",
             "maxLength": 50000,
@@ -10780,6 +11007,65 @@
           "consultationId",
           "gateDecisionTotal",
           "deferralCount"
+        ],
+        "type": "object"
+      },
+      "EffectiveActionConfirmationResponse": {
+        "properties": {
+          "actionId": {
+            "example": "promptTemplate.update",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reason",
+              "evidence",
+              "acknowledgement",
+              "typeToConfirm",
+              "reasonCode",
+              "breakGlass",
+              "stepUp"
+            ],
+            "type": "string"
+          },
+          "locked": {
+            "description": "Locked rows can never be switched off.",
+            "type": "boolean"
+          },
+          "maxLength": {
+            "type": "number"
+          },
+          "minLength": {
+            "type": "number"
+          },
+          "mode": {
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionId",
+          "kind",
+          "mode",
+          "locked"
+        ],
+        "type": "object"
+      },
+      "EffectiveActionConfirmationsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveActionConfirmationResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       },
@@ -16281,6 +16567,11 @@
       },
       "ImpersonateRequest": {
         "properties": {
+          "reason": {
+            "description": "Why the impersonation is needed. Required (owner decision, TASK-1057); recorded on the audit trail, never embedded in the token.",
+            "maxLength": 500,
+            "type": "string"
+          },
           "targetTenantId": {
             "description": "Optional tenantId to scope the impersonation to. Must be one of the target user's enabled tenant assignments. For tenant admins it must match their own tenant.",
             "type": "string"
@@ -23853,7 +24144,7 @@
       "PromoteAgentToSystemRequest": {
         "properties": {
           "changeReason": {
-            "description": "Why this became the platform default. Recorded verbatim on the WORM promotion record.",
+            "description": "Why this became the platform default. Recorded verbatim on the WORM promotion record. Required unless the platform switched the `agent.promoteToSystem` action confirmation off.",
             "maxLength": 500,
             "type": "string"
           },
@@ -23868,8 +24159,7 @@
           }
         },
         "required": [
-          "sourceSlug",
-          "changeReason"
+          "sourceSlug"
         ],
         "type": "object"
       },
@@ -26748,15 +27038,13 @@
             "type": "string"
           },
           "reason": {
-            "description": "Why this restore is being done; recorded in the audit trail",
+            "description": "Why this restore is being done; recorded in the audit trail. Required (10-1000 characters) unless the platform's `tenantCheckpoint.restore` action confirmation is switched off.",
             "maxLength": 1000,
-            "minLength": 10,
             "type": "string"
           }
         },
         "required": [
-          "categories",
-          "reason"
+          "categories"
         ],
         "type": "object"
       },

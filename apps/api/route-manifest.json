@@ -8775,6 +8775,75 @@
       "apiExcluded": false
     },
     {
+      "controller": "SettingsActionConfirmationsController",
+      "handler": "getPlatform",
+      "method": "GET",
+      "path": "/api/v1/admin/settings/action-confirmations",
+      "routePath": "/admin/settings/action-confirmations",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SettingsActionConfirmationsController",
+      "handler": "putPlatform",
+      "method": "PUT",
+      "path": "/api/v1/admin/settings/action-confirmations",
+      "routePath": "/admin/settings/action-confirmations",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SettingsActionConfirmationsController",
+      "handler": "getEffective",
+      "method": "GET",
+      "path": "/api/v1/admin/settings/action-confirmations/effective",
+      "routePath": "/admin/settings/action-confirmations/effective",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "SettingsCatalogController",
       "handler": "getCatalog",
       "method": "GET",

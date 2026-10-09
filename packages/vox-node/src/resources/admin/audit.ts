@@ -136,7 +136,9 @@ export class AdminAuditResource extends AdminResource {
           | 'GovernedPromptPiece'
           | 'GuardrailEvaluation'
           | 'GuardrailNotice'
-          | 'GuardrailPolicyRevision';
+          | 'GuardrailPolicyRevision'
+          | 'HarnessPolicy'
+          | 'HarnessLiveConfig';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -276,7 +278,9 @@ export class AdminAuditResource extends AdminResource {
           | 'GovernedPromptPiece'
           | 'GuardrailEvaluation'
           | 'GuardrailNotice'
-          | 'GuardrailPolicyRevision';
+          | 'GuardrailPolicyRevision'
+          | 'HarnessPolicy'
+          | 'HarnessLiveConfig';
         to?: string;
         userId?: string;
       };
@@ -398,7 +402,9 @@ export class AdminAuditResource extends AdminResource {
           | 'GovernedPromptPiece'
           | 'GuardrailEvaluation'
           | 'GuardrailNotice'
-          | 'GuardrailPolicyRevision';
+          | 'GuardrailPolicyRevision'
+          | 'HarnessPolicy'
+          | 'HarnessLiveConfig';
         search?: string;
         searchFields?: string;
         sort?: string;

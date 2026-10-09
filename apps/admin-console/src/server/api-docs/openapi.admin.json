@@ -70,6 +70,228 @@
         },
         "type": "object"
       },
+      "ActionConfirmationErrorResponse": {
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "description": "The status this cell would have produced alone (412 drift, 400 refused).",
+            "example": 400,
+            "type": "number"
+          }
+        },
+        "required": [
+          "actionId",
+          "status",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationPlatformRowResponse": {
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "audience": {
+            "enum": [
+              "platform",
+              "tenant",
+              "both"
+            ],
+            "type": "string"
+          },
+          "default": {
+            "description": "Today’s behaviour — the code default.",
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "type": "string"
+          },
+          "domain": {
+            "description": "Grouping label (the domain).",
+            "type": "string"
+          },
+          "enforcement": {
+            "description": "Where the requirement is enforced.",
+            "enum": [
+              "server",
+              "console"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reason",
+              "evidence",
+              "acknowledgement",
+              "typeToConfirm",
+              "reasonCode",
+              "breakGlass",
+              "stepUp"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "maxLength": {
+            "type": "number"
+          },
+          "minLength": {
+            "type": "number"
+          },
+          "mode": {
+            "description": "The effective mode.",
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "type": "string"
+          },
+          "modes": {
+            "description": "The modes this row may hold.",
+            "items": {
+              "enum": [
+                "required",
+                "when-risky",
+                "not-required"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "routes": {
+            "description": "Gateway route(s) the action reaches.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "source": {
+            "description": "Which tier supplied the mode.",
+            "enum": [
+              "system",
+              "default",
+              "locked"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Backing SYSTEM row version, read fresh; 0 when no row is stored. Echo as `expectedVersion`.",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "actionId",
+          "domain",
+          "label",
+          "kind",
+          "audience",
+          "enforcement",
+          "default",
+          "modes",
+          "locked",
+          "routes",
+          "mode",
+          "source",
+          "version"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationPlatformRowsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationPlatformRowResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationWriteBatchRequest": {
+        "properties": {
+          "cells": {
+            "description": "The edits to apply, in order. Capped at 200.",
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationWriteRequest"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "cells"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationWriteRequest": {
+        "properties": {
+          "actionId": {
+            "example": "promptTemplate.update",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "The `version` from the prior read. Omit for a row that has no stored value.",
+            "example": 3,
+            "minimum": 1,
+            "type": "number"
+          },
+          "mode": {
+            "description": "The new mode. `null` resets the row to the catalogue default.",
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionId",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "ActionConfirmationWriteResponse": {
+        "properties": {
+          "errors": {
+            "description": "Per-cell failures; the batch is ordered and partial.",
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationErrorResponse"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "description": "The touched rows, re-read AFTER the batch.",
+            "items": {
+              "$ref": "#/components/schemas/ActionConfirmationPlatformRowResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "errors"
+        ],
+        "type": "object"
+      },
       "ActiveVoiceProfileDto": {
         "properties": {
           "createdAt": {
@@ -448,7 +670,7 @@
             "type": "number"
           },
           "reason": {
-            "description": "Optional free-text justification. Recorded on the audit trail (start bracket + forced audit row); never embedded in the token.",
+            "description": "Why the impersonation is needed. Required (owner decision, TASK-1057: 400 `CONFIRMATION_REQUIRED` without it). Recorded on the audit trail (start bracket + forced audit row); never embedded in the token.",
             "maxLength": 500,
             "type": "string"
           },
@@ -8212,6 +8434,11 @@
             ],
             "type": "string"
           },
+          "changeReason": {
+            "description": "Why the template is being created (recorded on version 1 and the audit event). Required when the platform policy says so.",
+            "maxLength": 500,
+            "type": "string"
+          },
           "content": {
             "description": "Prompt content text",
             "maxLength": 50000,
@@ -10780,6 +11007,65 @@
           "consultationId",
           "gateDecisionTotal",
           "deferralCount"
+        ],
+        "type": "object"
+      },
+      "EffectiveActionConfirmationResponse": {
+        "properties": {
+          "actionId": {
+            "example": "promptTemplate.update",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reason",
+              "evidence",
+              "acknowledgement",
+              "typeToConfirm",
+              "reasonCode",
+              "breakGlass",
+              "stepUp"
+            ],
+            "type": "string"
+          },
+          "locked": {
+            "description": "Locked rows can never be switched off.",
+            "type": "boolean"
+          },
+          "maxLength": {
+            "type": "number"
+          },
+          "minLength": {
+            "type": "number"
+          },
+          "mode": {
+            "enum": [
+              "required",
+              "when-risky",
+              "not-required"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionId",
+          "kind",
+          "mode",
+          "locked"
+        ],
+        "type": "object"
+      },
+      "EffectiveActionConfirmationsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveActionConfirmationResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       },
@@ -16281,6 +16567,11 @@
       },
       "ImpersonateRequest": {
         "properties": {
+          "reason": {
+            "description": "Why the impersonation is needed. Required (owner decision, TASK-1057); recorded on the audit trail, never embedded in the token.",
+            "maxLength": 500,
+            "type": "string"
+          },
           "targetTenantId": {
             "description": "Optional tenantId to scope the impersonation to. Must be one of the target user's enabled tenant assignments. For tenant admins it must match their own tenant.",
             "type": "string"
@@ -23853,7 +24144,7 @@
       "PromoteAgentToSystemRequest": {
         "properties": {
           "changeReason": {
-            "description": "Why this became the platform default. Recorded verbatim on the WORM promotion record.",
+            "description": "Why this became the platform default. Recorded verbatim on the WORM promotion record. Required unless the platform switched the `agent.promoteToSystem` action confirmation off.",
             "maxLength": 500,
             "type": "string"
           },
@@ -23868,8 +24159,7 @@
           }
         },
         "required": [
-          "sourceSlug",
-          "changeReason"
+          "sourceSlug"
         ],
         "type": "object"
       },
@@ -26748,15 +27038,13 @@
             "type": "string"
           },
           "reason": {
-            "description": "Why this restore is being done; recorded in the audit trail",
+            "description": "Why this restore is being done; recorded in the audit trail. Required (10-1000 characters) unless the platform's `tenantCheckpoint.restore` action confirmation is switched off.",
             "maxLength": 1000,
-            "minLength": 10,
             "type": "string"
           }
         },
         "required": [
-          "categories",
-          "reason"
+          "categories"
         ],
         "type": "object"
       },
@@ -37146,6 +37434,7 @@
             }
           },
           {
+            "description": "Why the assignment is removed (WORM change row + audit). Required when the platform confirmation policy says so.",
             "in": "query",
             "name": "reason",
             "required": false,
@@ -37174,6 +37463,9 @@
               }
             },
             "description": ""
+          },
+          "400": {
+            "description": "CONFIRMATION_REQUIRED — the platform policy requires a reason."
           },
           "404": {
             "description": "Not found (also returned for another tenant’s assignment)."
@@ -42980,7 +43272,9 @@
                 "GovernedPromptPiece",
                 "GuardrailEvaluation",
                 "GuardrailNotice",
-                "GuardrailPolicyRevision"
+                "GuardrailPolicyRevision",
+                "HarnessPolicy",
+                "HarnessLiveConfig"
               ],
               "type": "string"
             }
@@ -43243,7 +43537,9 @@
                 "GovernedPromptPiece",
                 "GuardrailEvaluation",
                 "GuardrailNotice",
-                "GuardrailPolicyRevision"
+                "GuardrailPolicyRevision",
+                "HarnessPolicy",
+                "HarnessLiveConfig"
               ],
               "type": "string"
             }
@@ -43507,7 +43803,9 @@
                 "GovernedPromptPiece",
                 "GuardrailEvaluation",
                 "GuardrailNotice",
-                "GuardrailPolicyRevision"
+                "GuardrailPolicyRevision",
+                "HarnessPolicy",
+                "HarnessLiveConfig"
               ],
               "type": "string"
             }
@@ -63339,6 +63637,161 @@
         ],
         "x-hope-abilities": [
           "create:GlobalSetting"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:settings:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/action-confirmations": {
+      "get": {
+        "description": "SUPER_ADMIN only (403 otherwise). Each row carries the catalogue spec, the effective `mode`, its `source` (`system` row, code `default`, or `locked`) and the FRESH row `version` to echo as `expectedVersion`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:settings:manage`).\n\n**Abilities** — `read:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "SettingsActionConfirmationsController_getPlatform",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionConfirmationPlatformRowsResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller is not a platform administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The platform action-confirmation policy: every catalogue row with its mode and version.",
+        "tags": [
+          "admin-settings-features"
+        ],
+        "x-hope-abilities": [
+          "read:GlobalSetting"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:settings:manage"
+        ]
+      },
+      "put": {
+        "description": "SUPER_ADMIN only (403 otherwise). `mode: null` resets the row to the catalogue default. The batch is ORDERED and PARTIAL and answers 200 either way: unknown or locked actions and modes the row does not allow come back in `errors[]` with status 400, version drift with 412.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:settings:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "SettingsActionConfirmationsController_putPlatform",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionConfirmationWriteBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionConfirmationWriteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed batch (empty, over the 200-cell cap, or an invalid mode)."
+          },
+          "403": {
+            "description": "The caller is not a platform administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Apply a batch of action-confirmation mode edits.",
+        "tags": [
+          "admin-settings-features"
+        ],
+        "x-hope-abilities": [
+          "manage:GlobalSetting"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:settings:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/action-confirmations/effective": {
+      "get": {
+        "description": "Values only, identical for every caller (the switch is platform-only, SYSTEM tier). Locked rows (impersonation, break-glass, step-up, billing reason code) always report `required`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:settings:manage`).\n\n**Abilities** — `read:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "SettingsActionConfirmationsController_getEffective",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveActionConfirmationsResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller lacks `read:GlobalSetting`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Resolve the confirmation requirement of every confirmable admin action.",
+        "tags": [
+          "admin-settings-features"
+        ],
+        "x-hope-abilities": [
+          "read:GlobalSetting"
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [

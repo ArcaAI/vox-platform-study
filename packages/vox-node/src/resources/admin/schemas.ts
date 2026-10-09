@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 618 component schemas the generated surface transitively
+ * Only the 626 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -21,6 +21,63 @@
  * minority of admin operations with no usable schema and the recorded decision
  * was to emit `unknown` at those call sites rather than invent one.
  */
+
+export interface ActionConfirmationErrorResponse {
+  actionId: string;
+  message: string;
+  /** The status this cell would have produced alone (412 drift, 400 refused). */
+  status: number;
+}
+
+export interface ActionConfirmationPlatformRowResponse {
+  actionId: string;
+  audience: 'platform' | 'tenant' | 'both';
+  /** Today’s behaviour — the code default. */
+  default: 'required' | 'when-risky' | 'not-required';
+  /** Grouping label (the domain). */
+  domain: string;
+  /** Where the requirement is enforced. */
+  enforcement: 'server' | 'console';
+  kind: 'reason' | 'evidence' | 'acknowledgement' | 'typeToConfirm' | 'reasonCode' | 'breakGlass' | 'stepUp';
+  label: string;
+  locked: boolean;
+  maxLength?: number;
+  minLength?: number;
+  /** The effective mode. */
+  mode: 'required' | 'when-risky' | 'not-required';
+  /** The modes this row may hold. */
+  modes: Array<'required' | 'when-risky' | 'not-required'>;
+  /** Gateway route(s) the action reaches. */
+  routes: string[];
+  /** Which tier supplied the mode. */
+  source: 'system' | 'default' | 'locked';
+  /** Backing SYSTEM row version, read fresh; 0 when no row is stored. Echo as `expectedVersion`. */
+  version: number;
+}
+
+export interface ActionConfirmationPlatformRowsResponse {
+  items: ActionConfirmationPlatformRowResponse[];
+}
+
+export interface ActionConfirmationWriteBatchRequest {
+  /** The edits to apply, in order. Capped at 200. */
+  cells: ActionConfirmationWriteRequest[];
+}
+
+export interface ActionConfirmationWriteRequest {
+  actionId: string;
+  /** The `version` from the prior read. Omit for a row that has no stored value. */
+  expectedVersion?: number;
+  /** The new mode. `null` resets the row to the catalogue default. */
+  mode: 'required' | 'when-risky' | 'not-required' | null;
+}
+
+export interface ActionConfirmationWriteResponse {
+  /** Per-cell failures; the batch is ordered and partial. */
+  errors: ActionConfirmationErrorResponse[];
+  /** The touched rows, re-read AFTER the batch. */
+  rows: ActionConfirmationPlatformRowResponse[];
+}
 
 export interface ActivityAggregatesResponse {
   aiRunCount: number;
@@ -2007,6 +2064,8 @@ export interface CreatePolicyDto {
 export interface CreatePromptTemplateRequest {
   /** Template category */
   category: 'SYSTEM' | 'SUMMARY' | 'DNA_ANALYSIS' | 'CUSTOM';
+  /** Why the template is being created (recorded on version 1 and the audit event). Required when the platform policy says so. */
+  changeReason?: string;
   /** Prompt content text */
   content: string;
   /** Department ID to assign template to */
@@ -2727,6 +2786,20 @@ export interface EditBurdenResponse {
   signedAt?: string | null;
   /** Seconds between note delivery and clinician sign-off. Null when a timestamp is missing. */
   timeToSignSeconds?: number | null;
+}
+
+export interface EffectiveActionConfirmationResponse {
+  actionId: string;
+  kind: 'reason' | 'evidence' | 'acknowledgement' | 'typeToConfirm' | 'reasonCode' | 'breakGlass' | 'stepUp';
+  /** Locked rows can never be switched off. */
+  locked: boolean;
+  maxLength?: number;
+  minLength?: number;
+  mode: 'required' | 'when-risky' | 'not-required';
+}
+
+export interface EffectiveActionConfirmationsResponse {
+  items: EffectiveActionConfirmationResponse[];
 }
 
 export interface EffectiveFeatureResponse {
@@ -6200,8 +6273,8 @@ export interface PromoteAgentToSystemCopied {
 }
 
 export interface PromoteAgentToSystemRequest {
-  /** Why this became the platform default. Recorded verbatim on the WORM promotion record. */
-  changeReason: string;
+  /** Why this became the platform default. Recorded verbatim on the WORM promotion record. Required unless the platform switched the `agent.promoteToSystem` action confirmation off. */
+  changeReason?: string;
   /** The agent to promote, by slug, in the Global build tenant. */
   sourceSlug: string;
   /** Which immutable Global version to promote. Defaults to Global’s ACTIVE PUBLISHED version. */

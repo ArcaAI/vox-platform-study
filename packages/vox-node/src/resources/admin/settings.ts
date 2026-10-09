@@ -12,7 +12,11 @@ import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrecondition, PaginatedPage } from './admin-resource';
 import type {
+  ActionConfirmationPlatformRowsResponse,
+  ActionConfirmationWriteBatchRequest,
+  ActionConfirmationWriteResponse,
   CreateGlobalSettingRequest,
+  EffectiveActionConfirmationsResponse,
   EffectiveFeaturesResponse,
   EffectiveSettingResponse,
   FeatureMatrixResponse,
@@ -36,8 +40,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers GlobalSettingController, SecurityPolicyController, SettingsCatalogController, SettingsFeaturesController, SettingsRegistryWriteController
- * (16 routes). Several controllers sharing one scope share one
+ * Backed by controllers GlobalSettingController, SecurityPolicyController, SettingsActionConfirmationsController, SettingsCatalogController, SettingsFeaturesController, SettingsRegistryWriteController
+ * (19 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -164,6 +168,55 @@ export class AdminSettingsResource extends AdminResource {
   }
 
   /**
+   * The platform action-confirmation policy: every catalogue row with its mode and version.
+   *
+   * SUPER_ADMIN only (403 otherwise). Each row carries the catalogue spec, the effective `mode`, its `source` (`system` row, code `default`, or `locked`) and the FRESH row `version` to echo as `expectedVersion`.
+   *
+   * `GET /api/v1/admin/settings/action-confirmations` — `SettingsActionConfirmationsController.getPlatform`.
+   */
+  getPlatform(options: AdminRequestOptions = {}): Promise<ActionConfirmationPlatformRowsResponse> {
+    return this.request<ActionConfirmationPlatformRowsResponse>({
+      method: 'GET',
+      path: 'admin/settings/action-confirmations',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Apply a batch of action-confirmation mode edits.
+   *
+   * SUPER_ADMIN only (403 otherwise). `mode: null` resets the row to the catalogue default. The batch is ORDERED and PARTIAL and answers 200 either way: unknown or locked actions and modes the row does not allow come back in `errors[]` with status 400, version drift with 412.
+   *
+   * `PUT /api/v1/admin/settings/action-confirmations` — `SettingsActionConfirmationsController.putPlatform`.
+   */
+  putPlatform(body: ActionConfirmationWriteBatchRequest, options: AdminRequestOptions = {}): Promise<ActionConfirmationWriteResponse> {
+    return this.request<ActionConfirmationWriteResponse>({
+      method: 'PUT',
+      path: 'admin/settings/action-confirmations',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Resolve the confirmation requirement of every confirmable admin action.
+   *
+   * Values only, identical for every caller (the switch is platform-only, SYSTEM tier). Locked rows (impersonation, break-glass, step-up, billing reason code) always report `required`.
+   *
+   * `GET /api/v1/admin/settings/action-confirmations/effective` — `SettingsActionConfirmationsController.getEffective`.
+   */
+  settingsActionConfirmationsGetEffective(options: AdminRequestOptions = {}): Promise<EffectiveActionConfirmationsResponse> {
+    return this.request<EffectiveActionConfirmationsResponse>({
+      method: 'GET',
+      path: 'admin/settings/action-confirmations/effective',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * List the capability/settings catalog (RBAC-filtered metadata).
    *
    * `GET /api/v1/admin/settings/catalog` — `SettingsCatalogController.getCatalog`.
@@ -184,7 +237,7 @@ export class AdminSettingsResource extends AdminResource {
    *
    * `GET /api/v1/admin/settings/effective` — `SettingsCatalogController.getEffective`.
    */
-  getEffective(
+  settingsCatalogGetEffective(
     options: AdminRequestOptions & {
       query?: { departmentId?: string; doctorId?: string; key: string; scope?: 'system' | 'tenant'; tenantId?: string };
     } = {},
