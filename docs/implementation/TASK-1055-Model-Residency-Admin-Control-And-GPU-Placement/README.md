@@ -412,10 +412,28 @@ Weight sharing holds for stt: sessions, batch, boot warm and the residency agent
 
 Contract: `tests/contracts/model-residency-task1055.fixture.json` → `wave3`. TDD per lane, own files' tests only; the orchestrator gates once after the merge, then pushes, deploys and re-runs the cluster e2e (LM Studio ensure on a cold model, an unnamed ASR variant + a VAD loaded from the console, Kokoro loaded/unloaded from the console).
 
+### 10.5 Implementation summary (merged on `dev-2.2`, not pushed — deploy hold by the TASK-1058 e2e session)
+
+| Lane | Commit(s) | Result |
+|---|---|---|
+| W3-STT | `6fac46b7d` | `{"model"}` load spec; any role; slug key = sessions reuse the weights (7 tests) |
+| W3-TTS | `ea5b93e0c`, `e6b869ce7` | `/internal/residency` on hope-tts over Kokoro / Indic Parler / Indic F5; a COLD console load builds the engine through the request path's builder + engine-cache key (next request reuses it, counted). Indic F5 cold load refused — its engine is bound to one voice reference that is not in the key (31 tests) |
+| W3-LMS | `323884513` | `POST /internal/residency/ensure` + plan refresh with `profiles`; single-flight with console loads (143 tests) |
+| W3-TEXT | `7dcb13aac` + orchestrator `998d21bfe` | ensure before every LM Studio request; the agent URL comes from the gateway's effective config (`lmStudioServing.agentUrl`) — a `TEXT_LMSTUDIO_AGENT_URL` env var was refused by text's bootstrap-floor guard (`test_task799_config_surface`) |
+| W3-GW | `43e051d47`, `52da5ee1d`, `7a72b4e61` | effective-config `profiles` (+ text `agentUrl`); stt console loads model-only for every self-hosted stt row incl. stage rows; tts controlled (cpu, "Text-to-speech" section); artifacts regenerated |
+| W3-DEPLOY | deployment branch `task-1055/w3-deploy` | `hope-lmstudio-ingress` allows hope-text on 8869; `hope-models-publish` can publish a gated transformers repo + Prompt Guard 2 86M (dry-run verified locally) |
+
+**Gate (clean worktree, `998d21bfe`):** applications 18852 passed / 3 failed, console 4946 / 4 failed — all 7 failures reproduce at the parent commit `300ebfbc5` (TASK-1057 merges: `HarnessPolicyService` ctor 9→11, summary DI wiring, agent-deprecate dialog needs a QueryClient) and are not this wave's; text 2267 passed; tts 517; stt 4185; LM Studio agent + loader 203; vox-node 817; tsc clean; ruff/black clean; openapi / portal / gen:admin / env:sync no drift. Lint warnings 360 → 367, none in this wave's files.
+
+### 10.6 Incident found during the hold — prompt screening down on dev (2026-10-09 14:34Z →)
+
+Reported by the TASK-1058 e2e session. Cause: the TASK-1050 seed (`cfb494073`, OD-32) elects `guardrail.injection` → Llama Prompt Guard 2 86M; the cluster kept the older election until this ticket's owner-authorized reset + reseed (§8e), the first time that seed reached the cluster. PG2 is gated (manual Meta approval) and was never published, so every `jailbreak_detection` call cold-loads, misses the offline cache and 503s; the gateway fails closed (`PROMPT_SCREENING_UNAVAILABLE` on prompt approve / agent publish). **Owner decision (2026-10-10): publish Prompt Guard 2** — through `out-of-band/hope-models-publish.yaml` (new `files:` mode, `hf.private.tsv`), run after the hold is released; needs the `HF_TOKEN` account to hold Meta's approval for the repo.
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
+| 2026-10-10 | Wave 3 merged locally (6 lanes + text agent-URL fix), gate green for this wave (§10.5); prompt-screening incident root-caused (§10.6), owner chose to publish Prompt Guard 2; all deploys on hold for the TASK-1058 e2e. |
 | 2026-10-09 | Owner: every agent kind loads on request OR by the platform admin, never needing an agent to load. Audit + plan §10 (G1 LM Studio profile on request, G2 stt model-only console loads, G3 tts console control); decisions W3-1..4 taken as recommended. Status In Progress. |
 | 2026-10-09 | Follow-up wave pushed (`31504362`, deployment `0149fe3`) and e2e-verified on the cluster (§8g); Granite moved to GPU 1 as default; phantom in-flight defect fixed (`164b453d3`, CI #1425) and verified; Prompt Guard 2 weights missing (open). |
 | 2026-10-09 | Follow-up wave §8f merged locally (6 lanes): guard + judge caches under console control, reverse-duplicate alias + NER callers send `model_path`, LM Studio residency metrics + scrape, `nlp.classification` seed skip removed, default alignment GPU 0 NER/GLiGuard/Whisper, GPU 1 Gemma/Granite. Not pushed. |
