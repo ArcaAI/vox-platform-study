@@ -317,6 +317,12 @@ Gate after merge: applications 18,676 passed (1 flaky TASK-1038 test, `consultat
 
 **Re-test after the next push + promotion:** GLiGuard Load on GPU 1 from the console; a live clinical NER request reuses the admin copy (no second copy); the per-copy unload choice in the console.
 
+### 8d. Migration + ticket-script audit before the dev reset (2026-10-09)
+
+- **Migrations:** all 66 replay onto an empty database and `prisma migrate diff` against the schema is empty; the full seed (`RUN_SEED=all`) completes on that migrations-built database (triggers included). Seed warning (pre-existing): `nlp.classification` default not seeded — no ENABLED SYSTEM AiModel `nlp-doc-type-classifier`.
+- **DDL not in a migration:** TASK-1050's partial index `GuardrailEvaluation_tenant_violation_at_idx` → new migration `20261009124500_task_1050_guardrail_violation_partial_index` (shadow-proven).
+- **Ticket scripts (15 in docs/implementation):** covered by migrations — 1020 draft, 1036 freeze trigger, 1038 read model; covered by the seed — rollouts 1022, 1034, 1045, 1054, the 1047 backfill, the 1036 tag backfill; never run — 1038 load tool + superseded proposal, 1045 recovery record, 1049 manual test. **One thing to redo after a reseed:** ArcaAI `consultation.appointmentDay.timeZone = Asia/Kolkata` (the TASK-1020 rollout's last step; no seed writes it) — set with one admin settings call, NOT by re-running rollout.mjs (it could republish the seeded agents and break the workflows pinned to v1).
+
 ## 9. Change history
 
 | Date | Change |
