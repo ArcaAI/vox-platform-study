@@ -17,9 +17,10 @@ decision and is not open for re-litigation here.
 | File | What |
 |---|---|
 | `Dockerfile` | Single-stage. Pinned + SHA-512-verified `llmster` bundle on a CUDA runtime base (`nvidia/cuda:12.8.1-runtime-ubuntu24.04`), plus a pinned + SHA-256-verified Node runtime for the A-6 loader; build-time gates assert both a CPU and a CUDA engine are baked in, and that the loader's own unit tests pass inside the image |
-| `entrypoint.sh` | The boot contract: seven ordered assertions (A-0, A-1, A-2, A-3, A-5, A-6, A-7 — there is no A-4), each fail-closed with exit 78 |
-| `loader/` | The A-6 preloader. `kvconfig.mjs` (pure: env -> kvConfig) + `kvconfig.test.mjs`, `load.mjs` (websocket I/O + read-back), and a lockfile-pinned `@lmstudio/sdk`. Replaces `lms load`, which cannot reach flash attention, KV-cache quantization or GPU placement |
-| `.dockerignore` | Deny-all allow-list: only `Dockerfile`, `entrypoint.sh` and `loader/` (minus any local `node_modules`) reach the build context |
+| `entrypoint.sh` | The boot contract: seven ordered assertions (A-0, A-1, A-2, A-3, A-5, A-6, A-7 — there is no A-4), each fail-closed with exit 78, plus A-6b (start and supervise the residency agent) and `CUDA_DEVICE_ORDER=PCI_BUS_ID` before the daemon starts |
+| `loader/` | The A-6 preloader. `kvconfig.mjs` (pure: env/plan -> kvConfig, key resolution, read-back diff) + `kvconfig.test.mjs`, `sdk-channel.mjs` (the `loadModel` channel + `getLoadConfig`, shared with the agent) + `sdk-channel.test.mjs`, `load.mjs` (boot I/O), and a lockfile-pinned `@lmstudio/sdk`. Replaces `lms load`, which cannot reach flash attention, KV-cache quantization or GPU placement |
+| `agent/` | The residency agent (TASK-1055): `server.mjs` (entry, :8869), `http.mjs` (routes, auth, strict bodies), `residency.mjs` (report/load/unload/policy), `loadspec.mjs` (load_spec -> kvConfig via the loader's rules), `daemon.mjs` (REST + SDK adapter), `gpus.mjs` (nvidia-smi), `fixtures.mjs` + one `*.test.mjs` per module. No dependencies of its own |
+| `.dockerignore` | Deny-all allow-list: only `Dockerfile`, `entrypoint.sh`, `loader/` and `agent/` (minus any local `node_modules`) reach the build context |
 
 ## How it works
 
@@ -107,6 +108,55 @@ Three properties are worth knowing before changing this:
 - **A-7 holds PID 1 on `lms daemon status`** (5 s poll, exit 1 after three consecutive misses).
   It used to `exec lms log stream`, which put every prompt and completion — PHI — into Loki.
 
+### The residency agent on :8869 (TASK-1055)
+
+The gateway's model-residency controller used to drive LM Studio over REST, which cannot set
+parallel slots, KV-cache quantization, GPU split or the identifier, and needs the exact engine
+key (`gemma-4-e2b-it-qat@q4_0`) the catalogue does not hold. A console reload therefore came back
+degraded (E3) or refused (E2). The agent closes that: it runs **in this container** (owner
+decision OD-1), started by `entrypoint.sh` stage A-6b after the boot plan is loaded and kept
+alive by a supervisor loop (restart with a 1 → 30 s backoff), and loads over the SDK `loadModel`
+channel on loopback — the same channel, kvConfig assembly (`assemblePlanRequest`) and read-back
+the boot loader uses, so **a console load is a boot load** (AC-2).
+
+| Route | Behaviour |
+|---|---|
+| `GET /health` | 200 `{status:"ok",daemon:"up"}` only when `/lmstudio-greeting` answers `{"lmstudio":true}`, else 503. No token. This is the pod's readiness (OD-6) — it names no model, so unloading one can no longer take the pod out of its Service (E1). Its status codes are honest, so an `httpGet` probe works here (unlike port 1234) |
+| `GET /internal/residency` | The python agent's report shape. `devices[]` = every card nvidia-smi lists (`cuda:<index>`, `index`, `name`, `uuid`, `total_bytes`, `free_bytes`, `process_bytes: null`). `models[]` = every loaded instance (llm + embedding): `model_ref` = identifier (a JIT instance's identifier is its engine key), `engine_key`, `instance_id`, `load_config` read back with `getLoadConfig`, `device` = `cuda:<n>` when the split enables one card else `multi`, `device_bytes` measured by this agent's own load, or — for boot-plan / JIT instances — the GGUF size split by the configured gpuSplit (`bytes_source: estimated`). 503 `DAEMON_UNAVAILABLE` if the daemon does not answer |
+| `POST /internal/residency/load` | `model_ref` resolves to the exact key with the boot loader's `selectModelKey` (exact, else the unique `<ref>@<quant>`, never `@?`; several → 400 with `candidates`; none → 404 `MODEL_UNKNOWN`). `load_spec` (identifier, context_length, parallel, flash_attention, kv_cache_quant, gpu_split, ttl_seconds — any other key is refused) becomes the kvConfig; `device: cuda:<n>` overrides the split to `priorityOrder [n]` with every other card disabled (`cpu` / a card the pod lacks / an unknown card count → 400 `DEVICE_UNAVAILABLE`). One load at a time (a second → 409 `LOAD_IN_PROGRESS`). Per-card `memory.used` is read (settled) before and after; growth above 32 MiB is `device_bytes`. Strict read-back: drift → the instance is unloaded again and 500 `LOAD_FAILED` names the `fields` (`HOPE_KVCONFIG_ENFORCE=warn` keeps it). An identifier already loaded → `already_loaded`. A daemon failure → 500 `LOAD_FAILED` with the engine's message |
+| `POST /internal/residency/unload` | By identifier, and by engine key / bare ref for JIT instances; `device` limits it to the copy on that card. Nothing matching (or a daemon "not found") → `not_loaded`. LM Studio has no in-flight count, so it is 0 and `force` never matters |
+| `PUT /internal/residency/models/{ref}/policy` | `admin_pinned` / `ttl_seconds` kept **in the agent's memory** and reported; an absent field is unchanged, `ttl_seconds: null` resets. Not loaded → 404. LM Studio cannot change a TTL after load, so the daemon's TTL is the one sent at load (none when `pin: true`); a policy TTL applies at the next load. A restart of the agent forgets policies — the gateway re-asserts them |
+
+Auth: `X-Service-Token` must equal `INTERNAL_ACCESS_TOKEN` (constant-time; empty = dev bypass;
+`/health` exempt); a miss is 401. Bodies are as strict as the python agent's pydantic models
+(unknown field / wrong type → 422 `INVALID_REQUEST`, malformed JSON → 400, > 64 KiB → 413).
+Logs are JSON lines on stdout (`{"ts","level","logger":"lmstudio-agent","event",…}`, SDK
+console routed in); a failed load or unload is logged at `warn` with the engine's reason (E12).
+The agent never carries model I/O.
+
+Env: `LMS_AGENT_HOST`/`LMS_AGENT_PORT` (0.0.0.0 / 8869), `INTERNAL_ACCESS_TOKEN`,
+`LMS_GPU_COUNT` (override the nvidia-smi count), `LMS_AGENT_LOAD_TIMEOUT_SECONDS` (600),
+`HOPE_KVCONFIG_ENFORCE`, `HOPE_RESIDENCY_AGENT=0` (disable). The agent needs `nvidia-smi` in the
+container (the NVIDIA runtime mounts it into a `runtimeClassName: nvidia` pod) for device lists
+and measurement; without it devices are empty, bytes fall back to estimates, and a `device`
+pin is refused unless `LMS_GPU_COUNT` is set.
+
+#### GPU numbering (E13)
+
+nvidia-smi, DCGM and the agent's `cuda:<n>` use **NVML order = PCI bus order**. llama.cpp — and
+therefore LM Studio's `gpuSplitConfig` `priority` / `disabledGpus` indices — numbers cards with
+the **CUDA runtime**, whose default order is `CUDA_DEVICE_ORDER=FASTEST_FIRST`. On two identical
+RTX 2000 Ada cards "fastest first" is a tie that CUDA does not promise to break in PCI order, so
+the boot plan's "GPU 1" was not guaranteed to be DCGM's `gpu1` — consistent with the observed
+"plan says GPU 1, DCGM shows the memory on GPU 0". `entrypoint.sh` now exports
+`CUDA_DEVICE_ORDER=PCI_BUS_ID` **before `lms daemon up`**, so the daemon and the engine it spawns
+inherit it and all three vocabularies name the same card. Not verifiable from the repo — llmster
+is a closed binary — so two checks are built in: the agent logs `agent.gpus` (the nvidia-smi card
+list and the order in force) at startup and warns if the order is not `PCI_BUS_ID`, and after
+every single-card load it warns `residency.device_order_mismatch` when the measured growth lands
+on another card. On the pod: `cat /proc/$(pgrep -f llmster | head -1)/environ | tr '\0' '\n' |
+grep CUDA_DEVICE_ORDER` confirms the daemon inherited it.
+
 ### Measured facts about the vendor CLI (`llmster` 0.0.23-1)
 
 Observed by running the vendor's own binary in a container. Several correct claims a prior
@@ -145,6 +195,13 @@ production bundle behaves the same way.
   GPU placement, and neither can the REST load endpoint — see A-6 loads over the SDK websocket.
 - **Do not import `@lmstudio/sdk` from a bundled plugin's `node_modules`**, and do not run the
   loader on `~/.lmstudio/.internal/utils/node`. Both are internals of a proprietary bundle.
+- **Do not point the gateway's residency control back at LM Studio REST** (`/api/v1/models/load`).
+  It cannot apply the serving profile; the agent on :8869 is the control path.
+- **The agent's tests:** `node --test 'agent/*.test.mjs' loader/kvconfig.test.mjs
+  loader/sdk-channel.test.mjs` from this directory (Node 24 treats a bare `agent/` as a module
+  path, so pass the glob). `agent/contract.test.mjs` pins the in-tree copies in `fixtures.mjs` to
+  `tests/contracts/model-residency-task1055.fixture.json`, and skips inside the image where that
+  file is not in the build context.
 - **A directory name for an embedding model must not already carry the `text-embedding-` prefix**
   — LM Studio prepends it itself, so a pre-prefixed directory doubles it.
 - Deployment manifests for this image, and the fuller investigation ticket, are tracked outside

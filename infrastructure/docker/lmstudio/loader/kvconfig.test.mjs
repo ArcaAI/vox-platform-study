@@ -585,3 +585,50 @@ test('parseGpuCount: counts nvidia-smi index lines; empty or garbage is unknown'
   assert.equal(parseGpuCount(undefined), undefined);
   assert.equal(parseGpuCount('NVIDIA-SMI has failed\n'), undefined);
 });
+
+// ── TASK-1055 — shared with the residency agent ─────────────────────────────
+
+import { assemblePlanRequest, diffAppliedConfig } from './kvconfig.mjs';
+
+test('assemblePlanRequest is exported: one entry -> one request, same rules as the plan', () => {
+  const req = assemblePlanRequest(
+    { slug: 'granite', contextLength: 16384, parallel: 10, flashAttention: true, gpu: 0 },
+    'load_spec',
+    { env: {}, gpuCount: 2 },
+  );
+  assert.equal(req.identifier, 'granite');
+  assert.deepEqual(fieldMap(req)['load.gpuSplitConfig'], {
+    strategy: 'priorityOrder',
+    priority: [0],
+    disabledGpus: [1],
+    customRatio: [],
+  });
+  assert.throws(
+    () => assemblePlanRequest({ slug: 'x', kvCacheQuant: { k: 'q8_0' } }, 'load_spec', { env: {}, gpuCount: 2 }),
+    KvConfigError,
+  );
+});
+
+test('diffAppliedConfig: equal values (any key order) are no problem', () => {
+  const sent = [{ key: 'load.gpuSplitConfig', value: { strategy: 'evenly', priority: [], disabledGpus: [], customRatio: [] } }];
+  const applied = [{ key: 'load.gpuSplitConfig', value: { customRatio: [], disabledGpus: [], priority: [], strategy: 'evenly' } }];
+  assert.deepEqual(diffAppliedConfig(sent, applied), []);
+});
+
+test('diffAppliedConfig: a dropped key and a changed value are both named', () => {
+  const sent = [
+    { key: 'llm.load.contextLength', value: 16384 },
+    { key: 'llm.load.numParallelSessions', value: 10 },
+  ];
+  const applied = [{ key: 'llm.load.contextLength', value: 8192 }];
+  const problems = diffAppliedConfig(sent, applied);
+  assert.equal(problems.length, 2);
+  assert.deepEqual(
+    problems.map((p) => p.key),
+    ['llm.load.contextLength', 'llm.load.numParallelSessions'],
+  );
+  assert.equal(problems[0].requested, 16384);
+  assert.equal(problems[0].applied, 8192);
+  assert.equal(problems[1].applied, undefined);
+  assert.match(problems[1].message, /NOT APPLIED/);
+});

@@ -14,9 +14,12 @@
 !Dockerfile
 !entrypoint.sh
 !loader
+# TASK-1055: the residency agent (pure .mjs, no dependencies of its own).
+!agent
 # ...but never a local node_modules. The image installs the loader's
 # dependencies itself with `npm ci` against the committed lockfile; a tree
 # built on a developer's machine would carry the wrong platform binaries and
 # silently shadow it. (Ordering matters: last match wins, so this must follow
 # the `!loader` above.)
 loader/node_modules
+agent/node_modules

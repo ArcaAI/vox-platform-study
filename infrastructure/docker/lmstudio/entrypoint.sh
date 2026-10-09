@@ -34,6 +34,7 @@
 # A-3 publish weights; assert every expected key is visible
 # A-5 start HTTP with explicit --port AND --bind
 # A-6 preload the serving plan (every model) after the server
+# A-6b start the residency agent on :8869 (TASK-1055), supervised
 # A-7 hold PID 1 on daemon liveness (no log stream — PHI), drain on SIGTERM
 #
 # Exit 78 (EX_CONFIG) for every assertion failure, so a misconfiguration is
@@ -55,7 +56,10 @@ EXPECT_ACCEL="${HOPE_EXPECT_ACCEL:-cuda}"
 IMPORT_MAP="${HOPE_IMPORT_MAP:-/manifest/imports.tsv}"
 # A-6 no longer shells out to `lms load`; it runs the Node loader baked in at
 # this path by the Dockerfile. See A-6 for why.
-LOADER_DIR="${HOPE_LOADER_DIR:-/opt/hope/lmstudio-loader}"
+LOADER_DIR="${HOPE_LOADER_DIR:-/opt/hope/lmstudio/loader}"
+# A-6b: the residency agent (TASK-1055) — see that stage.
+AGENT_DIR="${HOPE_AGENT_DIR:-/opt/hope/lmstudio/agent}"
+AGENT_SUP_PID=""
 EX_CONFIG=78
 
 log()  { printf '%s entrypoint: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
@@ -68,6 +72,8 @@ die()  { log "FATAL: $*"; exit "${EX_CONFIG}"; }
 # request can arrive while `lms server stop` drains the in-flight ones.
 shutdown() {
   log "SIGTERM received — draining in-flight generations"
+  # The residency agent first: no admin load/unload may start mid-drain.
+  if [ -n "${AGENT_SUP_PID}" ]; then kill -TERM "${AGENT_SUP_PID}" 2>/dev/null || true; fi
   lms server stop >/dev/null 2>&1 || true
   lms daemon down >/dev/null 2>&1 || true
   exit 0
@@ -100,6 +106,21 @@ mkdir -p "${MODELS_DIR}" "${STAGING_DIR}"
 # wrapper exists. Every later `lms` call talks to the daemon over the unix
 # socket in ~/.lmstudio/.internal/ — which is why .internal stays in the image
 # and never on a network volume.
+# E13 (TASK-1055): the CUDA runtime's DEFAULT device order is FASTEST_FIRST,
+# NVML's (nvidia-smi, DCGM) is PCI bus order. llama.cpp — and therefore LM
+# Studio's gpuSplitConfig `priority` / `disabledGpus` indices — numbers cards
+# with the CUDA runtime, while the residency agent, the gateway and DCGM name
+# them in PCI order. On two IDENTICAL cards "fastest first" is a tie whose
+# resolution CUDA does not specify, so "GPU 1" in a boot plan is not
+# guaranteed to be nvidia-smi's GPU 1. PCI_BUS_ID makes the CUDA ordinals the
+# PCI order, so all three vocabularies name the same card. Exported BEFORE the
+# daemon starts, because the daemon (and the engine it spawns) inherits this
+# environment and reads the variable once, at CUDA initialisation. An operator
+# override is kept, but anything other than PCI_BUS_ID makes the agent warn at
+# startup and on every single-card load that lands on another card.
+export CUDA_DEVICE_ORDER="${CUDA_DEVICE_ORDER:-PCI_BUS_ID}"
+log "CUDA_DEVICE_ORDER=${CUDA_DEVICE_ORDER}"
+
 log "starting llmster daemon"
 lms daemon up || true
 
@@ -400,8 +421,10 @@ log "HTTP server is live on ${BIND}:${PORT}"
 # MEASURED alternative: GET /api/v1/models returns per model
 #     "key": "...", "loaded_instances": [ { "id": "<--identifier>", ... } ]
 # and `loaded_instances` is EMPTY for a model that is merely on disk. That
-# field is the real readiness signal, and the k8s readinessProbe execs a grep
-# for it. See deployment-llmster/lmstudio.yaml.
+# field WAS the readiness signal (a grep for one instance id). TASK-1055 E1:
+# naming a model in readiness meant a console unload of it took the pod out of
+# its Service, so readiness is now the residency agent's model-agnostic
+# /health (A-6b) and "a live-path model is not loaded" is a gateway alert.
 #
 # ── WHY THIS IS A NODE LOADER AND NOT `lms load` ────────────────────────────
 #
@@ -453,6 +476,65 @@ if [ -n "${LMS_LOAD:-}" ] || [ -n "${LMS_PRELOAD_PLAN:-}" ] \
 or partial loaded_instances[] forever."
   log "loaded instances:"; lms ps 2>&1 | sed 's/^/    /' >&2 || true
 fi
+
+# -----------------------------------------------------------------------------
+# A-6b. The residency agent (TASK-1055, owner decision OD-1).
+# -----------------------------------------------------------------------------
+# The gateway's model-residency controller cannot drive LM Studio over REST:
+# `POST /api/v1/models/load` has no parallel slots, no KV-cache quantization,
+# no GPU split and no identifier, and wants the exact engine key the catalogue
+# does not hold. A console reload therefore came back degraded (Granite at
+# 8192 ctx x 4 slots split over both cards instead of 16384 x 10 on GPU 0).
+# The agent (agent/server.mjs) answers the same /internal/residency contract as
+# stt and nlp on :8869 and loads over the SDK `loadModel` channel on loopback —
+# the same channel, kvConfig and read-back A-6 uses — so a console load is a
+# boot load.
+#
+# Started AFTER A-6 on purpose: an admin load racing the boot plan would put
+# two loads on the daemon at once, and the agent's per-card measurement is
+# only meaningful with one load in flight. Its /health (200 only when the
+# daemon greets) is what the pod's readiness probe checks (OD-6): readiness no
+# longer names a model, so unloading one from the console can no longer take
+# the whole pod out of its Service (E1).
+#
+# Supervised: if the agent exits it is restarted with a capped backoff; the
+# INFERENCE server is unaffected either way. It logs JSON lines to stdout and
+# never sees model I/O. HOPE_RESIDENCY_AGENT=0 disables it.
+start_residency_agent() {
+  if [ "${HOPE_RESIDENCY_AGENT:-1}" != "1" ]; then
+    log "residency agent DISABLED (HOPE_RESIDENCY_AGENT=${HOPE_RESIDENCY_AGENT})"
+    return 0
+  fi
+  command -v node >/dev/null 2>&1 || die \
+    "node is not on PATH — the image did not install the agent runtime."
+  [ -f "${AGENT_DIR}/server.mjs" ] || die \
+    "${AGENT_DIR}/server.mjs is absent — the image did not bake in the residency agent."
+
+  (
+    child=""
+    # tini signals only PID 1's child (this script); shutdown() forwards TERM
+    # here, and this forwards it to node so the agent closes its listener.
+    trap 'if [ -n "${child}" ]; then kill -TERM "${child}" 2>/dev/null || true; wait "${child}" 2>/dev/null || true; fi; exit 0' TERM INT
+    backoff=1
+    while :; do
+      started="$(date +%s)"
+      node "${AGENT_DIR}/server.mjs" &
+      child=$!
+      rc=0
+      wait "${child}" || rc=$?
+      child=""
+      # An agent that ran for a minute was healthy; start the backoff over.
+      if [ $(( $(date +%s) - started )) -ge 60 ]; then backoff=1; fi
+      log "WARNING: residency agent exited (rc=${rc}) — restarting in ${backoff}s"
+      sleep "${backoff}" &
+      wait $! || true
+      backoff=$(( backoff * 2 )); [ "${backoff}" -le 30 ] || backoff=30
+    done
+  ) &
+  AGENT_SUP_PID=$!
+  log "residency agent supervised (pid ${AGENT_SUP_PID}) on ${LMS_AGENT_HOST:-0.0.0.0}:${LMS_AGENT_PORT:-8869}"
+}
+start_residency_agent
 
 # -----------------------------------------------------------------------------
 # A-7. Hold PID 1 — on daemon LIVENESS, never on a log stream.

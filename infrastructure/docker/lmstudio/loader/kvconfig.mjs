@@ -507,8 +507,13 @@ const toKvConfig = (candidates) => ({
  * One plan entry -> one load request. `defaults` (the served
  * `lmStudioServing.defaults`) fills any knob the entry leaves null.
  * `path` (e.g. `LMS_PRELOAD_PLAN[1]`) names the culprit in every error.
+ *
+ * Exported for the residency agent (TASK-1055, ../agent/loadspec.mjs): a
+ * console load builds its kvConfig through THIS function, so it obeys exactly
+ * the rules a boot-plan entry does — which is what makes a reload identical to
+ * a boot load.
  */
-function assemblePlanRequest(entry, path, { env, defaults, gpuCount }) {
+export function assemblePlanRequest(entry, path, { env, defaults, gpuCount }) {
   if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
     throw new KvConfigError(path, 'expected an object');
   }
@@ -651,4 +656,55 @@ export function resolvePreloadRequests({ effectiveConfig, env, gpuCount }) {
   }
 
   return { source: 'env-legacy', requests: [assembleLoadRequest(env)], rejected };
+}
+
+// =============================================================================
+// TASK-1055 — the read-back comparison, shared by load.mjs and the agent
+// =============================================================================
+
+/** Key-sorted JSON, so two structurally equal values compare equal regardless of key order. */
+export const stableStringify = (value) => {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+/**
+ * Compare what was SENT with what the daemon reports it APPLIED
+ * (`getLoadConfig`), field by field. An unknown kvConfig key is dropped by the
+ * daemon, not rejected, so an absent key is a problem in its own right.
+ *
+ * @param {Array<{key: string, value: unknown}>} sentFields
+ * @param {Array<{key: string, value: unknown}>} appliedFields
+ * @returns {Array<{key: string, requested: unknown, applied: unknown, message: string}>}
+ */
+export function diffAppliedConfig(sentFields, appliedFields) {
+  const appliedByKey = new Map((appliedFields ?? []).map((field) => [field.key, field.value]));
+  const problems = [];
+  for (const { key, value } of sentFields ?? []) {
+    if (!appliedByKey.has(key)) {
+      problems.push({
+        key,
+        requested: value,
+        applied: undefined,
+        message: `${key}: NOT APPLIED — the daemon ignored this key (an unknown kvConfig key is dropped, not rejected)`,
+      });
+      continue;
+    }
+    const actual = appliedByKey.get(key);
+    if (stableStringify(actual) !== stableStringify(value)) {
+      problems.push({
+        key,
+        requested: value,
+        applied: actual,
+        message: `${key}: requested ${JSON.stringify(value)} but the daemon applied ${JSON.stringify(actual)}`,
+      });
+    }
+  }
+  return problems;
 }

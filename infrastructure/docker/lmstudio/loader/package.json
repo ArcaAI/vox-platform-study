@@ -6,7 +6,7 @@
   "description": "Preloads the LM Studio model over the @lmstudio/sdk kvConfig websocket, because lms load and POST /api/v1/models/load cannot set flash attention, KV-cache quantization or GPU placement (TASK-996 §2.3).",
   "license": "UNLICENSED",
   "scripts": {
-    "test": "node --test kvconfig.test.mjs"
+    "test": "node --test kvconfig.test.mjs sdk-channel.test.mjs"
   },
   "dependencies": {
     "@lmstudio/sdk": "1.5.0"
