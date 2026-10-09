@@ -2,9 +2,16 @@
 // boot loader would send for the same profile; applied fields -> load_config.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LoadSpecError, buildLoadRequest, deviceOfSplit, estimateDeviceBytes, loadConfigFromFields } from './loadspec.mjs';
+import {
+  LoadSpecError,
+  buildLoadRequest,
+  deviceOfSplit,
+  estimateDeviceBytes,
+  loadConfigFromFields,
+  loadSpecFromProfile,
+} from './loadspec.mjs';
 import { assemblePlanRequest } from '../loader/kvconfig.mjs';
-import { CONTRACT_LOAD_CONFIG, CONTRACT_LOAD_REQUEST as CONTRACT_LOAD } from './fixtures.mjs';
+import { CONTRACT_LMSTUDIO_SERVING, CONTRACT_LOAD_CONFIG, CONTRACT_LOAD_REQUEST as CONTRACT_LOAD } from './fixtures.mjs';
 
 const fields = (req) => Object.fromEntries(req.kvConfig.fields.map((f) => [f.key, f.value]));
 
@@ -159,4 +166,48 @@ test('estimateDeviceBytes: file size split by the configured gpuSplit', () => {
   );
   assert.deepEqual(estimateDeviceBytes(size, undefined, undefined), {});
   assert.deepEqual(estimateDeviceBytes(null, undefined, 2), {});
+});
+
+// ── wave 3: a plan profile (camelCase) -> the load_spec an ensure sends ──────
+
+const { profiles: PROFILES, defaults: DEFAULTS } = CONTRACT_LMSTUDIO_SERVING;
+const profile = (slug) => structuredClone(PROFILES.find((p) => p.slug === slug));
+
+test('loadSpecFromProfile: a gpuSplit profile becomes the snake_case load_spec, identifier = slug, no device', () => {
+  assert.deepEqual(loadSpecFromProfile(profile('granite-guardian-4.1-8b'), DEFAULTS), {
+    loadSpec: {
+      identifier: 'granite-guardian-4.1-8b',
+      context_length: 16384,
+      parallel: 10,
+      flash_attention: true,
+      kv_cache_quant: { k: 'q8_0', v: 'q8_0' },
+      gpu_split: { strategy: 'priorityOrder', priority: [1], disabled_gpus: [0], custom_ratio: [] },
+    },
+    device: null,
+  });
+});
+
+test('loadSpecFromProfile: a `gpu: n` profile is a pin to cuda:<n> (the device path disables every other card)', () => {
+  const { loadSpec, device } = loadSpecFromProfile(profile('qwen3guard-gen-0.6b'), DEFAULTS);
+  assert.equal(device, 'cuda:1');
+  assert.equal('gpu_split' in loadSpec, false);
+});
+
+test('loadSpecFromProfile: null knobs take the plan defaults, as the boot loader does (gpuSplit is never defaulted)', () => {
+  const sparse = { slug: 'm', contextLength: null, parallel: null, flashAttention: null, kvCacheQuant: null, gpuSplit: null, gpu: null };
+  assert.deepEqual(loadSpecFromProfile(sparse, DEFAULTS), {
+    loadSpec: { identifier: 'm', context_length: 32768, parallel: 10, flash_attention: true, kv_cache_quant: { k: 'q4_0', v: 'q4_0' } },
+    device: 'cuda:1',
+  });
+  assert.deepEqual(loadSpecFromProfile(sparse, undefined), { loadSpec: { identifier: 'm' }, device: null });
+});
+
+test('loadSpecFromProfile: an ensure load sends EXACTLY the kvConfig a boot load of the same profile sends', () => {
+  for (const entry of PROFILES) {
+    const { loadSpec, device } = loadSpecFromProfile(structuredClone(entry), DEFAULTS);
+    const ensure = buildLoadRequest({ modelRef: entry.slug, loadSpec, device, pin: false, ttlSeconds: null, gpuCount: 2, env: {} });
+    const boot = assemblePlanRequest(structuredClone(entry), 'lmStudioServing.profiles[0]', { env: {}, defaults: DEFAULTS, gpuCount: 2 });
+    assert.deepEqual(ensure.kvConfig, boot.kvConfig, entry.slug);
+    assert.equal(ensure.identifier, boot.identifier);
+  }
 });

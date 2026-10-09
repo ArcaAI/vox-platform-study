@@ -61,3 +61,66 @@ export const CONTRACT_DEVICE_KEYS = Object.freeze([
   'uuid',
   'process_bytes',
 ]);
+
+// Wave 3 (`wave3.lmStudioOnDemand`): the served plan with `profiles`, and the
+// ensure verb's responses.
+const GPU1_ONLY = Object.freeze({ strategy: 'priorityOrder', priority: [1], disabledGpus: [0] });
+
+export const CONTRACT_LMSTUDIO_SERVING = Object.freeze({
+  defaults: { contextLength: 32768, parallel: 10, gpu: 1, flashAttention: true, kvCacheQuant: { k: 'q4_0', v: 'q4_0' } },
+  preload: [
+    {
+      slug: 'gemma-4-e2b-it-qat',
+      contextLength: 32768,
+      parallel: 10,
+      flashAttention: true,
+      gpuSplit: { ...GPU1_ONLY },
+      gpu: null,
+      kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
+    },
+  ],
+  profiles: [
+    {
+      slug: 'gemma-4-e2b-it-qat',
+      contextLength: 32768,
+      parallel: 10,
+      flashAttention: true,
+      gpuSplit: { ...GPU1_ONLY },
+      gpu: null,
+      kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
+    },
+    {
+      slug: 'granite-guardian-4.1-8b',
+      contextLength: 16384,
+      parallel: 10,
+      flashAttention: true,
+      gpuSplit: { ...GPU1_ONLY },
+      gpu: null,
+      kvCacheQuant: { k: 'q8_0', v: 'q8_0' },
+    },
+    {
+      slug: 'qwen3guard-gen-0.6b',
+      contextLength: 32768,
+      parallel: 10,
+      flashAttention: true,
+      gpuSplit: null,
+      gpu: 1,
+      kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
+    },
+  ],
+});
+
+export const CONTRACT_ENSURE_REQUEST = Object.freeze({ model_ref: 'granite-guardian-4.1-8b' });
+
+export const CONTRACT_ENSURE_RESPONSES = Object.freeze({
+  already_loaded: {
+    status: 200,
+    body: { outcome: 'already_loaded', model_ref: 'granite-guardian-4.1-8b', identifier: 'granite-guardian-4.1-8b' },
+  },
+  loaded: {
+    status: 200,
+    body: { outcome: 'loaded', model_ref: 'granite-guardian-4.1-8b', identifier: 'granite-guardian-4.1-8b', load_seconds: 21.4 },
+  },
+  MODEL_UNKNOWN: { status: 404, body: { code: 'MODEL_UNKNOWN', message: "no serving profile for 'x' in the LM Studio plan" } },
+  LOAD_FAILED: { status: 503, body: { code: 'LOAD_FAILED', message: "<LM Studio's error>" } },
+});

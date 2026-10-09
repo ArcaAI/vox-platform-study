@@ -4,7 +4,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CONTRACT_DEVICE_KEYS, CONTRACT_LOAD_REQUEST, CONTRACT_REPORT_MODEL_KEYS } from './fixtures.mjs';
+import {
+  CONTRACT_DEVICE_KEYS,
+  CONTRACT_ENSURE_RESPONSES,
+  CONTRACT_LMSTUDIO_SERVING,
+  CONTRACT_LOAD_REQUEST,
+  CONTRACT_REPORT_MODEL_KEYS,
+} from './fixtures.mjs';
 import { MIB } from './gpus.mjs';
 import { ResidencyError, createResidencyAgent } from './residency.mjs';
 
@@ -15,6 +21,8 @@ const CATALOGUE = [
   { key: 'gemma-4-e2b-it-qat@?', type: 'llm', size_bytes: 986_000_000 },
   { key: 'gemma-4-e2b-it-qat@q4_0', type: 'llm', size_bytes: 3_350_000_000 },
   { key: 'granite-guardian-3.3-8b@q4_k_m', type: 'llm', size_bytes: 4_900_000_000 },
+  { key: 'granite-guardian-4.1-8b@q8_0', type: 'llm', size_bytes: 8_700_000_000 },
+  { key: 'qwen3guard-gen-0.6b@q8_0', type: 'llm', size_bytes: 640_000_000 },
   { key: 'qwen@q4', type: 'llm', size_bytes: 1 },
   { key: 'qwen@q8', type: 'llm', size_bytes: 2 },
 ];
@@ -662,4 +670,232 @@ test('metrics: a down daemon still answers, without per-model gauges', async () 
   const text = await agentFor(world).metrics();
   assert.match(text, /^# TYPE model_resident_bytes gauge$/m);
   assert.ok(!/^model_resident_bytes\{/m.test(text));
+});
+
+// ── ensure (wave 3: load on request with the plan's profile) ────────────────
+
+/** The plan cache, as plan.mjs exposes it: the contract profiles by slug. */
+const contractPlan = () => {
+  const { profiles, defaults } = structuredClone(CONTRACT_LMSTUDIO_SERVING);
+  const bySlug = new Map(profiles.map((profile) => [profile.slug, { profile, defaults }]));
+  return { profileFor: (slug) => bySlug.get(slug) };
+};
+
+const ensureAgent = (world, extra = {}) => agentFor(world, { plan: contractPlan(), ...extra });
+
+const fieldsOf = (request) => Object.fromEntries(request.kvConfig.fields.map((f) => [f.key, f.value]));
+
+/** Hold every daemon.load until `release()`, so two callers overlap. */
+const gateLoads = (world) => {
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const slowLoad = world.daemon.load;
+  world.daemon.load = async (request) => {
+    await gate;
+    return slowLoad(request);
+  };
+  return () => release();
+};
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+test('ensure: a model resident under its identifier is already_loaded, nothing sent (contract shape)', async () => {
+  const world = fakeWorld();
+  world.seed({ identifier: 'granite-guardian-4.1-8b', modelKey: 'granite-guardian-4.1-8b@q8_0', sizeBytes: 3 }, []);
+  const agent = ensureAgent(world);
+  const result = await agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  assert.deepEqual(result, CONTRACT_ENSURE_RESPONSES.already_loaded.body);
+  assert.equal(world.calls.loads.length, 0);
+  const event = agent.logs.find((l) => l.event === 'agent.ensure');
+  assert.equal(event.outcome, 'already_loaded');
+  assert.equal(event.model_ref, 'granite-guardian-4.1-8b');
+});
+
+test('ensure: a model resident under its MODEL KEY (a JIT instance, or the exact key) is already_loaded', async () => {
+  const world = fakeWorld();
+  world.seed({ identifier: 'granite-guardian-4.1-8b@q8_0', modelKey: 'granite-guardian-4.1-8b@q8_0', sizeBytes: 3 }, []);
+  world.seed({ identifier: 'guard-judge', modelKey: 'qwen3guard-gen-0.6b@q8_0', sizeBytes: 3 }, []);
+  const agent = ensureAgent(world);
+  assert.deepEqual(await agent.ensure({ model_ref: 'granite-guardian-4.1-8b' }), {
+    outcome: 'already_loaded',
+    model_ref: 'granite-guardian-4.1-8b',
+    identifier: 'granite-guardian-4.1-8b@q8_0',
+  });
+  assert.deepEqual(await agent.ensure({ model_ref: 'qwen3guard-gen-0.6b@q8_0' }), {
+    outcome: 'already_loaded',
+    model_ref: 'qwen3guard-gen-0.6b@q8_0',
+    identifier: 'guard-judge',
+  });
+  assert.equal(world.calls.loads.length, 0);
+});
+
+test('ensure: a cold model is loaded with ITS PROFILE (identifier = slug, ctx, parallel, KV quant, split) and load_seconds', async () => {
+  const world = fakeWorld();
+  const agent = ensureAgent(world);
+  const result = await agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  assert.deepEqual(Object.keys(result).sort(), Object.keys(CONTRACT_ENSURE_RESPONSES.loaded.body).sort());
+  assert.equal(result.outcome, 'loaded');
+  assert.equal(result.model_ref, 'granite-guardian-4.1-8b');
+  assert.equal(result.identifier, 'granite-guardian-4.1-8b');
+  assert.equal(typeof result.load_seconds, 'number');
+
+  assert.equal(world.calls.loads.length, 1);
+  const [sent] = world.calls.loads;
+  assert.equal(sent.modelKey, 'granite-guardian-4.1-8b@q8_0');
+  assert.equal(sent.identifier, 'granite-guardian-4.1-8b');
+  assert.equal(sent.ttlMs, undefined, 'a request-loaded model is not idle-unloaded by the daemon');
+  const f = fieldsOf(sent);
+  assert.equal(f['llm.load.contextLength'], 16384);
+  assert.equal(f['llm.load.numParallelSessions'], 10);
+  assert.equal(f['llm.load.llama.flashAttention'], true);
+  assert.deepEqual(f['llm.load.llama.kCacheQuantizationType'], { checked: true, value: 'q8_0' });
+  assert.deepEqual(f['load.gpuSplitConfig'], { strategy: 'priorityOrder', priority: [1], disabledGpus: [0], customRatio: [] });
+
+  const event = agent.logs.find((l) => l.event === 'agent.ensure');
+  assert.equal(event.outcome, 'loaded');
+  assert.equal(event.load_seconds, result.load_seconds);
+  // and the instance is reported as one this agent measured
+  const [model] = (await agent.report()).models;
+  assert.equal(model.bytes_source, 'measured');
+});
+
+test('ensure: a `gpu: n` profile pins card n and disables every other', async () => {
+  const world = fakeWorld();
+  await ensureAgent(world).ensure({ model_ref: 'qwen3guard-gen-0.6b' });
+  assert.deepEqual(fieldsOf(world.calls.loads[0])['load.gpuSplitConfig'], {
+    strategy: 'priorityOrder',
+    priority: [1],
+    disabledGpus: [0],
+    customRatio: [],
+  });
+});
+
+test('ensure: no profile in the plan is 404 MODEL_UNKNOWN and nothing is loaded', async () => {
+  const world = fakeWorld();
+  const agent = ensureAgent(world);
+  await assert.rejects(agent.ensure({ model_ref: 'x' }), (err) => {
+    assert.ok(err instanceof ResidencyError);
+    assert.equal(err.code, 'MODEL_UNKNOWN');
+    assert.equal(err.status, 404);
+    assert.equal(err.message, CONTRACT_ENSURE_RESPONSES.MODEL_UNKNOWN.body.message);
+    return true;
+  });
+  assert.equal(world.calls.loads.length, 0);
+  assert.equal(agent.logs.find((l) => l.event === 'agent.ensure').outcome, 'model_unknown');
+  // an agent built without a plan knows no profiles at all
+  await rejectsWith(agentFor(fakeWorld()).ensure({ model_ref: 'granite-guardian-4.1-8b' }), 'MODEL_UNKNOWN', 404);
+});
+
+test('ensure: LM Studio refusing the load is 503 LOAD_FAILED carrying the cause', async () => {
+  const world = fakeWorld({ loadError: 'Failed to load model: insufficient VRAM' });
+  const agent = ensureAgent(world);
+  await assert.rejects(agent.ensure({ model_ref: 'granite-guardian-4.1-8b' }), (err) => {
+    assert.equal(err.code, 'LOAD_FAILED');
+    assert.equal(err.status, 503);
+    assert.match(err.message, /insufficient VRAM/);
+    return true;
+  });
+  const event = agent.logs.find((l) => l.event === 'agent.ensure');
+  assert.equal(event.outcome, 'load_failed');
+  assert.equal(event.level, 'warn');
+  assert.match(event.reason, /insufficient VRAM/);
+});
+
+test('ensure: a profile the loader rules refuse (or a daemon that is down) is 503 LOAD_FAILED too, never a silent JIT', async () => {
+  const world = fakeWorld();
+  const broken = { profileFor: () => ({ profile: { slug: 'granite-guardian-4.1-8b', kvCacheQuant: { k: 'q8_0', v: 'q8_0' }, flashAttention: false }, defaults: {} }) };
+  await rejectsWith(agentFor(world, { plan: broken }).ensure({ model_ref: 'granite-guardian-4.1-8b' }), 'LOAD_FAILED', 503);
+  assert.equal(world.calls.loads.length, 0);
+
+  world.setDown(true);
+  await rejectsWith(ensureAgent(world).ensure({ model_ref: 'granite-guardian-4.1-8b' }), 'LOAD_FAILED', 503);
+});
+
+test('ensure + a concurrent console load of the same model produce ONE instance (console first)', async () => {
+  const world = fakeWorld();
+  const release = gateLoads(world);
+  const agent = ensureAgent(world);
+  const consoleLoad = agent.load({
+    model_ref: 'granite-guardian-4.1-8b',
+    load_spec: { identifier: 'granite-guardian-4.1-8b' },
+    pin: false,
+    ttl_seconds: null,
+    device: null,
+  });
+  await tick();
+  const ensured = agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  await tick();
+  release();
+  assert.equal((await consoleLoad).outcome, 'loaded');
+  assert.equal((await ensured).outcome, 'already_loaded');
+  assert.equal(world.calls.loads.length, 1);
+  assert.equal(world.loaded.filter((i) => i.identifier === 'granite-guardian-4.1-8b').length, 1);
+});
+
+test('ensure + a concurrent console load of the same model produce ONE instance (ensure first)', async () => {
+  const world = fakeWorld();
+  const release = gateLoads(world);
+  const agent = ensureAgent(world);
+  const ensured = agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  await tick();
+  // the console's load meets the same single-flight lock a console load always has
+  await rejectsWith(
+    agent.load({ model_ref: 'granite-guardian-4.1-8b', load_spec: {}, pin: false, ttl_seconds: null, device: null }),
+    'LOAD_IN_PROGRESS',
+    409,
+  );
+  release();
+  assert.equal((await ensured).outcome, 'loaded');
+  assert.equal(world.calls.loads.length, 1);
+});
+
+test('two concurrent ensures of one cold model load it ONCE; the second waits and reports already_loaded', async () => {
+  const world = fakeWorld();
+  const release = gateLoads(world);
+  const agent = ensureAgent(world);
+  const first = agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  const second = agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  await tick();
+  release();
+  const outcomes = (await Promise.all([first, second])).map((r) => r.outcome).sort();
+  assert.deepEqual(outcomes, ['already_loaded', 'loaded']);
+  assert.equal(world.calls.loads.length, 1);
+});
+
+test('an ensure behind ANOTHER model\'s in-flight load waits for it, then loads its own', async () => {
+  const world = fakeWorld();
+  const release = gateLoads(world);
+  const agent = ensureAgent(world);
+  const other = agent.ensure({ model_ref: 'qwen3guard-gen-0.6b' });
+  await tick();
+  const mine = agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  await tick();
+  release();
+  assert.equal((await other).outcome, 'loaded');
+  assert.equal((await mine).outcome, 'loaded');
+  assert.deepEqual(world.calls.loads.map((l) => l.identifier), ['qwen3guard-gen-0.6b', 'granite-guardian-4.1-8b']);
+});
+
+test('an ensure waiting behind a load that FAILS still makes its own attempt', async () => {
+  const world = fakeWorld();
+  const agent = ensureAgent(world);
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const realLoad = world.daemon.load;
+  let first = true;
+  world.daemon.load = async (request) => {
+    await gate;
+    if (first) {
+      first = false;
+      throw new Error('transient');
+    }
+    return realLoad(request);
+  };
+  const failing = agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  await tick();
+  const waiting = agent.ensure({ model_ref: 'granite-guardian-4.1-8b' });
+  await tick();
+  release();
+  await rejectsWith(failing, 'LOAD_FAILED', 503);
+  assert.equal((await waiting).outcome, 'loaded');
 });

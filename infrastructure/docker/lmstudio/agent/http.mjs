@@ -6,6 +6,7 @@
 //   GET  /internal/residency                      the report
 //   POST /internal/residency/load
 //   POST /internal/residency/unload
+//   POST /internal/residency/ensure               wave 3: resident, or loaded with its plan profile
 //   PUT  /internal/residency/models/{ref}/policy  ref percent-encoded, may hold '/'
 //
 // Bodies are the python agent's (residency_api.py), validated as strictly as
@@ -103,6 +104,11 @@ export function parseLoadBody(body) {
   };
 }
 
+export function parseEnsureBody(body) {
+  strict(body, ['model_ref']);
+  return { model_ref: modelRefOf(body) };
+}
+
 export function parseUnloadBody(body) {
   strict(body, ['model_ref', 'force', 'reason', 'device']);
   const reason = 'reason' in body ? body.reason : 'admin';
@@ -165,12 +171,13 @@ const routeOf = (path) => {
   if (path === '/internal/residency') return { name: 'report', methods: ['GET'] };
   if (path === '/internal/residency/load') return { name: 'load', methods: ['POST'] };
   if (path === '/internal/residency/unload') return { name: 'unload', methods: ['POST'] };
+  if (path === '/internal/residency/ensure') return { name: 'ensure', methods: ['POST'] };
   const policy = POLICY_PATH.exec(path);
   if (policy) return { name: 'policy', methods: ['PUT'], ref: policy[1] };
   return null;
 };
 
-const FALLBACK_CODE = { load: 'LOAD_FAILED', unload: 'UNLOAD_FAILED' };
+const FALLBACK_CODE = { load: 'LOAD_FAILED', unload: 'UNLOAD_FAILED', ensure: 'LOAD_FAILED' };
 
 const AUTH_NOT_CONFIGURED_MESSAGE =
   'INTERNAL_ACCESS_TOKEN is unset, empty or the CHANGE_ME placeholder in a deployed environment ' +
@@ -231,6 +238,8 @@ export function createHandler({ agent, token, deployed = false, log = () => {} }
           return reply(200, await agent.load(parseLoadBody(await readJson(req))));
         case 'unload':
           return reply(200, await agent.unload(parseUnloadBody(await readJson(req))));
+        case 'ensure':
+          return reply(200, await agent.ensure(parseEnsureBody(await readJson(req))));
         case 'policy': {
           let ref;
           try {
@@ -244,7 +253,10 @@ export function createHandler({ agent, token, deployed = false, log = () => {} }
           return reply(404, { error: { code: 'NOT_FOUND', message: path } });
       }
     } catch (error) {
-      if (error instanceof ResidencyError) return reply(error.status ?? 500, error.body());
+      if (error instanceof ResidencyError) {
+        // The wave-3 ensure contract answers flat `{ code, message }`; the python-shaped verbs nest it.
+        return reply(error.status ?? 500, route?.name === 'ensure' ? error.flatBody() : error.body());
+      }
       if (error instanceof RequestError) {
         return reply(error.status, {
           error: { code: error.code, message: error.message, ...(error.field ? { field: error.field } : {}) },

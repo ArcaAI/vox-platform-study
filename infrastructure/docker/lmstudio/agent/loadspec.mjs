@@ -254,3 +254,45 @@ export function estimateDeviceBytes(sizeBytes, split, gpuCount) {
   });
   return out;
 }
+
+/**
+ * Wave 3 (ensure): one served plan profile (camelCase, `lmStudioServing.profiles[]`,
+ * the same shape and resolver as `preload`) -> the snake_case load_spec +
+ * device a residency load takes. Same rules as the boot loader's
+ * assemblePlanRequest: a null knob takes `defaults`, `gpuSplit` is never
+ * defaulted, and with no split a `gpu: n` (own or default) pins card n alone —
+ * expressed as `device: cuda:<n>`, which buildLoadRequest turns into exactly
+ * that pin (and refuses, rather than guesses, when the GPU count is unknown).
+ * So a model loaded on request lands on the same parameters a boot load of
+ * that profile would.
+ *
+ * @param {object} profile  one `lmStudioServing.profiles[]` entry
+ * @param {object} [defaults] `lmStudioServing.defaults`
+ * @returns {{ loadSpec: object, device: string|null }}
+ */
+export function loadSpecFromProfile(profile, defaults) {
+  const pick = (field) => (isAbsent(profile[field]) ? defaults?.[field] : profile[field]);
+  const loadSpec = { identifier: profile.slug };
+  const put = (key, value) => {
+    if (!isAbsent(value)) loadSpec[key] = value;
+  };
+  put('context_length', pick('contextLength'));
+  put('parallel', pick('parallel'));
+  put('flash_attention', pick('flashAttention'));
+  const quant = pick('kvCacheQuant');
+  put('kv_cache_quant', isObject(quant) ? { k: quant.k, v: quant.v } : quant);
+
+  const split = profile.gpuSplit;
+  if (isObject(split)) {
+    loadSpec.gpu_split = {
+      strategy: split.strategy,
+      priority: split.priority ?? [],
+      disabled_gpus: split.disabledGpus ?? [],
+      custom_ratio: split.customRatio ?? [],
+    };
+    return { loadSpec, device: null };
+  }
+  if (!isAbsent(split)) loadSpec.gpu_split = split; // malformed: let buildLoadRequest refuse it by name
+  const gpu = pick('gpu');
+  return { loadSpec, device: isAbsent(gpu) ? null : `cuda:${gpu}` };
+}

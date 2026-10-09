@@ -33,6 +33,16 @@ function fakeAgent() {
       calls.push(['unload', body]);
       return { outcome: 'unloaded', model_ref: body.model_ref };
     },
+    async ensure(body) {
+      calls.push(['ensure', body]);
+      if (body.model_ref === 'x') {
+        throw new ResidencyError('MODEL_UNKNOWN', "no serving profile for 'x' in the LM Studio plan", { status: 404 });
+      }
+      if (body.model_ref === 'oom') {
+        throw new ResidencyError('LOAD_FAILED', 'out of memory', { status: 503 });
+      }
+      return { outcome: 'loaded', model_ref: body.model_ref, identifier: body.model_ref, load_seconds: 21.4 };
+    },
     async setPolicy(ref, body) {
       calls.push(['policy', ref, body]);
       return { model: { model_ref: ref } };
@@ -269,4 +279,49 @@ test('GET /metrics needs no token, is the Prometheus text format, and is served 
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// ── wave 3: POST /internal/residency/ensure ─────────────────────────────────
+
+test('POST /internal/residency/ensure answers the agent result; errors are the contract FLAT {code, message}', async () => {
+  await withServer({}, async ({ base, agent }) => {
+    const ok = await call(base, '/internal/residency/ensure', { method: 'POST', body: { model_ref: 'granite-guardian-4.1-8b' } });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(ok.json, {
+      outcome: 'loaded',
+      model_ref: 'granite-guardian-4.1-8b',
+      identifier: 'granite-guardian-4.1-8b',
+      load_seconds: 21.4,
+    });
+    assert.deepEqual(agent.calls[0], ['ensure', { model_ref: 'granite-guardian-4.1-8b' }]);
+
+    assert.deepEqual(await call(base, '/internal/residency/ensure', { method: 'POST', body: { model_ref: 'x' } }), {
+      status: 404,
+      json: { code: 'MODEL_UNKNOWN', message: "no serving profile for 'x' in the LM Studio plan" },
+    });
+    assert.deepEqual(await call(base, '/internal/residency/ensure', { method: 'POST', body: { model_ref: 'oom' } }), {
+      status: 503,
+      json: { code: 'LOAD_FAILED', message: 'out of memory' },
+    });
+  });
+});
+
+test('ensure needs the X-Service-Token, is POST only, and its body is strict', async () => {
+  await withServer({}, async ({ base, agent }) => {
+    assert.equal((await call(base, '/internal/residency/ensure', { method: 'POST', body: { model_ref: 'm' }, token: null })).status, 401);
+    assert.equal((await call(base, '/internal/residency/ensure')).status, 405);
+    for (const body of [{}, { model_ref: '' }, { model_ref: 'm', load_spec: {} }]) {
+      const { status, json } = await call(base, '/internal/residency/ensure', { method: 'POST', body });
+      assert.equal(status, 422, JSON.stringify(body));
+      assert.equal(json.error.code, 'INVALID_REQUEST');
+    }
+    assert.equal(agent.calls.length, 0);
+  });
+});
+
+test('deployed + empty token: ensure is refused like every /internal route', async () => {
+  await withDeployedServer({ token: '' }, async ({ base }) => {
+    const { status } = await call(base, '/internal/residency/ensure', { method: 'POST', body: { model_ref: 'm' } });
+    assert.equal(status, 503);
+  });
 });
