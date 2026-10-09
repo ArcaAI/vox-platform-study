@@ -9,6 +9,11 @@ and budgeted exactly as a served one. Pinned in
 
 stt keeps no catalogue (no DB on the agent path since TASK-861), so a bare
 `model_ref` with an empty `load_spec` can only answer for a model already resident.
+
+TASK-1055 — `device` (``cuda:<i>``, the i-th GPU this process sees) places the load
+on that GPU, through that device's own model cache (`get_model_cache(device)`), so
+the same model on two GPUs is two entries. ``None`` keeps the default cache and
+today's placement. The report lists every GPU the process sees.
 """
 
 from __future__ import annotations
@@ -27,7 +32,8 @@ from hope_runtime_models.residency_agent import (
 )
 from hope_runtime_models.residency_api import build_residency_router
 
-from .wiring import SERVICE, stt_device
+from . import wiring
+from .wiring import SERVICE
 
 #: `to_ai_model_config` stamps `agent-model:<slug>` as the config id when the model
 #: came from a resolved spec — a label, not an `AiModel` id, so it is not reported
@@ -43,22 +49,21 @@ def _describe(key: str, instance: Any) -> ModelIdentity:
 
 
 def _bindings() -> list[CacheBinding]:
-    from stt.models.cache import get_model_cache
+    from stt.models.cache import device_model_caches
 
-    return [CacheBinding(cache=get_model_cache(), describe=_describe)]
+    return [CacheBinding(cache=cache, describe=_describe) for cache in device_model_caches()]
 
 
-def _default_device_id() -> str:
-    return stt_device().id
+def _devices() -> list[Any]:
+    """Every device this process can place on — reported even while it holds nothing."""
+    return list(wiring.stt_devices())
 
 
 async def _plan(
     model_ref: str, load_spec: dict[str, Any], *, device: str | None = None
 ) -> LoadPlan | None:
-    # TASK-1055 wave-0 contract: `device` is accepted; placing on a chosen GPU is
-    # implemented by the device lane. Until then only the default device is honoured.
-    if device is not None and device != _default_device_id():
-        raise DeviceUnavailable(f"{SERVICE} cannot place a load on {device} yet")
+    if device is not None and wiring.stt_device_by_id(device) is None:
+        raise DeviceUnavailable(f"{SERVICE} sees no device {device}")
     if not load_spec:
         return None
     if set(load_spec) != {"resolved_spec"}:
@@ -79,15 +84,23 @@ async def _plan(
     if model_config is None:
         raise InvalidLoadSpec(f"the spec maps no model config for {slug}")
 
-    cache = get_model_cache()
+    if device is not None and device != wiring.stt_device().id:
+        try:  # every cache carries the same loader registry; ask before building one
+            loader = get_model_cache().loader_for(model_config)
+        except Exception:  # noqa: BLE001 — an unservable row fails at load, as before
+            loader = None
+        if loader is not None and getattr(loader, "places_on_device_index", False) is not True:
+            raise DeviceUnavailable(
+                f"{slug} is served by {type(loader).__name__}, which cannot choose a GPU; "
+                f"it runs on the default device {wiring.stt_device().id}, not {device}"
+            )
+    cache = get_model_cache(device)
     return LoadPlan(cache=cache, key=slug, load=lambda: cache.get_or_load(model_config))
 
 
 @lru_cache(maxsize=1)
 def stt_residency_agent() -> ResidencyAgent:
-    return ResidencyAgent(
-        service=SERVICE, bindings=_bindings, planner=_plan, devices=lambda: [stt_device()]
-    )
+    return ResidencyAgent(service=SERVICE, bindings=_bindings, planner=_plan, devices=_devices)
 
 
 def residency_router() -> APIRouter:

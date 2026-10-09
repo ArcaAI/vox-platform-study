@@ -29,7 +29,7 @@ from typing import Any
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
-from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel, cuda_index
 from .source_resolver import ModelSourceError, resolve_for_model_config
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,11 @@ class WhisperCppLoader(BaseModelLoader):
     @property
     def supported_formats(self) -> list[AiModelFormat]:
         return [AiModelFormat.WHISPER_CPP]
+
+    #: TASK-1055 — ``cuda:<i>`` becomes the ``gpu_device`` whisper context param
+    #: (pywhispercpp >= 1.5.0 `ContextParams`, applied onto
+    #: `whisper_context_default_params()`).
+    places_on_device_index = True
 
     async def load(self, model_config: AiModelConfig) -> LoadedModel:
         try:
@@ -98,6 +103,12 @@ class WhisperCppLoader(BaseModelLoader):
         # `whisper_context_default_params()` stands, which is also why this runtime
         # does not assume the kernel is on or off by default.
         row_context_params = self._row_context_params(model_config)
+        # TASK-1055 — a load placed on `cuda:<i>` builds its ggml context on that card.
+        # Kept with the row's params because the recovery path replays exactly this
+        # mapping: a recreated context must land on the card the model was put on.
+        gpu_index = cuda_index(model_config.device) if use_gpu else None
+        if gpu_index is not None:
+            row_context_params = {**row_context_params, "gpu_device": gpu_index}
         # Annotated `Any` deliberately: pywhispercpp declares this parameter as
         # `ContextParams`, but its own constructor accepts a plain mapping and
         # applies the keys onto `whisper_context_default_params()`. Before the row
@@ -238,7 +249,7 @@ class WhisperCppLoader(BaseModelLoader):
                 del loaded_model.model
 
             gc.collect()
-            cleanup_accelerator_memory()
+            cleanup_accelerator_memory(loaded_model.device)
 
             logger.info("Unloaded whisper.cpp model %s", loaded_model.model_slug)
         except Exception as e:

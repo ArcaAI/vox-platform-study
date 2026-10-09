@@ -26,20 +26,22 @@ predates it and its callers depend on them:
   still steers the policy.
 """
 
+import dataclasses
 import logging
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+from hope_runtime_models import Device, clamp_cache_ttl_seconds, torch_module_bytes
 from hope_runtime_models import ModelCache as SharedModelCache
-from hope_runtime_models import clamp_cache_ttl_seconds
+from hope_runtime_models.residency_agent import DeviceUnavailable
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError, ModelNotCacheServedError
 from ..core.metrics import build_model_cache_metrics_sink
 from ..pipeline.dto import AiModelConfig, AiModelFormat, InlineModelDef, ModelRef, ModelTaskType
-from ..residency.wiring import stt_cache_residency
+from ..residency import wiring as residency_wiring
 from .azure_foundry_loader import AzureFoundryLoader
 from .azure_speech_loader import AzureSpeechLoader
 from .base_loader import BaseModelLoader, LoadedModel
@@ -108,6 +110,28 @@ DENOISE_ENGINE_BY_LIBRARY: dict[str, str] = {
     "pyrnnoise": "rnnoise",
     "deepfilternet": "deepfilternet3",
 }
+
+
+#: TASK-1055 — artifact formats whose `LoadedModel.model` is a torch module, so a load
+#: is sized by its parameter + buffer bytes (deterministic, blind to card-mates on a
+#: time-sliced GPU). Every other format — CTranslate2 (faster-whisper), ggml
+#: (whisper.cpp / parakeet.cpp), ONNX, the remote/cloud engines — keeps the device
+#: free-memory delta, because nothing in the process can count its bytes.
+TORCH_MODULE_FORMATS: frozenset[AiModelFormat] = frozenset(
+    {
+        AiModelFormat.SAFETENSOR,
+        AiModelFormat.PYTORCH,
+        AiModelFormat.CTRANSLATE2,  # legacy alias, loaded by transformers
+        AiModelFormat.NEMO,
+    }
+)
+
+
+def measure_loaded_model(instance: LoadedModel) -> int | None:
+    """The `ModelCache(measure=...)` hook: torch parameter bytes, else None (= delta)."""
+    if instance.format not in TORCH_MODULE_FORMATS:
+        return None
+    return torch_module_bytes(instance.model)
 
 
 def set_retention_refresher(refresher: Callable[[], Awaitable[None]] | None) -> None:
@@ -266,6 +290,8 @@ class ModelCache(SharedModelCache[LoadedModel]):
         max_memory_mb: int | None = None,
         max_models: int | None = None,
         ttl_seconds: int | None = None,
+        *,
+        device: Device | None = None,
     ):
         """
         Initialize model cache.
@@ -274,6 +300,9 @@ class ModelCache(SharedModelCache[LoadedModel]):
             max_memory_mb: Maximum memory for cached models
             max_models: Maximum number of models
             ttl_seconds: TTL for cached models
+            device: TASK-1055 — the GPU this cache is BOUND to. ``None`` = the
+                process's default device, with today's placement (each loader's
+                own default). A bound cache loads every model ON its device.
         """
         settings = get_settings()
 
@@ -293,6 +322,11 @@ class ModelCache(SharedModelCache[LoadedModel]):
         # Slug → the config of a load in flight (the shared factory is keyed by
         # slug alone and cannot reconstruct one).
         self._pending_configs: dict[str, AiModelConfig] = {}
+        # TASK-1055 — the device stamped onto every config this cache loads (bound
+        # caches only), and the session pins this DEFAULT cache forwarded to the
+        # device cache that actually holds the model (see `pin`).
+        self._placement: str | None = None if device is None else device.id
+        self._routed_pins: dict[str, list[ModelCache]] = {}
 
         super().__init__(
             factory=self._load_by_slug,
@@ -302,10 +336,15 @@ class ModelCache(SharedModelCache[LoadedModel]):
             max_bytes_estimate=max_memory_mb or 10000,  # Default 10GB
             estimate_bytes=self._memory_estimates.get,  # type: ignore[arg-type]
             metrics=build_model_cache_metrics_sink(),
-            name="stt_model_cache",
+            # One cache per device (TASK-1055): a distinct name keeps the
+            # per-cache gauges of two devices from overwriting each other.
+            name="stt_model_cache" if device is None else f"stt_model_cache@{device.id}",
             # TASK-1005 — measured footprints + residency metrics, in the API AND
             # the Dramatiq worker (both build this cache). Admission stays off.
-            residency=stt_cache_residency(),
+            residency=residency_wiring.stt_cache_residency(device),
+            # TASK-1055 — torch models are sized by their parameters (see
+            # `measure_loaded_model`); the rest keep the device delta.
+            measure=measure_loaded_model,
         )
 
         self._cache = _CacheEntryView(self)
@@ -495,11 +534,12 @@ class ModelCache(SharedModelCache[LoadedModel]):
         as server-side — a bad DB value must not be able to push the cache
         outside its supported window.
         """
-        self.configure(
-            ttl_seconds=retention.get("ttl_seconds"),
-            max_size=retention.get("max_models"),
-            max_bytes_estimate=retention.get("max_memory_mb"),
-        )
+        for cache in (self, *self._siblings()):
+            cache.configure(
+                ttl_seconds=retention.get("ttl_seconds"),
+                max_size=retention.get("max_models"),
+                max_bytes_estimate=retention.get("max_memory_mb"),
+            )
 
     async def _refresh_retention(self) -> None:
         """Pull + apply control-plane retention, if a refresher is installed.
@@ -524,6 +564,9 @@ class ModelCache(SharedModelCache[LoadedModel]):
         Returns:
             LoadedModel if cached, None otherwise
         """
+        elsewhere = self._resident_elsewhere(model_slug)
+        if elsewhere is not None:
+            return await elsewhere.get(model_slug)
         async with self._lock:
             hit, victims = self._lookup_locked(model_slug)
         await self._run_unloads(victims)
@@ -552,6 +595,13 @@ class ModelCache(SharedModelCache[LoadedModel]):
         # the eviction pass below so a freshly-served retention value applies to
         # this load rather than the next one.
         await self._refresh_retention()
+
+        # TASK-1055 — a model resident ONLY on another device is served from there
+        # (no second copy on the default GPU); everything else loads here.
+        elsewhere = self._resident_elsewhere(slug)
+        if elsewhere is not None:
+            return await elsewhere.get_or_load(model_config)
+        model_config = self._placed(model_config)
 
         self._pending_configs[slug] = model_config
         # The declared size is the only footprint known BEFORE the load, so it
@@ -610,6 +660,60 @@ class ModelCache(SharedModelCache[LoadedModel]):
         """
         model_config = inline_def.to_ai_model_config(task_type)
         return await self.get_or_load(model_config)
+
+    # ── per-device placement (TASK-1055) ────────────────────────────────────
+
+    def _siblings(self) -> list["ModelCache"]:
+        """The other device caches — only the process's DEFAULT cache routes to them."""
+        if self is not _cache:
+            return []
+        return [cache for cache in _device_caches.values() if cache is not self]
+
+    def _resident_elsewhere(self, slug: str) -> "ModelCache | None":
+        """The device cache holding ``slug`` when THIS (default) cache neither holds
+        nor is loading it — the only case session traffic leaves the default GPU."""
+        if slug in self._entries or slug in self._inflight:
+            return None
+        for sibling in self._siblings():
+            if slug in sibling._entries:
+                return sibling
+        return None
+
+    def _placed(self, model_config: AiModelConfig) -> AiModelConfig:
+        """The config a BOUND cache loads: its device stamped on, whatever the row said."""
+        if self._placement is None or model_config.device == self._placement:
+            return model_config
+        loader = self.loader_for(model_config)
+        if getattr(loader, "places_on_device_index", False) is not True:
+            raise ModelLoadError(
+                f"Model '{model_config.slug}' is served by {type(loader).__name__}, which "
+                f"cannot be placed on {self._placement}"
+            )
+        return dataclasses.replace(model_config, device=self._placement)
+
+    async def pin(self, key: str) -> None:
+        """Pin ``key`` on the cache whose copy the caller is using (TASK-1055).
+
+        Session traffic always goes through the default cache; when the model is
+        resident only on another device, the pin goes there, so a live session
+        protects the copy it is decoding with (and the report shows it in flight).
+        """
+        elsewhere = self._resident_elsewhere(key)
+        if elsewhere is not None:
+            self._routed_pins.setdefault(key, []).append(elsewhere)
+            await elsewhere.pin(key)
+            return
+        await super().pin(key)
+
+    async def unpin(self, key: str) -> None:
+        routed = self._routed_pins.get(key)
+        if routed:
+            target = routed.pop()
+            if not routed:
+                del self._routed_pins[key]
+            await target.unpin(key)
+            return
+        await super().unpin(key)
 
     async def put(self, model_slug: str, model: LoadedModel) -> None:
         """
@@ -733,32 +837,66 @@ class ModelCache(SharedModelCache[LoadedModel]):
         return loader
 
 
-# Singleton instance
+# Singleton instance (the default device's cache) + one lazily-built cache per
+# other device (TASK-1055), keyed by device id.
 _cache: ModelCache | None = None
+_device_caches: dict[str, ModelCache] = {}
 
 
-def get_model_cache() -> ModelCache:
-    """Get singleton model cache instance."""
+def get_model_cache(device: str | None = None) -> ModelCache:
+    """The model cache for ``device`` (``cuda:<i>``); ``None`` = the default device's.
+
+    A non-default device's cache is created on first use with the default cache's
+    CURRENT retention (TTL, model count, memory budget) and the same metrics, and
+    follows every later `apply_retention`. Raises `DeviceUnavailable` for a device
+    this process does not see.
+    """
     global _cache
     if _cache is None:
         _cache = ModelCache()
-    return _cache
+    default = _cache
+    if device is None or default.residency is None or device == default.residency.device.id:
+        return default
+    cache = _device_caches.get(device)
+    if cache is None:
+        target = residency_wiring.stt_device_by_id(device)
+        if target is None:
+            raise DeviceUnavailable(f"{residency_wiring.SERVICE} sees no device {device}")
+        cache = ModelCache(device=target)
+        cache.configure(
+            ttl_seconds=default._ttl_seconds,
+            max_size=default._max_size,
+            max_bytes_estimate=default._max_bytes_estimate,
+        )
+        _device_caches[device] = cache
+    return cache
+
+
+def device_model_caches() -> list[ModelCache]:
+    """Every model cache in this process: the default one first, then per device."""
+    default = get_model_cache()
+    return [default, *(cache for cache in _device_caches.values() if cache is not default)]
 
 
 async def clear_model_cache() -> int:
-    """Clear the global model cache."""
-    cache = get_model_cache()
-    return await cache.clear()
+    """Clear every model cache in the process (the default one and each device's)."""
+    cleared = 0
+    for cache in device_model_caches():
+        cleared += await cache.clear()
+    return cleared
 
 
 __all__ = [
     "DENOISE_ENGINE_BY_LIBRARY",
     "RUNTIME_OWNED_LIBRARIES",
     "CacheEntry",
+    "TORCH_MODULE_FORMATS",
     "CacheStats",
     "ModelCache",
     "clamp_cache_ttl_seconds",
     "clear_model_cache",
+    "device_model_caches",
     "get_model_cache",
+    "measure_loaded_model",
     "set_retention_refresher",
 ]

@@ -9,7 +9,7 @@ from typing import Any
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
-from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel, cuda_index
 from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
@@ -34,11 +34,17 @@ class NeMoLoader(BaseModelLoader):
     def supported_formats(self) -> list[AiModelFormat]:
         return [AiModelFormat.NEMO]
 
+    #: TASK-1055 — ``cuda:<i>`` is where the restored model is moved (``.to``).
+    places_on_device_index = True
+
     async def load(self, model_config: AiModelConfig) -> LoadedModel:
         try:
             import torch  # noqa: F401
 
-            device = self._get_device("auto")
+            # TASK-1055 — a load placed on `cuda:<i>` goes there; otherwise the
+            # hardware default, as before (the row's other device values stay ignored).
+            placed = model_config.device if cuda_index(model_config.device) is not None else None
+            device = placed or self._get_device("auto")
 
             try:
                 from nemo.collections.asr.models import ASRModel
@@ -119,7 +125,7 @@ class NeMoLoader(BaseModelLoader):
                 del loaded_model.model
 
             gc.collect()
-            cleanup_accelerator_memory()
+            cleanup_accelerator_memory(loaded_model.device)
 
             logger.info("Unloaded NeMo model %s", loaded_model.model_slug)
         except Exception as e:

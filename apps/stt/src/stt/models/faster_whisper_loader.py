@@ -38,6 +38,9 @@ class FasterWhisperLoader(BaseModelLoader):
     def supported_formats(self) -> list[AiModelFormat]:
         return [AiModelFormat.FASTER_WHISPER]
 
+    #: TASK-1055 — ``cuda:<i>`` becomes CTranslate2's ``device_index`` (`resolve_ct2_device`).
+    places_on_device_index = True
+
     async def load(self, model_config: AiModelConfig) -> LoadedModel:
         try:
             from faster_whisper import BatchedInferencePipeline, WhisperModel
@@ -141,7 +144,7 @@ class FasterWhisperLoader(BaseModelLoader):
                 del loaded_model.model
 
             gc.collect()
-            cleanup_accelerator_memory()
+            cleanup_accelerator_memory(loaded_model.device)
 
             logger.info("Unloaded faster-whisper model %s", loaded_model.model_slug)
         except Exception as e:

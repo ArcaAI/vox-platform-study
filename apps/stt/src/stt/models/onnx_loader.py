@@ -8,7 +8,7 @@ from typing import Any
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
-from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel, cuda_index
 from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,9 @@ class ONNXLoader(BaseModelLoader):
     @property
     def supported_formats(self) -> list[AiModelFormat]:
         return [AiModelFormat.ONNX, AiModelFormat.ONNX_OPTIMUM]
+
+    #: TASK-1055 — ``cuda:<i>`` becomes the CUDA execution provider's ``device_id``.
+    places_on_device_index = True
 
     @staticmethod
     def _resolve_num_threads() -> int:
@@ -98,8 +101,9 @@ class ONNXLoader(BaseModelLoader):
 
             logger.info(f"Loading ONNX model from: {model_path}")
 
-            # Configure execution providers
-            providers = self._get_providers()
+            # Configure execution providers (on the placed card, TASK-1055)
+            gpu_index = cuda_index(model_config.device)
+            providers = self._get_providers(gpu_index)
 
             # Session options for optimization
             num_threads = self._resolve_num_threads()
@@ -125,6 +129,8 @@ class ONNXLoader(BaseModelLoader):
 
             # Determine device from active provider
             device = self._determine_device(session)
+            if device == "cuda" and gpu_index is not None:
+                device = f"cuda:{gpu_index}"
 
             # Estimate memory
             memory_mb = self._estimate_session_memory(session, model_path)
@@ -172,8 +178,8 @@ class ONNXLoader(BaseModelLoader):
 
             gc.collect()
 
-            # Release GPU/accelerator memory (CUDA, MPS, etc.)
-            cleanup_accelerator_memory()
+            # Release GPU/accelerator memory (CUDA, MPS, etc.) on the model's card
+            cleanup_accelerator_memory(loaded_model.device)
 
             logger.info(f"Unloaded ONNX model {loaded_model.model_slug}")
 
@@ -194,18 +200,25 @@ class ONNXLoader(BaseModelLoader):
         # Default estimate
         return 500
 
-    def _get_providers(self) -> list[str]:
-        """Get ONNX execution providers in order of preference."""
+    def _get_providers(self, gpu_index: int | None = None) -> list[Any]:
+        """Get ONNX execution providers in order of preference.
+
+        ``gpu_index`` (TASK-1055) pins the CUDA provider to that card with the
+        ``(name, {"device_id": i})`` provider form; ``None`` keeps its default card.
+        """
         try:
             import onnxruntime as ort
 
             available = ort.get_available_providers()
             logger.debug(f"Available ONNX providers: {available}")
 
-            providers: list[str] = []
+            providers: list[Any] = []
 
             if "CUDAExecutionProvider" in available:
-                providers.append("CUDAExecutionProvider")
+                if gpu_index is None:
+                    providers.append("CUDAExecutionProvider")
+                else:
+                    providers.append(("CUDAExecutionProvider", {"device_id": gpu_index}))
 
             # Always include CPU as fallback
             providers.append("CPUExecutionProvider")
@@ -469,11 +482,17 @@ class ONNXLoader(BaseModelLoader):
             )
 
             # Determine device and provider.
-            # Device is always auto-detected from hardware; compute_type only affects dtype
-            requested_device = self._get_device("auto")
+            # Device is auto-detected from hardware unless the load was placed on a
+            # card (`cuda:<i>`, TASK-1055); compute_type only affects dtype.
+            gpu_index = cuda_index(model_config.device)
+            requested_device = "cuda" if gpu_index is not None else self._get_device("auto")
+            provider_options: dict[str, Any] | None = None
             if requested_device == "cuda":
                 provider = "CUDAExecutionProvider"
                 device = "cuda"
+                if gpu_index is not None:
+                    provider_options = {"device_id": gpu_index}
+                    device = f"cuda:{gpu_index}"
             else:
                 provider = "CPUExecutionProvider"
                 device = "cpu"
@@ -485,7 +504,7 @@ class ONNXLoader(BaseModelLoader):
 
             session_options = ort.SessionOptions()
 
-            if quantization == "fp16" and device != "cuda":
+            if quantization == "fp16" and not device.startswith("cuda"):
                 logger.warning(
                     "fp16 quantization on CPU requires reduced graph optimization "
                     "(SimplifiedLayerNormFusion lacks fp16 CPU kernels). "
@@ -525,6 +544,8 @@ class ONNXLoader(BaseModelLoader):
                 "session_options": session_options,
                 **quant_kwargs,
             }
+            if provider_options is not None:
+                from_pretrained_kwargs["provider_options"] = provider_options
             if generation_config is not None:
                 from_pretrained_kwargs["generation_config"] = generation_config
 
