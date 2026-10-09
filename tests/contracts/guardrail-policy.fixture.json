@@ -148,7 +148,7 @@
       "name": "tenant changes an action",
       "caller": "tenant_admin",
       "before": null,
-      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "warn" } } },
+      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "block" } } },
       "forbidden": ["checks.prompt_safety.action"]
     },
     {

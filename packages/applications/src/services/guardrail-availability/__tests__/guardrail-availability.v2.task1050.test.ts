@@ -94,7 +94,7 @@ describe('GuardrailAvailabilityService — v2 platform control', () => {
     const response = await service.getForTenant(TENANT_A);
     expect(response.policies).toEqual({ prompt_safety: { enabled: true } });
     expect(response.effectivePolicy?.checks.find((c) => c.checkId === 'leakage_judge')).toMatchObject({ enabled: true, action: 'block', inherited: true });
-    expect(response.effectivePolicy?.checks.find((c) => c.checkId === 'prompt_safety')).toMatchObject({ enabled: true, action: 'block', inherited: false, editable: true });
+    expect(response.effectivePolicy?.checks.find((c) => c.checkId === 'prompt_safety')).toMatchObject({ enabled: true, action: 'warn', inherited: false, editable: true });
     expect(response.effective).toMatchObject({ prompt_safety: { enabled: true }, leakage_judge: { enabled: true } });
   });
 

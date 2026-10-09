@@ -113,7 +113,7 @@ describe('field-level guard — a tenant admin changes only `enabled` flags', ()
   });
 
   it('changed fields compare the EFFECTIVE value: an absent entry equals its platform default', () => {
-    expect(guardrailPolicyChangedFields(null, { checks: { prompt_safety: { enabled: true, action: 'block' } } }, defaults)).toEqual([]);
+    expect(guardrailPolicyChangedFields(null, { checks: { prompt_safety: { enabled: true, action: 'warn' } } }, defaults)).toEqual([]);
     expect(guardrailPolicyChangedFields(null, { checks: { injection_judge: { enabled: true, action: 'ignore' } } }, defaults)).toEqual([
       'checks.injection_judge.enabled',
     ]);
