@@ -18,8 +18,18 @@
  *      new approved version -> validate -> publish + activate -> exactly one active version. Published
  *      versions are immutable, so a new agent version is the only way to move the pin.
  *
- * ArcaAI only. SYSTEM's generic pre-summary body (TASK-1054 does not change it) and the Global build
- * tenant are NOT touched.
+ * 3. (lane C) the DEPARTMENT-FREE pre-summary — the body the native (ALaaS / vox-node) path actually
+ *    reads (`preSummaryVariant: 'dept-free'`). Seed `SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT`
+ *    (`07d-dept-free-pre-summary-default.ts`) is converged, by the same PATCH-to-DRAFT + approve recipe,
+ *    on THREE rows:
+ *      - ArcaAI (tenant admin): the tenant clone, found by `sourceTemplateId = 71000000-…0004-…0002`
+ *        (the SYSTEM pointer), else by tags `pre-summary` + `dept-free` when exactly one row matches;
+ *      - Global `50000000-…0000` (super admin acting via X-Tenant-Id): found the same way;
+ *      - SYSTEM `71000000-0000-0000-0004-000000000002` (tenant-less super admin): fetched by id.
+ *    A refused write (e.g. SYSTEM rows are platform-admin-only) is reported as FAIL with the server
+ *    message, never worked around. No agent pins these templates, so no agent republish follows.
+ *
+ * The generic SYSTEM pre-summary body (TASK-1054 does not change it) is NOT touched.
  *
  * Idempotent: a template whose content equals the seed AND is APPROVED at its latest version is `skip`;
  * an agent already pinned to the approved version is `skip`.
@@ -28,6 +38,8 @@
  *   HOPE_BASE_URL          default http://localhost:8868
  *   HOPE_ADMIN_USERNAME    default arcaai_admin
  *   HOPE_ADMIN_PASSWORD    required unless the base URL is local (then the seeded dev password)
+ *   HOPE_SUPER_ADMIN_USERNAME / HOPE_SUPER_ADMIN_PASSWORD  default super_admin / (local dev password);
+ *                          used for the Global + SYSTEM dept-free rows. SKIP_PLATFORM=1 skips them.
  *   HOPE_TENANT_KEY        default ARCAAI
  *   HOPE_TENANT_ID         default 50000000-0000-0000-0000-000000000001 (checked against the login)
  *   DRY_RUN=1              read-only: prints `plan` for every step that would write
@@ -49,6 +61,10 @@ const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(BAS
 const USERNAME = process.env.HOPE_ADMIN_USERNAME ?? 'arcaai_admin';
 const TENANT_KEY = process.env.HOPE_TENANT_KEY ?? 'ARCAAI';
 const TENANT_ID = process.env.HOPE_TENANT_ID ?? '50000000-0000-0000-0000-000000000001';
+const SUPER_USERNAME = process.env.HOPE_SUPER_ADMIN_USERNAME ?? 'super_admin';
+const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+const SKIP_PLATFORM = process.env.SKIP_PLATFORM === '1';
 const DRY = process.env.DRY_RUN === '1';
 const SETTLE_MS = Number(process.env.PUBLISH_SETTLE_MS ?? 15000);
 const CHANGE_REASON = 'TASK-1054 — pre-summary carries Allergies & Contraindications and Family History';
@@ -77,11 +93,14 @@ function loadSeed() {
       import(${JSON.stringify(`${seedDir}/07b-arcaai-clinical-content-v3.ts`)}),
       import(${JSON.stringify(`${seedDir}/07b-arcaai-clinical-templates.ts`)}),
       import(${JSON.stringify(`${seedDir}/25-agents.ts`)}),
-    ]).then(([c, t, a]) => {
+      import(${JSON.stringify(`${seedDir}/07d-dept-free-pre-summary-default.ts`)}),
+    ]).then(([c, t, a, d]) => {
       process.stdout.write('@@SEED@@' + JSON.stringify({
         body: c.PRE_SUMMARY_CONTENT_V3,
         templateId: t.ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
         agentSlug: a.PRE_SUMMARY_AGENT_SLUG,
+        deptFreeBody: d.SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT,
+        deptFreeSystemId: d.SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID,
       }));
     }).catch((e) => { console.error(e); process.exit(1); });`;
   const out = execFileSync(tsx, ['-e', code], { cwd: resolve(REPO, 'packages/database'), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
@@ -90,6 +109,9 @@ function loadSeed() {
   const seed = JSON.parse(out.slice(at + '@@SEED@@'.length));
   if (!seed.body?.includes(MARKER) || !seed.body.includes('Family History:')) {
     throw new Error('the seed pre-summary carries no Allergies / Family History headings — is this checkout on TASK-1054?');
+  }
+  if (!seed.deptFreeBody?.includes(MARKER) || !seed.deptFreeBody.includes('Family History:') || !seed.deptFreeSystemId) {
+    throw new Error('the seed dept-free pre-summary carries no Allergies / Family History headings — is this checkout on TASK-1054 lane C?');
   }
   return seed;
 }
@@ -105,35 +127,36 @@ class HttpError extends Error {
   }
 }
 
-function password() {
-  const p = process.env.HOPE_ADMIN_PASSWORD;
+function password(envName = 'HOPE_ADMIN_PASSWORD') {
+  const p = process.env[envName];
   if (p) return p;
   if (IS_LOCAL) return 'password123'; // the seeded local demo password (packages/database seed 91-user.ts)
-  throw new Error('HOPE_ADMIN_PASSWORD is required for a non-local HOPE_BASE_URL');
+  throw new Error(`${envName} is required for a non-local HOPE_BASE_URL`);
 }
 
-function session() {
+function session({ username = USERNAME, passwordEnv = 'HOPE_ADMIN_PASSWORD', tenantKey = TENANT_KEY } = {}) {
   let token = '';
   const login = async () => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: USERNAME, password: password(), tenantKey: TENANT_KEY }),
+      body: JSON.stringify({ username, password: password(passwordEnv), ...(tenantKey ? { tenantKey } : {}) }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok || !body.token) throw new Error(`login ${USERNAME} failed: HTTP ${res.status}`);
+    if (!res.ok || !body.token) throw new Error(`login ${username} failed: HTTP ${res.status}`);
     token = body.token;
     return body.user;
   };
   /** `ifMatch` is the row `version` (sent as the strong validator `"<version>"`). */
-  const call = async (method, path, { body, ifMatch, retried = false } = {}) => {
+  const call = async (method, path, { body, ifMatch, tenant, retried = false } = {}) => {
     const headers = { authorization: `Bearer ${token}` };
+    if (tenant) headers['x-tenant-id'] = tenant;
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (ifMatch !== undefined) headers['if-match'] = `"${ifMatch}"`;
     const res = await fetch(`${API}/${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     if (res.status === 401 && !retried) {
       await login();
-      return call(method, path, { body, ifMatch, retried: true });
+      return call(method, path, { body, ifMatch, tenant, retried: true });
     }
     const text = await res.text();
     let parsed = text;
@@ -163,9 +186,9 @@ function hasText(node, needle) {
 // 1. the template: new PromptVersion + re-approval
 // ---------------------------------------------------------------------------------------------
 /** Returns the approved version number the agents must pin, or null when nothing can proceed. */
-async function convergeTemplate(step, api, seed) {
-  const tpl = await api.call('GET', `admin/prompt-templates/${seed.templateId}`);
-  const contentCurrent = tpl.content === seed.body;
+async function convergeTemplate(step, api, seed, { templateId = seed.templateId, body = seed.body, tenant } = {}) {
+  const tpl = await api.call('GET', `admin/prompt-templates/${templateId}`, { tenant });
+  const contentCurrent = tpl.content === body;
   const approvedAtLatest = tpl.status === 'APPROVED' && tpl.approvedVersionNumber === tpl.currentVersionNumber;
   if (contentCurrent && approvedAtLatest) {
     skip(step, `v${tpl.approvedVersionNumber} already carries the seed body and is approved`);
@@ -177,11 +200,11 @@ async function convergeTemplate(step, api, seed) {
   }
   // Content (when it differs) and the DRAFT flip go in ONE write: approve is a no-op on an APPROVED row.
   let current = tpl;
-  const patch = { status: 'DRAFT', changeReason: CHANGE_REASON, ...(contentCurrent ? {} : { content: seed.body }) };
-  current = await api.call('PATCH', `admin/prompt-templates/${seed.templateId}`, { ifMatch: current.version, body: patch });
-  const approved = await api.call('POST', `admin/prompt-templates/${seed.templateId}/approve`, { ifMatch: current.version, body: {} });
-  if (approved.status !== 'APPROVED' || approved.content !== seed.body) {
-    fail(step, `after approve: status=${approved.status} contentMatchesSeed=${approved.content === seed.body}`);
+  const patch = { status: 'DRAFT', changeReason: CHANGE_REASON, ...(contentCurrent ? {} : { content: body }) };
+  current = await api.call('PATCH', `admin/prompt-templates/${templateId}`, { ifMatch: current.version, body: patch, tenant });
+  const approved = await api.call('POST', `admin/prompt-templates/${templateId}/approve`, { ifMatch: current.version, body: {}, tenant });
+  if (approved.status !== 'APPROVED' || approved.content !== body) {
+    fail(step, `after approve: status=${approved.status} contentMatchesSeed=${approved.content === body}`);
     return null;
   }
   ok(step, `approved v${approved.approvedVersionNumber} (current v${approved.currentVersionNumber})`);
@@ -251,6 +274,31 @@ async function convergeAgents(api, seed, approvedVersion) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// 3. the department-free pre-summary (native path)
+// ---------------------------------------------------------------------------------------------
+/** The tenant's own dept-free template id: the clone of the SYSTEM pointer, else the single tag match. */
+async function findDeptFreeId(api, seed, tenant) {
+  const q = 'admin/prompt-templates?tags=pre-summary,dept-free&includeDisabled=false&limit=100';
+  const listed = rows(await api.call('GET', q, { tenant }));
+  const own = tenant ? listed.filter((r) => !r.tenantId || r.tenantId === tenant) : listed;
+  const clones = own.filter((r) => r.sourceTemplateId === seed.deptFreeSystemId);
+  if (clones.length === 1) return clones[0].id;
+  if (clones.length > 1) throw new Error(`${clones.length} clones of ${seed.deptFreeSystemId} in the tenant: ${clones.map((r) => r.id).join(', ')}`);
+  const tagged = own.filter((r) => Array.isArray(r.tags) && r.tags.includes('pre-summary') && r.tags.includes('dept-free'));
+  if (tagged.length === 1) return tagged[0].id;
+  throw new Error(`${tagged.length} dept-free pre-summary templates found by tags and no clone of ${seed.deptFreeSystemId}`);
+}
+
+async function convergeDeptFree(step, api, seed, { tenant, systemRow = false }) {
+  try {
+    const templateId = systemRow ? seed.deptFreeSystemId : await findDeptFreeId(api, seed, tenant);
+    await convergeTemplate(`${step} (${templateId})`, api, seed, { templateId, body: seed.deptFreeBody, tenant });
+  } catch (e) {
+    fail(step, e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 async function main() {
   console.log(`TASK-1054 rollout -> ${BASE}${DRY ? ' [DRY RUN]' : ''}`);
   const seed = loadSeed();
@@ -268,6 +316,22 @@ async function main() {
   }
   let published = 0;
   if (approvedVersion !== null) published = await convergeAgents(api, seed, approvedVersion);
+
+  await convergeDeptFree(`dept-free pre-summary ${TENANT_KEY}`, api, seed, { tenant: undefined });
+
+  if (!SKIP_PLATFORM) {
+    try {
+      const sa = session({ username: SUPER_USERNAME, passwordEnv: 'HOPE_SUPER_ADMIN_PASSWORD', tenantKey: undefined });
+      const su = await sa.login();
+      if (su.tenantId && su.tenantId !== SYSTEM_TENANT_ID) {
+        throw new Error(`${SUPER_USERNAME} logged in bound to tenant ${su.tenantId}; the SYSTEM row needs a tenant-less super admin`);
+      }
+      await convergeDeptFree('dept-free pre-summary global', sa, seed, { tenant: GLOBAL_TENANT_ID });
+      await convergeDeptFree('dept-free pre-summary system', sa, seed, { systemRow: true });
+    } catch (e) {
+      fail('dept-free pre-summary platform', e.message);
+    }
+  }
 
   if (published > 0 && SETTLE_MS > 0) {
     ok('agents settle', `waiting ${SETTLE_MS} ms for the per-process agent cache`);
