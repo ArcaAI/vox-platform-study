@@ -47,14 +47,18 @@ authentication.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 import structlog
 
+from text.core.exceptions import ProviderUnavailableError
 from text.core.reasoning import ReasoningSupport
 from text.models.provider import ModelInfo
 from text.models.requests import GenerateRequest
+from text.models.stats import GenerationStats
+from text.models.stream import StreamChunk
 from text.providers.openai_compat import OpenAICompatProvider
 from text.services.judge_guard import in_judge_scope
 
@@ -71,6 +75,11 @@ _NATIVE_PROBE_TIMEOUT_S = 3.0
 def _native_probe_client() -> httpx.AsyncClient:
     """Factory for the native-probe transport (patched in tests)."""
     return httpx.AsyncClient(timeout=_NATIVE_PROBE_TIMEOUT_S)
+
+
+def _ensure_client(timeout_s: float) -> httpx.AsyncClient:
+    """Factory for the residency-agent transport (patched in tests)."""
+    return httpx.AsyncClient(timeout=timeout_s)
 
 
 _ENVELOPE_KEYS = frozenset({"name", "schema", "strict", "description"})
@@ -127,6 +136,70 @@ class LMStudioProvider(OpenAICompatProvider):
         """No configuration — the engine endpoint arrives per request, exactly as
         for the base OpenAI-compatible adapter."""
         super().__init__(provider_name=_ENGINE, display_name="LM Studio")
+        self._ensure_url = ""
+        self._ensure_token = ""
+
+    def configure_residency_ensure(self, *, agent_url: str, service_token: str) -> None:
+        """Point the pre-request ensure at the LM Studio residency agent (TASK-1055 wave 3).
+
+        The agent is a HOPE peer (unlike LM Studio itself), so it — and only it — gets
+        ``X-Service-Token``. An empty URL leaves the feature off.
+        """
+        self._ensure_url = agent_url.strip().rstrip("/")
+        self._ensure_token = service_token
+
+    async def _ensure_resident(self, request: GenerateRequest) -> None:
+        """Ask the agent to make sure the request's model is loaded, before sending to LM Studio.
+
+        200 proceeds. A 503 ``LOAD_FAILED`` fails the request (the model cannot be served, and
+        the JIT fallback would only repeat the failure). Anything else — agent unreachable, slow,
+        401, 404 ``MODEL_UNKNOWN``, an unrelated 503 — is logged and skipped: LM Studio's own JIT
+        load is the behaviour before this existed.
+        """
+        url = getattr(self, "_ensure_url", "")
+        model = self._resolve_model(request)
+        if not url or not model:
+            return
+        try:
+            async with _ensure_client(float(self._timeout_s)) as client:
+                resp = await client.post(
+                    f"{url}/internal/residency/ensure",
+                    json={"model_ref": model},
+                    headers={"X-Service-Token": self._ensure_token},
+                )
+        except Exception as exc:  # noqa: BLE001 — unreachable/timeout never blocks a request
+            logger.warning(
+                "text.lmstudio.ensure_skipped", model=model, reason="unreachable", error=str(exc)
+            )
+            return
+        if resp.status_code == 200:
+            return
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {}
+        code = body.get("code") if isinstance(body, dict) else None
+        if resp.status_code == 503 and code == "LOAD_FAILED":
+            cause = body.get("message") or "model load failed"
+            raise ProviderUnavailableError(
+                f"LM Studio could not load model '{model}': {cause}", provider=self._provider_name
+            )
+        logger.warning(
+            "text.lmstudio.ensure_skipped",
+            model=model,
+            reason="agent_refused",
+            status=resp.status_code,
+            code=code,
+        )
+
+    async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
+        await self._ensure_resident(request)
+        return await super().generate(request)
+
+    async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
+        await self._ensure_resident(request)
+        async for chunk in super().generate_stream(request):
+            yield chunk
 
     def _apply_response_format(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
         """LM Studio's structured-output wire: ``json_schema`` or ``text``, nothing else.
