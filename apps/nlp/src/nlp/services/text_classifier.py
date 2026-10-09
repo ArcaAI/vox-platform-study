@@ -6,6 +6,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 
 from nlp.core.config import TextClassificationConfig
+from nlp.core.device import device_label
 from nlp.core.logging import get_logger
 from nlp.schemas.classification import (
     MultiLabelClassificationRequest,
@@ -14,6 +15,7 @@ from nlp.schemas.classification import (
     TextClassificationResponse,
 )
 from nlp.schemas.common import DeviceLabel
+from nlp.services.token_classifier import place_model, release_pipeline
 
 logger = get_logger(__name__)
 
@@ -52,7 +54,7 @@ class TextClassifier(ABC):
 class TransformerTextClassifier(TextClassifier):
     """Transformer-based text classification for medical documents"""
 
-    def __init__(self, config: TextClassificationConfig):
+    def __init__(self, config: TextClassificationConfig, *, device: str | None = None):
         # REQUIRED — see `TransformerTokenClassifier`. The doc-type plane keeps
         # its unconfigured SENTINEL default on the config field (it is not a
         # model id and never loads), but the classifier is still only ever built
@@ -68,6 +70,9 @@ class TransformerTextClassifier(TextClassifier):
         # the "cpu" floor here means a caller that never initializes (e.g. a
         # test stubbing `.pipeline` directly) still gets a well-defined value.
         self._device: DeviceLabel = "cpu"
+        # TASK-1055 — the device id to load ON; None keeps the legacy auto rule.
+        self._placement_request = device
+        self.placement: str | None = device
 
     async def initialize(self) -> None:
         """Load transformer text classification model"""
@@ -94,17 +99,19 @@ class TransformerTextClassifier(TextClassifier):
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
 
-            # D6: config.use_gpu (default True) now gates GPU use; default
-            # preserves today's auto-detect-when-available behavior. This
-            # pipeline never checks MPS (unchanged), so the resolved placement
-            # (TASK-959) is honestly cuda-or-cpu, never mps.
-            use_accelerator = self.config.use_gpu and torch.cuda.is_available()
-            self._device = "cuda" if use_accelerator else "cpu"
+            # D6: config.use_gpu (default True) gates GPU use; an explicit
+            # placement (TASK-1055) puts the model on exactly that card. This
+            # pipeline never checks MPS, so the metered label is cuda-or-cpu.
+            target, ordinal = place_model(
+                self.model, self._placement_request, self.config.use_gpu, torch.cuda.is_available()
+            )
+            self.placement = target
+            self._device = device_label(target)
             self.pipeline = pipeline(
                 "text-classification",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                device=0 if use_accelerator else -1,
+                device=ordinal,
             )
 
             # self.label_mapping = self.model.config.id2label
@@ -180,8 +187,13 @@ class TransformerTextClassifier(TextClassifier):
         inference_ms = round((time.perf_counter() - started) * 1000)
         return {item["label"]: float(item["score"]) for item in pipeline_results}, inference_ms
 
+    def torch_modules(self) -> list[Any]:
+        """The torch modules this instance holds (residency sizing, TASK-1055)."""
+        return [self.model] if self.model is not None else []
+
     async def shutdown(self) -> None:
-        """Shutdown the text classification model"""
+        """Drop every reference to the weights so an unload frees them (TASK-1055 E6)."""
+        release_pipeline(self.pipeline)
         self.tokenizer = None
         self.model = None
         self.pipeline = None

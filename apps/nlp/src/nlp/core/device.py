@@ -47,7 +47,8 @@ regression they have to discover from a dashboard.
 
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -58,6 +59,9 @@ logger = get_logger(__name__)
 
 __all__ = [
     "DevicePlacementError",
+    "cuda_index",
+    "device_label",
+    "pipeline_device",
     "resolve_inference_device",
     "apply_device_placement",
     "parse_cpu_only_modules",
@@ -66,6 +70,8 @@ __all__ = [
 _CPU = "cpu"
 _AUTO = "auto"
 _SUPPORTED = ("cpu", "mps", "cuda")
+#: TASK-1055 — ``cuda:<n>`` = the n-th GPU this process sees (CUDA order).
+_INDEXED_CUDA = re.compile(r"^cuda:(\d+)$")
 
 
 class DevicePlacementError(RuntimeError):
@@ -98,6 +104,20 @@ def resolve_inference_device(requested: str | None) -> str:
                 return candidate
         return _CPU
 
+    indexed = _INDEXED_CUDA.match(name)
+    if indexed is not None:
+        index = int(indexed.group(1))
+        if not _available("cuda"):
+            raise DevicePlacementError(
+                f"inference device {name!r} was requested but CUDA is not available on this host"
+            )
+        count = int(torch.cuda.device_count())
+        if index >= count:
+            raise DevicePlacementError(
+                f"inference device {name!r} was requested but this process sees {count} GPU(s)"
+            )
+        return name
+
     if name not in _SUPPORTED:
         raise DevicePlacementError(
             f"unsupported inference device {name!r}; expected one of " f"{_AUTO!r} or {_SUPPORTED}"
@@ -108,6 +128,35 @@ def resolve_inference_device(requested: str | None) -> str:
             "on this host. Configure 'auto' to degrade to CPU deliberately."
         )
     return name
+
+
+def device_label(device: str | None) -> Literal["cuda", "mps", "cpu"]:
+    """The metering label (TASK-959 ``DeviceLabel``) for a resolved device id.
+
+    ``cuda:1`` is still "cuda" on the wire of every inference response: the label
+    says WHICH KIND of unit served the request, the id says which card.
+    """
+    name = (device or "").strip().lower()
+    if name == "cuda" or _INDEXED_CUDA.match(name):
+        return "cuda"
+    if name == "mps":
+        return "mps"
+    return "cpu"
+
+
+def cuda_index(device: str | None) -> int | None:
+    """``cuda:<n>`` → n, bare ``cuda`` → 0 (torch's current device), anything else → None."""
+    name = (device or "").strip().lower()
+    if name == "cuda":
+        return 0
+    indexed = _INDEXED_CUDA.match(name)
+    return int(indexed.group(1)) if indexed is not None else None
+
+
+def pipeline_device(device: str | None) -> int:
+    """The ``device=`` a transformers ``pipeline`` takes: the CUDA ordinal, or -1 for CPU."""
+    index = cuda_index(device)
+    return -1 if index is None else index
 
 
 def parse_cpu_only_modules(raw: str | None) -> tuple[str, ...]:

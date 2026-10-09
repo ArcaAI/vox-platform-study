@@ -6,6 +6,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 
 from nlp.core.config import MedicalSuggesterConfig
+from nlp.core.device import device_label
 from nlp.core.metrics import MODEL_SYMPTOMS_DISEASE, track_model_inference
 from nlp.schemas.classification import TokenClassificationRequest
 from nlp.schemas.common import DeviceLabel, Entity
@@ -14,7 +15,7 @@ from nlp.schemas.diagnosis import (
     DiagnosisSuggestionRequest,
     DiagnosisSuggestionResponse,
 )
-from nlp.services.token_classifier import TokenClassifier
+from nlp.services.token_classifier import TokenClassifier, place_model, release_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,8 @@ class MedicalSuggester:
         self,
         config: MedicalSuggesterConfig,
         token_classifier: TokenClassifier,
+        *,
+        device: str | None = None,
     ):
         # Both REQUIRED: this service runs TWO models — the disease classifier
         # named by `config` and the NER named by `token_classifier` — and both
@@ -35,6 +38,10 @@ class MedicalSuggester:
         # Resolved placement of the disease classifier (TASK-959 metering); set
         # for real in `initialize()`.
         self._device: DeviceLabel = "cpu"
+        # TASK-1055 — the device id to load the disease classifier ON (the NER is
+        # placed by the caller that builds it); None keeps the legacy auto rule.
+        self._placement_request = device
+        self.placement: str | None = device
 
     async def initialize(self) -> None:
         try:
@@ -47,13 +54,16 @@ class MedicalSuggester:
             # preserves today's auto-detect-when-available behavior. This
             # pipeline never checks MPS (unchanged), so the resolved placement
             # (TASK-959) is honestly cuda-or-cpu, never mps.
-            use_accelerator = self.config.use_gpu and torch.cuda.is_available()
-            self._device = "cuda" if use_accelerator else "cpu"
+            target, ordinal = place_model(
+                model, self._placement_request, self.config.use_gpu, torch.cuda.is_available()
+            )
+            self.placement = target
+            self._device = device_label(target)
             self.text_classifier_pipeline = pipeline(
                 "text-classification",
                 model=model,
                 tokenizer=tokenizer,
-                device=0 if use_accelerator else -1,
+                device=ordinal,
             )
 
             # Initialize token classifier for entity extraction
@@ -293,8 +303,26 @@ class MedicalSuggester:
 
         return suggestions
 
+    def torch_modules(self) -> list[Any]:
+        """Both models this instance holds — disease classifier AND its NER (TASK-1055)."""
+        modules: list[Any] = []
+        model = getattr(self.text_classifier_pipeline, "model", None)
+        if model is not None:
+            modules.append(model)
+        ner_modules = getattr(self.token_classifier, "torch_modules", None)
+        if callable(ner_modules):
+            modules.extend(ner_modules())
+        return modules
+
     async def shutdown(self) -> None:
-        if self.is_initialized:
-            if self.token_classifier and hasattr(self.token_classifier, "shutdown"):
-                await self.token_classifier.shutdown()
-            self.is_initialized = False
+        """Free BOTH models — unconditionally, so a half-initialised instance frees too.
+
+        Pre-TASK-1055 this shut down only the NER, and only when the suggester had
+        finished initialising: the disease classifier stayed resident after every
+        unload (E6).
+        """
+        release_pipeline(self.text_classifier_pipeline)
+        self.text_classifier_pipeline = None
+        if self.token_classifier and hasattr(self.token_classifier, "shutdown"):
+            await self.token_classifier.shutdown()
+        self.is_initialized = False

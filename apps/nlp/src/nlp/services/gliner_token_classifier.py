@@ -59,6 +59,15 @@ class Gliner2TokenClassifier(TokenClassifier):
         # the event loop, as the guard plane does), so `initialize` is a no-op.
         self._runtime = runtime
 
+    @property
+    def runtime(self) -> Any:
+        """The shared GLiNER2 runtime (None once shut down) — the weight registry's value."""
+        return self._runtime
+
+    def torch_modules(self) -> list[Any]:
+        modules = getattr(self._runtime, "torch_modules", None)
+        return list(modules()) if callable(modules) else []
+
     async def initialize(self) -> None:
         self.is_initialized = True
 
@@ -121,4 +130,6 @@ class Gliner2TokenClassifier(TokenClassifier):
         )
 
     async def shutdown(self) -> None:
+        # Drops THIS holder's reference only. The runtime itself is shut down by
+        # the unload hook when the weight registry says no other cache holds it.
         self._runtime = None

@@ -231,6 +231,14 @@ class SeqClsGuardService:
 
     @property
     def device(self) -> str:
+        """The metering label (``cuda`` / ``mps`` / ``cpu``) — every response carries it."""
+        from nlp.core.device import device_label
+
+        return device_label(self._device)
+
+    @property
+    def placement(self) -> str:
+        """The device id the weights were placed on (``cuda:1``) — TASK-1055."""
         return self._device
 
     def load(self) -> None:
@@ -271,6 +279,10 @@ class SeqClsGuardService:
         self._codec = codec
         self._num_labels = int(config.num_labels)
         logger.info(f"nlp.seq_cls_guard.ready model_id={self.model_id} device={self._device}")
+
+    def torch_modules(self) -> list[Any]:
+        """The torch modules this instance holds (residency sizing, TASK-1055)."""
+        return [self._model] if self._model is not None else []
 
     def shutdown(self) -> None:
         """Drop the weights so eviction frees them."""
