@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { createHash } from 'node:crypto';
@@ -75,6 +76,8 @@ export class DocumentTemplateService extends BaseService implements IDocumentTem
     private readonly versionRepository: DocumentTemplateVersionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1057 — the platform reason policy for `documentTemplate.update`. Optional + trailing.
+    @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.DocumentTemplate);
   }
@@ -245,6 +248,9 @@ export class DocumentTemplateService extends BaseService implements IDocumentTem
       });
     }
 
+    // TASK-1057 — a version is about to be written; the policy may demand its change reason.
+    const confirmation = this.confirmations?.assert('documentTemplate.update', { value: dto.changeReason });
+
     const compiled = compileDocumentTemplate(dto.shape as unknown as DocumentTemplateShape);
 
     const versionNumber = (latest?.versionNumber ?? 0) + 1;
@@ -286,6 +292,7 @@ export class DocumentTemplateService extends BaseService implements IDocumentTem
         compilerVersion: compiled.compilerVersion,
         classification: change.classification,
         breakingChanges: change.breakingChanges,
+        confirmation,
       },
     });
 

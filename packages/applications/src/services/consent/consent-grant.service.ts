@@ -1,3 +1,5 @@
+import type { ActionConfirmationAuditStamp } from '@arcaai/types';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { Inject, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -70,6 +72,9 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
     // (ConsentGrantServiceModule) always supplies it, which is what makes the
     // WORM append fail-closed in production (see create()/revoke() below).
     @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
+    // TASK-1057 — the platform policy for `consent.record` (evidence) and `consent.revoke`
+    // (reason). Optional + trailing; absent ⇒ no policy is consulted.
+    @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ConsentGrant);
   }
@@ -84,6 +89,14 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
    * longer occupies the active slot.
    */
   async create(request: CreateConsentGrantRequest): Promise<ConsentGrantResponse> {
+    // TASK-1057 — the admin route may be required to carry evidence; refuse before any write.
+    // (`ensureConsultationConsent` goes through `persistGrant` directly: the implicit
+    // consultation-open attestation has no signed artifact and is not this admin action.)
+    const confirmation = this.confirmations?.assert('consent.record', { value: request.evidenceRef });
+    return this.persistGrant(request, confirmation);
+  }
+
+  private async persistGrant(request: CreateConsentGrantRequest, confirmation?: ActionConfirmationAuditStamp): Promise<ConsentGrantResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new ArgumentInvalidException('Tenant context required');
@@ -114,7 +127,7 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
-      data: { externalPatientId: saved.externalPatientId, purpose: saved.purpose, grantMethod: saved.grantMethod },
+      data: { externalPatientId: saved.externalPatientId, purpose: saved.purpose, grantMethod: saved.grantMethod, confirmation },
     });
 
     this.eventEmitter.emit(CONSENT_INVALIDATE_EVENT, { tenantId, externalPatientId, purpose: saved.purpose });
@@ -131,6 +144,8 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
     const entity: ConsentGrantEntity = await this.consentGrantRepository.findById(id);
     assertEqualTenants(entity, { tenantId: this.tenantId });
 
+    // TASK-1057 — after the ownership 404, before the entity is mutated.
+    const confirmation = this.confirmations?.assert('consent.revoke', { value: request.reason });
     entity.revoke(this.requestUser?.id ?? 'system', request.reason ?? null);
 
     // OCC precondition BEFORE the no-changes short-circuit: a stale client must
@@ -151,7 +166,7 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: { ...entity.changes, previousVersion, newVersion: updated.version },
+      data: { ...entity.changes, previousVersion, newVersion: updated.version, confirmation },
     });
 
     this.eventEmitter.emit(CONSENT_INVALIDATE_EVENT, {
@@ -210,7 +225,7 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
         continue;
       }
       granted.push(
-        await this.create({
+        await this.persistGrant({
           externalPatientId: normalized,
           purpose,
           // The clinician is attesting in person; there is no signed artifact

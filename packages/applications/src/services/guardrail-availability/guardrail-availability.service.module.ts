@@ -10,6 +10,7 @@ import { GuardrailRuleTestService, IGuardrailRuleTestService } from './guardrail
 import { GuardrailTenantPolicyService } from './guardrail-tenant-policy.service';
 import { IGuardrailAvailabilityService } from './IGuardrailAvailabilityService';
 import { IGuardrailTenantPolicyService } from './IGuardrailTenantPolicyService';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 /**
  * Both planes of `TenantGuardrailPolicy`: the platform per-tenant control and (TASK-1050) the tenant's
@@ -17,7 +18,7 @@ import { IGuardrailTenantPolicyService } from './IGuardrailTenantPolicyService';
  * governed-prompt re-screen the change publisher schedules after a write (TASK-1049 F2).
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, GovernedPromptServiceModule, ConfigModule, HttpModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, GovernedPromptServiceModule, ConfigModule, HttpModule, EffectiveSettingsModule],
   providers: [
     GuardrailPolicyChangePublisher,
     { provide: IGuardrailAvailabilityService, useClass: GuardrailAvailabilityService },

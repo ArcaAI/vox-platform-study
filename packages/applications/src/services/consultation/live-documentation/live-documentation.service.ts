@@ -15,6 +15,7 @@ import {
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
 import { ClsService } from 'nestjs-cls';
 import { Observable, type Subscription } from 'rxjs';
 import {
@@ -1870,6 +1871,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // the 503 redaction hold no evaluation record carries). Optional + trailing like every dependency
     // above it; ABSENT ⇒ the lane never enters a hold itself (it still keeps the last good note).
     @Optional() @Inject(IGuardrailHoldService) private readonly guardrailHolds?: Pick<GuardrailHoldService, 'enterGuardrailHold'>,
+    // TASK-1057 — the platform reason policy for the engine kill-switch write. Optional + trailing
+    // like every dependency above it; ABSENT ⇒ no policy is consulted.
+    @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -9046,9 +9050,11 @@ return 0`;
    * instances pick it up — no restart required.
    */
   async setEngineEnabled(enabled: boolean, actor?: { userId?: string | null; reason?: string }): Promise<LiveDocEngineConfigResponse> {
+    // TASK-1057 — refuse BEFORE the switch moves; the stamp rides the persisted record + the audit line.
+    const confirmation = this.confirmations?.assert('harnessLiveConfig.update', { value: actor?.reason });
     const updatedAt = new Date().toISOString();
     const updatedBy = actor?.userId ?? null;
-    const record = { enabled, updatedAt, updatedBy, reason: actor?.reason ?? null };
+    const record = { enabled, updatedAt, updatedBy, reason: actor?.reason ?? null, ...(confirmation ? { confirmation } : {}) };
 
     try {
       await this.cacheService.set(this.CONFIG_ENABLED_KEY, JSON.stringify(record));
@@ -9061,7 +9067,7 @@ return 0`;
     this.engineConfigUpdatedBy = updatedBy;
     await this.safeChannelPublish(this.CONFIG_CONTROL_CHANNEL, JSON.stringify(record));
 
-    this.logger.warn({ message: 'Live documentation engine kill-switch updated', enabled, updatedBy, reason: actor?.reason ?? null });
+    this.logger.warn({ message: 'Live documentation engine kill-switch updated', enabled, updatedBy, reason: actor?.reason ?? null, confirmation });
 
     return {
       enabled,

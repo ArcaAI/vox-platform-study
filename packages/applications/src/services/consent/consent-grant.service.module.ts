@@ -6,11 +6,12 @@ import { ConsentGrantService } from './consent-grant.service';
 import { IConsentGrantService } from './IConsentGrantService';
 import { ConsultationConsentService } from './consultation-consent.service';
 import { IConsultationConsentService } from './IConsultationConsentService';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
   // (`CONSENT_GIVEN`/`CONSENT_WITHDRAWN` — follow-up).
-  imports: [CommonServiceModule, CoreDatabaseModule, HarnessAuditServiceModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, HarnessAuditServiceModule, EffectiveSettingsModule],
   providers: [
     ConsentGrantService,
     { provide: IConsentGrantService, useExisting: ConsentGrantService },

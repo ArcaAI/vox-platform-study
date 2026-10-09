@@ -3,9 +3,10 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { IDocumentTemplateService } from './IDocumentTemplateService';
 import { DocumentTemplateService } from './document-template.service';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, EffectiveSettingsModule],
   providers: [
     DocumentTemplateService,
     // useExisting, not useClass — useClass would construct a SECOND instance
