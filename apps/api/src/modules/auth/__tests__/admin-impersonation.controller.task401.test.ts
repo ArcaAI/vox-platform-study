@@ -10,6 +10,8 @@ import { BadRequestException, ForbiddenException, NotFoundException, Unauthorize
 import { EventTypes, SysEventType } from '@arcaai/domains';
 import { AdminImpersonationController, USER_IMPERSONATION_STARTED } from '../admin-impersonation.controller';
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
+// The worktree source (the gateway build's `@arcaai/applications` dist may predate it).
+import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
 
 const SUPER_ADMIN = 'SUPER_ADMIN';
 // Retired role literal, used only to prove it no longer elevates. Distinct
@@ -34,6 +36,8 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 }
 
 const REQ = { ip: '127.0.0.1', headers: { 'user-agent': 'vitest' } } as never;
+/** TASK-1057 — the impersonation reason is LOCKED required. */
+const REASON = 'support ticket #7';
 
 interface Fixture {
   actorRoles: string[];
@@ -94,6 +98,8 @@ function buildController(opts: { user: ClsUserStub | null; fixture?: Partial<Fix
     cls as never,
     secretsService as never,
     eventEmitter as never,
+    // `impersonation.start` is a locked row: it never reads a setting.
+    new ActionConfirmationService({} as never),
   );
 
   return { controller, cls, userRepository, appSettingsService, authService, userRoleAssignmentService, eventEmitter };
@@ -110,7 +116,7 @@ describe('AdminImpersonationController — guard matrix', () => {
   it('allows a SUPER_ADMIN and mints a target-identity token with the actor preserved', async () => {
     const { controller } = buildController({ user: { id: 'admin-A', tenantId: null } });
 
-    const response = await controller.impersonate('target-B', {}, REQ);
+    const response = await controller.impersonate('target-B', { reason: REASON }, REQ);
 
     expect(response.impersonatedBy).toBe('admin-A');
     expect(response.user.id).toBe('target-B');
@@ -131,7 +137,7 @@ describe('AdminImpersonationController — guard matrix', () => {
   it('defaults the TTL to 30 minutes (JWT_IMPERSONATION_EXPIRES_IN fallback)', async () => {
     const { controller, appSettingsService } = buildController({ user: { id: 'admin-A' } });
 
-    const response = await controller.impersonate('target-B', {}, REQ);
+    const response = await controller.impersonate('target-B', { reason: REASON }, REQ);
 
     expect(appSettingsService.getValueWithDefault).toHaveBeenCalledWith('JWT_IMPERSONATION_EXPIRES_IN', '30m');
     const claims = decodeJwtPayload(response.token) as { exp: number; iat: number };
@@ -143,13 +149,13 @@ describe('AdminImpersonationController — guard matrix', () => {
   it('honours expiresInSeconds and clamps it to [10, 1800]', async () => {
     const { controller } = buildController({ user: { id: 'admin-A' } });
 
-    const short = decodeJwtPayload((await controller.impersonate('target-B', { expiresInSeconds: 60 }, REQ)).token) as { exp: number; iat: number };
+    const short = decodeJwtPayload((await controller.impersonate('target-B', { reason: REASON, expiresInSeconds: 60 }, REQ)).token) as { exp: number; iat: number };
     expect(short.exp - short.iat).toBe(60);
 
-    const floor = decodeJwtPayload((await controller.impersonate('target-B', { expiresInSeconds: 1 }, REQ)).token) as { exp: number; iat: number };
+    const floor = decodeJwtPayload((await controller.impersonate('target-B', { reason: REASON, expiresInSeconds: 1 }, REQ)).token) as { exp: number; iat: number };
     expect(floor.exp - floor.iat).toBe(10);
 
-    const ceil = decodeJwtPayload((await controller.impersonate('target-B', { expiresInSeconds: 90_000 }, REQ)).token) as {
+    const ceil = decodeJwtPayload((await controller.impersonate('target-B', { reason: REASON, expiresInSeconds: 90_000 }, REQ)).token) as {
       exp: number;
       iat: number;
     };
@@ -162,7 +168,7 @@ describe('AdminImpersonationController — guard matrix', () => {
       fixture: { actorRoles: [DOCTOR] },
     });
 
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(ForbiddenException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(ForbiddenException);
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.CallerNotSuperAdmin })]);
   });
 
@@ -172,7 +178,7 @@ describe('AdminImpersonationController — guard matrix', () => {
       fixture: { actorRoles: [TENANT_ADMIN] },
     });
 
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(ForbiddenException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(ForbiddenException);
   });
 
   it('rejects the retired SUPER_ADMIN role literal — no longer elevated', async () => {
@@ -181,14 +187,14 @@ describe('AdminImpersonationController — guard matrix', () => {
       fixture: { actorRoles: [RETIRED_SUPER_ADMIN] },
     });
 
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(ForbiddenException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(ForbiddenException);
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.CallerNotSuperAdmin })]);
   });
 
   it('rejects self-impersonation with 400 + SELF_IMPERSONATION', async () => {
     const { controller, eventEmitter } = buildController({ user: { id: 'admin-A' } });
 
-    await expect(controller.impersonate('admin-A', {}, REQ)).rejects.toThrow(BadRequestException);
+    await expect(controller.impersonate('admin-A', { reason: REASON }, REQ)).rejects.toThrow(BadRequestException);
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.SelfImpersonation })]);
   });
 
@@ -198,7 +204,7 @@ describe('AdminImpersonationController — guard matrix', () => {
       fixture: { targetRoles: [{ name: 'SUPER_ADMIN' }] },
     });
 
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(BadRequestException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(BadRequestException);
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.TargetIsSuperAdmin })]);
   });
 
@@ -208,14 +214,14 @@ describe('AdminImpersonationController — guard matrix', () => {
       fixture: { target: { id: 'target-B', username: 'doctor.bob', resourceStatus: 'DISABLED' } },
     });
 
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(BadRequestException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(BadRequestException);
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.TargetDisabled })]);
   });
 
   it('rejects an unknown target with 404', async () => {
     const { controller } = buildController({ user: { id: 'admin-A' }, fixture: { target: null } });
 
-    await expect(controller.impersonate('ghost', {}, REQ)).rejects.toThrow(NotFoundException);
+    await expect(controller.impersonate('ghost', { reason: REASON }, REQ)).rejects.toThrow(NotFoundException);
   });
 
   it('rejects nested impersonation with 403 + NESTED_IMPERSONATION (before any lookup)', async () => {
@@ -223,14 +229,14 @@ describe('AdminImpersonationController — guard matrix', () => {
       user: { id: 'admin-A', impersonatedBy: 'root-admin' },
     });
 
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(ForbiddenException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(ForbiddenException);
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.NestedImpersonation })]);
     expect(userRepository.findFirst).not.toHaveBeenCalled();
   });
 
   it('throws 401 when no user is in context', async () => {
     const { controller } = buildController({ user: null });
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(UnauthorizedException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(UnauthorizedException);
   });
 
   it('honours a valid targetTenantId and rejects an unassigned one', async () => {
@@ -239,15 +245,15 @@ describe('AdminImpersonationController — guard matrix', () => {
       fixture: { targetTenants: ['tenant-A', 'tenant-B'] },
     });
 
-    const ok = await controller.impersonate('target-B', { targetTenantId: 'tenant-A' }, REQ);
+    const ok = await controller.impersonate('target-B', { reason: REASON, targetTenantId: 'tenant-A' }, REQ);
     expect(ok.user.tenantId).toBe('tenant-A');
 
-    await expect(controller.impersonate('target-B', { targetTenantId: 'tenant-Z' }, REQ)).rejects.toThrow(BadRequestException);
+    await expect(controller.impersonate('target-B', { reason: REASON, targetTenantId: 'tenant-Z' }, REQ)).rejects.toThrow(BadRequestException);
   });
 
   it('rejects when the target has no tenant assignment', async () => {
     const { controller } = buildController({ user: { id: 'admin-A' }, fixture: { targetTenants: [] } });
-    await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(BadRequestException);
+    await expect(controller.impersonate('target-B', { reason: REASON }, REQ)).rejects.toThrow(BadRequestException);
   });
 });
 
@@ -304,7 +310,7 @@ describe('AdminImpersonationController — audit emissions', () => {
   it('prefers the CLS tenant for the forced row when the super admin is tenant-scoped', async () => {
     const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: 'tenant-CLS' } });
 
-    await controller.impersonate('target-B', {}, REQ);
+    await controller.impersonate('target-B', { reason: REASON }, REQ);
 
     const forced = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed);
     expect((forced?.[1] as { tenantId: string }).tenantId).toBe('tenant-CLS');
@@ -320,20 +326,45 @@ describe('AdminImpersonationController — audit emissions', () => {
   it('falls back to the resolved tenant when CLS tenantId is empty string (real super-admin JWT shape)', async () => {
     const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: '' } });
 
-    await controller.impersonate('target-B', {}, REQ);
+    await controller.impersonate('target-B', { reason: REASON }, REQ);
 
     const forced = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed);
     expect((forced?.[1] as { tenantId: string }).tenantId).toBe('tenant-B');
   });
 
-  it('omits reason from the audit payloads when not provided (never undefined-noise)', async () => {
-    const { controller, eventEmitter } = buildController({ user: { id: 'admin-A' } });
+  // TASK-1057 retired 'omits reason from the audit payloads when not provided': the impersonation
+  // reason is LOCKED required, so there is no reason-less start left to audit (see the block below).
+});
 
-    await controller.impersonate('target-B', {}, REQ);
+describe('AdminImpersonationController — TASK-1057 locked impersonation reason', () => {
+  beforeEach(() => vi.clearAllMocks());
 
-    const forced = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed);
-    expect((forced?.[1] as { data: { reason: string | null } }).data.reason).toBeNull();
-    const bracket = eventEmitter.emit.mock.calls.find(([name]) => name === EventTypes.UserAuthenticated);
-    expect((bracket?.[1] as { reason?: string }).reason).toBeUndefined();
+  it('without a reason is 400 CONFIRMATION_REQUIRED and mints nothing', async () => {
+    const { controller, authService, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: null } });
+    const error = await controller.impersonate('target-B', {}, REQ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'CONFIRMATION_REQUIRED', actionId: 'impersonation.start', kind: 'reason' });
+    expect(authService.trackAuthentication).not.toHaveBeenCalled();
+    expect(eventEmitter.emit.mock.calls.some(([name]) => name === ImpersonationEvents.Started)).toBe(false);
+  });
+
+  it('a blank reason is refused too', async () => {
+    const { controller } = buildController({ user: { id: 'admin-A', tenantId: null } });
+    await expect(controller.impersonate('target-B', { reason: '   ' }, REQ)).rejects.toThrow(BadRequestException);
+  });
+
+  it('with a reason stamps the forced start row (locked, required, provided)', async () => {
+    const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: null } });
+    await controller.impersonate('target-B', { reason: REASON }, REQ);
+    const row = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed)?.[1] as { data: Record<string, unknown> };
+    expect(row.data.confirmation).toEqual({
+      actionId: 'impersonation.start',
+      kind: 'reason',
+      mode: 'required',
+      locked: true,
+      required: true,
+      provided: true,
+      note: 'reason required',
+    });
   });
 });

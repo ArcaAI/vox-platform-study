@@ -14,9 +14,11 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-v
  * second, looser way to write into SYSTEM would be a way to write into SYSTEM from somewhere the
  * owner did not name.
  *
- * `changeReason` is REQUIRED here where the workflow request leaves it optional. A SYSTEM agent
+ * `changeReason` is REQUIRED by default where the workflow request leaves it optional. A SYSTEM agent
  * is what every tenant provisioned after this call inherits, so "why did the platform default
- * change?" must be answerable from the WORM record alone.
+ * change?" must be answerable from the WORM record alone. Since TASK-1057 the requirement is the
+ * platform's `agent.promoteToSystem` action confirmation, enforced by the service (400
+ * `CONFIRMATION_REQUIRED`), so the DTO only bounds it.
  */
 export class PromoteAgentToSystemRequest {
   @ApiProperty({ description: 'The agent to promote, by slug, in the Global build tenant.' })
@@ -33,11 +35,15 @@ export class PromoteAgentToSystemRequest {
   @Min(1)
   versionNumber?: number;
 
-  @ApiProperty({ description: 'Why this became the platform default. Recorded verbatim on the WORM promotion record.', maxLength: 500 })
+  @ApiPropertyOptional({
+    description:
+      'Why this became the platform default. Recorded verbatim on the WORM promotion record. Required unless the platform switched the `agent.promoteToSystem` action confirmation off.',
+    maxLength: 500,
+  })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(500)
-  changeReason: string;
+  changeReason?: string;
 }
 
 /** What one promotion copied alongside the agent row itself (TASK-930 §6.1). */

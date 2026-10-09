@@ -13,6 +13,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { AgentPromoteToSystemService } from '../agent-promote-to-system.service';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
+import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
+
+/** TASK-1057 — the platform action-confirmation policy at its catalogue defaults. */
+const defaultConfirmations = () =>
+  new ActionConfirmationService({ resolve: (key: string) => ({ key, value: HOPE_SETTINGS_REGISTRY.getOrThrow(key).default }) } as never);
 
 const GLOBAL = '50000000-0000-0000-0000-000000000000';
 
@@ -86,6 +92,7 @@ const construct = () =>
     mockModuleRef as never,
     mockEventEmitter as never,
     mockClsService as never,
+    defaultConfirmations(),
   );
 
 /** One Global-owned template row, as promotion reads it. */

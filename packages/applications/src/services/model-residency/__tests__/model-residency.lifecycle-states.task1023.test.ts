@@ -2,6 +2,7 @@ import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import { ModelResidencyService } from '../model-residency.service';
+import { confirmationsStub } from './confirmations.stub';
 import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 
 /**
@@ -84,6 +85,7 @@ function build(caller: { roles: string[]; tenantId: string | null }) {
     usage as never,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(),
   );
   return { service, usage };
 }

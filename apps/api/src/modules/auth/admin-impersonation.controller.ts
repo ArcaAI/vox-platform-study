@@ -1,4 +1,5 @@
 import {
+  ActionConfirmationService,
   IActiveUserContext,
   IAppSettingsService,
   IAuthService,
@@ -94,6 +95,8 @@ export class AdminImpersonationController {
     private readonly clsService: ClsService<IActiveUserContext>,
     @Inject(SecretsService) private readonly secretsService: SecretsService,
     private readonly eventEmitter: EventEmitter2,
+    // TASK-1057 — the impersonation reason is the LOCKED `impersonation.start` action confirmation.
+    private readonly confirmations: ActionConfirmationService,
   ) {}
 
   @Post(':id/impersonate')
@@ -193,6 +196,10 @@ export class AdminImpersonationController {
       throw new BadRequestException('Target user has no tenant assignment. Assign the user to a tenant before impersonating.');
     }
 
+    // TASK-1057 — a reason is mandatory regardless (locked): 400 CONFIRMATION_REQUIRED, after the audited
+    // denial gates above so every refused attempt keeps its own code, and before anything is minted.
+    const confirmation = this.confirmations.assert('impersonation.start', { value: request.reason });
+
     // TASK-944 — the ONE shared resolver, which `JwtStrategy` also verifies with.
     const jwtSecretKey = await resolveJwtSecret(this.secretsService);
     if (!jwtSecretKey) {
@@ -256,6 +263,7 @@ export class AdminImpersonationController {
       reason,
       expiresAt,
       impersonationTenantId: resolvedTenantId,
+      confirmation,
     });
 
     // Dedicated semantic signal with the impersonation extras.
@@ -266,6 +274,7 @@ export class AdminImpersonationController {
       success: true,
       reason,
       expiresAt,
+      confirmation,
       endpoint: `/admin/users/${targetUser.id}/impersonate`,
       method: 'POST',
       ip: req.ip || '127.0.0.1',
@@ -298,6 +307,7 @@ export class AdminImpersonationController {
         tenantId: resolvedTenantId,
         expiresAt,
         reason: reason ?? null,
+        confirmation,
       },
     });
 

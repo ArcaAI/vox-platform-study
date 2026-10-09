@@ -14,6 +14,8 @@ import { BadRequestException, ForbiddenException, UnauthorizedException } from '
 import { EventTypes } from '@arcaai/domains';
 import { AuthController } from '../auth.controller';
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
+// TASK-1057 — the worktree source (the gateway build's `@arcaai/applications` dist may predate it).
+import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
 
 const SWAGGER_API_OPERATION = 'swagger/apiOperation';
 
@@ -170,6 +172,10 @@ function buildController(opts: {
     {} as never,
     { lookup: vi.fn().mockResolvedValue(null) } as never,
     {} as never, // workflowRunService
+    undefined, // dnaQueue
+    undefined, // policyEngine
+    undefined, // runTraceAccess
+    new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
   );
   return {
     controller,
@@ -198,7 +204,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      await expect(controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
+      await expect(controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
         ForbiddenException,
       );
     });
@@ -214,7 +220,7 @@ describe('AuthController — impersonation security', () => {
       });
 
       await expect(
-        controller.impersonate({ targetUserId: 'target-B', targetTenantId: 'tenant-B' } as never, { ip: '127.0.0.1', headers: {} } as never),
+        controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7', targetTenantId: 'tenant-B' } as never, { ip: '127.0.0.1', headers: {} } as never),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -228,7 +234,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      const response = await controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never);
+      const response = await controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never);
 
       expect(response.user.tenantId).toBe('tenant-A');
       expect(response.impersonatedBy).toBe('admin-A');
@@ -245,7 +251,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      await expect(controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
+      await expect(controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
         UnauthorizedException,
       );
     });
@@ -264,7 +270,7 @@ describe('AuthController — impersonation security', () => {
       });
 
       await expect(
-        controller.impersonate({ targetUserId: 'target-B', targetTenantId: 'tenant-Z' } as never, { ip: '127.0.0.1', headers: {} } as never),
+        controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7', targetTenantId: 'tenant-Z' } as never, { ip: '127.0.0.1', headers: {} } as never),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -279,7 +285,7 @@ describe('AuthController — impersonation security', () => {
       });
 
       const response = await controller.impersonate(
-        { targetUserId: 'target-B', targetTenantId: 'tenant-B' } as never,
+        { targetUserId: 'target-B', reason: 'support ticket #7', targetTenantId: 'tenant-B' } as never,
         { ip: '127.0.0.1', headers: {} } as never,
       );
 
@@ -296,7 +302,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      await expect(controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
+      await expect(controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -359,7 +365,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      const response = await controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never);
+      const response = await controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never);
 
       expect(response.user.tenantId).toBe('tenant-B');
       expect(response.impersonatedBy).toBe('admin-A');
@@ -375,7 +381,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      await expect(controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
+      await expect(controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -394,8 +400,8 @@ describe('AuthController — impersonation security', () => {
           },
         }).controller;
 
-      const first = await makeController().impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never);
-      const second = await makeController().impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never);
+      const first = await makeController().impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never);
+      const second = await makeController().impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never);
 
       const jti1 = decodeJwtPayload(first.token).jti as string;
       const jti2 = decodeJwtPayload(second.token).jti as string;
@@ -424,7 +430,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      const response = await controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never);
+      const response = await controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never);
 
       expect(response.user.departmentId).toBe('dept-doctor-001');
       expect(userDepartmentService.findActiveDepartmentForUserInTenant).toHaveBeenCalledWith('target-B', 'tenant-B');
@@ -443,7 +449,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      const response = await controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '127.0.0.1', headers: {} } as never);
+      const response = await controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '127.0.0.1', headers: {} } as never);
 
       expect(response.user.departmentId).toBeUndefined();
     });
@@ -461,7 +467,7 @@ describe('AuthController — impersonation security', () => {
         },
       });
 
-      await controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never);
+      await controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never);
 
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         EventTypes.UserAuthenticated,
@@ -511,7 +517,7 @@ describe('AuthController — impersonation security', () => {
         fixture: { adminRoles: [SUPER_ADMIN], targetRoles: [DOCTOR], targetAssignments: [{ tenantId: 'tenant-B' }] },
       });
 
-      await controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never);
+      await controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never);
 
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         ImpersonationEvents.Started,
@@ -539,7 +545,7 @@ describe('AuthController — impersonation security', () => {
       });
 
       await expect(
-        controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
+        controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
       ).rejects.toBeInstanceOf(ForbiddenException);
 
       expect(eventEmitter.emit).toHaveBeenCalledWith(
@@ -560,7 +566,7 @@ describe('AuthController — impersonation security', () => {
       });
 
       await expect(
-        controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
+        controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(eventEmitter.emit).toHaveBeenCalledWith(
@@ -581,7 +587,7 @@ describe('AuthController — impersonation security', () => {
       });
 
       await expect(
-        controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
+        controller.impersonate({ targetUserId: 'target-B', reason: 'support ticket #7' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
       ).rejects.toBeInstanceOf(UnauthorizedException);
 
       expect(eventEmitter.emit).toHaveBeenCalledWith(

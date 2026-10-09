@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Inject, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Inject, Optional, UnauthorizedException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -20,6 +20,7 @@ import { BaseService, FetchResponse, PaginatedQuery, isSuperAdmin, withFormatted
 import { IActiveUserContext } from '../../interfaces';
 import { ICryptoService } from '../crypto/ICryptoService';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
@@ -38,6 +39,9 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     @Inject(SecretsService) private readonly secretsService: SecretsService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1057 — stamps the locked `globalSetting.secretStepUp` confirmation on the reveal / rotate audit.
+    // Optional + trailing so positional fixtures keep their arity; the module always wires it.
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.GlobalSetting);
   }
@@ -571,6 +575,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
         key: entity.key,
         namespace: entity.namespace,
         revealedAt: new Date().toISOString(),
+        ...this.stepUpConfirmation(),
       },
     });
 
@@ -677,9 +682,15 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
         previousVersion,
         newVersion: rotated.version,
         rotatedAt: new Date().toISOString(),
+        ...this.stepUpConfirmation(),
       },
     });
 
     return rotated;
+  }
+
+  /** TASK-1057 — the locked step-up stamp; reached only after the password check passed. */
+  private stepUpConfirmation(): { confirmation?: ReturnType<ActionConfirmationService['decide']> } {
+    return this.confirmations ? { confirmation: this.confirmations.decide('globalSetting.secretStepUp', { value: true }) } : {};
   }
 }

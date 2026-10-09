@@ -10,6 +10,7 @@ import { CommonServiceModule } from '../baseServices';
 import { EvalServiceModule } from '../eval/eval.service.module';
 import { AuthorizationModule } from '../../authorization/authorization.module';
 import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.service.module';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 /**
  * Agent promotion between tenants.
@@ -42,6 +43,8 @@ import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.
     // TASK-1047 D2 — promote-to-system screens the promoted pieces under SYSTEM. No cycle: the
     // registry module imports no agent or promotion module.
     GovernedPromptServiceModule,
+    // TASK-1057 — `ActionConfirmationService` (the `agent.promoteToSystem` change-reason policy).
+    EffectiveSettingsModule,
   ],
   providers: [
     AgentPromotionService,

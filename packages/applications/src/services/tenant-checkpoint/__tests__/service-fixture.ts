@@ -7,6 +7,8 @@ import {
   TenantCheckpointStatus,
   type TenantCheckpointEntity,
 } from '@arcaai/domains';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
+import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 import { TenantCheckpointService } from '../tenant-checkpoint.service';
 
 export const TENANT_A = '1032a000-0000-4000-8000-000000001032';
@@ -32,7 +34,17 @@ export function checkpointEntity(overrides: Partial<Parameters<typeof TenantChec
   });
 }
 
-export function buildService(actor: Actor = TENANT_ADMIN) {
+/** TASK-1057 — the platform action-confirmation policy over a stub SYSTEM tier (catalogue defaults unless named). */
+function confirmationsStub(modes: Record<string, string> = {}): ActionConfirmationService {
+  return new ActionConfirmationService({
+    resolve: (key: string) => {
+      const actionId = key.slice('confirmation.'.length);
+      return { key, value: actionId in modes ? modes[actionId] : HOPE_SETTINGS_REGISTRY.getOrThrow(key).default };
+    },
+  } as never);
+}
+
+export function buildService(actor: Actor = TENANT_ADMIN, opts: { confirmationModes?: Record<string, string> } = {}) {
   const tenant = { id: TENANT_A, name: 'Acme Clinic', key: 'ACME', isDeleted: false };
   const checkpoints = {
     findByIdOrNull: vi.fn(),
@@ -98,6 +110,7 @@ export function buildService(actor: Actor = TENANT_ADMIN) {
     restoreQueue as never,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(opts.confirmationModes),
   );
   return { service, cls, checkpoints, restores, tenants, users, crypto, sealing, store, settings, queryRawUnsafe, exportQueue, restoreQueue, eventEmitter, tenant, dataKey };
 }

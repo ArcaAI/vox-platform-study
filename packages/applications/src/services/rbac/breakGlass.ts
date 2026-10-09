@@ -24,6 +24,13 @@ import { BadRequestException, HttpException, HttpStatus, UnauthorizedException }
 /** `data.action` discriminator on every forced break-glass audit row. */
 export const RBAC_BREAK_GLASS_AUDIT_ACTION = 'RBAC_BREAK_GLASS';
 
+/**
+ * TASK-1057 — the LOCKED action-confirmation row every break-glass audit row is stamped with
+ * (`confirmation`). `provided` is whether the caller sent the credentials at all.
+ */
+export const RBAC_BREAK_GLASS_CONFIRMATION = 'rbac.breakGlass';
+export const breakGlassCredentialsProvided = (outcome: BreakGlassOutcome): boolean => outcome !== 'rejected-missing-credentials';
+
 /** Step-up credentials accompanying a dangerous RBAC mutation. */
 export interface BreakGlassCredentials {
   /** Caller's CURRENT password (verified against the stored hash). */

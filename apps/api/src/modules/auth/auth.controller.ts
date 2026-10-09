@@ -1,4 +1,5 @@
 import {
+  ActionConfirmationService,
   IActiveUserContext,
   IAppSettingsService,
   IAuthService,
@@ -153,6 +154,9 @@ export class AuthController {
     // `workflow_run_trace:` mint. TS-optional + trailing for the positional fixtures; absent, the
     // namespace fails CLOSED (403) — it can never mean "allow".
     private readonly runTraceAccess?: WorkflowRunTraceAccessService,
+    // TASK-1057 — the impersonation reason is the LOCKED `impersonation.start` action confirmation.
+    // TS-optional + trailing for the positional fixtures; absent, impersonation fails CLOSED (503).
+    private readonly confirmations?: ActionConfirmationService,
   ) {}
 
   /**
@@ -736,6 +740,14 @@ export class AuthController {
       }
     }
 
+    // TASK-1057 — a reason is mandatory regardless (locked): 400 CONFIRMATION_REQUIRED, after the audited
+    // denial gates above so every refused attempt keeps its own code, and before anything is minted.
+    if (!this.confirmations) {
+      throw new ServiceUnavailableException('Impersonation is unavailable: action confirmations are not wired.');
+    }
+    const confirmation = this.confirmations.assert('impersonation.start', { value: request.reason });
+    const reason = request.reason?.trim() || undefined;
+
     // See login() for the JWT_SECRET_KEY resolution rationale.
     const jwtSecretKey = await this.resolveJwtSecretKey();
     if (!jwtSecretKey) {
@@ -785,6 +797,8 @@ export class AuthController {
       ip: req.ip || '127.0.0.1',
       userAgent: req.headers['user-agent'] || 'Unknown',
       timestamp: new Date(),
+      reason,
+      confirmation,
     });
 
     // Dedicated, semantically named start event (in addition
@@ -794,6 +808,8 @@ export class AuthController {
       targetUserId: targetUser.id,
       tenantId: resolvedTenantId,
       success: true,
+      reason,
+      confirmation,
       endpoint: '/auth/impersonate',
       method: 'POST',
       ip: req.ip || '127.0.0.1',

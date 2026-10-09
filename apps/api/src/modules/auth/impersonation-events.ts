@@ -45,6 +45,8 @@ export const ImpersonationDeniedReason = {
 
 export type ImpersonationDeniedReasonCode = (typeof ImpersonationDeniedReason)[keyof typeof ImpersonationDeniedReason];
 
+import type { ActionConfirmationService } from '@arcaai/applications';
+
 export interface ImpersonationEventPayload {
   /** The acting administrator (the impersonator). */
   adminId: string;
@@ -61,6 +63,8 @@ export interface ImpersonationEventPayload {
   reason?: string;
   /** ISO expiry of the minted impersonation token (Started only). */
   expiresAt?: string;
+  /** TASK-1057 — the locked `impersonation.start` confirmation stamp (Started only). */
+  confirmation?: ReturnType<ActionConfirmationService['decide']>;
   endpoint: string;
   method: string;
   ip: string;

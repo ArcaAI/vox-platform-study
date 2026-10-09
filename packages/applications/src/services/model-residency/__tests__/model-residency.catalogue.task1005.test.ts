@@ -4,6 +4,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ModelResidencyClass, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { confirmationsStub } from './confirmations.stub';
 import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { ImplicitLivePathReader } from '../implicit-live-path';
 import { ModelUsageIndexReader } from '../model-usage-index';
@@ -296,6 +297,7 @@ function build() {
     usage,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(),
   );
   return { service, state, repos, aiModels, agentsClient };
 }

@@ -42,6 +42,7 @@ import {
   RESIDENCY_SHADOW_REVIEWED_AT_KEY,
   type ModelResidencySettingKey,
 } from '../settings-registry/descriptors/model-residency.descriptors';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import type {
   CreateModelResidencyPolicyRequest,
@@ -463,6 +464,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     private readonly usage: ModelUsageIndexReader,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    private readonly confirmations: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ModelResidencyPolicy);
   }
@@ -915,21 +917,30 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     if (this.operations.runningFor(service, modelRef)) {
       throw new ConflictException({ code: 'LOAD_IN_PROGRESS', message: `A load of '${modelRef}' on ${service} is already running.` });
     }
+    const action = replace && resident.length > 0 ? 'replace' : 'load';
+    // TASK-1057 — the reason rule is the platform's action-confirmation policy; `when-risky` (the default) is the
+    // rule below: a live-path replace, a load forced past the budget, or (LM Studio "Apply & reload") any forced apply.
+    const cls = action === 'replace' ? this.classify(service, modelRef, row?.id ?? resident[0].aiModelId, ledger) : null;
+    const livePathReplace = cls?.class === 'PINNED';
+    const forcedPastBudget = force && (admission.refusal === 'NO_SIZE' || admission.refusal === 'OVER_BUDGET');
+    const confirmationId = service === 'lm-studio' && replace ? 'lmStudioServing.apply' : action === 'replace' ? 'modelResidency.reload' : 'modelResidency.load';
+    const confirmationInput = { value: reason, risky: livePathReplace || forcedPastBudget || (confirmationId === 'lmStudioServing.apply' && force) };
+    const confirmation = this.confirmations.decide(confirmationId, confirmationInput);
+    const reasonMissing = confirmation.required && !confirmation.provided;
     // R2-F8 — a replace unloads first, so a live-path model needs a reason exactly as an unload does (OD-2), audited.
-    if (replace && resident.length > 0 && !reason) {
-      const cls = this.classify(service, modelRef, row?.id ?? resident[0].aiModelId, ledger);
-      if (cls.class === 'PINNED') {
-        const name = row?.name ?? modelRef;
-        throw new ConflictException({
-          code: 'LIVE_PATH_REASON_REQUIRED',
-          message:
-            cls.classSource === 'policy'
-              ? `${name} is kept always loaded by its residency policy; give a reason to reload it`
-              : `${name} is on the live consultation path; give a reason to reload it`,
-          consumers: await this.consumersOf(row, cls),
-        });
-      }
+    if (livePathReplace && reasonMissing && cls) {
+      const name = row?.name ?? modelRef;
+      throw new ConflictException({
+        code: 'LIVE_PATH_REASON_REQUIRED',
+        message:
+          cls.classSource === 'policy'
+            ? `${name} is kept always loaded by its residency policy; give a reason to reload it`
+            : `${name} is on the live consultation path; give a reason to reload it`,
+        consumers: await this.consumersOf(row, cls),
+      });
     }
+    // Any other missing reason is the uniform 400 — except a forced over-budget load, which keeps its own 409 below.
+    if (!forcedPastBudget) this.confirmations.assert(confirmationId, confirmationInput);
     const inFlight = resident.reduce((sum, e) => sum + (e.inFlight ?? 0), 0);
     if (replace && inFlight > 0 && !force) {
       throw new ConflictException({
@@ -947,7 +958,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const { devices, need, availableBytes, chosen } = admission;
     const noSize = admission.refusal === 'NO_SIZE';
     const overBudget = admission.refusal === 'OVER_BUDGET';
-    if (noSize && !(force && reason)) {
+    if (noSize && !(force && !reasonMissing)) {
       residencyAdmissionRejectionsTotal.inc({ reason: 'no_size' });
       throw new ConflictException({
         code: 'NO_SIZE',
@@ -971,7 +982,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         ...advice,
       });
     }
-    if (overBudget && !(force && reason)) {
+    if (overBudget && !(force && !reasonMissing)) {
       residencyAdmissionRejectionsTotal.inc({ reason: 'over_budget' });
       throw new ConflictException({
         code: 'OVER_BUDGET',
@@ -1019,7 +1030,6 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       throw new ConflictException({ code: 'LOAD_IN_PROGRESS', message: `A load of '${modelRef}' on ${service} is already running.` });
     }
 
-    const action = replace && resident.length > 0 ? 'replace' : 'load';
     this.startLoad({
       opId,
       action,
@@ -1057,6 +1067,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       noSize,
       needBytes: need.bytes,
       needSource: need.source,
+      confirmation,
     });
 
     return {
@@ -1573,7 +1584,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     // The unload never touches the policy: the model stays PINNED and an enforcing controller loads it back.
     const cls = this.classify(service, modelRef, row?.id ?? null, ledger);
     const livePath = cls.class === 'PINNED';
-    if (livePath && !reason) {
+    // TASK-1057 — `when-risky` (the default) is this rule; `not-required` lifts it, `required` asks on every unload (400).
+    const confirmation = this.confirmations.decide('modelResidency.unload', { value: reason, risky: livePath });
+    if (livePath && confirmation.required && !confirmation.provided) {
       const name = row?.name ?? modelRef;
       throw new ConflictException({
         code: 'LIVE_PATH_REASON_REQUIRED',
@@ -1584,6 +1597,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         consumers: await this.consumersOf(row, cls),
       });
     }
+    this.confirmations.assert('modelResidency.unload', { value: reason, risky: livePath });
 
     if (service === 'lm-studio' && !force) {
       // LM Studio refuses nothing on its own; the in-flight guard is the controller's (from `model_running_instances`).
@@ -1605,7 +1619,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     );
 
     // F10 — the operator's reason is on the audit event whether or not the unload was forced (the agent wire keeps its `admin` verb).
-    this.audit('model-residency.unload', { service, modelRef, device: request.device ?? null, force, reason, livePath, outcome });
+    this.audit('model-residency.unload', { service, modelRef, device: request.device ?? null, force, reason, livePath, outcome, confirmation });
     return { outcome, service, modelRef };
   }
 

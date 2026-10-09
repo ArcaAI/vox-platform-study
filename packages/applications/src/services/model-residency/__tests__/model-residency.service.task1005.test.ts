@@ -6,6 +6,7 @@ import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { register } from 'prom-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { confirmationsStub } from './confirmations.stub';
 import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { ResidencyAgentError } from '../residency-agent.client';
 import { RESIDENCY_DECISIONS_TOTAL } from '../residency-metrics';
@@ -173,6 +174,7 @@ function build(opts: { enforce?: boolean } = {}) {
     { read: vi.fn(async () => new Map()) } as never,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(),
   );
   // DCGM is scraped, not live; the test's fake stamps every sample in the future.
   Object.assign(service, { measurementPollMs: 1, measurementMaxWaitMs: 50 });

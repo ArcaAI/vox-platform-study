@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import Decimal from 'decimal.js';
@@ -53,6 +53,7 @@ import {
   computeInvoiceTotals,
   computePlanFeeLines,
 } from './invoice-math';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 
 /**
  * The invoice engine (decisions D11–D15, D17).
@@ -128,6 +129,9 @@ export class BillingService extends BaseService implements IBillingService {
     private readonly planHistoryRepository: TenantPlanHistoryRepository,
     @Inject(IPriceBookService) private readonly priceBook: IPriceBookService,
     private readonly unitOfWork: CoreUnitOfWorkService,
+    // TASK-1057 — stamps the locked `billing.adjustment` reason-code confirmation on the adjustment event.
+    // Optional + trailing so positional fixtures keep their arity; the module always wires it.
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.BillingInvoice);
   }
@@ -292,7 +296,12 @@ export class BillingService extends BaseService implements IBillingService {
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceType: ResourceType.BillingAdjustment,
       resourceId: saved.id,
-      metaData: { invoiceId, reason: request.reason, amountMicros: request.amountMicros },
+      metaData: {
+        invoiceId,
+        reason: request.reason,
+        amountMicros: request.amountMicros,
+        ...(this.confirmations && { confirmation: this.confirmations.decide('billing.adjustment', { value: request.reason }) }),
+      },
     });
     return this.buildReadModel(tenantId, invoice);
   }

@@ -42,6 +42,7 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { IAgentService } from '../agent/IAgentService';
 import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { IAgentPromoteToSystemService } from './IAgentPromoteToSystemService';
 import { PromoteAgentToSystemRequest, PromoteAgentToSystemResponse } from './dto';
 import { runInTenantContext } from './tenant-context';
@@ -140,6 +141,7 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     private readonly moduleRef: ModuleRef,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    private readonly confirmations: ActionConfirmationService,
     // TASK-1047 D2 — the promoted pieces are screened under SYSTEM before anything is written.
     // Optional + trailing so positional fixtures keep their arity; the module always wires it, and
     // the SYSTEM publish in step 6 re-checks through `AgentService.publish` regardless.
@@ -155,6 +157,9 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     if (!userId) {
       throw new ForbiddenException('Promoting an agent into SYSTEM requires an authenticated platform administrator.');
     }
+    // TASK-1057 — the change reason is the platform's `agent.promoteToSystem` action confirmation (default
+    // required, 400 CONFIRMATION_REQUIRED); the stamp rides on the WORM record either way.
+    const confirmation = this.confirmations.assert('agent.promoteToSystem', { value: dto.changeReason });
 
     // ---- 2. The exact immutable Global version ----------------------------
     const source = await this.resolveGlobalSource(dto.sourceSlug, dto.versionNumber);
@@ -245,7 +250,7 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
         warnings: warnings as never,
         promotedBy: userId,
         createdBy: userId,
-        metaData: { changeReason: dto.changeReason },
+        metaData: { changeReason: dto.changeReason, confirmation },
       } as never);
       record.validate();
 
@@ -284,6 +289,7 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
         sourceAgentId: source.id,
         targetAgentId: saved.id,
         changeReason: dto.changeReason,
+        confirmation,
       },
     });
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BillingInvoiceLineWriteRepository, BillingUsageAggregateRepository, CoreDatabaseModule } from '@arcaai/domains';
 
 import { PriceBookServiceModule } from '../priceBook/price-book.service.module';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { BillingService } from './billing.service';
 import { IBillingService } from './IBillingService';
 
@@ -21,7 +22,8 @@ import { IBillingService } from './IBillingService';
  * follow-up if a second consumer appears.
  */
 @Module({
-  imports: [CoreDatabaseModule, PriceBookServiceModule],
+  // TASK-1057 — `EffectiveSettingsModule` supplies `ActionConfirmationService` (the adjustment audit stamp).
+  imports: [CoreDatabaseModule, PriceBookServiceModule, EffectiveSettingsModule],
   providers: [
     BillingUsageAggregateRepository,
     BillingInvoiceLineWriteRepository,

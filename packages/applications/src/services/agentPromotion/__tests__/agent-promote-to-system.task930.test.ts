@@ -16,9 +16,11 @@
  * `AgentPromoteToSystemService` did not exist.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { AgentPromoteToSystemService } from '../agent-promote-to-system.service';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
+import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 
 const GLOBAL = '50000000-0000-0000-0000-000000000000';
 
@@ -103,7 +105,16 @@ function withId<T extends object>(entity: T, id: string): T {
   return saved;
 }
 
-const construct = () =>
+/** TASK-1057 — the platform action-confirmation policy over a stub SYSTEM tier (catalogue defaults unless named). */
+const confirmationsStub = (modes: Record<string, string> = {}) =>
+  new ActionConfirmationService({
+    resolve: (key: string) => {
+      const actionId = key.slice('confirmation.'.length);
+      return { key, value: actionId in modes ? modes[actionId] : HOPE_SETTINGS_REGISTRY.getOrThrow(key).default };
+    },
+  } as never);
+
+const construct = (modes: Record<string, string> = {}) =>
   new AgentPromoteToSystemService(
     mockAgentRepository as never,
     mockFallbackRepository as never,
@@ -117,6 +128,7 @@ const construct = () =>
     mockModuleRef as never,
     mockEventEmitter as never,
     mockClsService as never,
+    confirmationsStub(modes),
   );
 
 /** A tenant-less SUPER_ADMIN — the elevated context this verb requires. */
@@ -371,5 +383,40 @@ describe('AgentPromoteToSystemService — Global -> SYSTEM agent promotion (TASK
     expect((created!.data as Record<string, unknown>).fromTenantId).toBe(GLOBAL);
     expect((created!.data as Record<string, unknown>).toTenantId).toBe(SYSTEM_TENANT_ID);
     expect((created!.data as Record<string, unknown>).changeReason).toBe('day-1 default');
+  });
+
+  describe('TASK-1057 — the change reason follows the `agent.promoteToSystem` action confirmation', () => {
+    it('default (required): no reason is 400 CONFIRMATION_REQUIRED and nothing is written', async () => {
+      const error = await service.promoteToSystem({ sourceSlug: 'general-medicine-summarization' }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'CONFIRMATION_REQUIRED', actionId: 'agent.promoteToSystem', kind: 'reason' });
+      expect(mockPromotionRepository.create).not.toHaveBeenCalled();
+    });
+
+    // The sys-event is the audit row. (The WORM `AgentPromotion` entity has no `metaData` at all, so the
+    // `metaData` the service hands its factory — `changeReason` since TASK-930 — is dropped before persistence.)
+    it('default: the promotion sys-event carries the "reason required" stamp', async () => {
+      await service.promoteToSystem({ sourceSlug: 'general-medicine-summarization', changeReason: 'day-1 default' });
+      const stamp = { actionId: 'agent.promoteToSystem', kind: 'reason', mode: 'required', locked: false, required: true, provided: true, note: 'reason required' };
+      const created = mockEventEmitter.emit.mock.calls
+        .map((call) => call[1] as { data?: Record<string, unknown> })
+        .find((event) => event.data?.action === 'promote-agent-to-system');
+      expect(created?.data?.confirmation).toEqual(stamp);
+    });
+
+    it('not-required: promotes without a reason and stamps "reason not required"', async () => {
+      service = construct({ 'agent.promoteToSystem': 'not-required' });
+      const result = await service.promoteToSystem({ sourceSlug: 'general-medicine-summarization' });
+      expect(result.promotionId).toBe('promo-agent-1');
+      const created = mockEventEmitter.emit.mock.calls
+        .map((call) => call[1] as { data?: Record<string, unknown> })
+        .find((event) => event.data?.action === 'promote-agent-to-system');
+      expect(created?.data?.confirmation).toMatchObject({
+        mode: 'not-required',
+        required: false,
+        provided: false,
+        note: 'reason not required',
+      });
+    });
   });
 });

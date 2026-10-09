@@ -9,6 +9,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { AgentPromoteToSystemService } from '../agent-promote-to-system.service';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
+import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
+
+/** TASK-1057 — the platform action-confirmation policy at its catalogue defaults. */
+const defaultConfirmations = () =>
+  new ActionConfirmationService({ resolve: (key: string) => ({ key, value: HOPE_SETTINGS_REGISTRY.getOrThrow(key).default }) } as never);
 
 const GLOBAL = '50000000-0000-0000-0000-000000000000';
 
@@ -61,6 +67,7 @@ const construct = () =>
     { get: vi.fn(() => ({})) } as never,
     { emit: vi.fn() } as never,
     cls as never,
+    defaultConfirmations(),
     registry as never,
   );
 

@@ -12,6 +12,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AuthController } from '../auth.controller';
+// TASK-1057 — the worktree source (the gateway build's `@arcaai/applications` dist may predate it).
+import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN', 'admin', 'system-admin'];
 
@@ -239,9 +241,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      const response = await controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest());
+      const response = await controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' }, createMockRequest());
 
       expect(response.impersonatedBy).toBe('admin-001');
       expect(response.token).toBeDefined();
@@ -277,9 +283,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await expect(controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
+      await expect(controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
     });
 
     it('should reject SUPER_ADMIN impersonating another SUPER_ADMIN', async () => {
@@ -316,9 +326,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await expect(controller.impersonate({ targetUserId: 'admin-002' }, createMockRequest())).rejects.toThrow(BadRequestException);
+      await expect(controller.impersonate({ targetUserId: 'admin-002', reason: 'support ticket #7' }, createMockRequest())).rejects.toThrow(BadRequestException);
     });
 
     it('should allow SUPER_ADMIN to impersonate TENANT_ADMIN', async () => {
@@ -356,9 +370,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      const result = await controller.impersonate({ targetUserId: 'tadmin-001' }, createMockRequest());
+      const result = await controller.impersonate({ targetUserId: 'tadmin-001', reason: 'support ticket #7' }, createMockRequest());
 
       expect(result.user.id).toBe('tadmin-001');
       expect(result.impersonatedBy).toBe('admin-001');
@@ -399,9 +417,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await expect(controller.impersonate({ targetUserId: 'tadmin-002' }, createMockRequest())).rejects.toThrow(BadRequestException);
+      await expect(controller.impersonate({ targetUserId: 'tadmin-002', reason: 'support ticket #7' }, createMockRequest())).rejects.toThrow(BadRequestException);
     });
 
     it('should reject TENANT_ADMIN impersonating SUPER_ADMIN', async () => {
@@ -439,9 +461,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await expect(controller.impersonate({ targetUserId: 'sadmin-001' }, createMockRequest())).rejects.toThrow(BadRequestException);
+      await expect(controller.impersonate({ targetUserId: 'sadmin-001', reason: 'support ticket #7' }, createMockRequest())).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -485,9 +511,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest());
+      await controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' }, createMockRequest());
 
       expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('JWT_IMPERSONATION_EXPIRES_IN', '15m');
     });
@@ -518,6 +548,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       expect(typeof (controller as any).revokeImpersonation).toBe('function');
@@ -554,6 +588,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       const result = await controller.revokeImpersonation(createMockRequest());
@@ -589,6 +627,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await controller.revokeImpersonation(createMockRequest());
@@ -625,6 +667,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await expect(controller.revokeImpersonation(createMockRequest())).rejects.toThrow(UnauthorizedException);
@@ -657,6 +703,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await expect(controller.refresh({ refreshToken: '' })).rejects.toThrow(BadRequestException);
@@ -689,6 +739,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await expect(controller.refresh({ refreshToken: 'invalid-token-format' })).rejects.toThrow(UnauthorizedException);
@@ -729,6 +783,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await expect(controller.refresh({ refreshToken: 'opaque-old-token' })).rejects.toThrow(UnauthorizedException);
@@ -773,6 +831,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
@@ -811,6 +873,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await expect(controller.login({ username: '', password: 'pass' } as any, createMockRequest())).rejects.toThrow(BadRequestException);
@@ -836,6 +902,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await expect(controller.login({ username: 'user', password: '' } as any, createMockRequest())).rejects.toThrow(BadRequestException);
@@ -863,6 +933,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await expect(controller.login({ username: 'ghost', password: 'pass' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
@@ -900,6 +974,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       const result = await controller.login({ username: 'real_user', password: 'correct-pass', tenantKey: 'acme-hospital' }, createMockRequest());
@@ -946,6 +1024,10 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await controller.login({ username: 'tracked_user', password: 'correct-pass', tenantKey: 'acme-hospital' }, createMockRequest());
@@ -987,9 +1069,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await expect(controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
+      await expect(controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
     });
 
     it('should throw BadRequestException when target user does not exist', async () => {
@@ -1021,9 +1107,13 @@ describe('AuthController — Security Tests', () => {
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
         {} as never, // workflowRunService
+        undefined, // dnaQueue
+        undefined, // policyEngine
+        undefined, // runTraceAccess
+        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
-      await expect(controller.impersonate({ targetUserId: 'nonexistent' }, createMockRequest())).rejects.toThrow(BadRequestException);
+      await expect(controller.impersonate({ targetUserId: 'nonexistent', reason: 'support ticket #7' }, createMockRequest())).rejects.toThrow(BadRequestException);
     });
   });
 });
