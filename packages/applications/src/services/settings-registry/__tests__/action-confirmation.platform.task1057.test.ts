@@ -90,6 +90,13 @@ describe('applyPlatform', () => {
     expect(again.errors).toEqual([]);
   });
 
+  it('an explicit mode equal to the stored one is a no-op, not a 400 "No changes"', async () => {
+    const { service, write } = makeService(superAdmin, [{ key: 'confirmation.promptTemplate.update', tenantId: SYSTEM, value: 'required', version: 2 }]);
+    const result = await service.applyPlatform([{ actionId: 'promptTemplate.update', mode: 'required', expectedVersion: 2 }]);
+    expect(write).not.toHaveBeenCalled();
+    expect(result.errors).toEqual([]);
+  });
+
   it('reports a write-lane failure as a per-cell error with its status', async () => {
     const { service, write } = makeService(superAdmin);
     write.mockRejectedValueOnce(Object.assign(new Error('drift'), { getStatus: () => 412 }));

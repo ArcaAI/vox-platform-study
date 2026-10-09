@@ -176,10 +176,10 @@ export class ActionConfirmationService {
       throw new BadRequestException(`'${value}' is not an allowed mode for '${cell.actionId}'. Allowed: ${spec.modes.join(', ')}.`);
     }
     const key = actionConfirmationSettingKey(cell.actionId);
-    if (cell.mode === null) {
-      const current = (await this.readSystemRows()).get(key);
-      if (!current || toValue(current) === value) return;
-    }
+    // Idempotent, like the feature matrix: a write that changes nothing is a no-op, never the write
+    // lane's 400 "No changes to write to." A reset with no stored row is likewise already done.
+    const current = (await this.readSystemRows()).get(key);
+    if (current ? toValue(current) === value : cell.mode === null) return;
     if (!this.writeService) throw new Error('ActionConfirmationService: the settings write lane is not available in this module.');
     await this.writeService.write(key, value, {
       scope: 'system',

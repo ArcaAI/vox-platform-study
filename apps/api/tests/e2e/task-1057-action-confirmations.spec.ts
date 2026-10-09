@@ -28,6 +28,15 @@ async function superAdminToken(request: APIRequestContext): Promise<string> {
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
+/** The template's current strong ETag — PATCH `admin/prompt-templates/:id` is `@RequiresIfMatch()` (428 without it). */
+async function etagOf(request: APIRequestContext, headers: Record<string, string>, id: string): Promise<string> {
+  const res = await request.get(`${PROMPT_TEMPLATES}/${id}`, { headers });
+  expect(res.status()).toBe(200);
+  const etag = res.headers()['etag'];
+  expect(etag, 'GET admin/prompt-templates/:id returns an ETag').toBeTruthy();
+  return etag;
+}
+
 interface PlatformRow {
   actionId: string;
   mode: string;
@@ -102,7 +111,7 @@ test.describe('platform write', () => {
 
       // Tenant admin PATCH without a reason -> 400 CONFIRMATION_REQUIRED.
       const refused = await request.patch(`${PROMPT_TEMPLATES}/${template.id}`, {
-        headers: adminHeaders,
+        headers: { ...adminHeaders, 'If-Match': await etagOf(request, adminHeaders, template.id) },
         data: { content: 'Summarise the visit, briefly.' },
       });
       expect(refused.status()).toBe(400);
@@ -110,7 +119,7 @@ test.describe('platform write', () => {
 
       // With a reason it goes through.
       const accepted = await request.patch(`${PROMPT_TEMPLATES}/${template.id}`, {
-        headers: adminHeaders,
+        headers: { ...adminHeaders, 'If-Match': await etagOf(request, adminHeaders, template.id) },
         data: { content: 'Summarise the visit, briefly.', changeReason: 'tighten wording for the e2e' },
       });
       expect(accepted.status()).toBe(200);
@@ -124,7 +133,10 @@ test.describe('platform write', () => {
       expect(reset.status()).toBe(200);
     }
 
-    const after = await request.patch(`${PROMPT_TEMPLATES}/${template.id}`, { headers: adminHeaders, data: { content: 'Summarise the visit.' } });
+    const after = await request.patch(`${PROMPT_TEMPLATES}/${template.id}`, {
+      headers: { ...adminHeaders, 'If-Match': await etagOf(request, adminHeaders, template.id) },
+      data: { content: 'Summarise the visit.' },
+    });
     expect(after.status()).toBe(200);
   });
 });

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDefined, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // Literal copies of `CONFIRMATION_KINDS` / `CONFIRMATION_MODES` (@arcaai/types): apps/api does not
@@ -98,8 +98,10 @@ export class ActionConfirmationWriteRequest {
     description: 'The new mode. `null` resets the row to the catalogue default.',
   })
   // `null` is a MEANING (reset): see FeatureMatrixWriteRequest.value.
-  @IsDefined({ message: '`mode` is required; use null to reset.' })
-  @IsIn([...CONFIRMATION_MODES, null], { message: '`mode` must be required, when-risky, not-required or null.' })
+  // `@IsDefined` would reject `null` too (it fails on null AND undefined), which made reset
+  // impossible. `null` skips validation (= reset); anything else, `undefined` included, must be a mode.
+  @ValidateIf((cell: { mode?: unknown }) => cell.mode !== null)
+  @IsIn([...CONFIRMATION_MODES], { message: '`mode` must be required, when-risky, not-required or null.' })
   mode!: 'required' | 'when-risky' | 'not-required' | null;
 
   @ApiPropertyOptional({ description: 'The `version` from the prior read. Omit for a row that has no stored value.', example: 3 })
