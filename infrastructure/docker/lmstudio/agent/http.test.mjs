@@ -252,3 +252,21 @@ test('deployed + a real token: the normal gate (401 without it, 200 with it)', a
     assert.ok(!logs.some((l) => l.event === 'agent.auth_not_configured'));
   });
 });
+
+test('GET /metrics needs no token, is the Prometheus text format, and is served even when /internal is refused', async () => {
+  const agent = fakeAgent();
+  agent.metrics = async () => '# TYPE model_evictions_total counter\n';
+  const server = createServer(createHandler({ agent, token: '', deployed: true }));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const response = await fetch(`${base}/metrics`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'text/plain; version=0.0.4; charset=utf-8');
+    assert.equal(await response.text(), '# TYPE model_evictions_total counter\n');
+    assert.equal((await fetch(`${base}/metrics`, { method: 'POST' })).status, 405);
+    assert.equal((await fetch(`${base}/internal/residency`)).status, 503);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

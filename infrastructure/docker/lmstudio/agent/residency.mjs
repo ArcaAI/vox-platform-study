@@ -33,6 +33,7 @@
 import { diffAppliedConfig, selectModelKey } from '../loader/kvconfig.mjs';
 import { deviceDeltas, measureSettled } from './gpus.mjs';
 import { LoadSpecError, buildLoadRequest, deviceOfSplit, estimateDeviceBytes, loadConfigFromFields } from './loadspec.mjs';
+import { createMetrics } from './metrics.mjs';
 
 /** A refused verb: contract error `code`, HTTP `status`, extra body fields. */
 export class ResidencyError extends Error {
@@ -77,6 +78,7 @@ export const DEFAULT_MEASURE = Object.freeze({
  *   sleep?: (ms: number) => Promise<void>,
  *   log?: (level: string, event: string, fields?: object) => void,
  *   measure?: Partial<typeof DEFAULT_MEASURE>,
+ *   metrics?: ReturnType<typeof createMetrics>,
  * }} deps
  */
 export function createResidencyAgent({
@@ -88,6 +90,7 @@ export function createResidencyAgent({
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   log = () => {},
   measure = {},
+  metrics = createMetrics(),
 }) {
   const knobs = { ...DEFAULT_MEASURE, ...measure };
   /** identifier -> what THIS agent measured when it loaded that instance. */
@@ -419,6 +422,7 @@ export function createResidencyAgent({
         ttlSeconds: request.ttlMs === undefined ? null : request.ttlMs / 1000,
       });
       applyLoadPolicy(info.identifier, { pin, ttlSeconds });
+      metrics.observeLoad(info.identifier, loadSeconds);
 
       const model = modelJson({ type: 'llm', ...info }, applied, gpuCount);
       log('info', 'residency.loaded', {
@@ -434,7 +438,7 @@ export function createResidencyAgent({
     }
   }
 
-  async function unload({ model_ref: modelRef, device = null }) {
+  async function unload({ model_ref: modelRef, device = null, reason = 'admin' }) {
     const loaded = await daemonCall('listLoaded', () => daemon.listLoaded());
     let targets = loaded.filter((inst) => matches(inst, modelRef));
     if (device) {
@@ -452,6 +456,7 @@ export function createResidencyAgent({
         await daemon.unload(inst);
         unloaded = true;
         unloadsSeen += 1;
+        metrics.countEviction(reason);
       } catch (error) {
         if (!NOT_FOUND.test(errorMessage(error))) {
           log('warn', 'residency.unload_failed', { model_ref: modelRef, identifier: inst.identifier, reason: errorMessage(error) });
@@ -482,5 +487,20 @@ export function createResidencyAgent({
     return { model: modelJson(inst, await appliedOf(inst), gpuCount) };
   }
 
-  return { report, healthy, load, unload, setPolicy };
+  /**
+   * The Prometheus exposition, its gauges rebuilt from a fresh report (the
+   * same bounded daemon reads the report makes). A daemon that does not answer
+   * leaves the per-model gauges empty rather than failing the scrape.
+   */
+  async function metricsText() {
+    let current = null;
+    try {
+      current = await report();
+    } catch (error) {
+      if (!(error instanceof ResidencyError)) throw error;
+    }
+    return metrics.render(current);
+  }
+
+  return { report, healthy, load, unload, setPolicy, metrics: metricsText };
 }
