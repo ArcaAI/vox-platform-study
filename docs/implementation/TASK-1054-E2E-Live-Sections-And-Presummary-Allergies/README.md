@@ -45,6 +45,9 @@ sections, pre-summary allergy line, `FACT_LEDGER` / `ENCOUNTER_RECAP` items and 
 | `7722e77d1` | A | merge |
 | `49a520d2f` | B | ArcaAI pre-summary (seed 07b v3, `PRE_SUMMARY_CONTENT_V3`): FORMAT adds **Allergies & Contraindications** (first) and **Family History**; CAPTURE adds mandatory allergy (with "No known allergies documented" when a record says so) and family-history bullets; "five headings" → "the headings below". New `pre-summary-allergies.task1054.test.ts` (3 RED → GREEN). `rollout.mjs` republishes the ArcaAI template + every agent pinning it on a non-reset environment (admin API, DRY_RUN, idempotent). |
 | `70ff18809` | B | merge |
+| `b0d48523d` | C (ops) | TASK-1045 `rollout.mjs`: a tenant admin may not write the platform-managed `generation.reasoning` on a create (403 `AGENT_PARAMETER_PLATFORM_MANAGED` on the cluster run), so the tenant pass defers the `fact-ledger-extraction` create and the super-admin pass creates it in the tenant (OD-11). Re-run on the cluster 2026-10-09: ledger agent active in ArcaAI, Global, SYSTEM. |
+| `fc96ec222` | D | Live re-run showed the pre-summary still without allergies: the native path resolves the **department-free** template (`prompt-resolution.service.ts`, `'dept-free'` variant; ArcaAI clone `dae32a3a…`, SYSTEM `71000000-0000-0000-0004-000000000002`), not the agent's department-corpus template lane B changed. Seed `07d` gets the same two headings + CAPTURE bullets; checksum pin updated; new `dept-free-pre-summary-allergies.task1054.test.ts` (2 RED → GREEN); `rollout.mjs` extended to converge the dept-free body in ArcaAI (tenant admin), Global and SYSTEM (super admin). |
+| `dd342cadd` | D | merge |
 
 Gates (orchestrator, after both merges): applications live-documentation **97 files / 1036 tests** passed; database seed +
 pre-summary incl. `seed.test.ts` **7 files / 310 tests** passed; `@arcaai/applications` typecheck clean; eslint 0 errors
@@ -67,3 +70,4 @@ agent; closes defect C) and `TASK-1054 rollout.mjs` (ArcaAI pre-summary) against
 |---|---|
 | 2026-10-09 | Opened from the ALaaS → cluster e2e; owner approved all three fixes and a re-run. |
 | 2026-10-09 | Lanes A + B merged, gates green; awaiting push, deploy and the two rollouts, then the e2e re-run. |
+| 2026-10-09 | Pushed + deployed (`db7fc726`); rollouts run (1045 failed on the ArcaAI ledger create → fixed `b0d48523d`, re-run ok; 1054 ok). E2E re-run: live sections clean (A fixed), ledger + recap + `encounter.recap` frame present (C fixed), pre-summary still without allergies → lane D (dept-free template) merged `dd342cadd`, gates: database 368/368, applications prompt 319/319. New observation: notes now end `AWAITING_REVIEW` with `NOTE_COVERAGE_GAPS:8/24` under the republished TASK-1045 finalizer. |
