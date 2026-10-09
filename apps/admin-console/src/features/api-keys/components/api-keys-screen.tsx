@@ -408,6 +408,7 @@ export function ApiKeysScreen() {
         confirmLabel="Delete key"
         destructive
         typeToConfirm={deleteTarget?.keyName}
+        typeToConfirmActionId="apiKey.delete"
         isPending={deleteMutation.isPending}
         onConfirm={confirmDelete}
       />

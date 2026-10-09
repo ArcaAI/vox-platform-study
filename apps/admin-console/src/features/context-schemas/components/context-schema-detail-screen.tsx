@@ -119,7 +119,6 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [changeReason, setChangeReason] = useState('');
   const [breakingChanges, setBreakingChanges] = useState<string[] | null>(null);
   const [refusedImpact, setRefusedImpact] = useState<ContextSchemaUsagesResponse | null>(null);
   const [problems, setProblems] = useState<string[] | null>(null);
@@ -140,9 +139,9 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
   useUnsavedChangesGuard(isDirty, LEAVE_MESSAGE);
   useTrailingBreadcrumb(schema?.name);
 
-  function runPublish(acknowledgements: { allowBreakingChange?: boolean; acknowledgeImpact?: boolean }) {
+  function runPublish({ changeReason, ...acknowledgements }: { allowBreakingChange?: boolean; acknowledgeImpact?: boolean; changeReason?: string }) {
     publish.mutate(
-      { id, body: { definition: draft, changeReason: changeReason.trim() || undefined, ...acknowledgements } },
+      { id, body: { definition: draft, changeReason, ...acknowledgements } },
       {
         onSuccess: () => {
           toast.success('Definition published');
@@ -150,7 +149,6 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
           setBreakingChanges(null);
           setRefusedImpact(null);
           setProblems(null);
-          setChangeReason('');
           void detail.refetch();
           void versionsQuery.refetch();
           void usagesQuery.refetch();
@@ -331,8 +329,6 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
         additions={additionsOver(draft, publishedDefinition)}
         impact={refusedImpact ?? usagesQuery.data ?? null}
         breakingChanges={breakingChanges}
-        changeReason={changeReason}
-        onChangeReasonChange={setChangeReason}
         onConfirm={runPublish}
         isPending={publish.isPending}
       />
@@ -366,6 +362,7 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
         confirmLabel="Delete schema"
         destructive
         typeToConfirm={schema.name}
+        typeToConfirmActionId="contextSchema.delete"
         onConfirm={handleDelete}
         isPending={deleteSchema.isPending}
       />

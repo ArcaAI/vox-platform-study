@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
-import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { asModelResidencyConflict, toastResidencyError } from '@/shared/residency';
 import type { LmStudioResidencyLoadOptions, ResidencyCatalogueModel, ResidencyServiceGroup } from '../api/types';
 import { liveConsumerLines, requiresUnloadReason } from './residency-display';
@@ -56,7 +56,8 @@ export function ReloadConfirmDialog({ open, onOpenChange, service, model, option
   const consumers = serverLivePath?.consumers.length ? serverLivePath.consumers : livePath ? liveConsumerLines(model) : [];
   const needsReason = force || livePath;
   const trimmed = reason.trim();
-  const armed = !needsReason || trimmed.length > 0;
+  const policy = useActionConfirmation('modelResidency.reload');
+  const armed = policy.isSatisfied(reason, needsReason);
 
   async function confirm() {
     setSending(true);
@@ -110,21 +111,8 @@ export function ReloadConfirmDialog({ open, onOpenChange, service, model, option
               ) : null}
             </section>
           ) : null}
-          {needsReason ? (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="reload-reason">
-                Reason <span aria-hidden>*</span>
-                <span className="sr-only">(required, audited)</span>
-              </Label>
-              <Textarea
-                id="reload-reason"
-                rows={2}
-                aria-required="true"
-                value={reason}
-                disabled={pending}
-                onChange={(event) => setReason(event.target.value)}
-              />
-            </div>
+          {needsReason || policy.isRequired(false) ? (
+            <ReasonField actionId="modelResidency.reload" value={reason} onChange={setReason} risky={needsReason} disabled={pending} id="reload-reason" />
           ) : null}
         </div>
         <DialogFooter className="shrink-0 items-center border-t p-4 sm:justify-end">

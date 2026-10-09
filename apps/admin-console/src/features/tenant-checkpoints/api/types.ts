@@ -85,7 +85,7 @@ export interface CompletedPart {
 
 export interface RestoreRequest {
   categories: RestoreCategory[];
-  reason: string;
+  reason?: string;
   password: string;
   confirmationName: string;
 }

@@ -617,6 +617,7 @@ function ManagementBody() {
         confirmLabel="Delete all versions"
         destructive
         typeToConfirm={deletePhrase}
+        typeToConfirmActionId="workflow.delete"
         onConfirm={() => {
           setConfirmDelete(false);
           void startBulk('delete');

@@ -125,7 +125,7 @@ describe('HarnessPolicyScreen', () => {
     expect(await screen.findByText('maxRegen')).toBeDefined();
     // The OCC save panel renders with the WORM change-note input.
     expect(screen.getByLabelText('Max regen budget')).toBeDefined();
-    expect(screen.getByLabelText('Reason')).toBeDefined();
+    expect(screen.getByLabelText(/^Reason/)).toBeDefined();
     expect(screen.getByRole('button', { name: /Save · If-Match/ })).toBeDefined();
   });
 
@@ -154,7 +154,7 @@ describe('HarnessPolicyScreen', () => {
     const maxRegen = await screen.findByLabelText('Max regen budget');
 
     fireEvent.change(maxRegen, { target: { value: '3' } });
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'raise regen budget' } });
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: 'raise regen budget' } });
     expect(screen.getByText('Unsaved changes')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /Save · If-Match/ }));
 
@@ -163,6 +163,24 @@ describe('HarnessPolicyScreen', () => {
     expect(patch?.url).toBe('/api/hope/admin/harness/policy');
     expect(patch?.headers.get('if-match')).toBe('"7"');
     expect(patch?.body).toEqual({ maxRegen: 3, reason: 'raise regen budget', expectedVersion: 7 });
+  });
+
+  it('TASK-1057: a required reason blocks the save until it is typed', async () => {
+    stubFetch({
+      custom: (call) => {
+        if (call.url.includes('action-confirmations/effective')) {
+          return Response.json({ items: [{ actionId: 'harnessPolicy.update', kind: 'reason', mode: 'required', locked: false, maxLength: 500 }] });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<HarnessPolicyScreen />);
+
+    fireEvent.change(await screen.findByLabelText('Max regen budget'), { target: { value: '3' } });
+    const save = screen.getByRole('button', { name: /Save · If-Match/ }) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(true));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: 'raise regen budget' } });
+    expect(save.disabled).toBe(false);
   });
 
   it('shows the OCC conflict alert with reload-merge when the PATCH returns 412', async () => {

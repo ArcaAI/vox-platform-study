@@ -1217,6 +1217,7 @@ export function AgentLineageDrawer({
           confirmLabel={`Delete v${dialog.version.versionNumber}`}
           destructive
           typeToConfirm={lineage.slug}
+          typeToConfirmActionId="agent.delete"
           isPending={remove.isPending}
           onConfirm={() => {
             void run(() => remove.mutateAsync(dialog.version.id), 'Agent version deleted', 'Could not delete.').then(() => setDialog(null));

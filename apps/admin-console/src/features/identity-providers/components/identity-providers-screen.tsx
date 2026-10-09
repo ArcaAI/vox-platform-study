@@ -209,6 +209,7 @@ function IdentityProvidersScreenBody() {
         confirmLabel="Delete provider"
         destructive
         typeToConfirm={deleting?.displayName}
+        typeToConfirmActionId="identityProvider.delete"
         onConfirm={handleDeleteConfirmed}
         isPending={deleteProvider.isPending}
       />

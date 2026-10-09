@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { asModelResidencyConflict, toastResidencyError } from '@/shared/residency';
 import { useUnloadResidencyModel } from '../api';
 import type { UnloadDialogProps } from './residency-dialog-contracts';
@@ -63,7 +64,8 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
   const force = inFlight > 0 || serverInFlight !== null;
   const reasonRequired = force || livePath;
   const trimmed = reason.trim();
-  const armed = !reasonRequired || trimmed.length > 0;
+  const policy = useActionConfirmation('modelResidency.unload');
+  const armed = policy.isSatisfied(reason, reasonRequired);
 
   async function confirm() {
     setPending(true);
@@ -156,26 +158,7 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
               </RadioGroup>
             </section>
           ) : null}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="unload-reason">
-              {reasonRequired ? (
-                <>
-                  Reason <span aria-hidden>*</span>
-                  <span className="sr-only">(required, audited)</span>
-                </>
-              ) : (
-                'Reason (optional)'
-              )}
-            </Label>
-            <Textarea
-              id="unload-reason"
-              rows={2}
-              aria-required={reasonRequired ? 'true' : undefined}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              disabled={pending}
-            />
-          </div>
+          <ReasonField actionId="modelResidency.unload" value={reason} onChange={setReason} risky={reasonRequired} disabled={pending} id="unload-reason" />
         </div>
         <DialogFooter className="shrink-0 items-center border-t p-4 sm:justify-end">
           {reasonRequired && !armed ? <span className="text-muted-foreground mr-auto text-xs">Enter a reason to enable unload</span> : null}

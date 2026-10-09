@@ -294,12 +294,17 @@ describe('UserDetailScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /impersonate/i }));
     const dialog = await screen.findByRole('alertdialog');
-    expect(within(dialog).getByText(/audit/i)).toBeDefined();
-    fireEvent.click(within(dialog).getByRole('button', { name: /impersonate/i }));
+    expect(within(dialog).getByText(/audit-flagged/i)).toBeDefined();
+    // TASK-1057 — impersonation.start is a LOCKED required reason: the button stays disabled until one is typed.
+    const confirmButton = within(dialog).getByRole('button', { name: /impersonate/i }) as HTMLButtonElement;
+    expect(confirmButton.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: ' investigating ticket 4412 ' } });
+    expect(confirmButton.disabled).toBe(false);
+    fireEvent.click(confirmButton);
 
     await waitFor(() => {
       const post = calls.find((call) => call.method === 'POST' && call.url === '/api/auth/impersonate');
-      expect(post?.body).toEqual({ userId: 'u-1' });
+      expect(post?.body).toEqual({ userId: 'u-1', reason: 'investigating ticket 4412' });
     });
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });

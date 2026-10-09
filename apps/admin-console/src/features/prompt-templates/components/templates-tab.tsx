@@ -392,6 +392,7 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
         confirmLabel="Delete Prompt"
         destructive
         typeToConfirm={deleting?.name}
+        typeToConfirmActionId="promptTemplate.delete"
         onConfirm={handleDeleteConfirmed}
         isPending={deleteTemplate.isPending}
       />

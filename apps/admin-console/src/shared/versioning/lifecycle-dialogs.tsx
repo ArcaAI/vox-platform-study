@@ -160,6 +160,7 @@ export function DeprecateVersionDialog({
       confirmLabel={`Deprecate v${versionNumber}`}
       destructive={isActive}
       typeToConfirm={isActive ? slug : undefined}
+      typeToConfirmActionId="versionedContent.lifecycle"
       onConfirm={onConfirm}
       isPending={isPending}
     />
@@ -205,6 +206,7 @@ export function DiscardDraftDialog({
       confirmLabel={`Discard draft v${versionNumber}`}
       destructive
       typeToConfirm={confirmPhrase ?? slug}
+      typeToConfirmActionId="versionedContent.lifecycle"
       onConfirm={onConfirm}
       isPending={isPending}
     />

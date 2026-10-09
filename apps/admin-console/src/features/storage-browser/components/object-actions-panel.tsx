@@ -110,6 +110,7 @@ export function SelectedObjectActions({ bucketName, object, onDeleted }: { bucke
         confirmLabel="Delete object"
         destructive
         typeToConfirm={name}
+        typeToConfirmActionId="storageObject.delete"
         onConfirm={handleDeleteConfirmed}
         isPending={deleteFile.isPending}
       />

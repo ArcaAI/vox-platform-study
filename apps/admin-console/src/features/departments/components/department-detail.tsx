@@ -421,6 +421,7 @@ export function DepartmentDetailDrawer({
         confirmLabel="Delete department"
         destructive
         typeToConfirm={confirmToken}
+        typeToConfirmActionId="department.delete"
         onConfirm={handleDeleteConfirmed}
         isPending={deleteDepartment.isPending}
       />

@@ -158,6 +158,7 @@ export function DocumentTemplatesList() {
         confirmLabel="Delete template"
         destructive
         typeToConfirm={deleting?.name}
+        typeToConfirmActionId="documentTemplate.delete"
         onConfirm={handleDeleteConfirmed}
         isPending={deleteTemplate.isPending}
       />

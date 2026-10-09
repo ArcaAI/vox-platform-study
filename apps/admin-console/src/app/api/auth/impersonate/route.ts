@@ -73,7 +73,12 @@ export async function POST(request: Request): Promise<Response> {
   const gatewayPath = elevated ? `admin/users/${encodeURIComponent(body.userId)}/impersonate` : 'auth/impersonate';
   const gatewayBody = elevated
     ? { ...(body.targetTenantId ? { targetTenantId: body.targetTenantId } : {}), ...(body.reason ? { reason: body.reason } : {}) }
-    : { targetUserId: body.userId, ...(body.targetTenantId ? { targetTenantId: body.targetTenantId } : {}) };
+    : {
+        targetUserId: body.userId,
+        ...(body.targetTenantId ? { targetTenantId: body.targetTenantId } : {}),
+        // TASK-1057 — `impersonation.start` is a locked reason on BOTH routes.
+        ...(body.reason ? { reason: body.reason } : {}),
+      };
 
   const gatewayResponse = await fetch(gatewayUrl(gatewayPath), {
     method: 'POST',

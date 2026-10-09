@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 import { isRestoreLockError, useRestoreCheckpoint } from '../api/hooks';
 import {
@@ -18,9 +19,6 @@ import {
   type TenantCheckpoint,
   type TenantCheckpointRestore,
 } from '../api/types';
-
-const REASON_MIN = 10;
-const REASON_MAX = 1000;
 
 export interface RestoreDialogProps {
   open: boolean;
@@ -51,10 +49,11 @@ export function RestoreDialog({ open, onOpenChange, tenantId, tenantName, checkp
   const [typedName, setTypedName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const uid = useId();
+  const reasonPolicy = useActionConfirmation('tenantCheckpoint.restore');
 
   const available: RestoreCategory[] = isSuperAdmin ? ['CONFIG_CONTENT', 'USERS_ACCESS', 'CLINICAL'] : ['CONFIG_CONTENT', 'USERS_ACCESS'];
   const trimmedReason = reason.trim();
-  const armed = categories.length > 0 && trimmedReason.length >= REASON_MIN && password.length > 0 && typedName === tenantName;
+  const armed = categories.length > 0 && reasonPolicy.isSatisfied(reason) && password.length > 0 && typedName === tenantName;
 
   function handleOpenChange(next: boolean) {
     if (!next) {
@@ -75,7 +74,7 @@ export function RestoreDialog({ open, onOpenChange, tenantId, tenantName, checkp
   function handleSubmit() {
     setError(null);
     restore.mutate(
-      { id: checkpoint.id, body: { categories, reason: trimmedReason, password, confirmationName: typedName } },
+      { id: checkpoint.id, body: { categories, ...(trimmedReason ? { reason: trimmedReason } : {}), password, confirmationName: typedName } },
       {
         onSuccess: (result) => {
           toast.success('Restore started');
@@ -126,20 +125,7 @@ export function RestoreDialog({ open, onOpenChange, tenantId, tenantName, checkp
               );
             })}
           </fieldset>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${uid}-reason`}>Reason *</Label>
-            <Textarea
-              id={`${uid}-reason`}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              maxLength={REASON_MAX}
-              className="min-h-20 resize-none"
-              aria-describedby={`${uid}-reason-hint`}
-            />
-            <p id={`${uid}-reason-hint`} className="text-muted-foreground text-xs">
-              {REASON_MIN}&ndash;{REASON_MAX} characters; recorded in the audit trail ({trimmedReason.length}/{REASON_MAX}).
-            </p>
-          </div>
+          <ReasonField actionId="tenantCheckpoint.restore" value={reason} onChange={setReason} id={`${uid}-reason`} />
           <div className="flex flex-col gap-2">
             <Label htmlFor={`${uid}-password`}>Your password</Label>
             <Input id={`${uid}-password`} type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />

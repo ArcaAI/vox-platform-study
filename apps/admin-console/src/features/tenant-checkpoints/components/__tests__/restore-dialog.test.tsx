@@ -50,11 +50,14 @@ interface Call {
   body: unknown;
 }
 
-function stubRestore(respond: () => Response): Call[] {
+function stubRestore(respond: () => Response, reasonMode: 'required' | 'not-required' = 'required'): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('action-confirmations/effective')) {
+        return Response.json({ items: [{ actionId: 'tenantCheckpoint.restore', kind: 'reason', mode: reasonMode, locked: false, minLength: 10, maxLength: 1000 }] });
+      }
       calls.push({ url: String(input), body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
       return respond();
     }),
@@ -143,6 +146,17 @@ describe('RestoreDialog', () => {
       body: { categories: ['CONFIG_CONTENT'], reason: 'rolling back the failed upgrade', password: 'pw', confirmationName: 'Acme Clinic' },
     });
     expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the reason as optional and submits without it when the platform switches it off', async () => {
+    const calls = stubRestore(() => Response.json(RESTORE, { status: 202 }), 'not-required');
+    const { onRestored } = renderDialog(false);
+    await screen.findByText('(optional)');
+    fill({ reason: '' });
+    expect(submit().disabled).toBe(false);
+    fireEvent.click(submit());
+    await waitFor(() => expect(onRestored).toHaveBeenCalled());
+    expect(calls[0]?.body).toEqual({ categories: ['CONFIG_CONTENT'], password: 'pw', confirmationName: 'Acme Clinic' });
   });
 
   it('reports a 423 to the screen so it can show the read-only banner', async () => {

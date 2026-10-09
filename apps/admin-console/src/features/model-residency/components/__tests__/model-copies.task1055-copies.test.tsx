@@ -6,7 +6,8 @@
  * in the request vocabulary; each GPU card shows the copy it holds.
  */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { renderWithProviders as render } from '@/test/render';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GpuSummaryPanel } from '../gpu-summary-panel';
 import { GIB, makeLoaded, makeService } from './fixtures';

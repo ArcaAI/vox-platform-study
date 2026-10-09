@@ -316,6 +316,7 @@ function BucketsTab({ onProvision, scoped, elevated }: { onProvision: () => void
         confirmLabel="Delete bucket"
         destructive
         typeToConfirm={deleting?.slug}
+        typeToConfirmActionId="tenantStorage.delete"
         onConfirm={handleDeleteConfirmed}
         isPending={deleteBucket.isPending}
       />

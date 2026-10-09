@@ -107,6 +107,7 @@ export function TenantLifecycleDialogs({
       confirmLabel={copy.confirmLabel}
       destructive={copy.destructive}
       typeToConfirm={request.action === 'delete' ? request.tenant.name : undefined}
+      typeToConfirmActionId="tenant.delete"
       isPending={mutation.isPending}
       onConfirm={handleConfirm}
     />

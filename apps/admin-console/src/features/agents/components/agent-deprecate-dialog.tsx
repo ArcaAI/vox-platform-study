@@ -59,6 +59,7 @@ export function AgentDeprecateDialog({ open, onOpenChange, itemLabel, slug, vers
       confirmLabel={`Deprecate v${versionNumber}`}
       destructive={isActive}
       typeToConfirm={isActive ? slug : undefined}
+      typeToConfirmActionId="agent.deprecate"
       onConfirm={onConfirm}
       isPending={isPending}
     />
