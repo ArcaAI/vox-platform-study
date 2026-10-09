@@ -4415,7 +4415,7 @@ export interface LmStudioLoadedModelResponse {
 }
 
 export interface LmStudioResidencyLoadOptions {
-  /** Context window to load with (`context_length`). */
+  /** Context window to load with (`context_length`). Above the model`s declared maximum: 400 `CONTEXT_LENGTH_UNSUPPORTED`; above the context its footprint was measured at, admission scales the need by the ratio. */
   contextLength?: number | null;
   /** Prompt-processing batch size (`eval_batch_size`). */
   evalBatchSize?: number | null;
@@ -4490,7 +4490,7 @@ export interface LoadModelResidencyRequest {
   device?: string | null;
   /** Proceed over the memory budget (409 `OVER_BUDGET` otherwise) — REQUIRES a non-empty `reason`, which is audited (owner OD-3). Never lifts 409 `EXCEEDS_DEVICE` (the need is larger than the device`s free memory outright, TASK-1055 OD-5). With `replace`, also unloads a model that is serving requests. */
   force?: boolean;
-  /** TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write. Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise). */
+  /** TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write, audited (`model-residency.default-device`, with the previous value). Judged first and written only once the load has landed (a model already loaded on that device: at once). Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise); already loaded on another device is 409 `ALREADY_LOADED_ELSEWHERE`; a load forced past the budget is never made the default (409 `MAKE_DEFAULT_OVER_BUDGET`). */
   makeDefault?: boolean;
   /** The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref. */
   modelRef: string;
@@ -4499,7 +4499,7 @@ export interface LoadModelResidencyRequest {
   pin?: boolean;
   /** Why — mandatory for a forced load; recorded on the audit event. */
   reason?: string | null;
-  /** "Apply & reload": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`. */
+  /** "Apply & reload": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation — stt / nlp: only the copy on the target device. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`, and 409 `LIVE_PATH_REASON_REQUIRED` for a live-path model without a `reason` (audited). A failed reload restores each unloaded instance where it was, as it was. */
   replace?: boolean;
   /** The serving workload. `stt-worker` has no control API and is read-only. */
   service: 'stt' | 'nlp' | 'lm-studio';
@@ -4972,7 +4972,7 @@ export interface ModelResidencyLoadError {
 export interface ModelResidencyLoadPreviewResponse {
   /** TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`. */
   candidates: ModelResidencyPlacementCandidate[];
-  /** Where the load would land (`gpu0`, `multi`, `cpu:<service>`); `null` when the service`s device is unknown. */
+  /** Where the load would land, in the request vocabulary (`gpu0`, `multi`, `cpu`); `null` when the service`s device is unknown. */
   device: string | null;
   /** ON_DEMAND resident models on the same device that could be unloaded to make room, largest first. */
   evictable: ModelResidencyPreviewModel[];
@@ -4981,7 +4981,7 @@ export interface ModelResidencyLoadPreviewResponse {
   freeBytes: number | null;
   headroomBytes: number | null;
   modelRef: string;
-  /** Bytes admission reserves (measured, else catalogue × 1.2); `null` = no size known. */
+  /** Bytes admission reserves (measured, else catalogue × 1.2; LM Studio at a longer context than it was measured at: scaled by the ratio); `null` = no size known. */
   needBytes: number | null;
   needSource: 'measured' | 'catalogue' | 'unknown';
   /** Resident models on the same device that are pinned (live path or policy) and are NOT offered. */
@@ -4991,7 +4991,7 @@ export interface ModelResidencyLoadPreviewResponse {
   service: string;
   /** `max(0, needBytes − (freeBytes − headroomBytes))`; 0 when it fits. */
   shortfallBytes: number;
-  /** TASK-1055 — the most suitable device: one that fits with the most remaining memory (ties: fewer live-path models, then lower index); if none fits, the smallest shortfall. Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`). */
+  /** TASK-1055 — the most suitable device: where the load goes with no device named (the model`s default device, its profile, else the service`s own placement) whenever it fits; otherwise the single card that fits with the most remaining memory (ties: fewer live-path models, then lower index), `multi` only when no single card fits and the split does; if none fits, the smallest shortfall (single cards first). Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`). */
   suggestedDevice: string | null;
   suggestionReason: string | null;
   unattributedBytes: number | null;
@@ -5077,7 +5077,7 @@ export interface ModelResidencyPlacementCandidate {
   device: string;
   /** ON_DEMAND models on this card that could be unloaded to make room, largest first. */
   evictable: ModelResidencyPreviewModel[];
-  /** Need > free memory: refused even with force. */
+  /** Need (a split: some card`s share) > free memory: refused even with force. */
   exceedsDevice: boolean;
   fits: boolean;
   freeBytes: number | null;
@@ -5085,7 +5085,7 @@ export interface ModelResidencyPlacementCandidate {
   label: string;
   /** Live-path models already resident on this card. */
   livePathModels: number;
-  /** Free minus headroom minus the need; negative = short. */
+  /** Free minus headroom minus the need; negative = short. A split (`multi`) is judged per card: the summed spare room when every card holds its share, else minus the summed shortfall. */
   remainingBytes: number | null;
   shortfallBytes: number;
   totalBytes: number | null;

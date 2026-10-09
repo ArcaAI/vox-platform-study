@@ -17810,7 +17810,7 @@
       "LmStudioResidencyLoadOptions": {
         "properties": {
           "contextLength": {
-            "description": "Context window to load with (`context_length`).",
+            "description": "Context window to load with (`context_length`). Above the model`s declared maximum: 400 `CONTEXT_LENGTH_UNSUPPORTED`; above the context its footprint was measured at, admission scales the need by the ratio.",
             "maximum": 1048576,
             "minimum": 512,
             "nullable": true,
@@ -18037,7 +18037,7 @@
           },
           "makeDefault": {
             "default": false,
-            "description": "TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write. Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise).",
+            "description": "TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write, audited (`model-residency.default-device`, with the previous value). Judged first and written only once the load has landed (a model already loaded on that device: at once). Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise); already loaded on another device is 409 `ALREADY_LOADED_ELSEWHERE`; a load forced past the budget is never made the default (409 `MAKE_DEFAULT_OVER_BUDGET`).",
             "type": "boolean"
           },
           "modelRef": {
@@ -18067,7 +18067,7 @@
           },
           "replace": {
             "default": false,
-            "description": "\"Apply & reload\": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`.",
+            "description": "\"Apply & reload\": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation — stt / nlp: only the copy on the target device. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`, and 409 `LIVE_PATH_REASON_REQUIRED` for a live-path model without a `reason` (audited). A failed reload restores each unloaded instance where it was, as it was.",
             "type": "boolean"
           },
           "service": {
@@ -19713,7 +19713,7 @@
             "type": "array"
           },
           "device": {
-            "description": "Where the load would land (`gpu0`, `multi`, `cpu:<service>`); `null` when the service`s device is unknown.",
+            "description": "Where the load would land, in the request vocabulary (`gpu0`, `multi`, `cpu`); `null` when the service`s device is unknown.",
             "nullable": true,
             "type": "string"
           },
@@ -19740,7 +19740,7 @@
             "type": "string"
           },
           "needBytes": {
-            "description": "Bytes admission reserves (measured, else catalogue × 1.2); `null` = no size known.",
+            "description": "Bytes admission reserves (measured, else catalogue × 1.2; LM Studio at a longer context than it was measured at: scaled by the ratio); `null` = no size known.",
             "nullable": true,
             "type": "number"
           },
@@ -19779,7 +19779,7 @@
             "type": "number"
           },
           "suggestedDevice": {
-            "description": "TASK-1055 — the most suitable device: one that fits with the most remaining memory (ties: fewer live-path models, then lower index); if none fits, the smallest shortfall. Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`).",
+            "description": "TASK-1055 — the most suitable device: where the load goes with no device named (the model`s default device, its profile, else the service`s own placement) whenever it fits; otherwise the single card that fits with the most remaining memory (ties: fewer live-path models, then lower index), `multi` only when no single card fits and the split does; if none fits, the smallest shortfall (single cards first). Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`).",
             "nullable": true,
             "type": "string"
           },
@@ -20142,7 +20142,7 @@
             "type": "array"
           },
           "exceedsDevice": {
-            "description": "Need > free memory: refused even with force.",
+            "description": "Need (a split: some card`s share) > free memory: refused even with force.",
             "type": "boolean"
           },
           "fits": {
@@ -20165,7 +20165,7 @@
             "type": "number"
           },
           "remainingBytes": {
-            "description": "Free minus headroom minus the need; negative = short.",
+            "description": "Free minus headroom minus the need; negative = short. A split (`multi`) is judged per card: the summed spare room when every card holds its share, else minus the summed shortfall.",
             "nullable": true,
             "type": "number"
           },
@@ -51225,7 +51225,7 @@
     },
     "/api/v1/admin/model-residency/load": {
       "post": {
-        "description": "ASYNCHRONOUS: answers 202 with an operation id as soon as the load is admitted, because a 5 GB LLM takes ~100 s — past the edge timeout of a browser request. Poll `GET operations/:operationId`, or watch the model`s `state` go `loading` → `loaded` in `GET`. A model already resident answers 200 `already_loaded` and creates no operation. `device` (`gpu<N>`, `multi` = LM Studio split across cards, `cpu`) picks where it goes; absent = the model`s `_metadata.residency.defaultDevice`, else the service default (LM Studio: its serving profile). `makeDefault: true` also stores `device` as that default. Loads are serialised per PHYSICAL GPU across every service (a load holds the cards it goes to) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that does not fit the chosen device`s free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty `reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation; a need larger than the device`s free memory outright is 409 `EXCEEDS_DEVICE` even when forced (OD-5). Both refusals carry `device`, `shortfallBytes`, the ranked `candidates` and the `suggestedDevice` (advice only — never an automatic re-target). LM Studio loads through its residency agent with the model`s full serving profile; `options` override only `contextLength` / `flashAttention` and are accepted for `lm-studio` alone (400 `OPTIONS_UNSUPPORTED`); `replace: true` unloads then reloads as ONE operation.",
+        "description": "ASYNCHRONOUS: answers 202 with an operation id as soon as the load is admitted, because a 5 GB LLM takes ~100 s — past the edge timeout of a browser request. Poll `GET operations/:operationId`, or watch the model`s `state` go `loading` → `loaded` in `GET`. A model already resident answers 200 `already_loaded` and creates no operation. `device` (`gpu<N>`, `multi` = LM Studio split across cards, `cpu`) picks where it goes; absent = the model`s `_metadata.residency.defaultDevice`, else the service default (LM Studio: its serving profile). `makeDefault: true` also stores `device` as that default — judged first, written (and audited) only once the load has landed (already loaded on that device: at once; on another device: 409 `ALREADY_LOADED_ELSEWHERE`), never for a load forced past the budget (409 `MAKE_DEFAULT_OVER_BUDGET`). Loads are serialised per PHYSICAL GPU across every service (a load holds the cards it goes to) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that does not fit the chosen device`s free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty `reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation; a need larger than the device`s free memory outright is 409 `EXCEEDS_DEVICE` even when forced (OD-5); a split across cards must fit on EVERY card. Both refusals carry `device`, `shortfallBytes`, the ranked `candidates` and the `suggestedDevice` (advice only — never an automatic re-target). LM Studio loads through its residency agent with the model`s full serving profile; `options` override only `contextLength` / `flashAttention` and are accepted for `lm-studio` alone (400 `OPTIONS_UNSUPPORTED`; a context above the model`s declared maximum is 400 `CONTEXT_LENGTH_UNSUPPORTED`, and one above the context its footprint was measured at scales the need by the ratio); `replace: true` unloads then reloads as ONE operation (stt / nlp: only the copy on the target device; a live-path model needs a `reason`, 409 `LIVE_PATH_REASON_REQUIRED`; a failed reload restores each unloaded instance where and as it was).",
         "operationId": "ModelResidencyController_load",
         "parameters": [],
         "requestBody": {
@@ -51260,7 +51260,7 @@
             "description": "`outcome: accepted` — the load runs in the background"
           },
           "400": {
-            "description": "`DEVICE_UNAVAILABLE` (the service has no such device, or `makeDefault` without `device`), `OPTIONS_UNSUPPORTED`, an invalid body, or `LOAD_FAILED` (no load spec could be derived)"
+            "description": "`DEVICE_UNAVAILABLE` (the service has no such device, or `makeDefault` without `device`), `OPTIONS_UNSUPPORTED`, `CONTEXT_LENGTH_UNSUPPORTED` (with `maxContextLength`), an invalid body, or `LOAD_FAILED` (no load spec could be derived)"
           },
           "403": {
             "description": "Not a platform administrator, or a working tenant is selected (this surface is platform-wide and tenant-less)."
@@ -51269,7 +51269,7 @@
             "description": "`MODEL_UNKNOWN` — nothing can load this model on that service"
           },
           "409": {
-            "description": "`OVER_BUDGET` / `EXCEEDS_DEVICE` (with `device`, `shortfallBytes`, `candidates`, `suggestedDevice`), `NO_SIZE`, `LOAD_IN_PROGRESS`, or `IN_FLIGHT` (replace of a model serving requests)"
+            "description": "`OVER_BUDGET` / `EXCEEDS_DEVICE` / `MAKE_DEFAULT_OVER_BUDGET` (with `device`, `shortfallBytes`, `candidates`, `suggestedDevice`), `ALREADY_LOADED_ELSEWHERE` (with `loadedOn`), `LIVE_PATH_REASON_REQUIRED` (replace of a live-path model without `reason`, with `consumers`), `NO_SIZE`, `LOAD_IN_PROGRESS`, or `IN_FLIGHT` (replace of a model serving requests)"
           }
         },
         "security": [
@@ -51313,7 +51313,7 @@
             "description": ""
           },
           "400": {
-            "description": "`DEVICE_UNAVAILABLE`, `OPTIONS_UNSUPPORTED` or an invalid body"
+            "description": "`DEVICE_UNAVAILABLE`, `OPTIONS_UNSUPPORTED`, `CONTEXT_LENGTH_UNSUPPORTED` or an invalid body"
           },
           "403": {
             "description": "Not a platform administrator, or a working tenant is selected (this surface is platform-wide and tenant-less)."

@@ -78,12 +78,15 @@ export function loadModelResidency(body: LoadModelResidencyRequest): Promise<Loa
 }
 
 export type ModelResidencyErrorCode =
+  | 'ALREADY_LOADED_ELSEWHERE'
+  | 'CONTEXT_LENGTH_UNSUPPORTED'
   | 'DEVICE_UNAVAILABLE'
   | 'EXCEEDS_DEVICE'
   | 'IN_FLIGHT'
   | 'LIVE_PATH_REASON_REQUIRED'
   | 'LOAD_FAILED'
   | 'LOAD_IN_PROGRESS'
+  | 'MAKE_DEFAULT_OVER_BUDGET'
   | 'MODEL_UNKNOWN'
   | 'NO_SIZE'
   | 'OPTIONS_UNSUPPORTED'
@@ -135,12 +138,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const RESIDENCY_ERROR_CODES: ReadonlySet<string> = new Set<ModelResidencyErrorCode>([
+  'ALREADY_LOADED_ELSEWHERE',
+  'CONTEXT_LENGTH_UNSUPPORTED',
   'DEVICE_UNAVAILABLE',
   'EXCEEDS_DEVICE',
   'IN_FLIGHT',
   'LIVE_PATH_REASON_REQUIRED',
   'LOAD_FAILED',
   'LOAD_IN_PROGRESS',
+  'MAKE_DEFAULT_OVER_BUDGET',
   'MODEL_UNKNOWN',
   'NO_SIZE',
   'OPTIONS_UNSUPPORTED',

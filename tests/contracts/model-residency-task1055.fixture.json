@@ -164,7 +164,7 @@
       "suggestedDevice": "gpu1",
       "suggestionReason": "GPU 1 has 10.0 GB free above headroom; GPU 0 is 1.7 GB short."
     },
-    "$suggestionRule": "Candidates = every device the service can place on (stt/nlp: the GPUs their agent reports; lm-studio: every GPU plus `multi`). Order: fits first; among fits the most `remainingBytes`; ties -> fewer `livePathModels` -> lower index. If none fits: smallest `shortfallBytes` (its `evictable` says what to unload). `exceedsDevice` = need > freeBytes (ignoring headroom).",
+    "$suggestionRule": "(Revised after review R1-F1.) Candidates = every device the service can place on (stt/nlp: the GPUs their agent reports; lm-studio: every GPU plus `multi`). Order: the TARGET the load takes with no device (on a replace: where the instance is now; else `_metadata.residency.defaultDevice`; else the serving profile; else the service default) leads whenever it fits; then fitting single cards (most `remainingBytes` -> fewer `livePathModels` -> lower index); `multi` only when no single card fits and the split does (judged PER CARD: each card must hold its share of an even/custom split); none fits -> single cards first, smallest `shortfallBytes`. `exceedsDevice` = need (or a card's share) > that card's freeBytes, ignoring headroom.",
     "loadRefusals": {
       "OVER_BUDGET": {
         "status": 409,
@@ -178,6 +178,17 @@
       },
       "DEVICE_UNAVAILABLE": { "status": 400, "body": { "code": "DEVICE_UNAVAILABLE", "message": "nlp has no device gpu2", "device": "gpu2" } }
     },
+    "reviewRefusals": {
+      "$comment": "Added by the review fix wave (R2-F6, R2-F7, R2-F8).",
+      "CONTEXT_LENGTH_UNSUPPORTED": { "status": 400, "body": { "code": "CONTEXT_LENGTH_UNSUPPORTED", "message": "...", "contextLength": 262144, "maxContextLength": 131072 } },
+      "MAKE_DEFAULT_OVER_BUDGET": { "status": 409, "body": { "code": "MAKE_DEFAULT_OVER_BUDGET", "message": "a forced over-budget load is never made the default", "device": "gpu0", "shortfallBytes": 1834798285, "suggestedDevice": "gpu1", "candidates": "<...>" } },
+      "ALREADY_LOADED_ELSEWHERE": { "status": 409, "body": { "code": "ALREADY_LOADED_ELSEWHERE", "message": "...", "device": "gpu1", "loadedOn": "gpu0" } },
+      "LIVE_PATH_REASON_REQUIRED_on_replace": "A `load` with `replace: true` of a live-path model answers the same 409 LIVE_PATH_REASON_REQUIRED body as unload.",
+      "auditAction": "makeDefault writes emit `model-residency.default-device {service, aiModelId, modelRef, device, previousDevice[, gpuSplit, previousGpuSplit]}` only after the load succeeds (or at once when already loaded on that device).",
+      "metadata": "`AiModel._metadata.residency.observedContextLength` = the context the observed footprint was measured at (scales the need of a larger-context load)."
+    },
+    "metrics": { "residency_service_reachable": "{service} 1/0 per tick", "residency_live_path_model_loaded": "{service, model_ref} 1/0 per tick" },
+    "lmStudioAgentExtras": { "load_spec.expected_bytes": "optional positive int — the agent refuses 503 INSUFFICIENT_MEMORY {device, needed_bytes, free_bytes} when a target card's share exceeds nvidia-smi free", "deployedWithoutToken": "503 AUTH_NOT_CONFIGURED on every /internal route" },
     "unloadRefusals": {
       "LIVE_PATH_REASON_REQUIRED": {
         "status": 409,
