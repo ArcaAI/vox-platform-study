@@ -351,10 +351,26 @@ Owner asks: no duplicate after a live load; LM Studio in Grafana's per-model mem
 
 **Rollout note:** a deploy never reseeds, so the new defaults reach the live cluster only through a console Load with `makeDefault` (or a reset); a reseed overwrites `serving` but keeps `residency`.
 
+### 8g. Cluster e2e of the follow-up wave (2026-10-09, app `31504362` + deployment `0149fe3`)
+
+CI #1422 green (verify-dev included); Argo Synced/Healthy at `0149fe3`; Prometheus target `lmstudio-residency` up.
+
+| Check | Result |
+|---|---|
+| LM Studio in Grafana "Resident bytes by model" | `sum by (service, model) (model_resident_bytes)` returns Gemma (3.35 GB) and Granite under `service="hope-lmstudio"` beside hope-stt / hope-nlp. |
+| No duplicate after a live load | A name-only `/api/v1/classify/tokens` request loaded Medical NER on cuda:0; the console load (`POST admin/model-residency/load`, nlp, gpu0) answered `already_loaded`; the nlp agent still reports ONE copy (736 MB). |
+| Default alignment | Granite was booted on GPU 0 — the boot plan is `source=gateway`, i.e. the DB row, which a deploy never reseeds. Moved from the console: live-path unload with a reason, then Load on the suggested GPU 1 with "make default" → loaded on gpu1 (6.8 GB measured); GPU 0 4.1 GB used, GPU 1 8.5 GB used / 8.2 GB free. GPU 0 now: Whisper, GLiGuard, Medical NER; GPU 1: Gemma, Granite. |
+| Capacity advice | The Load dialog suggested GPU 1, offered the split, and marked GPU 0 "Exceeds the card" (needs 5.7 GB, 5.4 GB free — a forced load would OOM its card-mates, OD-5). |
+
+**Defect found and fixed (`164b453d3`):** the LM Studio agent emitted `model_running_instances = 1` per LOADED instance. Platform-wide that series is IN-FLIGHT inference (stt, nlp, text, guardrail, tts), summed per model by the gateway as callers' load — so Gemma and Granite read "1 in flight · used just now" forever: the unload dialog warned of a phantom request and idle TTLs could never fire. The agent no longer emits it (it has no in-flight count; LM Studio's comes from its callers). **Verified after CI #1425 (green, verify-dev included):** the new LM Studio pod booted Granite on cuda:1 from the saved default (the move survives a restart), the agent exposes no `model_running_instances`, and the console shows LM Studio in-flight as unknown instead of a permanent 1.
+
+**Open (not this wave's code):** Llama Prompt Guard 2 86M fails every load with `LocalEntryNotFoundError` — the gated `meta-llama` weights were never published to `hope-models` and the nlp pod is offline, so the live inbound screen tries (and fails) to load it every minute or two for SYSTEM, Global and ArcaAI. Needs the weights published (a gated-model download — owner approval + HF licence).
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
+| 2026-10-09 | Follow-up wave pushed (`31504362`, deployment `0149fe3`) and e2e-verified on the cluster (§8g); Granite moved to GPU 1 as default; phantom in-flight defect fixed (`164b453d3`, CI #1425) and verified; Prompt Guard 2 weights missing (open). |
 | 2026-10-09 | Follow-up wave §8f merged locally (6 lanes): guard + judge caches under console control, reverse-duplicate alias + NER callers send `model_path`, LM Studio residency metrics + scrape, `nlp.classification` seed skip removed, default alignment GPU 0 NER/GLiGuard/Whisper, GPU 1 Gemma/Granite. Not pushed. |
 | 2026-10-09 | Ticket opened from the live e2e; findings E1–E13; plan and owner decisions written (status Pending). |
 | 2026-10-09 | Migration audit (+ TASK-1050 partial-index migration), pushed `81f8eaf3`, dev reset + reseed, ArcaAI timezone restored, D1/D2/D4 verified on the cluster, hope-nlp pinned to 1 replica (owner). |
