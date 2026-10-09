@@ -190,4 +190,7 @@ export enum ResourceType {
   GuardrailEvaluation = 'GuardrailEvaluation',
   GuardrailNotice = 'GuardrailNotice',
   GuardrailPolicyRevision = 'GuardrailPolicyRevision',
+  // TASK-1057 — confirmable actions that audit their confirmation stamp.
+  HarnessPolicy = 'HarnessPolicy',
+  HarnessLiveConfig = 'HarnessLiveConfig',
 }
