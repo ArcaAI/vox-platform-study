@@ -195,7 +195,7 @@ ENV LMS_PORT=1234 \
 
 VOLUME ["/data"]
 # 1234: the OpenAI-compatible inference server (LM Studio).
-# 8869: the residency agent (TASK-1055) — /health + /internal/residency/*.
+# 8869: the residency agent (TASK-1055) — /health + /metrics + /internal/residency/*.
 EXPOSE 1234 8869
 
 COPY --chown=llmster:llmster entrypoint.sh /usr/local/bin/entrypoint.sh

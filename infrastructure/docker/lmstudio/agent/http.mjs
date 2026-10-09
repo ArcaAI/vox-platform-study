@@ -2,6 +2,7 @@
 // HTTP skin of the LM Studio residency agent (node:http, zero dependencies)
 // =============================================================================
 //   GET  /health                                  readiness: the daemon greets
+//   GET  /metrics                                 Prometheus text (residency contract)
 //   GET  /internal/residency                      the report
 //   POST /internal/residency/load
 //   POST /internal/residency/unload
@@ -14,7 +15,8 @@
 //
 // Auth: `X-Service-Token` must equal INTERNAL_ACCESS_TOKEN (constant-time);
 // an EMPTY token is the dev bypass, as on the python services. /health is
-// exempt so a kubelet probe needs no secret. In a DEPLOYED process
+// exempt so a kubelet probe needs no secret, and /metrics so a Prometheus scrape
+// needs none (it carries model names and byte counts, never model I/O). In a DEPLOYED process
 // (`deployed`, see server.mjs isDeployed) an empty token is NOT a bypass: every
 // /internal route answers 503 AUTH_NOT_CONFIGURED (R2-F9, TASK-892 C3) — an
 // agent that loads and unloads models on anyone's say-so is the failure, and a
@@ -25,6 +27,7 @@
 // =============================================================================
 import { createHash, timingSafeEqual } from 'node:crypto';
 
+import { METRICS_CONTENT_TYPE } from './metrics.mjs';
 import { ResidencyError } from './residency.mjs';
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -158,6 +161,7 @@ const readJson = (req) =>
 /** Which route a path is, so 404 vs 405 is answered without running anything. */
 const routeOf = (path) => {
   if (path === '/health') return { name: 'health', methods: ['GET'] };
+  if (path === '/metrics') return { name: 'metrics', methods: ['GET'] };
   if (path === '/internal/residency') return { name: 'report', methods: ['GET'] };
   if (path === '/internal/residency/load') return { name: 'load', methods: ['POST'] };
   if (path === '/internal/residency/unload') return { name: 'unload', methods: ['POST'] };
@@ -204,6 +208,13 @@ export function createHandler({ agent, token, deployed = false, log = () => {} }
       if (route.name === 'health') {
         const up = await agent.healthy();
         return reply(up ? 200 : 503, { status: up ? 'ok' : 'unavailable', daemon: up ? 'up' : 'down' });
+      }
+
+      if (route.name === 'metrics') {
+        const text = await agent.metrics();
+        status = 200;
+        res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE, 'content-length': Buffer.byteLength(text) });
+        return res.end(text);
       }
 
       if (refuseAll) {

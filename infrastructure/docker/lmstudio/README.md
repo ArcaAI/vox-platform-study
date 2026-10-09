@@ -19,7 +19,7 @@ decision and is not open for re-litigation here.
 | `Dockerfile` | Single-stage. Pinned + SHA-512-verified `llmster` bundle on a CUDA runtime base (`nvidia/cuda:12.8.1-runtime-ubuntu24.04`), plus a pinned + SHA-256-verified Node runtime for the A-6 loader; build-time gates assert both a CPU and a CUDA engine are baked in, and that the loader's own unit tests pass inside the image |
 | `entrypoint.sh` | The boot contract: seven ordered assertions (A-0, A-1, A-2, A-3, A-5, A-6, A-7 — there is no A-4), each fail-closed with exit 78, plus A-6b (start and supervise the residency agent) and `CUDA_DEVICE_ORDER=PCI_BUS_ID` before the daemon starts |
 | `loader/` | The A-6 preloader. `kvconfig.mjs` (pure: env/plan -> kvConfig, key resolution, read-back diff) + `kvconfig.test.mjs`, `sdk-channel.mjs` (the `loadModel` channel + `getLoadConfig`, shared with the agent) + `sdk-channel.test.mjs`, `load.mjs` (boot I/O), and a lockfile-pinned `@lmstudio/sdk`. Replaces `lms load`, which cannot reach flash attention, KV-cache quantization or GPU placement |
-| `agent/` | The residency agent (TASK-1055): `server.mjs` (entry, :8869), `http.mjs` (routes, auth, strict bodies), `residency.mjs` (report/load/unload/policy), `loadspec.mjs` (load_spec -> kvConfig via the loader's rules), `daemon.mjs` (REST + SDK adapter), `gpus.mjs` (nvidia-smi), `fixtures.mjs` + one `*.test.mjs` per module. No dependencies of its own |
+| `agent/` | The residency agent (TASK-1055): `server.mjs` (entry, :8869), `http.mjs` (routes, auth, strict bodies), `residency.mjs` (report/load/unload/policy), `loadspec.mjs` (load_spec -> kvConfig via the loader's rules), `daemon.mjs` (REST + SDK adapter), `gpus.mjs` (nvidia-smi), `metrics.mjs` (Prometheus text, `/metrics`), `fixtures.mjs` + one `*.test.mjs` per module. No dependencies of its own |
 | `.dockerignore` | Deny-all allow-list: only `Dockerfile`, `entrypoint.sh`, `loader/` and `agent/` (minus any local `node_modules`) reach the build context |
 
 ## How it works
@@ -131,12 +131,13 @@ the boot loader uses, so **a console load is a boot load** (AC-2).
 | Route | Behaviour |
 |---|---|
 | `GET /health` | 200 `{status:"ok",daemon:"up"}` only when `/lmstudio-greeting` answers `{"lmstudio":true}`, else 503. No token. This is the pod's readiness (OD-6) — it names no model, so unloading one can no longer take the pod out of its Service (E1). Its status codes are honest, so an `httpGet` probe works here (unlike port 1234) |
+| `GET /metrics` | Prometheus text (`text/plain; version=0.0.4`), no token — see *Metrics* below |
 | `GET /internal/residency` | The python agent's report shape. `devices[]` = every card nvidia-smi lists (`cuda:<index>`, `index`, `name`, `uuid`, `total_bytes`, `free_bytes`, `process_bytes: null`). `models[]` = every loaded instance (llm + embedding): `model_ref` = identifier (a JIT instance's identifier is its engine key), `engine_key`, `instance_id`, `load_config` read back with `getLoadConfig`, `device` = `cuda:<n>` when the split enables one card else `multi`, `device_bytes` measured by this agent's own load, or — for boot-plan / JIT instances — the GGUF size split by the configured gpuSplit (`bytes_source: estimated`). 503 `DAEMON_UNAVAILABLE` if the daemon does not answer |
 | `POST /internal/residency/load` | Optional `load_spec.expected_bytes` (R2-F10, a positive integer the gateway may send): before touching the daemon, each target card's share of it — the bytes divided by the effective split (`device` pin = one card; `gpu_split`; none = every card evenly) — is compared with nvidia-smi `memory.free`; short → 503 `INSUFFICIENT_MEMORY` `{device, needed_bytes, free_bytes}` (the first short card). Absent = no check; no nvidia-smi reading = skipped with a `residency.memory_check_skipped` warning. `model_ref` resolves to the exact key with the boot loader's `selectModelKey` (exact, else the unique `<ref>@<quant>`, never `@?`; several → 400 with `candidates`; none → 404 `MODEL_UNKNOWN`). `load_spec` (identifier, context_length, parallel, flash_attention, kv_cache_quant, gpu_split, ttl_seconds — any other key is refused) becomes the kvConfig; `device: cuda:<n>` overrides the split to `priorityOrder [n]` with every other card disabled (`cpu` / a card the pod lacks / an unknown card count → 400 `DEVICE_UNAVAILABLE`). One load at a time (a second → 409 `LOAD_IN_PROGRESS`). Per-card `memory.used` is read (settled) before and after; growth above 32 MiB is `device_bytes`. Strict read-back: drift → the instance is unloaded again and 500 `LOAD_FAILED` names the `fields` (`HOPE_KVCONFIG_ENFORCE=warn` keeps it). An identifier already loaded → `already_loaded`. A daemon failure → 500 `LOAD_FAILED` with the engine's message |
 | `POST /internal/residency/unload` | By identifier, and by engine key / bare ref for JIT instances; `device` limits it to the copy on that card. Nothing matching (or a daemon "not found") → `not_loaded`. LM Studio has no in-flight count, so it is 0 and `force` never matters |
 | `PUT /internal/residency/models/{ref}/policy` | `admin_pinned` / `ttl_seconds` kept **in the agent's memory** and reported; an absent field is unchanged, `ttl_seconds: null` resets. Not loaded → 404. LM Studio cannot change a TTL after load, so the daemon's TTL is the one sent at load (none when `pin: true`); a policy TTL applies at the next load. A restart of the agent forgets policies — the gateway re-asserts them |
 
-Auth: `X-Service-Token` must equal `INTERNAL_ACCESS_TOKEN` (constant-time; `/health` exempt); a
+Auth: `X-Service-Token` must equal `INTERNAL_ACCESS_TOKEN` (constant-time; `/health` and `/metrics` exempt); a
 miss is 401. An empty token — or the `CHANGE_ME` placeholder, which counts as empty exactly as
 `hope_env.real_secret` treats it — is the dev bypass ONLY on a developer machine. In a **deployed**
 process it FAILS CLOSED (R2-F9): every `/internal` route answers 503 `AUTH_NOT_CONFIGURED`, the
@@ -156,6 +157,31 @@ Env: `LMS_AGENT_HOST`/`LMS_AGENT_PORT` (0.0.0.0 / 8869), `INTERNAL_ACCESS_TOKEN`
 container (the NVIDIA runtime mounts it into a `runtimeClassName: nvidia` pod) for device lists
 and measurement; without it devices are empty, bytes fall back to estimates, and a `device`
 pin is refused unless `LMS_GPU_COUNT` is set.
+
+#### Metrics (`GET :8869/metrics`)
+
+LM Studio itself exports nothing, so the agent exports the **python residency contract**
+(`packages/py-runtime-models/src/hope_runtime_models/metrics.py`) — same names, types and label
+names — and the `hope-model-residency` dashboard reads lm-studio with the queries it uses for stt
+and nlp. `service` is the residency service name, as stt (`"stt"`) and nlp (`"nlp"`) label it:
+here **`lm-studio`** (the report's `service`). Scrape `hope-lmstudio:8869/metrics`, and keep the
+exporter's `service` label (`honor_labels: true`, or no target label named `service`) — a
+relabelled `service` would turn ours into `exported_service` and split the panel.
+
+| Metric | Type | Labels | Value |
+|---|---|---|---|
+| `model_resident_bytes` | gauge | `service, model, device` | the report's `device_bytes`: one series per instance per card, measured or estimated; `0` (on the instance's own `device`) when the size is unknown |
+| `model_resident` | gauge | `service, model, device, state` | `1` with `state="loaded"` per instance per card (LM Studio reports only loaded instances) |
+| `model_running_instances` | gauge | `service, model` | `1` per loaded instance (LM Studio has no in-flight count, unlike stt/nlp where it is in-flight inferences) |
+| `model_load_seconds` | histogram | `service, model` | one observation per load THIS agent performed (python buckets 0.5 … 300 s); boot-plan / JIT loads are not observed |
+| `model_evictions_total` | counter | `service, reason` | instances unloaded through `/internal/residency/unload`, `reason` `admin` (default) or `policy` |
+
+`model` is the report's `model_ref` (the instance identifier). The gauges are rebuilt from a fresh
+report at every scrape — the same bounded daemon reads `GET /internal/residency` makes, no extra
+call — so an instance the daemon dropped on its own TTL leaves the panel at the next scrape. A
+daemon that does not answer leaves the per-model gauges empty and the scrape still 200. The
+counter and the histogram live in the agent process and restart at zero with it (`rate()` /
+`increase()` handle that).
 
 #### Timeouts: the agent answers before the gateway gives up (R1-F5)
 

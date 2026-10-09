@@ -629,3 +629,37 @@ test('load: a malformed expected_bytes is 400 LOAD_FAILED naming load_spec.expec
     assert.equal(world.calls.loads.length, 0);
   }
 });
+
+// ── metrics (the python residency contract, rendered from the report) ──────
+
+test('metrics: resident bytes per card from the report, load seconds observed, unloads counted by reason', async () => {
+  const world = fakeWorld();
+  world.seed(
+    { identifier: 'boot-model', modelKey: 'granite-guardian-3.3-8b@q4_k_m', sizeBytes: 4_900_000_000 },
+    [{ key: 'load.gpuSplitConfig', value: { strategy: 'priorityOrder', priority: [0], disabledGpus: [1], customRatio: [] } }],
+  );
+  const agent = agentFor(world);
+  await agent.load(loadBody());
+  let text = await agent.metrics();
+  assert.match(text, /^model_resident_bytes\{service="lm-studio",model="boot-model",device="cuda:0"\} 4900000000$/m);
+  assert.match(text, /^model_resident_bytes\{service="lm-studio",model="gemma-4-e2b-it-qat",device="cuda:1"\} \d+$/m);
+  assert.match(text, /^model_running_instances\{service="lm-studio",model="gemma-4-e2b-it-qat"\} 1$/m);
+  assert.match(text, /^model_load_seconds_count\{service="lm-studio",model="gemma-4-e2b-it-qat"\} 1$/m);
+
+  await agent.unload({ model_ref: 'gemma-4-e2b-it-qat', force: false, reason: 'policy' });
+  await agent.unload({ model_ref: 'boot-model', force: false });
+  await agent.unload({ model_ref: 'not-there', force: false, reason: 'admin' });
+  text = await agent.metrics();
+  assert.ok(!/model="gemma-4-e2b-it-qat",device=/.test(text), 'an unloaded instance leaves the gauges');
+  assert.match(text, /^model_evictions_total\{service="lm-studio",reason="policy"\} 1$/m);
+  // reason defaults to admin; a not_loaded unload evicts nothing
+  assert.match(text, /^model_evictions_total\{service="lm-studio",reason="admin"\} 1$/m);
+});
+
+test('metrics: a down daemon still answers, without per-model gauges', async () => {
+  const world = fakeWorld();
+  world.setDown(true);
+  const text = await agentFor(world).metrics();
+  assert.match(text, /^# TYPE model_resident_bytes gauge$/m);
+  assert.ok(!/^model_resident_bytes\{/m.test(text));
+});
