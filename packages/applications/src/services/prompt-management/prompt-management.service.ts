@@ -77,6 +77,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { renderTemplate, PromptVariableUnresolvedError, PromptTemplateSyntaxError } from '@arcaai/workflow-contract';
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../usageLedger/compute-device.resolver';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
 import type { IGovernedPromptRegistry as IGovernedPromptRegistryPort } from '../governed-prompt/IGovernedPromptRegistry';
 import { templateBodyPieces } from '../governed-prompt/governed-pieces';
@@ -295,6 +296,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // (OD-4: blocking, no override, guardrail down blocks too). Optional + trailing like the
     // dependencies above; `PromptManagementServiceModule` always wires it.
     @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistryPort,
+    // TASK-1057 — the platform policy that decides whether create / update / approve demand a
+    // reason. TRAILING and @Optional() like every dependency above; the module always wires it,
+    // and only a hand-built fixture omits it (absent ⇒ no policy, no stamp).
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.textServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -331,6 +336,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (!this.callerCanManageTemplates()) {
       throw new ForbiddenException('Caller cannot create tenant-default prompt templates');
     }
+    const confirmation = this.confirmations?.assert('promptTemplate.create', { value: dto.changeReason });
     await this.assertPromptTemplateQuota(tenantId);
 
     const existing = await this.promptTemplateRepository.findByName(tenantId, dto.name);
@@ -378,7 +384,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       versionNumber: 1,
       content: dto.content,
       variables: (dto.variables as unknown as Record<string, unknown>) ?? null,
-      changeReason: 'Initial version',
+      changeReason: dto.changeReason?.trim() || 'Initial version',
       changedBy: userId ?? null,
     });
 
@@ -386,7 +392,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
-      data: { name: dto.name, category: dto.category },
+      data: { name: dto.name, category: dto.category, ...(confirmation ? { confirmation } : {}) },
     });
 
     return PromptManagementDtoMapper.toTemplateResponse(saved);
@@ -556,6 +562,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     this.assertOwnedByTenant(template, id);
     this.assertCanMutate(template);
+    const confirmation = this.confirmations?.assert('promptTemplate.update', { value: dto.changeReason });
 
     // A field is a change only when its VALUE differs from the stored one — the
     // console resubmits every field on each save. Only content and variables are
@@ -639,6 +646,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       resourceId: id,
       data: {
         changeReason: dto.changeReason,
+        ...(confirmation ? { confirmation } : {}),
         previousVersion,
         newVersion: updated.version,
         // Live content edit of an APPROVED template — downstream audit consumers
@@ -683,6 +691,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
 
     this.assertCanApprove(template, id);
+    const confirmation = this.confirmations?.assert('promptTemplate.approve', { value: dto.reason });
 
     // Idempotent — already approved AND pinned: no version-pin, no audit noise.
     //
@@ -783,6 +792,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
         newVersion: updated.version,
         approvedVersionNumber: updated.approvedVersionNumber ?? null,
         reason: dto.reason ?? null,
+        ...(confirmation ? { confirmation } : {}),
       },
     });
 

@@ -125,6 +125,7 @@ import {
 } from './publish-pins';
 import { WORKFLOWS_EMIT_DATA_CONTRACT_KEY } from '../settings-registry/descriptors/workflow-definitions.descriptors';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import {
   collectPortableReferences,
   collectRowReferences,
@@ -400,6 +401,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // compiler's data contract. TRAILING and @Optional() like everything above; absent ⇒ OFF, the
     // byte-identical pre-contract artifact.
     @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // TASK-1057 — the platform policy deciding whether this action demands a reason. TRAILING and
+    // @Optional() like every dependency above; the module always wires it, and only a hand-built
+    // fixture omits it (absent ⇒ no policy, no stamp).
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -1217,6 +1222,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       }
     }
 
+    // TASK-1057 — after authorization (a gate that varies by tenant must not become an oracle), before any read or write.
+    const confirmation = this.confirmations?.assert('workflowDefinition.sync', { value: dto.changeReason });
+
     // ---- The exact immutable source version, read AS the source tenant ------
     // Both reads here are the SOURCE's: the version row, and the catalogue rows its graph binds
     // by id. Pinning the step is what lets a caller whose working tenant is some OTHER tenant
@@ -1319,6 +1327,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         sourceVersionNumber: source.versionNumber,
         targets: written.map((row) => row.tenantId),
         ...(dto.changeReason ? { changeReason: dto.changeReason } : {}),
+        ...(confirmation ? { confirmation } : {}),
       },
     });
 
@@ -1373,6 +1382,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     if (!this.agentPromotionService) {
       throw new Error('WorkflowDefinitionService.promoteToSystem requires IAgentPromotionService (misconfiguration).');
     }
+    // TASK-1057 — row-independent like the gates above, so it runs before anything is read.
+    const confirmation = this.confirmations?.assert('workflowDefinition.promoteToSystem', { value: dto.changeReason });
 
     const source = await this.resolveVersionForTenant(GLOBAL_PLAYGROUND_TENANT_ID, dto.sourceDefinitionSlug, dto.definitionVersionNumber);
 
@@ -1435,6 +1446,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       // the exact state this method exists to prevent.
       throw new ConflictException('The promotion recorded no target definition row; nothing was published into SYSTEM.');
     }
+
+    // The promotion service records the WORM promotion row; this event carries the confirmation stamp
+    // so the audit trail shows whether a reason was required even when it was not.
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: published.id,
+      data: { action: 'promoteToSystem', promotionId: promotion.id, slug: published.slug, versionNumber: published.versionNumber, ...(confirmation ? { confirmation } : {}) },
+    });
 
     return {
       promotionId: promotion.id,

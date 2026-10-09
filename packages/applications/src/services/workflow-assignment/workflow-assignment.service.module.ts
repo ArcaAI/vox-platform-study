@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { IWorkflowAssignmentService } from './IWorkflowAssignmentService';
 import { WorkflowAssignmentService } from './workflow-assignment.service';
 
@@ -13,7 +14,8 @@ import { WorkflowAssignmentService } from './workflow-assignment.service';
  *   `Department` repositories.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  // TASK-1057 — `ActionConfirmationService` (the platform reason policy).
+  imports: [CommonServiceModule, CoreDatabaseModule, EffectiveSettingsModule],
   providers: [
     WorkflowAssignmentService,
     {

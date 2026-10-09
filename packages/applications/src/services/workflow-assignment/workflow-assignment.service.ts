@@ -1,4 +1,5 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -64,6 +65,10 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1057 — the platform policy deciding whether this action demands a reason. TRAILING and
+    // @Optional() like every dependency above; the module always wires it, and only a hand-built
+    // fixture omits it (absent ⇒ no policy, no stamp).
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowAssignment);
   }
@@ -192,6 +197,7 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
 
     const changedBy = this.requestUserId ?? null;
     const reason = dto.reason ?? null;
+    const confirmation = this.confirmations?.assert('workflowAssignment.set', { value: dto.reason });
     const existing = await this.assignmentRepository.findForScopeSelector(tenantId, scope, scopeId, dto.paletteKey, selectorKey);
 
     if (existing) {
@@ -221,7 +227,13 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
 
       this.broadcastSysEvent(SysEventType.ResourceUpdated, {
         resourceId: updated.id,
-        data: { previousVersion: casVersion, newVersion: updated.version, beforeSlug, afterSlug: updated.workflowDefinitionSlug },
+        data: {
+          previousVersion: casVersion,
+          newVersion: updated.version,
+          beforeSlug,
+          afterSlug: updated.workflowDefinitionSlug,
+          ...(confirmation ? { confirmation } : {}),
+        },
       });
       return WorkflowAssignmentDtoMapper.toResponse(updated);
     }
@@ -249,7 +261,14 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: created.id,
-      data: { scope, scopeId, paletteKey: created.paletteKey, workflowDefinitionSlug: created.workflowDefinitionSlug, selectorKey },
+      data: {
+        scope,
+        scopeId,
+        paletteKey: created.paletteKey,
+        workflowDefinitionSlug: created.workflowDefinitionSlug,
+        selectorKey,
+        ...(confirmation ? { confirmation } : {}),
+      },
     });
     return WorkflowAssignmentDtoMapper.toResponse(created);
   }
