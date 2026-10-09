@@ -2,6 +2,7 @@ import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { SYSTEM_TENANT_ID, type AiModelEntity } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
+import { derivedLocalPath } from '../../ai-model/constants';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 
 /** The routing-policy task key clinical NER selects through (SUPER_ADMIN-only, SYSTEM-row resolution only). */
@@ -13,6 +14,13 @@ export const CLINICAL_TAXONOMY_METADATA_KEY = 'clinicalTaxonomy';
 /** What the two clinical NER callers spread into the `/classify/tokens` body. */
 export interface NerModelInjection {
   model_name: string;
+  /**
+   * TASK-1055 follow-up — `derivedLocalPath(row)`, the SAME derivation the residency
+   * load and the agent-invocation path send. `apps/nlp` caches a classifier by
+   * `(model_name, model_path)`, so a name-only call that loaded first made a copy an
+   * admin load could not recognise. Omitted when the row has no published path.
+   */
+  model_path?: string;
   /** Present only when the selected row declares one — never an invented default. */
   clinical_taxonomy?: Record<string, unknown>;
 }
@@ -107,8 +115,10 @@ export async function resolveNerModelInjection(
 ): Promise<NerModelInjection> {
   const model = await resolveSystemTaskModel(routingPolicies, cls, logger, NLP_NER_TASK_KEY);
   const clinicalTaxonomy = readClinicalTaxonomy(model.metaData);
+  const modelPath = derivedLocalPath(model);
   return {
     model_name: model.sourceUri,
+    ...(modelPath ? { model_path: modelPath } : {}),
     ...(clinicalTaxonomy ? { clinical_taxonomy: clinicalTaxonomy } : {}),
   };
 }
