@@ -8,12 +8,13 @@ Supported hardware profiles:
 - A100 / H100 80 GB (production)
 - Apple Silicon 48 GB (development)
 - RTX A2000 16 GB (development)
-- 2x RTX A2000 16 GB (staging, multi-GPU)
+- 2x RTX A2000 16 GB (staging, multi-GPU split — opt-in via ``multi_gpu_devices``)
 - CPU 96-core 256 GB (CI / fallback)
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import psutil
@@ -291,13 +292,13 @@ def _build_cpu_profile() -> ExecutionProfile:
 # ---------------------------------------------------------------------------
 
 
-def detect_execution_profile() -> ExecutionProfile:
+def detect_execution_profile(*, multi_gpu_devices: Sequence[str] | None = None) -> ExecutionProfile:
     """Auto-detect hardware and return an appropriate ExecutionProfile.
 
     Detection order:
     1. CUDA with high VRAM (>= 40 GB) -> A100 / H100 production profile
-    2. CUDA multi-GPU (>= 2 GPUs) -> multi-GPU staging profile
-    3. CUDA single GPU (< 40 GB) -> RTX A2000-class dev profile
+    2. CUDA multi-GPU split, OPT-IN ONLY -> multi-GPU staging profile
+    3. CUDA single GPU (< 40 GB) -> RTX A2000-class dev profile on ``cuda:0``
     4. MPS (Apple Silicon) -> Apple Silicon dev profile
     5. CPU-only -> CPU fallback profile
 
@@ -305,9 +306,21 @@ def detect_execution_profile() -> ExecutionProfile:
     applied for fields where the user explicitly set a non-zero / non-auto
     value.
 
+    TASK-1055 (review R2-F3) — SEEING several GPUs no longer selects the split
+    profile. The cluster exposes ``CUDA_VISIBLE_DEVICES=0,1`` only so a platform
+    admin can place a model on GPU 1; live streaming must keep the single-GPU
+    profile on ``cuda:0`` (streams, batch size, CPU embedding, preprocess pool).
+    The split is reachable only by naming the GPUs to split across.
+
+    Args:
+        multi_gpu_devices: The GPUs to split streaming across. Two or more opt
+            into the multi-GPU profile; ``None`` (every production caller) or a
+            single device keeps the single-GPU profile.
+
     Returns:
         A fully-populated ``ExecutionProfile``.
     """
+    split_requested = multi_gpu_devices is not None and len(multi_gpu_devices) >= 2
     platform_type = detect_platform()
     settings = get_settings()
 
@@ -320,7 +333,7 @@ def detect_execution_profile() -> ExecutionProfile:
 
         if primary_vram >= 40:
             profile = _build_a100_h100_profile(gpu_count, total_vram, device_name)
-        elif gpu_count >= 2:
+        elif split_requested and gpu_count >= 2:
             profile = _build_multi_gpu_profile(gpu_count, total_vram, device_name)
         else:
             profile = _build_rtx_a2000_profile(device_name, primary_vram)
