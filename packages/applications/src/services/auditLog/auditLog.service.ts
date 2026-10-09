@@ -538,7 +538,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
               ...(event.reason ? { reason: event.reason } : {}),
               ...(event.expiresAt ? { expiresAt: event.expiresAt } : {}),
               ...(event.impersonationTenantId ? { impersonationTenantId: event.impersonationTenantId } : {}),
-              ...(event.confirmation ? { confirmation: event.confirmation } : {}),
+              ...(event.confirmation ? { confirmation: event.confirmation as AuditLogEntity['data'] } : {}),
             }
           : {
               method: event.method || 'oauth',
