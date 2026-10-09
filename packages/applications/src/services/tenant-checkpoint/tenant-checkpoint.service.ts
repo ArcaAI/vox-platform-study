@@ -38,6 +38,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { ICryptoService } from '../crypto/ICryptoService';
 import { checkBreakGlass, type BreakGlassOutcome } from '../rbac/breakGlass';
 import { TENANT_CHECKPOINT_MAX_UPLOAD_GB_KEY, TENANT_CHECKPOINT_DEFAULTS } from '../settings-registry/descriptors/tenant-checkpoint.descriptors';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import {
   CHECKPOINT_UPLOAD_PART_BYTES,
@@ -66,8 +67,6 @@ import {
   type RestoreCheckpointRequest,
   type TenantCheckpointResponse,
   type TenantCheckpointRestoreResponse,
-  RESTORE_REASON_MAX,
-  RESTORE_REASON_MIN,
   CHECKPOINT_PASSPHRASE_MAX,
   CHECKPOINT_PASSPHRASE_MIN,
 } from './dto';
@@ -100,6 +99,9 @@ export function checkpointFilename(tenantKey: string, createdAt: Date, id: strin
   return `${tenantKey}-${stamp}-${id.slice(0, 8)}.hcp`;
 }
 
+/** TASK-1057 — what a restore records as its reason when the platform does not require one (`reason` is NOT NULL). */
+const RESTORE_REASON_NOT_REQUIRED = '(reason not required)';
+
 function isActiveRestoreUniqueViolation(error: unknown): boolean {
   const e = error as { code?: string; message?: string } | null;
   return e?.code === 'P2002' || /one_active_per_tenant/.test(e?.message ?? '');
@@ -121,6 +123,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     @InjectQueue(JobQueue.TenantCheckpointRestore) private readonly restoreQueue: Queue,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    private readonly confirmations: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantCheckpoint);
   }
@@ -569,17 +572,25 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     if (categories.length === 0 || new Set(categories).size !== categories.length) {
       throw new BadRequestException({ code: 'RESTORE_CATEGORIES_INVALID', message: 'Choose at least one category, each at most once.' });
     }
+    // TASK-1057 — whether a reason is demanded is the platform's action-confirmation policy (default `required`);
+    // its bounds come from the catalogue. Not required: an empty reason is accepted (and stored as a marker,
+    // the column and entity invariant being non-empty), but an over-long one is still refused.
     const reason = request.reason?.trim() ?? '';
-    if (reason.length < RESTORE_REASON_MIN || reason.length > RESTORE_REASON_MAX) {
+    const confirmation = this.confirmations.decide('tenantCheckpoint.restore', { value: reason });
+    const { minLength = 1, maxLength = Number.MAX_SAFE_INTEGER } = this.confirmations.spec('tenantCheckpoint.restore');
+    if ((confirmation.required && reason.length < minLength) || reason.length > maxLength) {
       throw new BadRequestException({
         code: 'RESTORE_REASON_INVALID',
-        message: `A reason of ${RESTORE_REASON_MIN}-${RESTORE_REASON_MAX} characters is required.`,
+        message: confirmation.required ? `A reason of ${minLength}-${maxLength} characters is required.` : `A reason may be at most ${maxLength} characters.`,
       });
     }
+    const storedReason = reason || RESTORE_REASON_NOT_REQUIRED;
 
     // 1. break-glass: 428 missing, 401 wrong password, 400 wrong name. The expected name is the
     //    tenant's CURRENT name, so a rename after the checkpoint never blocks a restore.
     await this.requireBreakGlass(checkpoint, tenant.name, request);
+    // Locked (never switchable) — stamped so the audit names both confirmations the restore passed.
+    const breakGlassConfirmation = this.confirmations.decide('tenantCheckpoint.restoreBreakGlass', { value: true });
 
     // 2. AUTH-NOTE: Clinical data is a platform-admin-only category. There is no super-admin CASL
     //    subject and tenant admins legitimately hold manage:TenantCheckpoint for the other two
@@ -606,7 +617,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       tenantId,
       checkpointId: checkpoint.id,
       categories: categories as unknown as TenantCheckpointCategory[],
-      reason,
+      reason: storedReason,
       status: TenantCheckpointRestoreStatus.PENDING,
       requestedBy: this.requestUserId as string,
       createdBy: this.requestUserId,
@@ -639,7 +650,15 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       resourceId: saved.id,
       resourceType: ResourceType.TenantCheckpointRestore,
       forceAuditLog: true,
-      data: { tenantId, action: 'TENANT_RESTORE_REQUESTED', checkpointId: checkpoint.id, categories, reason },
+      data: {
+        tenantId,
+        action: 'TENANT_RESTORE_REQUESTED',
+        checkpointId: checkpoint.id,
+        categories,
+        reason: storedReason,
+        confirmation,
+        breakGlassConfirmation,
+      },
     });
     return TenantCheckpointDtoMapper.toRestoreResponse(saved);
   }
