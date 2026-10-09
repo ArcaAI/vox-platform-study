@@ -302,6 +302,38 @@ Open for the owner: reopen has no WORM audit row naming the service-account acto
 
 ## 9. Change history
 
+### 2026-10-08 dev deployment recovery
+
+GitLab pipeline [#1404](https://git.taphuynh.dev/arca/hope-v2/-/pipelines/1404) built and promoted commit `1042ba78`, but `verify-dev` timed out on the prior API build. Argo `hope-v2-dev` failed at `hope-db-migrate`. Retained Loki logs show Prisma P3018 / PostgreSQL 23505: the `Consultation_openKey_uq` index found duplicate nonclosed consultations. Subsequent Job retries reported P3009 because Prisma recorded the migration as failed. The migration assumed a fresh database (D-20) and has no duplicate backfill; dev is populated. Not an image or readiness failure. A read-only query against the live dev Postgres pod confirmed one duplicate key with **234 older `RECORDING` rows** (created October 5–8), containing **543 context items** and no linked audio recordings; all five other pending partial unique indexes have zero duplicate groups. The failed migration row remains unfinished, and the six indexes and two triggers after the failed index are absent.
+
+**Prisma does not wrap a migration in a transaction**, so every statement before the failed index (enum swap, new columns, tables, FKs) is committed in dev, and the old API build (`3edd34a4`) kept serving against it — its timeout sweeps fail with `invalid input value for enum core."ConsultationStatus": "DRAINING" / "PRIMED" / "PENDING_REVIEW"` until the new build rolls out.
+
+**The committed migration is NOT edited** (owner, 2026-10-09; a committed migration is never edited — `02-database-prisma.md`). It stays correct for its target, a fresh database (D-20). Dev is repaired by hand instead (owner chose "repair and resolve", 2026-10-09): [`recovery-20261008-dev.sql`](recovery-20261008-dev.sql) closes all but the newest non-closed consultation per open key — every row kept, older rows marked `_metadata.task1045DuplicateClosed = true`, `closedReason = AUTO` — then runs the statements that follow the failed index, all in one transaction. A future environment seeded from a populated copy of an older database must run the same backfill before deploying this migration.
+
+Before recovery, inspect the target database's `public._prisma_migrations` row for `20261005160100_task_1045_consultation_lifecycle` and preview duplicate *counts* without returning patient identifiers:
+
+```sql
+SELECT count(*) AS duplicate_keys, COALESCE(sum(n - 1), 0) AS rows_to_close
+FROM (
+  SELECT count(*) AS n
+  FROM "core"."Consultation"
+  WHERE "status" NOT IN ('CLOSED_COMPLETE', 'CLOSED_INCOMPLETE')
+    AND "resourceStatus" <> 'DELETED'
+  GROUP BY "tenantId", "doctorId", "patientId", COALESCE("departmentId", '')
+  HAVING count(*) > 1
+) AS duplicate_groups;
+```
+
+Verified 2026-10-09 against the live DB: exactly 1 duplicate key / 234 rows to close (all for the ALaaS test patient); all six section-3 indexes and both section-4 triggers absent; the GateEditExemplar index and both FKs (the last statements before the failure) present. Backup taken first: `hope-postgres-0:/home/postgres/pgdata/pre-task1045-recovery-20261009T0350.dump` (`pg_dump -Fc`, 113 MB).
+
+Recovery order — do not reorder, and do not mark the migration applied before step 2 succeeds:
+
+1. Duplicate preview above → expect `1 | 234`.
+2. `psql -v ON_ERROR_STOP=1 -U postgres -d hope -f recovery-20261008-dev.sql` inside `hope-postgres-0`.
+3. Verify: the preview returns `0 | 0`; the six `*_uq` indexes and the two `*_immutability_guard_trigger` triggers exist.
+4. `UPDATE public._prisma_migrations SET finished_at = now(), logs = NULL, applied_steps_count = 1 WHERE migration_name = '20261005160100_task_1045_consultation_lifecycle' AND finished_at IS NULL AND rolled_back_at IS NULL;` — the equivalent of `prisma migrate resolve --applied` (which refuses a failed row it would otherwise need `--rolled-back` for first, and needs the Prisma CLI in the pod). The checksum stays the committed file's, so `migrate deploy` treats it as applied.
+5. Argo: sync `hope-v2-dev` (the `hope-db-migrate` Job then reports "No pending migrations"), then confirm `GET /api/v1/health` reports `.1042ba78` and the sweep errors stop.
+
 | Date | Change |
 |---|---|
 | 2026-10-05 | Ticket opened; design approved by the owner; planning wave started. |
