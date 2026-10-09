@@ -64,14 +64,14 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // The tier-30-49 Quick start was added after that: 61 total, 22/13/21/5. TASK-1050 added
   // /guardrails (30-49, W3a) and /guardrails/control (10-19, W3c): 63 total, 23/13/22/5.
   it('covers the full rail map across the four tiers', () => {
-    expect(NAV_ENTRIES).toHaveLength(63);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
+    expect(NAV_ENTRIES).toHaveLength(64);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(24);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(13);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu, plus the new /developer/invoke
     // entry (TASK-971 lane E), are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(66);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(67);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -482,16 +482,17 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
   // three gated entries it absorbed from AI Platform / Knowledge & Agents
   // plus the new /features matrix).
   ['/features', 'platform-ops', '10-19', 1, [['manage', 'all']]],
-  ['/rate-limits', 'platform-ops', '10-19', 2, [['manage', 'all']]],
-  ['/ai-operations/runs', 'platform-ops', '10-19', 3, [['manage', 'all']]],
-  ['/ai-operations/metrics', 'platform-ops', '10-19', 4, [['manage', 'all']]],
-  ['/ai-operations/consumption', 'platform-ops', '10-19', 5, [['manage', 'all']]],
-  ['/queues', 'platform-ops', '10-19', 6, [['manage', 'all']]],
-  ['/schedulers', 'platform-ops', '10-19', 7, [['manage', 'all']]],
-  ['/audit-logs', 'platform-ops', '10-19', 8, [['read', 'AuditLog']]],
-  ['/db-studio', 'platform-ops', '10-19', 9, [['manage', 'all']]],
-  ['/agentic-policy', 'platform-ops', '10-19', 10, [['manage', 'all']], 'console.agenticPolicy.enabled'],
-  ['/ai-services/mlflow', 'platform-ops', '10-19', 11, [['manage', 'all']], 'console.mlflow.enabled'],
+  ['/action-confirmations', 'platform-ops', '10-19', 2, [['manage', 'all']]],
+  ['/rate-limits', 'platform-ops', '10-19', 3, [['manage', 'all']]],
+  ['/ai-operations/runs', 'platform-ops', '10-19', 4, [['manage', 'all']]],
+  ['/ai-operations/metrics', 'platform-ops', '10-19', 5, [['manage', 'all']]],
+  ['/ai-operations/consumption', 'platform-ops', '10-19', 6, [['manage', 'all']]],
+  ['/queues', 'platform-ops', '10-19', 7, [['manage', 'all']]],
+  ['/schedulers', 'platform-ops', '10-19', 8, [['manage', 'all']]],
+  ['/audit-logs', 'platform-ops', '10-19', 9, [['read', 'AuditLog']]],
+  ['/db-studio', 'platform-ops', '10-19', 10, [['manage', 'all']]],
+  ['/agentic-policy', 'platform-ops', '10-19', 11, [['manage', 'all']], 'console.agenticPolicy.enabled'],
+  ['/ai-services/mlflow', 'platform-ops', '10-19', 12, [['manage', 'all']], 'console.mlflow.enabled'],
   [
     '/settings-registry',
     'platform-ops',
@@ -966,6 +967,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       'platform-ops': {
         '10-19': [
           'Feature availability',
+          'Action confirmations',
           'Rate limits',
           'AI operations — runs',
           'AI operations — metrics',
