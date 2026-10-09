@@ -31,6 +31,7 @@ import { ClsService } from 'nestjs-cls';
 import { fallbackOnNotFound, warnAndFallback } from '../../common/swallow-policy';
 import { BaseService } from '../../common/base.service';
 import { isSuperAdmin } from '../../common/tenant-guards';
+import { declaredContextLengthOf } from '../ai-model/serving-profile.util';
 import type { IActiveUserContext } from '../../interfaces';
 import { lmStudioPreloadEntryFor, lmStudioServingContextFrom } from '../effective-config/effective-config.service';
 import type { EffectiveLmStudioPreload } from '../effective-config/IEffectiveConfigService';
@@ -98,7 +99,12 @@ import { type ResidencyBudget, budgetFor } from './residency-budget';
 import { ResidencyAgentClient, ResidencyAgentError } from './residency-agent.client';
 import { type CatalogueFailedEntry, attributeDevice, buildResidencyCatalogue, footprintFor } from './residency-catalogue';
 import { ResidencyLoadSpecBuilder, ResidencyLoadSpecError } from './residency-load-spec.builder';
-import { residencyAdmissionRejectionsTotal, residencyDecisionsTotal } from './residency-metrics';
+import {
+  residencyAdmissionRejectionsTotal,
+  residencyDecisionsTotal,
+  residencyLivePathModelLoaded,
+  residencyServiceReachable,
+} from './residency-metrics';
 import {
   type JudgedPlacement,
   type LmStudioPlacement,
@@ -223,6 +229,7 @@ export const RESIDENCY_AUDIT_ACTIONS = [
   'model-residency.replace.succeeded',
   'model-residency.replace.failed',
   'model-residency.unload',
+  'model-residency.default-device',
   'model-residency.pin',
   'model-residency.unpin',
   'model-residency.link',
@@ -354,6 +361,12 @@ interface LoadJob {
   /** `operator` = a console action (its pin is the operator's); `policy` = the enforce-mode loop (its pin is the controller's). */
   origin: 'operator' | 'policy';
   recommendation?: ModelResidencyRecommendation;
+  /** TASK-1055 review R1-F3 — a stt / nlp replace unloads only the copy on this device (LM Studio: every instance of the identifier). */
+  unloadScope?: PlacementOption;
+  /** TASK-1055 review R2-F7 — "make this the default placement", written only once the load has succeeded. */
+  makeDefault?: { plan: LoadPlan };
+  /** The physical devices the gate claimed for it (held past a gateway timeout, R1-F5). */
+  gateDevices: string[];
 }
 
 /** An instance a replace unloaded, as it was — so a rollback (F9 / OD-5) puts it back with its pin and TTL. */
@@ -362,7 +375,23 @@ interface RestorableInstance {
   modelRef: string;
   pinned: boolean;
   ttlSeconds: number | null;
+  /** TASK-1055 review R1-F4 — the AGENT device it sat on (`cuda:<n>`, `cpu`, `multi`), so it goes back where it was. */
+  agentDevice: string | null;
+  /** LM Studio — the config the agent read back for it, so it comes back with ITS context / parallel / KV / split. */
+  loadConfig?: ReportedLoadConfig;
 }
+
+/** TASK-1055 review R1-F5 — a load the GATEWAY stopped waiting for: its card stays claimed until a report settles it. */
+interface TimedOutLoad {
+  service: ResidencyControlledService;
+  modelRef: string;
+  agentDevice: string | null;
+  since: number;
+  deadline: number;
+}
+
+/** How long a card stays claimed after a gateway load timeout when no report ever settles the load. */
+const TIMED_OUT_GATE_CAP_MS = 15 * 60_000;
 
 /** A reported model that holds memory (anything but `failed`). */
 type ResidentReportedModel = ReportedResidentModel & { state: ResidencyModelState };
@@ -415,6 +444,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private readonly reportFailing = new Set<ResidencyControlledService>();
   /** First time this process saw a resident (service, model) — a residency floor when the service reports no load time. */
   private readonly firstSeen = new Map<string, number>();
+  /** TASK-1055 review R1-F5 — loads the gateway timed out on, by operation id; their gate claim outlives the call. */
+  private readonly timedOutLoads = new Map<string, TimedOutLoad>();
 
   private ledger: Ledger | null = null;
   private ticking = false;
@@ -469,10 +500,16 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       const settings = await this.readSettings();
       const ledger = await this.observe();
       const now = Date.now();
+      this.publishGauges(ledger);
       const { models, devices } = this.engineInput(ledger, now);
 
+      // One EWMA sample per (service, model) and tick — stt / nlp may hold a copy per device (R1-F9).
+      const observed = new Set<string>();
       for (const m of models) {
-        if (m.desiredClass === 'WARM') this.promotion.observe(residencyKey(m.service, m.modelRef), m.requestsPerMin ?? 0, settings);
+        const key = residencyKey(m.service, m.modelRef);
+        if (m.desiredClass !== 'WARM' || observed.has(key)) continue;
+        observed.add(key);
+        this.promotion.observe(key, m.requestsPerMin ?? 0, settings);
       }
 
       const decisions = planTick({
@@ -488,6 +525,15 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         if (m.resident && m.agentPinned && m.desiredClass !== 'PINNED' && this.controllerPinned.has(key)) {
           decisions.push({ action: 'unpin', service: m.service, modelRef: m.modelRef, reason: 'live_path_pin', devices: m.devices, bytes: m.bytes });
         }
+      }
+      // A pin is the agent's per-MODEL policy: one per (service, model), however many device copies asked for it.
+      const pins = new Set<string>();
+      for (let i = decisions.length - 1; i >= 0; i -= 1) {
+        const d = decisions[i];
+        if (d.action !== 'pin' && d.action !== 'unpin') continue;
+        const key = `${d.action}|${residencyKey(d.service, d.modelRef)}`;
+        if (pins.has(key)) decisions.splice(i, 1);
+        else pins.add(key);
       }
 
       if (!settings.enforce) {
@@ -515,7 +561,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       } else if (decision.action === 'load') {
         await this.enforceLoad(decision, pendingEvictions.splice(0), ledger, settings);
       } else if (decision.action === 'unload') {
-        const applied = await this.policyUnload(decision.service, decision.modelRef);
+        const applied = await this.policyUnload(decision.service, decision.modelRef, decision.devices, ledger);
         this.record(decision, 'enforce', applied);
       } else {
         const applied = await this.policyPin(decision.service, decision.modelRef, decision.action === 'pin');
@@ -524,22 +570,60 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     }
   }
 
+  /**
+   * TASK-1055 review R1-F2 — the load PLAN comes first (where the load really goes: the model's default
+   * device, its profile, else the service's own placement), and its target's physical devices are what
+   * the gate claims and what any make-room eviction must free. The engine judged the decision on
+   * `decision.devices` (`placementDevices`, which honours the same default); when the plan lands on a
+   * device outside them, the engine's arithmetic says nothing about it and the load is not started.
+   * When the engine pooled MORE cards than the load uses (LM Studio with no per-model placement is
+   * budgeted conservatively on every card), the target is admitted on its own with `assessAdmission`.
+   */
   private async enforceLoad(decision: EngineDecision, evictions: EngineDecision[], ledger: Ledger, settings: ResidencySettings): Promise<void> {
     const service = decision.service;
     if (!isControlled(service)) return;
-    const opId = generateId();
-    if (!(await this.gate.waitAcquire(decision.devices, opId, settings.admissionMaxWaitMs))) {
-      residencyAdmissionRejectionsTotal.inc({ reason: 'gpu_busy' });
+    const skip = (why: string, extra: Record<string, unknown> = {}) => {
+      this.logger.warn({ message: why, service, modelRef: decision.modelRef, ...extra });
       for (const eviction of evictions) this.record(eviction, 'enforce', false);
+      this.record(decision, 'enforce', false);
+    };
+    const row = ledger.catalogue.modelFor(service, decision.modelRef);
+    let plan: LoadPlan;
+    try {
+      // The controller places a model where its profile / default says — it never picks a GPU of its own (D-2).
+      plan = await this.loadPlan(service, decision.modelRef, row, ledger, {});
+    } catch (error) {
+      skip('residency.enforce.load_not_started', { error: String(error) });
+      return;
+    }
+    const devices = plan.target.physical;
+    if (!devices.every((d) => decision.devices.includes(d))) {
+      skip('residency.enforce.placement_mismatch', { planned: devices, judged: decision.devices });
+      return;
+    }
+    let evict = evictions.filter((e) => e.devices.some((d) => devices.includes(d)));
+    if (devices.length < decision.devices.length) {
+      const admission = this.assessAdmission(service, plan.modelRef, false, row, ledger, settings, plan);
+      if (admission.refusal !== null) {
+        if (admission.refusal !== 'ALREADY_LOADED') residencyAdmissionRejectionsTotal.inc({ reason: 'insufficient_memory' });
+        skip('residency.enforce.target_over_budget', { device: plan.target.device, refusal: admission.refusal });
+        return;
+      }
+      evict = [];
+    }
+    for (const eviction of evictions) if (!evict.includes(eviction)) this.record(eviction, 'enforce', false);
+
+    const opId = generateId();
+    if (!(await this.gate.waitAcquire(devices, opId, settings.admissionMaxWaitMs))) {
+      residencyAdmissionRejectionsTotal.inc({ reason: 'gpu_busy' });
+      for (const eviction of evict) this.record(eviction, 'enforce', false);
       this.record(decision, 'enforce', false);
       return;
     }
-    for (const eviction of evictions) this.record(eviction, 'enforce', await this.policyUnload(eviction.service, eviction.modelRef));
+    for (const eviction of evict)
+      this.record(eviction, 'enforce', await this.policyUnload(eviction.service, eviction.modelRef, eviction.devices, ledger));
 
     try {
-      const row = ledger.catalogue.modelFor(service, decision.modelRef);
-      // The controller places a model where its profile / default says — it never picks a GPU of its own (D-2).
-      const plan = await this.loadPlan(service, decision.modelRef, row, ledger, {});
       const loadSpec = await this.loadSpecFor(service, plan.modelRef, [], plan);
       const recommendation = this.record(decision, 'enforce', false);
       this.startLoad({
@@ -557,6 +641,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         aiModelId: row?.id ?? null,
         origin: 'policy',
         recommendation,
+        gateDevices: devices,
       });
     } catch (error) {
       this.gate.release(opId);
@@ -565,16 +650,27 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     }
   }
 
-  private async policyUnload(service: string, modelRef: string): Promise<boolean> {
+  /** A policy unload — of the COPY on `devices` for stt / nlp (R1-F9); LM Studio unloads by identifier. */
+  private async policyUnload(service: string, modelRef: string, devices: readonly string[], ledger: Ledger): Promise<boolean> {
     if (!isControlled(service)) return false;
     try {
-      const outcome = await this.unloadInternal(service, modelRef, false, 'policy');
-      this.audit('model-residency.policy.unload', { service, modelRef, outcome });
+      const scope = service === 'lm-studio' ? undefined : this.optionCovering(service, devices, ledger);
+      const outcome = await this.unloadInternal(service, modelRef, false, 'policy', undefined, [], undefined, scope);
+      this.audit('model-residency.policy.unload', { service, modelRef, device: scope?.device ?? null, outcome });
       return true;
     } catch (error) {
       this.logger.warn({ message: 'residency.enforce.unload_failed', service, modelRef, error: String(error) });
       return false;
     }
+  }
+
+  /** The placement option whose physical devices are exactly `devices` (a resident copy's), if the service has one. */
+  private optionCovering(service: ResidencyControlledService, devices: readonly string[], ledger: Ledger): PlacementOption | undefined {
+    if (devices.length === 0) return undefined;
+    const options = this.placementOptions(service, ledger);
+    return [...options, ...this.extraDevices(service, ledger, options)].find(
+      (o) => o.physical.length === devices.length && o.physical.every((d) => devices.includes(d)),
+    );
   }
 
   private async policyPin(service: string, modelRef: string, pinned: boolean): Promise<boolean> {
@@ -772,8 +868,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const force = request.force === true;
     const reason = request.reason?.trim() || null;
     const replace = request.replace === true;
+    const makeDefault = request.makeDefault === true;
     assertOptionsSupported(request);
-    if (request.makeDefault === true && !request.device) {
+    if (makeDefault && !request.device) {
       throw new BadRequestException({
         code: 'DEVICE_UNAVAILABLE',
         message: '`makeDefault` makes the chosen `device` this model`s default placement; name the device.',
@@ -784,6 +881,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const settings = await this.readSettings();
     const ledger = await this.currentLedger();
     const row = await this.catalogueModel(service, request.modelRef, ledger);
+    if (makeDefault && !row) {
+      throw new NotFoundException({ code: 'MODEL_UNKNOWN', message: `No catalogue model to make ${request.device} the default placement of.` });
+    }
     const plan = await this.loadPlan(service, request.modelRef, row, ledger, {
       device: request.device ?? null,
       replace,
@@ -792,13 +892,43 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const { modelRef } = plan;
     const admission = this.assessAdmission(service, modelRef, replace, row, ledger, settings, plan);
     const { resident } = admission;
+    const advice = { device: plan.target.device, suggestedDevice: admission.suggestedDevice, candidates: admission.candidates };
 
     if (admission.refusal === 'ALREADY_LOADED') {
-      if (request.makeDefault === true) await this.makeDefault(service, row, plan);
+      if (makeDefault) {
+        // R2-F7 — judged before anything is written: "already loaded" makes the default only where it is loaded.
+        if (!resident.some((e) => requestDevice(e.device) === plan.target.device)) {
+          const loadedOn = requestDevice(resident[0].device);
+          throw new ConflictException({
+            code: 'ALREADY_LOADED_ELSEWHERE',
+            message:
+              `'${modelRef}' is already loaded on ${shortLabel(loadedOn)}; nothing was written. ` +
+              `Reload it (\`replace\`) on ${shortLabel(plan.target.device)} to move it there and make that its default.`,
+            device: plan.target.device,
+            loadedOn,
+          });
+        }
+        await this.makeDefault(service, row, plan);
+      }
       return { status: 200, body: { outcome: 'already_loaded', model: this.toViewModel(resident[0], ledger) } };
     }
     if (this.operations.runningFor(service, modelRef)) {
       throw new ConflictException({ code: 'LOAD_IN_PROGRESS', message: `A load of '${modelRef}' on ${service} is already running.` });
+    }
+    // R2-F8 — a replace unloads first, so a live-path model needs a reason exactly as an unload does (OD-2), audited.
+    if (replace && resident.length > 0 && !reason) {
+      const cls = this.classify(service, modelRef, row?.id ?? resident[0].aiModelId, ledger);
+      if (cls.class === 'PINNED') {
+        const name = row?.name ?? modelRef;
+        throw new ConflictException({
+          code: 'LIVE_PATH_REASON_REQUIRED',
+          message:
+            cls.classSource === 'policy'
+              ? `${name} is kept always loaded by its residency policy; give a reason to reload it`
+              : `${name} is on the live consultation path; give a reason to reload it`,
+          consumers: await this.consumersOf(row, cls),
+        });
+      }
     }
     const inFlight = resident.reduce((sum, e) => sum + (e.inFlight ?? 0), 0);
     if (replace && inFlight > 0 && !force) {
@@ -815,7 +945,6 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
     // ── budget (TASK-1051 F8 + TASK-1055): judged on the CHOSEN device; the refusal carries the best alternative ──
     const { devices, need, availableBytes, chosen } = admission;
-    const advice = { device: plan.target.device, suggestedDevice: admission.suggestedDevice, candidates: admission.candidates };
     const noSize = admission.refusal === 'NO_SIZE';
     const overBudget = admission.refusal === 'OVER_BUDGET';
     if (noSize && !(force && reason)) {
@@ -860,6 +989,19 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       });
     }
 
+    if (makeDefault && (overBudget || noSize)) {
+      // R2-F7 — a load forced past the budget is a one-off; it is never written as the model's default placement.
+      throw new ConflictException({
+        code: 'MAKE_DEFAULT_OVER_BUDGET',
+        message:
+          `A forced load is never made a model's default placement: ${shortLabel(plan.target.device)} cannot hold '${modelRef}' ` +
+          `within its headroom${noSize ? ' (its size is unknown)' : ` (short ${formatBytes(chosen.shortfallBytes)})`}. ` +
+          `Load it without "make default", or pick a device that fits.${alternative(admission)}`,
+        shortfallBytes: chosen.shortfallBytes,
+        ...advice,
+      });
+    }
+
     const opId = generateId();
     if (!this.gate.tryAcquire(devices, opId)) {
       residencyAdmissionRejectionsTotal.inc({ reason: 'gpu_busy' });
@@ -875,13 +1017,6 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     if (this.operations.runningFor(service, modelRef)) {
       this.gate.release(opId);
       throw new ConflictException({ code: 'LOAD_IN_PROGRESS', message: `A load of '${modelRef}' on ${service} is already running.` });
-    }
-
-    if (request.makeDefault === true) {
-      await this.makeDefault(service, row, plan).catch((error: unknown) => {
-        this.gate.release(opId);
-        throw error;
-      });
     }
 
     const action = replace && resident.length > 0 ? 'replace' : 'load';
@@ -901,6 +1036,11 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       row,
       rows: catalogueRows(ledger, row),
       origin: 'operator',
+      // R1-F3 — stt / nlp keep a copy per device: a replace reloads the copy on the target, never the others.
+      ...(action === 'replace' && service !== 'lm-studio' ? { unloadScope: plan.target } : {}),
+      // R2-F7 — the default is written once the load has landed, never before.
+      ...(makeDefault ? { makeDefault: { plan } } : {}),
+      gateDevices: devices,
     });
 
     // A platform-disruptive action on shared, time-sliced cards stays attributable to the administrator who took it.
@@ -909,7 +1049,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       service,
       modelRef,
       device: plan.target.device,
-      makeDefault: request.makeDefault === true,
+      makeDefault,
       pin: request.pin === true,
       force,
       reason,
@@ -1039,28 +1179,44 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   ): Admission {
     const allResident = this.residentFor(service, modelRef, row, ledger);
     const { target } = plan;
-    // stt / nlp keep one copy PER DEVICE: an explicit device without a copy on it is a new load, not "already loaded".
+    // stt / nlp keep one copy PER DEVICE: a device the ADMIN named (or the copy a replace reloads) without a copy on it is a
+    // new load, not "already loaded". A device that only comes from the model's stored default does not (R1-F10).
     const resident =
-      plan.explicitDevice && service !== 'lm-studio' ? allResident.filter((e) => e.devices.some((d) => target.physical.includes(d))) : allResident;
+      (plan.source === 'request' || plan.source === 'replace') && service !== 'lm-studio'
+        ? allResident.filter((e) => e.devices.some((d) => target.physical.includes(d)))
+        : allResident;
     const residentBytes = resident.reduce((sum, e) => sum + (e.bytes ?? 0), 0);
-    const need = budgetFor(replace && residentBytes > 0 ? residentBytes : this.observedBytes(service, modelRef, row), row?.memorySizeMb);
+    const measuredOnResident = replace && residentBytes > 0;
+    const need = this.contextScaled(
+      budgetFor(measuredOnResident ? residentBytes : this.observedBytes(service, modelRef, row), row?.memorySizeMb),
+      plan,
+      measuredOnResident ? resident : [],
+      row,
+    );
 
     const judge = (option: PlacementOption): JudgedPlacement => {
       const readings = option.physical.map((id) => this.deviceReading(id, ledger)).filter((d): d is PlacementReading => d !== undefined);
       const credit = replace ? residentBytesOn(resident, option.physical) : 0;
+      const creditByDevice =
+        replace && option.physical.length > 1 ? Object.fromEntries(option.physical.map((id) => [id, residentBytesOn(resident, [id])])) : undefined;
       const { evictable, livePath } = this.neighbours(option.physical, new Set(resident), ledger);
       return judgePlacement({
         option,
         readings,
         needBytes: need.bytes,
         creditBytes: credit,
+        ...(creditByDevice ? { creditByDevice } : {}),
         headroomPercent: settings.headroomPercent,
         livePathModels: livePath,
         evictable,
       });
     };
     const chosen = judge(target);
-    const ranked = rankPlacements(plan.options.map((option) => (option.device === target.device ? chosen : judge(option))));
+    // R1-F1 — the place the load goes with no device named leads the suggestion whenever it fits.
+    const ranked = rankPlacements(
+      plan.options.map((option) => (option.device === target.device ? chosen : judge(option))),
+      plan.preferred,
+    );
     const candidates = ranked.map(({ order: _order, ...candidate }) => candidate);
 
     const devices = target.physical;
@@ -1085,8 +1241,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     else if (!chosen.fits) refusal = 'OVER_BUDGET';
 
     const availableBytes = need.bytes === null || chosen.remainingBytes === null ? 0 : chosen.remainingBytes + need.bytes;
-    const device =
-      refusal === 'ALREADY_LOADED' && resident[0] ? resident[0].device : target.device === 'cpu' ? `cpu:${service}` : (target.device ?? null);
+    // R1-F8 — the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`.
+    const device = refusal === 'ALREADY_LOADED' && resident[0] ? requestDevice(resident[0].device) : (target.device ?? null);
     return {
       resident,
       devices,
@@ -1101,6 +1257,21 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       suggestedDevice: ranked[0]?.device ?? null,
       suggestionReason: suggestionReasonFor(ranked),
     };
+  }
+
+  /**
+   * TASK-1055 review R2-F6 — an LM Studio load at a LONGER context than the one its footprint was measured
+   * at needs more memory (the KV cache grows with it). The whole need is scaled by the ratio — conservative:
+   * the weights do not grow, but the measured footprint does not say how it splits. The measurement's
+   * context is, in order: the resident instance's read-back config (a replace budgets on its bytes), the
+   * context recorded with the catalogue measurement (`_metadata.residency.observedContextLength`), else
+   * the model's profile (what the boot plan loads, and so what the last measurement most likely saw).
+   */
+  private contextScaled(need: ResidencyBudget, plan: LoadPlan, measuredOn: readonly LedgerEntry[], row: AiModelEntity | undefined): ResidencyBudget {
+    if (need.bytes === null || !plan.context) return need;
+    const base = measuredOn.find((e) => e.loadConfig?.contextLength)?.loadConfig?.contextLength ?? observedContextOf(row) ?? plan.context.profile;
+    if (!base || plan.context.requested <= base) return need;
+    return { ...need, bytes: Math.ceil((need.bytes * plan.context.requested) / base) };
   }
 
   // ── TASK-1055 — placement ────────────────────────────────────────────────
@@ -1128,40 +1299,56 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const allowed = [...options, ...this.extraDevices(service, ledger, options)];
     const find = (device: string) => allowed.find((o) => o.device === device);
 
-    let target: PlacementOption | undefined;
-    // Where the target came from decides what is SENT: only the service's own default leaves the agent to place it.
-    let source: 'request' | 'replace' | 'default' | 'service' = 'service';
-    if (request.device) {
-      target = find(request.device);
-      if (!target) {
-        throw new BadRequestException({ code: 'DEVICE_UNAVAILABLE', message: `${service} has no device ${request.device}`, device: request.device });
-      }
-      source = 'request';
-    }
-    if (!target && request.replace) {
+    // Where the load goes with NO device named (R1-F1: the suggestion keeps it there while it fits) — and where the target
+    // came from decides what is SENT: only the service's own default leaves the agent to place it.
+    let fallback: PlacementOption | undefined;
+    let fallbackSource: LoadPlan['source'] = 'service';
+    if (request.replace) {
       // A reload stays where the instance is now.
       const current = this.residentFor(service, modelRef, row, ledger)[0];
       // LM Studio split across cards reloads as its PROFILE places it (AC-2); one card stays that card.
       const keepsProfile = service === 'lm-studio' && current?.device === 'multi';
-      const device = keepsProfile ? undefined : current?.device.startsWith('cpu:') ? 'cpu' : current?.device;
-      target = device ? find(device) : undefined;
-      if (target) source = 'replace';
+      const device = keepsProfile ? undefined : current ? requestDevice(current.device) : undefined;
+      fallback = device ? find(device) : undefined;
+      if (fallback) fallbackSource = 'replace';
     }
-    if (!target) {
+    if (!fallback) {
       const preferred = defaultDeviceOf(row);
-      target = preferred ? find(preferred) : undefined;
-      if (preferred && !target) this.logger.warn({ message: 'residency.default_device.unavailable', service, modelRef, device: preferred });
-      if (target) source = 'default';
+      fallback = preferred ? find(preferred) : undefined;
+      if (preferred && !fallback) this.logger.warn({ message: 'residency.default_device.unavailable', service, modelRef, device: preferred });
+      if (fallback) fallbackSource = 'default';
     }
-    if (!target) target = this.serviceDefault(service, options, lms, ledger);
-    const explicitDevice = source === 'request' || source === 'default';
+    if (!fallback) fallback = this.serviceDefault(service, options, lms, ledger);
+
+    let target = fallback;
+    let source: LoadPlan['source'] = fallbackSource;
+    if (request.device) {
+      const requested = find(request.device);
+      if (!requested) {
+        throw new BadRequestException({ code: 'DEVICE_UNAVAILABLE', message: `${service} has no device ${request.device}`, device: request.device });
+      }
+      target = requested;
+      source = 'request';
+    }
     const send = source !== 'service';
 
     const gpuCount =
       options.filter((o) => o.device !== 'multi' && o.device !== 'cpu').length || ledger.devices.filter((d) => d.kind === 'gpu').length;
     let loadSpec: Record<string, unknown> | undefined;
     let restoreSpec: Record<string, unknown> | undefined;
+    let context: LoadPlan['context'];
     if (lms) {
+      const requestedContext = request.overrides?.contextLength;
+      const declared = row ? declaredContextLengthOf(row) : null;
+      if (requestedContext !== undefined && declared !== null && requestedContext > declared) {
+        throw new BadRequestException({
+          code: 'CONTEXT_LENGTH_UNSUPPORTED',
+          message: `'${modelRef}' declares a maximum context of ${declared} tokens; ${requestedContext} was asked for.`,
+          contextLength: requestedContext,
+          maxContextLength: declared,
+        });
+      }
+      context = { requested: requestedContext ?? lms.contextLength, profile: lms.contextLength };
       const placement: LmStudioPlacement = !send
         ? { kind: 'profile' }
         : target.device === 'multi'
@@ -1172,7 +1359,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     }
     // `multi` sends no device (the split in the spec is the instruction); the service default sends none at all.
     if (!send || target.device === 'multi') target = { ...target, agentDevice: null };
-    return { modelRef, target, options, explicitDevice, loadSpec, restoreSpec, gpuCount };
+    return { modelRef, target, options, source, preferred: fallback.device, loadSpec, restoreSpec, gpuCount, ...(context ? { context } : {}) };
   }
 
   /** The stt / nlp `load_spec` (the builder), or LM Studio's resolved-profile spec from the plan. */
@@ -1244,7 +1431,19 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       const indices = lmStudioProfileIndices(lms, gpuOptions.length || ledger.devices.filter((d) => d.kind === 'gpu').length);
       const cards = gpuOptions.filter((o) => indices.includes(o.lmsIndices?.[0] ?? -1));
       if (cards.length === 1) return cards[0];
-      if (cards.length > 1) return { device: 'multi', physical: cards.map((c) => c.device), agentDevice: null, order: 1_000, lmsIndices: indices };
+      if (cards.length > 1) {
+        // R2-F5 — a `custom` profile split is judged per card by its ratio (index-aligned with the visible devices).
+        const ratio = lms.gpuSplit?.strategy === 'custom' ? lms.gpuSplit.customRatio : undefined;
+        const weights = ratio ? Object.fromEntries(cards.map((c) => [c.device, ratio[c.lmsIndices?.[0] ?? -1] ?? 0])) : undefined;
+        return {
+          device: 'multi',
+          physical: cards.map((c) => c.device),
+          agentDevice: null,
+          order: 1_000,
+          lmsIndices: indices,
+          ...(weights && Object.values(weights).some((w) => w > 0) ? { weights } : {}),
+        };
+      }
     }
     const [first] = [...options].sort((a, b) => a.order - b.order);
     if (first) return first;
@@ -1278,6 +1477,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    * OD-4 — "make this the model's default placement": `_metadata.residency.defaultDevice`
    * (and, for LM Studio, `_metadata.serving.gpuSplit`, so the boot plan follows), as a
    * versioned write merged into the row's LATEST `_metadata` (one drift re-reads and retries).
+   * Called only once placement has been judged — after the load landed, or for a model already
+   * loaded on that device (R2-F7) — and every write is audited with what it replaced.
    */
   private async makeDefault(service: ResidencyControlledService, row: AiModelEntity | undefined, plan: LoadPlan): Promise<void> {
     if (!row) throw new NotFoundException({ code: 'MODEL_UNKNOWN', message: `No catalogue model to make ${plan.target.device} the default of.` });
@@ -1286,8 +1487,12 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       service === 'lm-studio' && device !== 'cpu'
         ? lmStudioDefaultSplit(device === 'multi' ? { kind: 'multi' } : { kind: 'gpu', index: plan.target.lmsIndices?.[0] ?? 0 }, plan.gpuCount)
         : null;
+    let previousDevice: unknown = null;
+    let previousGpuSplit: unknown = null;
     const write = async (current: AiModelEntity): Promise<void> => {
       const metaData: Record<string, unknown> = { ...((current.metaData as Record<string, unknown> | null | undefined) ?? {}) };
+      previousDevice = (metaData.residency as Record<string, unknown> | null | undefined)?.defaultDevice ?? null;
+      previousGpuSplit = (metaData.serving as Record<string, unknown> | null | undefined)?.gpuSplit ?? null;
       const residency: Record<string, unknown> = {
         ...((metaData.residency as Record<string, unknown> | null | undefined) ?? {}),
         defaultDevice: device,
@@ -1305,6 +1510,14 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       await write(await this.aiModels.findById(row.id));
     }
     this.ledger = null;
+    this.audit('model-residency.default-device', {
+      service,
+      aiModelId: row.id,
+      modelRef: plan.modelRef,
+      device,
+      previousDevice,
+      ...(split ? { gpuSplit: split, previousGpuSplit } : {}),
+    });
   }
 
   /** A device's memory reading: a DCGM card or a listed host pool, else the host pool a service reports even with nothing loaded. */
@@ -1767,7 +1980,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private startLoad(job: LoadJob): void {
     this.operations.start({ id: job.opId, action: job.action, service: job.service, modelRef: job.modelRef });
     const task: Promise<void> = this.runLoad(job).finally(() => {
-      this.gate.release(job.opId);
+      // R1-F5 — a load the gateway stopped waiting for may still be running on the card: its claim stays until a report settles it.
+      if (!this.timedOutLoads.has(job.opId)) this.gate.release(job.opId);
       this.ledger = null;
       this.background.delete(task);
     });
@@ -1781,12 +1995,35 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     let unloadFinished = false;
     try {
       if (job.action === 'replace') {
-        await this.unloadInternal(service, modelRef, job.force, 'admin', job.row, job.rows, unloaded);
+        await this.unloadInternal(service, modelRef, job.force, 'admin', job.row, job.rows, unloaded, job.unloadScope);
         unloadFinished = true;
       }
 
-      const measured = await this.loadOnce(service, modelRef, job.loadSpec, job.pin, null, job.agentDevice);
-      if (measured.bytes && job.aiModelId) await this.writeObserved(job.aiModelId, measured.bytes, measured.loadSeconds);
+      const measured = await this.loadOnce(service, modelRef, job.loadSpec, job.pin, null, job.agentDevice).catch((error: unknown) => {
+        if (error instanceof ResidencyAgentError && error.timedOut) {
+          const now = Date.now();
+          this.timedOutLoads.set(job.opId, {
+            service,
+            modelRef,
+            agentDevice: job.agentDevice,
+            since: now,
+            deadline: now + TIMED_OUT_GATE_CAP_MS,
+          });
+        }
+        throw error;
+      });
+      if (measured.bytes && job.aiModelId) await this.writeObserved(job.aiModelId, measured.bytes, measured.loadSeconds, measured.contextLength);
+      let defaultWritten = false;
+      if (job.makeDefault) {
+        // R2-F7 — the load landed on the judged device: only now does it become the model's default placement.
+        defaultWritten = await this.makeDefault(service, job.row, job.makeDefault.plan).then(
+          () => true,
+          (error: unknown) => {
+            this.logger.warn({ message: 'residency.default_device.write_failed', operationId: job.opId, service, modelRef, error: String(error) });
+            return false;
+          },
+        );
+      }
 
       if (service === 'lm-studio') this.lmsFailures.delete(modelRef);
       this.operations.succeed(job.opId);
@@ -1800,24 +2037,40 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         device: job.device,
         bytes: measured.bytes,
         loadSeconds: measured.loadSeconds,
+        ...(job.makeDefault ? { defaultWritten } : {}),
       });
     } catch (error) {
       let failure = describeError(error);
+      const timedOut = this.timedOutLoads.has(job.opId);
       // F9 (owner default OD-5) — a replace that unloaded the old instance(s) and then failed — to load the new one,
       // or part-way through unloading several — puts back what it unloaded (same model, its profile / spec, its
       // previous pin and TTL), so "Apply & reload" never leaves the model gone.
       let restored: boolean | null = null;
-      let toRestore = [...new Map(unloaded.map((instance) => [instance.modelRef, instance])).values()];
+      // R1-F4 — every copy goes back on ITS OWN device (stt / nlp keep one per device), with its own pin and TTL.
+      let toRestore = [...new Map(unloaded.map((instance) => [`${instance.modelRef}|${instance.agentDevice ?? ''}`, instance])).values()];
       // LM Studio: the MODEL comes back once, under its catalogue ref (the identifier the profile loads it as), with
-      // the pin / TTL any of its instances had — never one load per `<key>:<n>` duplicate.
+      // the pin / TTL any of its instances had and the load config it ran with — never one load per `<key>:<n>` duplicate.
       if (service === 'lm-studio' && toRestore.length > 0) {
         const pinned = toRestore.find((instance) => instance.pinned);
-        toRestore = [{ modelRef, pinned: pinned !== undefined, ttlSeconds: (pinned ?? toRestore[0]).ttlSeconds }];
+        const was = pinned ?? toRestore[0];
+        const config = toRestore.find((instance) => instance.loadConfig)?.loadConfig;
+        toRestore = [
+          {
+            modelRef,
+            pinned: pinned !== undefined,
+            ttlSeconds: was.ttlSeconds,
+            agentDevice: was.agentDevice,
+            ...(config ? { loadConfig: config } : {}),
+          },
+        ];
       }
+      // A timed-out load may still land: restoring over it would race the agent's own load (it stays claimed instead).
+      if (timedOut) toRestore = [];
       if (toRestore.length > 0) {
         const errors: string[] = [];
         for (const instance of toRestore) {
-          await this.loadOnce(service, instance.modelRef, job.restoreSpec, instance.pinned, instance.ttlSeconds, job.agentDevice).catch(
+          const restore = restoreTarget(service, instance, job.restoreSpec);
+          await this.loadOnce(service, instance.modelRef, restore.loadSpec, instance.pinned, instance.ttlSeconds, restore.agentDevice).catch(
             (restoreError: unknown) => {
               this.logger.warn({
                 message: 'residency.replace.restore_failed',
@@ -1836,8 +2089,14 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         failure = {
           ...failure,
           message: restored
-            ? `${failure.message} — ${what}; the previous instance was restored with its default settings.`
+            ? `${failure.message} — ${what}; the previous instance was restored as it was.`
             : `${failure.message} — ${what} and the previous instance was NOT restored (${errors.join('; ')}); load it again.`,
+        };
+      }
+      if (timedOut) {
+        failure = {
+          ...failure,
+          message: `${failure.message} — the agent may still be loading it; its device stays claimed until the agent reports the load settled.`,
         };
       }
       if (service === 'lm-studio' && !restored) {
@@ -1869,11 +2128,18 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     pin: boolean,
     ttlSeconds: number | null = null,
     agentDevice: string | null = null,
-  ): Promise<{ bytes: number | null; loadSeconds: number | null }> {
+  ): Promise<{ bytes: number | null; loadSeconds: number | null; contextLength: number | null }> {
     const result = await this.agents.load(service, { modelRef, loadSpec, pin, ttlSeconds, ...(agentDevice ? { device: agentDevice } : {}) });
     const model = result.model;
-    if (result.outcome === 'already_loaded') return { bytes: null, loadSeconds: null };
-    return { bytes: model.bytesSource === 'measured' ? model.bytes : null, loadSeconds: model.loadSeconds };
+    if (result.outcome === 'already_loaded') return { bytes: null, loadSeconds: null, contextLength: null };
+    // LM Studio — the context the footprint was measured at (the agent's read-back, else what was asked), R2-F6.
+    const asked = loadSpec.context_length;
+    const contextLength = model.loadConfig?.contextLength ?? (typeof asked === 'number' ? asked : null);
+    return {
+      bytes: model.bytesSource === 'measured' ? model.bytes : null,
+      loadSeconds: model.loadSeconds,
+      contextLength: service === 'lm-studio' ? contextLength : null,
+    };
   }
 
   /**
@@ -1882,7 +2148,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    * shrank GLiGuard 947 → 376 MB and Granite 4.9 GB → 178 MB, and admission then under-budgeted them).
    * Such a reading is warned about and the stored value kept.
    */
-  private async writeObserved(aiModelId: string, bytes: number, loadSeconds: number | null): Promise<void> {
+  private async writeObserved(aiModelId: string, bytes: number, loadSeconds: number | null, contextLength: number | null = null): Promise<void> {
     try {
       const entity = await this.aiModels.findById(aiModelId);
       const measuredMb = Math.max(1, Math.round(bytes / MiB));
@@ -1894,6 +2160,12 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       entity.observedMemoryMb = measuredMb;
       entity.observedLoadSeconds = loadSeconds;
       entity.observedAt = new Date();
+      if (contextLength !== null) {
+        // R2-F6 — the context this footprint was measured at, so a longer one is budgeted larger.
+        const metaData = { ...((entity.metaData as Record<string, unknown> | null | undefined) ?? {}) };
+        metaData.residency = { ...((metaData.residency as Record<string, unknown> | null | undefined) ?? {}), observedContextLength: contextLength };
+        entity.metaData = metaData;
+      }
       await this.aiModels.update(aiModelId, entity);
     } catch (error) {
       // The load itself succeeded; losing the measurement must not fail it.
@@ -1934,15 +2206,22 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       instances = instances.filter(onScope);
     }
     const refs = [...new Set(instances.map((m) => m.modelRef))];
-    const agentDevice = scope?.agentDevice ?? undefined;
     for (const ref of refs.length > 0 ? refs : [modelRef]) {
       keys.add(ref);
+      const was = instances.find((m) => m.modelRef === ref);
+      // Scoped: the copy's OWN agent device (R1-F3) — the scope's id when no reported copy names one.
+      const agentDevice = scope ? (was?.device ?? scope.agentDevice ?? undefined) : undefined;
       if (
         (await this.agents.unload(service, { modelRef: ref, force, reason, ...(agentDevice ? { device: agentDevice } : {}) })).outcome === 'unloaded'
       ) {
         outcome = 'unloaded';
-        const was = instances.find((m) => m.modelRef === ref);
-        unloaded?.push({ modelRef: ref, pinned: was?.adminPinned ?? false, ttlSeconds: was?.ttlSeconds ?? null });
+        unloaded?.push({
+          modelRef: ref,
+          pinned: was?.adminPinned ?? false,
+          ttlSeconds: was?.ttlSeconds ?? null,
+          agentDevice: was?.device ?? agentDevice ?? null,
+          ...(was?.loadConfig ? { loadConfig: was.loadConfig } : {}),
+        });
       }
     }
     if (service === 'lm-studio') for (const key of keys) this.lmsFailures.delete(key);
@@ -2035,6 +2314,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       this.refreshReport('lm-studio', () => this.agents.report('lm-studio'), now),
     ]);
 
+    this.settleTimedOutLoads(now);
+
     const staleServices = RESIDENCY_CONTROLLED_SERVICES.filter((service) => {
       const last = this.lastReports.get(service);
       return !last || now - last.receivedAt > STALE_AFTER_MS;
@@ -2104,6 +2385,59 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const ledger: Ledger = { at: now, devices, entries, staleServices, oldestReportMs, policies, livePath, catalogue, failures, serviceDevices };
     this.ledger = ledger;
     return ledger;
+  }
+
+  /**
+   * R1-F5 — release the gate claim of a load the gateway timed out on, once a report received AFTER the timeout
+   * shows that model loaded or failed (on its device, when one was sent) — or once the hard cap passes.
+   */
+  private settleTimedOutLoads(now: number): void {
+    for (const [opId, pending] of this.timedOutLoads) {
+      const last = this.lastReports.get(pending.service);
+      const settled =
+        last !== undefined &&
+        last.receivedAt >= pending.since &&
+        last.report.models.some(
+          (m) =>
+            m.modelRef === pending.modelRef &&
+            (m.state === 'loaded' || m.state === 'failed') &&
+            (pending.agentDevice === null || m.device === pending.agentDevice),
+        );
+      if (!settled && now < pending.deadline) continue;
+      if (!settled)
+        this.logger.warn({
+          message: 'residency.load.timeout_gate_released',
+          operationId: opId,
+          service: pending.service,
+          modelRef: pending.modelRef,
+        });
+      this.timedOutLoads.delete(opId);
+      this.gate.release(opId);
+    }
+  }
+
+  /** R2-F4 — the two gauges the deployment alerts on, rebuilt from this tick's ledger. */
+  private publishGauges(ledger: Ledger): void {
+    for (const service of RESIDENCY_CONTROLLED_SERVICES) {
+      residencyServiceReachable.set({ service }, this.lastReports.has(service) && !this.reportFailing.has(service) ? 1 : 0);
+    }
+    residencyLivePathModelLoaded.reset();
+    const seen = new Set<string>();
+    for (const entry of ledger.livePath) {
+      const key = residencyKey(entry.service, entry.modelRef);
+      if (!isControlled(entry.service) || seen.has(key)) continue;
+      // A model on the live path ONLY as an ASR pipeline stage loads with its ASR agent, never on its own (lane B3).
+      const roles = ledger.livePath.filter((l) => l.service === entry.service && l.modelRef === entry.modelRef).map((l) => l.role);
+      if (roles.every((role) => role === 'pipeline_stage')) continue;
+      seen.add(key);
+      const loaded = ledger.entries.some(
+        (e) =>
+          e.service === entry.service &&
+          e.state === 'loaded' &&
+          (e.modelRef === entry.modelRef || (e.aiModelId !== null && onLivePathEntry(entry, e.aiModelId))),
+      );
+      residencyLivePathModelLoaded.set({ service: entry.service, model_ref: entry.modelRef }, loaded ? 1 : 0);
+    }
   }
 
   private async refreshReport(service: ResidencyControlledService, read: () => Promise<ServiceResidencyReport>, now: number): Promise<void> {
@@ -2301,7 +2635,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
   /**
    * TASK-1055 — an agent's `cuda:<n>` → DCGM's `gpu<N>` (fixture `deviceIds`): the card whose DCGM `UUID` is
-   * the agent device's `uuid`; with no uuid from the agent, index `n` → `gpu<n>`; with ONE card, that card.
+   * the agent device's `uuid`; only when no uuid comparison is possible, index `n` → `gpu<n>`, else with ONE card, that card.
    * Unmatched ⇒ absent (the gate then conservatively claims every card).
    */
   private reportDeviceMap(report: ServiceResidencyReport, gpus: ReadonlyArray<Pick<GpuReading, 'id' | 'uuid'>> = this.lastGpus): Map<string, string> {
@@ -2314,12 +2648,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       const reading = report.devices.find((d) => d.id === agentId);
       let mapped: string | undefined;
       if (reading?.uuid) mapped = cards.find((g) => g.uuid !== undefined && g.uuid === reading.uuid)?.id;
-      // Index fallback only when there is no uuid to match on (the agent sent none, or DCGM carries none).
+      // Index (and one-card) fallback only when there is no uuid to match on (the agent sent none, or DCGM carries
+      // none) — a uuid that matches no card is a card DCGM does not see, never "the only card" (R1-F7).
       if (!mapped && (!reading?.uuid || !cards.some((g) => g.uuid))) {
         const index = reading?.index ?? agentIndex(agentId);
         if (index !== null && ids.has(`gpu${index}`)) mapped = `gpu${index}`;
+        if (!mapped && cards.length === 1) mapped = cards[0].id;
       }
-      if (!mapped && cards.length === 1) mapped = cards[0].id;
       if (mapped) mapping.set(agentId, mapped);
     }
     return mapping;
@@ -2439,12 +2774,17 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const devices: EngineDevice[] = ledger.devices.map(({ id, kind, totalBytes, freeBytes }) => ({ id, kind, totalBytes, freeBytes }));
     const byKey = new Map<string, EngineModel>();
 
+    // R1-F9 — one engine model per resident COPY (service, model, device): stt / nlp keep one per device, and an
+    // idle copy on one card is unloaded (scoped to that card) while the busy one on the other stays.
+    const resident = new Set<string>();
     for (const entry of ledger.entries) {
       if (!isControlled(entry.service)) continue;
       const key = residencyKey(entry.service, entry.modelRef);
-      const existing = byKey.get(key);
+      resident.add(key);
+      const copy = `${key}|${entry.device}`;
+      const existing = byKey.get(copy);
       if (existing) {
-        // A second LM Studio instance of the same key (`<key>:2`) — one pair, two footprints.
+        // A second LM Studio instance of the same key (`<key>:2`) on the same device — one copy, two footprints.
         existing.bytes = existing.bytes !== null && entry.bytes !== null ? existing.bytes + entry.bytes : (existing.bytes ?? entry.bytes);
         existing.inFlight += entry.inFlight ?? 0;
         continue;
@@ -2453,7 +2793,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       const loadedMs = parseMs(entry.loadedAt) ?? this.firstSeen.get(key) ?? now;
       const usedMs = parseMs(entry.lastUsedAt) ?? loadedMs;
       const lmsTtl = entry.service === 'lm-studio' ? entry.ttlSeconds : null;
-      byKey.set(key, {
+      byKey.set(copy, {
         service: entry.service,
         modelRef: entry.modelRef,
         resident: true,
@@ -2497,14 +2837,20 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       const { service, modelRef } = candidate;
       if (!modelRef || !isControlled(service)) continue;
       const key = residencyKey(service, modelRef);
-      if (byKey.has(key) || residentModels.has(`${service}|${candidate.aiModelId}`) || this.operations.runningFor(service, modelRef)) continue;
+      if (
+        resident.has(key) ||
+        byKey.has(key) ||
+        residentModels.has(`${service}|${candidate.aiModelId}`) ||
+        this.operations.runningFor(service, modelRef)
+      )
+        continue;
       const cls = this.classify(service, modelRef, candidate.aiModelId, ledger);
       const model = ledger.catalogue.byId.get(candidate.aiModelId);
       byKey.set(key, {
         service,
         modelRef,
         resident: false,
-        devices: this.placementDevices(service, ledger),
+        devices: this.placementDevices(service, ledger, model),
         // F8 — a never-measured model is placed at its catalogue size × 1.2, not at 0 bytes.
         bytes: budgetFor(this.observedBytes(service, modelRef, model), model?.memorySizeMb).bytes,
         inFlight: 0,
@@ -2569,18 +2915,33 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
   /**
    * The devices a not-yet-resident model of `service` would occupy for the POLICY loop (D-7: within the
-   * workload's visible devices): the service's default device — stt / nlp their first card (nlp without
-   * one: host memory); LM Studio, whose per-model placement is its profile, conservatively every card.
+   * workload's visible devices) — the SAME place `loadPlan` puts it (R1-F2), so the engine budgets and
+   * makes room where the load will really go: the model's stored `defaultDevice`; for LM Studio its own
+   * profile split's cards; else the service's default — stt / nlp their first card (nlp without one: host
+   * memory); LM Studio with no per-model placement (the platform GPU is a settings read the sync loop
+   * does not make) conservatively every card, admitted on its target by `enforceLoad`.
    */
-  private placementDevices(service: ResidencyControlledService | string, ledger: Ledger): string[] {
+  private placementDevices(service: ResidencyControlledService | string, ledger: Ledger, row?: AiModelEntity): string[] {
     const gpuIds = ledger.devices.filter((d) => d.kind === 'gpu').map((d) => d.id);
     const allGpus = gpuIds.length > 0 ? gpuIds : ['gpu?'];
-    if (service === 'stt' || service === 'nlp') {
-      const [first] = this.placementOptions(service, ledger).sort((a, b) => a.order - b.order);
-      if (first) return first.physical;
-      return service === 'nlp' ? ['cpu:nlp'] : allGpus;
+    if (!isControlled(service)) return allGpus;
+    const options = this.placementOptions(service, ledger);
+    const preferred = defaultDeviceOf(row);
+    const stored = preferred ? [...options, ...this.extraDevices(service, ledger, options)].find((o) => o.device === preferred) : undefined;
+    if (stored) return stored.physical;
+    if (service === 'lm-studio') {
+      const split = (row?.metaData as { serving?: { gpuSplit?: EffectiveLmStudioPreload['gpuSplit'] } } | null | undefined)?.serving?.gpuSplit;
+      const cards = options.filter((o) => o.device !== 'multi');
+      if (split && cards.length > 0) {
+        const indices = lmStudioProfileIndices({ gpuSplit: { ...split, strategy: split.strategy ?? 'evenly' }, gpu: null }, cards.length);
+        const placed = cards.filter((o) => indices.includes(o.lmsIndices?.[0] ?? -1)).map((o) => o.device);
+        if (placed.length > 0) return placed;
+      }
+      return allGpus;
     }
-    return allGpus;
+    const [first] = options.sort((a, b) => a.order - b.order);
+    if (first) return first.physical;
+    return service === 'nlp' ? ['cpu:nlp'] : allGpus;
   }
 
   /** A MEASURED footprint for a model, or `undefined`: the catalogue's observed size (every agent measures its own loads). */
@@ -2713,8 +3074,15 @@ interface LoadPlan {
   target: PlacementOption;
   /** Every device the service can place it on (the preview's candidates). */
   options: PlacementOption[];
-  /** The target was named (by the admin or the model's stored default), not the service's own default. */
-  explicitDevice: boolean;
+  /**
+   * Where the target came from: the admin's `device`, the instance a replace reloads, the model's stored
+   * default, or the service's own placement. Only `request` / `replace` scope "already loaded" to the device (R1-F10).
+   */
+  source: 'request' | 'replace' | 'default' | 'service';
+  /** The device the load takes with NO device named — the suggestion keeps it while it fits (R1-F1). */
+  preferred: string;
+  /** LM Studio — the context this load asks for, and its profile's (R2-F6: a longer one scales the need). */
+  context?: { requested: number; profile: number };
   /** LM Studio only — the resolved-profile spec (with the request's overrides), and the one a failed replace restores with. */
   loadSpec?: Record<string, unknown>;
   restoreSpec?: Record<string, unknown>;
@@ -2759,6 +3127,18 @@ function defaultDeviceOf(row: { metaData?: unknown } | undefined): string | null
   return typeof device === 'string' && /^(gpu\d+|multi|cpu)$/.test(device) ? device : null;
 }
 
+/** `_metadata.residency.observedContextLength` — the context the stored footprint was measured at (R2-F6). */
+function observedContextOf(row: { metaData?: unknown } | undefined): number | null {
+  const meta = row?.metaData as { residency?: { observedContextLength?: unknown } } | null | undefined;
+  const value = meta?.residency?.observedContextLength;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** A ledger device in the request vocabulary (R1-F8): `cpu:<service>` → `cpu`; `gpu<N>` / `multi` as they are. */
+function requestDevice(device: string): string {
+  return device.startsWith('cpu') ? 'cpu' : device;
+}
+
 /** The bytes the given resident instances hold on `devices` (per-device bytes when the agent sent them). */
 function residentBytesOn(resident: readonly LedgerEntry[], devices: readonly string[]): number {
   return resident.reduce((sum, e) => {
@@ -2775,6 +3155,37 @@ function alternative(admission: Admission): string {
   return best.fits
     ? ` ${shortLabel(best.device)} can hold it (${formatBytes(best.remainingBytes ?? 0)} to spare).`
     : ` ${shortLabel(best.device)} is the closest.`;
+}
+
+/**
+ * Where a replace puts an unloaded instance back (R1-F4): stt / nlp on the agent device it sat on, with the
+ * builder's spec; LM Studio with the config the agent read back for it (context, parallel, flash attention,
+ * KV quant, GPU split — the split in the spec is the placement, so no device is sent), else the profile
+ * spec on the card it sat on.
+ */
+function restoreTarget(
+  service: ResidencyControlledService,
+  instance: RestorableInstance,
+  restoreSpec: Record<string, unknown>,
+): { loadSpec: Record<string, unknown>; agentDevice: string | null } {
+  const device = instance.agentDevice;
+  if (service !== 'lm-studio') return { loadSpec: restoreSpec, agentDevice: device && /^(cuda:\d+|cpu)$/.test(device) ? device : null };
+  const config = instance.loadConfig;
+  if (!config) return { loadSpec: restoreSpec, agentDevice: device && /^cuda:\d+$/.test(device) ? device : null };
+  const spec: Record<string, unknown> = { ...restoreSpec };
+  if (config.contextLength !== undefined) spec.context_length = config.contextLength;
+  if (config.parallel !== undefined) spec.parallel = config.parallel;
+  if (config.flashAttention !== undefined) spec.flash_attention = config.flashAttention;
+  if (config.kvCacheQuant) spec.kv_cache_quant = { ...config.kvCacheQuant };
+  if (config.gpuSplit) {
+    spec.gpu_split = {
+      strategy: config.gpuSplit.strategy ?? 'evenly',
+      priority: config.gpuSplit.priority ?? [],
+      disabled_gpus: config.gpuSplit.disabledGpus ?? [],
+      custom_ratio: config.gpuSplit.customRatio ?? [],
+    };
+  }
+  return { loadSpec: spec, agentDevice: null };
 }
 
 /** `{code, reason}` of an agent / engine failure, for a warn line (AC-6). */

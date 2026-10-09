@@ -112,28 +112,33 @@ export class ModelResidencyController {
       'timeout of a browser request. Poll `GET operations/:operationId`, or watch the model`s `state` go `loading` → `loaded` in `GET`. A model ' +
       'already resident answers 200 `already_loaded` and creates no operation. `device` (`gpu<N>`, `multi` = LM Studio split across cards, ' +
       '`cpu`) picks where it goes; absent = the model`s `_metadata.residency.defaultDevice`, else the service default (LM Studio: its serving ' +
-      'profile). `makeDefault: true` also stores `device` as that default. Loads are serialised per PHYSICAL GPU across every service (a load ' +
+      'profile). `makeDefault: true` also stores `device` as that default — judged first, written (and audited) only once the load has landed ' +
+      '(already loaded on that device: at once; on another device: 409 `ALREADY_LOADED_ELSEWHERE`), never for a load forced past the budget ' +
+      '(409 `MAKE_DEFAULT_OVER_BUDGET`). Loads are serialised per PHYSICAL GPU across every service (a load ' +
       'holds the cards it goes to) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that does ' +
       'not fit the chosen device`s free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty ' +
       '`reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation; a need larger than the device`s free memory ' +
-      'outright is 409 `EXCEEDS_DEVICE` even when forced (OD-5). Both refusals carry `device`, `shortfallBytes`, the ranked `candidates` and ' +
+      'outright is 409 `EXCEEDS_DEVICE` even when forced (OD-5); a split across cards must fit on EVERY card. Both refusals carry `device`, `shortfallBytes`, the ranked `candidates` and ' +
       'the `suggestedDevice` (advice only — never an automatic re-target). LM Studio loads through its residency agent with the model`s full ' +
       'serving profile; `options` override only `contextLength` / `flashAttention` and are accepted for `lm-studio` alone (400 ' +
-      '`OPTIONS_UNSUPPORTED`); `replace: true` unloads then reloads as ONE operation.',
+      '`OPTIONS_UNSUPPORTED`; a context above the model`s declared maximum is 400 `CONTEXT_LENGTH_UNSUPPORTED`, and one above the context its ' +
+      'footprint was measured at scales the need by the ratio); `replace: true` unloads then reloads as ONE operation (stt / nlp: only the ' +
+      'copy on the target device; a live-path model needs a `reason`, 409 `LIVE_PATH_REASON_REQUIRED`; a failed reload restores each ' +
+      'unloaded instance where and as it was).',
   })
   @ApiResponse({ status: 202, description: '`outcome: accepted` — the load runs in the background', type: ModelResidencyLoadResponse })
   @ApiResponse({ status: 200, description: '`outcome: already_loaded`', type: ModelResidencyLoadResponse })
   @ApiResponse({
     status: 400,
     description:
-      '`DEVICE_UNAVAILABLE` (the service has no such device, or `makeDefault` without `device`), `OPTIONS_UNSUPPORTED`, an invalid body, or `LOAD_FAILED` (no load spec could be derived)',
+      '`DEVICE_UNAVAILABLE` (the service has no such device, or `makeDefault` without `device`), `OPTIONS_UNSUPPORTED`, `CONTEXT_LENGTH_UNSUPPORTED` (with `maxContextLength`), an invalid body, or `LOAD_FAILED` (no load spec could be derived)',
   })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: '`MODEL_UNKNOWN` — nothing can load this model on that service' })
   @ApiResponse({
     status: 409,
     description:
-      '`OVER_BUDGET` / `EXCEEDS_DEVICE` (with `device`, `shortfallBytes`, `candidates`, `suggestedDevice`), `NO_SIZE`, `LOAD_IN_PROGRESS`, or `IN_FLIGHT` (replace of a model serving requests)',
+      '`OVER_BUDGET` / `EXCEEDS_DEVICE` / `MAKE_DEFAULT_OVER_BUDGET` (with `device`, `shortfallBytes`, `candidates`, `suggestedDevice`), `ALREADY_LOADED_ELSEWHERE` (with `loadedOn`), `LIVE_PATH_REASON_REQUIRED` (replace of a live-path model without `reason`, with `consumers`), `NO_SIZE`, `LOAD_IN_PROGRESS`, or `IN_FLIGHT` (replace of a model serving requests)',
   })
   async load(@Body() request: LoadModelResidencyRequest, @Res({ passthrough: true }) response: Response): Promise<ModelResidencyLoadResponse> {
     const result = await this.service.load(request);
@@ -158,7 +163,7 @@ export class ModelResidencyController {
       'evictable — best first) and the `suggestedDevice` + a one-sentence `suggestionReason`. Same body as `POST load`.',
   })
   @ApiResponse({ status: 200, type: ModelResidencyLoadPreviewResponse })
-  @ApiResponse({ status: 400, description: '`DEVICE_UNAVAILABLE`, `OPTIONS_UNSUPPORTED` or an invalid body' })
+  @ApiResponse({ status: 400, description: '`DEVICE_UNAVAILABLE`, `OPTIONS_UNSUPPORTED`, `CONTEXT_LENGTH_UNSUPPORTED` or an invalid body' })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   async previewLoad(@Body() request: LoadModelResidencyRequest): Promise<ModelResidencyLoadPreviewResponse> {
     return this.service.previewLoad(request);

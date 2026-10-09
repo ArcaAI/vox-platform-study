@@ -23,7 +23,13 @@ import { RESIDENCY_CONTROLLED_SERVICES, type ResidencyControlledService } from '
  * an old caller gets a named 400 `OPTIONS_UNSUPPORTED` rather than a whitelist error.
  */
 export class LmStudioResidencyLoadOptions {
-  @ApiPropertyOptional({ description: 'Context window to load with (`context_length`).', minimum: 512, maximum: 1_048_576, nullable: true })
+  @ApiPropertyOptional({
+    description:
+      'Context window to load with (`context_length`). Above the model`s declared maximum: 400 `CONTEXT_LENGTH_UNSUPPORTED`; above the context its footprint was measured at, admission scales the need by the ratio.',
+    minimum: 512,
+    maximum: 1_048_576,
+    nullable: true,
+  })
   @IsOptional()
   @IsInt()
   @Min(512)
@@ -93,7 +99,7 @@ export class LoadModelResidencyRequest {
 
   @ApiPropertyOptional({
     description:
-      '"Apply & reload": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`.',
+      '"Apply & reload": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation — stt / nlp: only the copy on the target device. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`, and 409 `LIVE_PATH_REASON_REQUIRED` for a live-path model without a `reason` (audited). A failed reload restores each unloaded instance where it was, as it was.',
     default: false,
   })
   @IsOptional()
@@ -119,7 +125,7 @@ export class LoadModelResidencyRequest {
 
   @ApiPropertyOptional({
     description:
-      'TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write. Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise).',
+      'TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write, audited (`model-residency.default-device`, with the previous value). Judged first and written only once the load has landed (a model already loaded on that device: at once). Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise); already loaded on another device is 409 `ALREADY_LOADED_ELSEWHERE`; a load forced past the budget is never made the default (409 `MAKE_DEFAULT_OVER_BUDGET`).',
     default: false,
   })
   @IsOptional()
