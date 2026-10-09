@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **In Progress** — owner go 2026-10-09 (all OD recommendations); wave 0 contract committed; wave 1 lanes running |
+| Status | **In Progress** — waves 0–2 merged on `dev-2.2` (not pushed), gate green; review done; fix wave running |
 | Type | bugfix + feature (gateway, residency agents, LM Studio pod, console, deployment repo) |
 | Branch | `dev-2.2` (lanes in worktrees, merged by the orchestrator) · `main` in `hope-v2-deployment` |
 | Builds on | TASK-1005 (residency controller), TASK-1051 (screen redesign) — both in Review |
@@ -200,7 +200,39 @@ load a model on each GPU, a deliberate over-capacity pick on GPU 0 → refusal +
 
 ## 7. Implementation summary
 
-_Pending go._
+### 7.1 Waves 0–2 (merged on `dev-2.2`, not pushed)
+
+| Step | Commit | Lane · tier | Delivered |
+|---|---|---|---|
+| Wave 0 | `f96f050bd`, `68d98fbe6`, `790085162` | orchestrator | contract fixture `model-residency-task1055.fixture.json`; py agent `device` on load/unload, `Planner` protocol, `DeviceUnavailable`, `accelerator.py`, `ModelCache(measure=)`, `gpu_devices()`; gateway DTOs; console wire types |
+| K kernel | `eda2a2c76` → `bdc260148` | opus | measure hook + `bytes_source` measured/estimated/unknown, remeasure guard, release after unload hook, device report extras (index/name/uuid/process_bytes) |
+| S stt | `0d7bea6ca` → `e6411720e` | opus | per-device caches, planner `cuda:N`, every loader honours `cuda:N` (HF `device_map`, whisper.cpp `gpu_device`, onnx `device_id`, NeMo), device-scoped cleanup, param-byte measure |
+| N nlp | `a33a8b836` → `5bc84603f` | opus | real unload (hooks, real `shutdown()`s, weight-registry holders, release), param-byte measure, `cuda:N` placement + per-device caches |
+| C console | `69d679788` → `bbd7a380f` | opus | GPU picker + capacity callout + "Load on GPU N" + make-default, live-path unload with consumers + reason, reset to default, reload prefilled, per-card bytes |
+| A LM Studio agent | `03e5a5c6c` → `6b0a4ab64` | opus | in-container agent on :8869 over the SDK channel (exact-key resolution, full profile, device → split, strict read-back, per-card measurement), `CUDA_DEVICE_ORDER=PCI_BUS_ID` (E13) |
+| G gateway | `46a5869a5` → `2ca6ad4e0` | opus | LM Studio via the agent (`LMSTUDIO_AGENT_URL`), boot-plan-equal `load_spec`, device-aware admission + candidates + suggestion + 409 bodies, makeDefault, live-path unload with reason, UUID mapping, honest numbers, pin-recommendation fix, warn logging |
+| D deployment | `7df7a65` (deployment repo, branch `task-1055/deploy`) | sonnet | :8869 port/Service/NetworkPolicy, `LMSTUDIO_AGENT_URL`, `CUDA_VISIBLE_DEVICES=0,1` for stt/stt-worker/nlp, runbook §6a |
+| Integration | `c0c2bea94`, `e0eb3de4b`, `1fe072765` | orchestrator | unplaced GPU loads stay on cuda:0 (HF `{"":0}`, llama.cpp `main_gpu=0`); DTO classes declared before use (boot crash caught by the route-manifest emit); five API artifacts regenerated; v1 agent fixture extended; readiness CTA emphasis fix |
+
+**Gate (orchestrator, once, after merge, `1fe072765`)**: applications 18,597 passed · api unit 5,298 passed · admin-console 4,880 passed (+ the 1 pre-existing emphasis-canon failure, fixed) · vox-node 817 passed · py-runtime-models 182 passed · nlp 1,153 passed (TASK-1049 `test_task1049_bench_memory.py` excluded — crashes the run with exit 3 on the pre-ticket base `db7fc7263` too) · stt 4,326 passed, 11 failed + 4 errors all in e2e files that fail the same way on the base (13 failed + 4 errors there; need live services) · LM Studio agent 133 passed · console/api/vox-node typecheck clean, applications build clean · lint 0 errors (3 pre-existing `no-silent-catch` warnings near the change, in untouched lines) · openapi coverage, portal, `gen:admin` no drift · `env:sync:check` OK.
+
+### 7.2 Review (wave 3) and fix wave
+
+Three read-only reviewers: R1 correctness (opus), R2 safety/operability (opus), R3 UX/a11y (sonnet). 30 findings, none in code that would corrupt data; the ones that matter:
+
+| # | Finding | Fix lane |
+|---|---|---|
+| R2-F2 | Readiness on the agent's `/health` makes the agent a single point of failure for all LLM traffic | FD: readiness back on the daemon greeting (model-agnostic) + alerts |
+| R2-F1 | Deployment change before the new images = NotReady LM Studio / old stt splitting models over both GPUs | FD: explicit rollout precondition |
+| R2-F3 | Two visible GPUs flip stt to the multi-GPU execution profile (40 streams, embedding on the Gemma card) | FP |
+| R2-F4 | After a live-path unload LM Studio JIT re-loads with default settings; no alert existed | FG gauges + FD alerts + FC copy |
+| R2-F5/F6 | Split admission pooled instead of per card; context override not budgeted | FG |
+| R2-F7 | makeDefault written unchecked/unaudited, before load success; a bad default could crash-loop the boot plan | FG + FA (boot fallback) |
+| R2-F8, R1-F3/F4 | Replace bypassed the live-path reason; stt/nlp replace unloaded every device copy; restore went to the failing card | FG |
+| R1-F1 | Suggestion almost always picked `multi` for LM Studio (re-creating E3) | FG + FC |
+| R1-F2, F5–F10 | Enforce path budgeted one card and loaded another; gateway timeout < agent's; routing during a placed load cold-loaded a second copy; mapping/vocabulary/engine-key edge cases | FG, FP |
+| R2-F9 | Agent auth bypassed with an empty token in a deployed env; "8869 only from hope-api" claim false | FA, FD |
+| R3-1…11 | Reload prefill vs applied value, bare error codes, no retry on preview failure, make-default label, copy | FC |
 
 ## 8. E2E evidence (2026-10-09, `admin.taphuynh.dev`, build `c545b171`)
 
