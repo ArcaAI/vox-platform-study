@@ -248,9 +248,16 @@ async function converge(step, api, tenant, active, want, seed) {
 }
 
 /** Create `LEDGER` in a tenant when absent (published + activated). */
-async function ensureLedger(step, api, tenant, finalizer, seed) {
+async function ensureLedger(step, api, tenant, finalizer, seed, { canCreate = true } = {}) {
   const existing = (await listActive(api, finalizer.tenantId, tenant)).find((a) => a.slug === LEDGER);
   if (existing) return converge(step, api, tenant, existing, { body: undefined, outputSchema: seed.ledger.outputSchema, parameters: seed.ledger.parameters }, seed);
+  // `generation.reasoning` is PLATFORM-MANAGED (TASK-1036 OD-11): a tenant admin may not set it on a
+  // create (403 AGENT_PARAMETER_PLATFORM_MANAGED), so the tenant pass defers the create to the
+  // super admin, who is exempt in any tenant (see `main`).
+  if (!canCreate) {
+    ok(step, 'absent — created below by the super admin (generation.reasoning is platform-managed)');
+    return 'deferred';
+  }
   if (DRY) {
     plan(step, 'create + publish + activate v1 on the finalizer`s model');
     return 'planned';
@@ -317,7 +324,7 @@ async function convergeTenant(label, api, tenantId, tenant, seed) {
     }
   };
   await run(`${label} ${FINALIZER}`, () => converge(`${label} ${FINALIZER}`, api, tenant, finalizer, { body: seed.finalizer.body, outputSchema: seed.finalizer.outputSchema, parameters: seed.finalizer.parameters }, seed), FINALIZER);
-  await run(`${label} ${LEDGER}`, () => ensureLedger(`${label} ${LEDGER}`, api, tenant, finalizer, seed), LEDGER);
+  await run(`${label} ${LEDGER}`, () => ensureLedger(`${label} ${LEDGER}`, api, tenant, finalizer, seed, { canCreate: tenant !== undefined }), LEDGER);
   for (const row of actives.filter((a) => a.slug !== FINALIZER && a.slug !== LEDGER)) {
     const full = await api.call('GET', `admin/agents/${row.id}`, { tenant });
     if (temperatureOf(full) === 0) continue;
@@ -365,6 +372,21 @@ async function main() {
       }
       const { touched, failed } = await convergeTenant('global', api, GLOBAL_TENANT_ID, GLOBAL_TENANT_ID, seed);
       published += touched.size;
+      // The customer tenant's ledger agent, created by the super admin elevated into it: the seed's
+      // `generation.reasoning: { enabled: false }` is platform-managed and a tenant admin cannot write it.
+      if (!SKIP_TENANT) {
+        const step = `tenant ${TENANT_KEY} ${LEDGER} (super admin)`;
+        try {
+          const finalizerRow = (await listActive(api, TENANT_ID, TENANT_ID)).find((a) => a.slug === FINALIZER);
+          if (!finalizerRow) fail(step, `no active ${FINALIZER} in tenant ${TENANT_ID} to take the model from`);
+          else {
+            const finalizer = await api.call('GET', `admin/agents/${finalizerRow.id}`, { tenant: TENANT_ID });
+            if ((await ensureLedger(step, api, TENANT_ID, finalizer, seed)) === 'published') published += 1;
+          }
+        } catch (e) {
+          fail(step, e.message);
+        }
+      }
       // SYSTEM is promoted FROM Global, so a failed Global step must not promote half a change.
       const systemSlugs = new Set((await listActive(api, SYSTEM_TENANT_ID, SYSTEM_TENANT_ID)).map((a) => a.slug));
       systemSlugs.add(LEDGER);
