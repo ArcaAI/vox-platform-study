@@ -515,6 +515,49 @@ def _route(slot: str, key: str) -> ModelCache[Any]:
     return default
 
 
+#: Slots whose key is exactly `_model_cache_key(model_name, model_path)`. The
+#: suggester (two weight identities) and the entailment scorer (calibration folded
+#: in) compose other keys and are never aliased.
+_WEIGHT_KEYED_SLOTS = frozenset(
+    {
+        "nlp_token_classifier",
+        "nlp_text_classifier",
+        "nlp_gliner2_guard",
+        "nlp_seq_cls_guard",
+        "nlp_judge_guard",
+    }
+)
+
+
+def _serving_key(slot: str, key: str) -> str:
+    """The key a REQUEST for ``key`` is served under (TASK-1055 cluster e2e).
+
+    A request that names NO path asks for the model's own weights. The residency
+    agent loads with the row's derived path, while the clinical NER callers
+    (`resolveNerModelInjection`, the harness `_extract_clinical_entities`) send the
+    name alone — so the admin's copy sat under `name\\x00path` and a live request
+    keyed `name` cold-loaded a second one. Such a request is served by the resident
+    (or in-flight) copy of the same `model_name` when exactly ONE path variant of it
+    exists on any device; with none, or with two that disagree, it keeps its own
+    key. A request that names a path is never aliased: a different path is
+    different weights, and a name-only copy's weights are whatever the id resolved
+    to, which this service cannot prove equal to the named path.
+    """
+    if slot not in _WEIGHT_KEYED_SLOTS or _KEY_SEP in key:
+        return key
+    caches = [_cache_for(slot)] + [c for (s, _d), c in _device_caches.items() if s == slot]
+    if any(key in c.cached_keys() or _in_flight(c, key) for c in caches):
+        return key
+    prefix = f"{key}{_KEY_SEP}"
+    variants = {
+        candidate
+        for cache in caches
+        for candidate in [*cache.cached_keys(), *getattr(cache, "_inflight", {})]
+        if candidate.startswith(prefix)
+    }
+    return variants.pop() if len(variants) == 1 else key
+
+
 def _in_flight(cache: ModelCache[Any], key: str) -> bool:
     """Whether ``cache`` has a load of ``key`` running (its single-flight future).
 
@@ -666,7 +709,7 @@ async def pinned_token_classifier(
 ) -> AsyncIterator[TokenClassifier]:
     # Pin the (model_name, model_path) slot; `model_path` defaults to
     # None so every existing caller keeps its exact slot and behaviour.
-    key = _model_cache_key(model_name, model_path)
+    key = _serving_key("nlp_token_classifier", _model_cache_key(model_name, model_path))
     cache = cast("ModelCache[TokenClassifier]", _route("nlp_token_classifier", key))
     await cache.pin(key)
     try:
@@ -685,7 +728,7 @@ async def pinned_text_classifier(
 ) -> AsyncIterator[TextClassifier]:
     # Pin the (model_name, model_path) slot; `model_path` defaults to
     # None so every existing caller keeps its exact slot and behaviour.
-    key = _model_cache_key(model_name, model_path)
+    key = _serving_key("nlp_text_classifier", _model_cache_key(model_name, model_path))
     cache = cast("ModelCache[TextClassifier]", _route("nlp_text_classifier", key))
     await cache.pin(key)
     try:
@@ -874,7 +917,7 @@ async def pinned_gliner2_guard(
     model_name: str, model_path: str | None = None
 ) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the GLiNER2 guard runtime for one request."""
-    key = _model_cache_key(model_name, model_path)
+    key = _serving_key("nlp_gliner2_guard", _model_cache_key(model_name, model_path))
     cache = _route("nlp_gliner2_guard", key)
     await cache.pin(key)
     try:
@@ -892,7 +935,7 @@ async def pinned_seq_cls_guard(
     model_name: str, model_path: str | None = None
 ) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the sequence-classification guard for one request."""
-    key = _model_cache_key(model_name, model_path)
+    key = _serving_key("nlp_seq_cls_guard", _model_cache_key(model_name, model_path))
     cache = _route("nlp_seq_cls_guard", key)
     await cache.pin(key)
     try:
@@ -908,7 +951,7 @@ async def pinned_seq_cls_guard(
 @asynccontextmanager
 async def pinned_judge_guard(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the generative guard judge for one request."""
-    key = _model_cache_key(model_name, model_path)
+    key = _serving_key("nlp_judge_guard", _model_cache_key(model_name, model_path))
     cache = _route("nlp_judge_guard", key)
     await cache.pin(key)
     try:
