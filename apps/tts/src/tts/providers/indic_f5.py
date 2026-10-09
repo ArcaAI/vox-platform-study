@@ -23,7 +23,7 @@ from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 import numpy as np
-from hope_runtime_models import ModelCache
+from hope_runtime_models import ModelCache, torch_module_bytes
 
 from tts.core.audio import encode_pcm, pcm16_to_mp3, pcm16_to_wav
 from tts.core.config import IndicF5Config
@@ -35,6 +35,7 @@ from tts.providers.base import (
     CredentialPosture,
     SynthesisRequest,
 )
+from tts.residency.wiring import tts_cache_residency
 from tts.routing.chunking import chunk_text
 
 logger = get_logger(__name__)
@@ -99,6 +100,7 @@ class IndicF5Provider:
                 }
             ),
             ttl_seconds=settings.model_cache_ttl_seconds,
+            slug=candidate.model.slug,
         )
 
     def __init__(
@@ -109,8 +111,11 @@ class IndicF5Provider:
         generate_factory: Callable[[], Callable[[str], np.ndarray]] | None = None,
         ttl_seconds: int | None = None,
         time_func: Callable[[], float] = time.monotonic,
+        slug: str | None = None,
     ) -> None:
         self._config = config
+        # TASK-1055 wave 3: the registry row this engine was built for (`from_spec`).
+        self._slug = slug
         # The model handle lives behind the
         # shared model cache, exactly as Kokoro's does, so it loads
         # on first use and is RELEASED when idle. An explicitly injected `generate`
@@ -125,6 +130,9 @@ class IndicF5Provider:
             time_func=time_func,
             metrics=build_model_cache_metrics_sink(),
             name="tts_indic_f5",
+            # TASK-1055 wave 3 — console control: reported and loaded by the residency agent.
+            residency=tts_cache_residency(slug or self.name),
+            measure=torch_module_bytes,
         )
 
     async def _load_generate(self, _key: str) -> Callable[[str], np.ndarray]:
@@ -150,6 +158,16 @@ class IndicF5Provider:
         if self._generate is not None:
             return self._generate
         return await self._cache.get("indic_f5")
+
+    @property
+    def model_slug(self) -> str | None:
+        """The AiModel slug this engine was built from (`from_spec`); None for a boot engine."""
+        return self._slug
+
+    @property
+    def model_cache(self) -> ModelCache[Any]:
+        """The weights' cache — what the residency agent reports on and acts through."""
+        return self._cache
 
     def configure_retention(self, retention: dict[str, int]) -> None:
         """Adopt control-plane retention; absent keys keep the current value."""
