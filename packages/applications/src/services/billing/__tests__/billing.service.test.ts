@@ -5,6 +5,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingAdjustmentEntity, BillingInvoiceEntity, BillingInvoiceStatus, BillingLineKind, SysEventType, TenantEntity, TenantPlan } from '@arcaai/domains';
 
 import { BillingService } from '../billing.service';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
 import { AddAdjustmentRequest } from '../dto';
 
 /**
@@ -266,6 +267,8 @@ function makeWorld(config: WorldConfig = {}) {
     planHistoryRepository as never,
     priceBook as never,
     unitOfWork as never,
+    // TASK-1057 — `billing.adjustment` is a locked row: it never reads a setting.
+    new ActionConfirmationService({} as never),
   );
 
   return {
@@ -653,6 +656,25 @@ describe('BillingService lifecycle', () => {
     expect(memoLine.amountMicros).toBe('-50000000');
     expect(memoLine.description).toContain('metering_correction');
     expect(BigInt(september.totalMicros)).toBe(BigInt(september.subtotalMicros) - 50_000_000n);
+  });
+
+  it('TASK-1057: the adjustment sys-event carries the locked billing.adjustment reason-code stamp', async () => {
+    const { service, draft, eventEmitter } = await draftedWorld();
+    await service.finalize(TENANT, draft.id, draft.version);
+    const request = Object.assign(new AddAdjustmentRequest(), { reason: 'metering_correction', amountMicros: '-1' });
+    await service.addAdjustment(TENANT, draft.id, request);
+    const created = eventEmitter.emit.mock.calls
+      .map(([, payload]) => payload as { resourceType?: string; metaData?: Record<string, unknown> })
+      .find((payload) => payload?.resourceType === 'BillingAdjustment');
+    expect(created?.metaData?.confirmation).toEqual({
+      actionId: 'billing.adjustment',
+      kind: 'reasonCode',
+      mode: 'required',
+      locked: true,
+      required: true,
+      provided: true,
+      note: 'reason code required',
+    });
   });
 
   it('addAdjustment refuses a DRAFT (corrections before finalize are recomputes) and validates the reason code', async () => {
