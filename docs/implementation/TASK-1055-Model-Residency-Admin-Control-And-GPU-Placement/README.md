@@ -281,6 +281,27 @@ Three read-only reviewers: R1 correctness (opus), R2 safety/operability (opus), 
 Leftover: `kubectl.kubernetes.io/restartedAt` on the `hope-lmstudio` pod template is not in Git (Argo may show the
 Deployment OutOfSync until the next sync).
 
+## 8b. Cluster e2e after rollout (2026-10-09, `admin.taphuynh.dev`, build `27cc1535`, CI #1414 green incl. verify-dev)
+
+All pods on `27cc1535`; stt/stt-worker/nlp `CUDA_VISIBLE_DEVICES=0,1`; LM Studio agent `/health` ok, `agent.gpus` PCI order; boot plan Granite → GPU 0, Gemma → GPU 1.
+
+| # | Step | Result | Evidence |
+|---|---|---|---|
+| 1 | Load Medical NER (console, default) | ✅ 6 s on GPU 0; picker suggests GPU 0 (its target), both cards "Fits" | DCGM gpu0 6,471 → 7,298 MiB |
+| 2 | Load GLiGuard on GPU 1 (console picker) | ❌ **D1** wrong nlp cache after an nlp restart (`nlp_text_classifier`, "model type `extractor`") — error shown in full in the toast | fixed in lane `task-1055/nlp-loadspec` (`622a15f13`), pending rollout |
+| 3 | Unload Medical NER (live path) | ✅ consumers listed, reason required, 2 s; **VRAM freed 738 MiB** (E6 fixed) | gpu0 7,298 → 6,560 |
+| 4 | Load Medical NER on GPU 1 | ✅ lands on GPU 1, measured 736 MB (param bytes) | gpu1 2,091 → 2,918, gpu0 unchanged |
+| 5 | Over-capacity (dry run: Granite reload at 8× context) | ✅ need 40.9 GB, every card + split `exceedsDevice`, refusal OVER_BUDGET with reason; ⚠ **D3** reason says "26.6 GB short", candidate row 28.55 | preview response |
+| 6 | Unload Gemma (live path, reason) | ✅ **pod stays Ready**, Service keeps both ports (E1 fixed); GPU 1 freed 2,087 MiB | Endpoints addresses, gpu1 2,918 → 831 |
+| 7 | Load Gemma (console, default) | ✅ picker suggests GPU 1 (profile), not `multi` (R1-F1); engine key `@q4_0` resolved (E2); 65,536 × 10, f16 KV, priorityOrder GPU 1, read-back verified (E3); 15.4 s, 2.19 GB measured on cuda:1 | agent `residency.load_started/loaded` |
+| 8 | Reload Granite with options (drawer) | ✅ Reload reachable + prefilled (E10); reason required; restored 16,384 × 10, q8_0, GPU 0; 23 s, 6.78 GB on cuda:0 | agent log |
+| 9 | Load Whisper ML-EN (stt) | ✅ 7.5 s, `CUDA0 total size = 1623.92 MB`; stt kept the single-GPU profile (20 streams, embedding cpu) with both GPUs visible (R2-F3) | stt logs |
+| 10 | Metrics / Grafana | ✅ `residency_service_reachable` = 1 ×3; `residency_live_path_model_loaded` 1/0 per model; `hope-model-residency` dashboard shows VRAM steps, resident bytes, load times on grafana.taphuynh.dev; ⚠ **D5** LM Studio models absent from "Resident bytes" (agent exports no metrics) | Prometheus queries |
+| 11 | Device-scoped unload (cleanup, GPU 1 copy of NER) | ✅ via API only GPU 1 copy removed (gpu1 −737 MiB); ⚠ **D4** the console offers no copy choice for stt/nlp models on two GPUs (catalogue exposes one placement, no `deviceBytes` for python agents) | nlp agent report |
+| — | Live traffic during the run | ⚠ **D2** a live request loaded a SECOND Medical NER copy on GPU 0 while the console's copy sat on GPU 1 — the admin load did not serve that caller (slot key/route mismatch) | lane `task-1055/nlp-slot-key` running |
+
+End state = start state for the five owner-approved models (Whisper, Medical NER, GLiGuard, Granite on GPU 0; Gemma on GPU 1); no keep-policy rows or default placements written.
+
 ## 9. Change history
 
 | Date | Change |
