@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **In Progress** — waves 0–2 merged on `dev-2.2` (not pushed), gate green; review done; fix wave running |
+| Status | **Review** — all lanes + review fixes merged on `dev-2.2` (not pushed) and deployment local `main` (not pushed); final gate green; cluster e2e pending the owner's push + promotion (§7.4) |
 | Type | bugfix + feature (gateway, residency agents, LM Studio pod, console, deployment repo) |
 | Branch | `dev-2.2` (lanes in worktrees, merged by the orchestrator) · `main` in `hope-v2-deployment` |
 | Builds on | TASK-1005 (residency controller), TASK-1051 (screen redesign) — both in Review |
@@ -234,6 +234,34 @@ Three read-only reviewers: R1 correctness (opus), R2 safety/operability (opus), 
 | R2-F9 | Agent auth bypassed with an empty token in a deployed env; "8869 only from hope-api" claim false | FA, FD |
 | R3-1…11 | Reload prefill vs applied value, bare error codes, no retry on preview failure, make-default label, copy | FC |
 
+### 7.3 Fix wave (merged on `dev-2.2`)
+
+| Lane · tier | Merge | Fixed |
+|---|---|---|
+| FG gateway · opus | `27627351f` | R1-F1 (target placement leads; `multi` only when no single card fits), R2-F5 (per-card split admission), R2-F6 (context-scaled need, 400 `CONTEXT_LENGTH_UNSUPPORTED`), R2-F7 (makeDefault judged first, written after success, audited `model-residency.default-device`, 409 `MAKE_DEFAULT_OVER_BUDGET` / `ALREADY_LOADED_ELSEWHERE`), R2-F8 + R1-F3/F4 (replace needs the live-path reason, scoped to the target copy, restore on each copy's own device/config), R1-F2 (enforce path uses the plan's target), R1-F5 (agent call 900 s; card held after a timeout), R1-F7/F8/F9/F10, gauges `residency_service_reachable` + `residency_live_path_model_loaded` |
+| FP stt/nlp · opus | `ed1b3439b` | R2-F3 (two visible GPUs keep the single-GPU stt execution profile; split profile opt-in by naming the devices), R1-F6 (requests join a placed load in flight instead of cold-loading a second copy) |
+| FA LM Studio agent · opus | `dc10cd62b` | R2-F9 (deployed + empty/`CHANGE_ME` token → 503 `AUTH_NOT_CONFIGURED`), R2-F7 (boot preload retried once on the env placement), R2-F10 (optional `load_spec.expected_bytes` free-memory check), R1-F5 (600 s < gateway 900 s), R2-F11 docs |
+| FC console · opus | `259cdcec0` | R1-F1/F8 console half, R3-1…11, live-path reason on Reload |
+| FD deployment · sonnet | deployment `5c30db4` → local `main` `f9efbd6` | R2-F2 (readiness back on the daemon greeting), alerts `ResidencyAgentUnreachable` / `LivePathModelNotLoaded` (on `exported_service`), R2-F9 docs, R2-F1 rollout precondition |
+| Integration | `aba36079e` | fixture suggestion rule + review refusals, console knows the new codes, artifacts regenerated |
+
+**Final gate (orchestrator, once, after the fix wave)**: applications 18,636 passed / 0 failed on the committed tree `aba36079e` (a clean worktree; the primary checkout carried another session's uncommitted TASK-1056 edits that fail unrelated files) · api unit 5,298 passed · admin-console 4,916 passed · vox-node 817 passed · py-runtime-models 182 · nlp 1,156 (TASK-1049 bench file excluded, crashes on the base too) · stt 4,178 non-e2e passed (e2e files need live services; fail identically on the base) · LM Studio agent 160 · shellcheck clean · console/api/vox-node typecheck 0 · lint 0 errors · openapi coverage / portal / `gen:admin` no drift · `env:sync:check` OK · deployment: kustomize render, kubeconform 173 valid / 0 invalid, config-refs, envfrom-coverage, probes, promtool 72 rules — all pass.
+
+### 7.4 Rollout (owner: push both repos; never by an agent)
+
+1. Push `dev-2.2` → CI builds images (incl. lmstudio with the agent) → `promote-dev` pins their digests.
+2. ONLY THEN push `hope-v2-deployment` `main` (runbook §6a precondition: stt/nlp get both GPUs; their new images keep unplaced loads on GPU 0 and the single-GPU stt profile).
+3. Re-run this ticket's e2e on `admin.taphuynh.dev` (owner-approved models), incl. a deliberate over-capacity pick on GPU 0 → refusal + GPU 1 suggestion, Gemma unload/reload (pod must stay Ready), DCGM vs screen per card, and the E13 check (`agent.gpus` log, a `cuda:1` load lands on DCGM gpu1).
+
+### 7.5 Follow-ups (not in this ticket)
+
+- `py-runtime-models`: a public `in_flight`/`is_loading(key)` accessor — nlp routing reads the private `_inflight` today.
+- nlp guard batchers are keyed by weight slot, not device (`api/v1/rest/guard.py`).
+- `loader/load.mjs` fetches the gateway plan with a `CHANGE_ME` token in dev (harmless 401 → env plan).
+- Unload dialog could show the controller's actual mode (shadow/enforce) instead of generic copy.
+- TASK-1049 `test_task1049_bench_memory.py::test_score_is_chunked_and_resumable` crashes the nlp pytest run (exit 3) — pre-existing.
+- Pre-existing: TASK-1051 emphasis-canon violation fixed here; 3 `no-silent-catch` warnings in untouched LM Studio REST code.
+
 ## 8. E2E evidence (2026-10-09, `admin.taphuynh.dev`, build `c545b171`)
 
 | Step (UTC) | Action | Result | GPU0 / GPU1 used (MiB, DCGM) |
@@ -258,4 +286,5 @@ Deployment OutOfSync until the next sync).
 | Date | Change |
 |---|---|
 | 2026-10-09 | Ticket opened from the live e2e; findings E1–E13; plan and owner decisions written (status Pending). |
+| 2026-10-09 | Waves 1–2 merged (7 lanes), gate green; review R1/R2/R3 (30 findings); fix wave FG/FP/FA/FC/FD merged; final gate green; deployment merged to local `main`. Status Review. |
 | 2026-10-09 | Owner: "go, align agents for maximizing parallel tasks" — all six ODs as recommended. Wave 0 contract: `tests/contracts/model-residency-task1055.fixture.json`; py-runtime-models `device` on load/unload, `Planner` protocol, `DeviceUnavailable`, `accelerator.py`, `ModelCache(measure=)`; stt/nlp planners accept `device`; gateway DTOs (`device`, `makeDefault`, preview `candidates`/`suggestedDevice`, placement `deviceBytes`/`loadConfig`, new error codes); console wire types. Lanes widened to seven (§4.2). Status In Progress. |
