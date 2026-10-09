@@ -11,7 +11,7 @@ const runs = { getRun: vi.fn() };
 const config = { getConfigValue: vi.fn((key: string) => (key === 'WORKFLOW_EXPOSURE_ENABLED' ? true : undefined)) };
 
 function confirmations(mode?: string) {
-  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
 }
 
 function make(policy: ActionConfirmationService) {

@@ -101,7 +101,10 @@ test.describe('platform write', () => {
       expect(((await on.json()) as { errors: unknown[] }).errors).toEqual([]);
 
       // Tenant admin PATCH without a reason -> 400 CONFIRMATION_REQUIRED.
-      const refused = await request.patch(`${PROMPT_TEMPLATES}/${template.id}`, { headers: adminHeaders, data: { content: 'Summarise the visit, briefly.' } });
+      const refused = await request.patch(`${PROMPT_TEMPLATES}/${template.id}`, {
+        headers: adminHeaders,
+        data: { content: 'Summarise the visit, briefly.' },
+      });
       expect(refused.status()).toBe(400);
       expect(await refused.json()).toMatchObject({ code: 'CONFIRMATION_REQUIRED', actionId: ACTION });
 

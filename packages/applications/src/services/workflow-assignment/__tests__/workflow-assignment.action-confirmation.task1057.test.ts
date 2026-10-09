@@ -18,7 +18,7 @@ const databaseService = { baseClient: { $transaction: vi.fn(async (cb: (tx: unkn
 const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)) };
 
 function confirmations(mode?: string) {
-  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
 }
 
 function make(policy: ActionConfirmationService) {

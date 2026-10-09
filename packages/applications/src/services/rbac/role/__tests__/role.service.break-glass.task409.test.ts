@@ -214,7 +214,7 @@ describe('TASK-1057 — the locked rbac.breakGlass stamp', () => {
   it('stamps every break-glass audit (confirmed and rejected) with the locked confirmation', async () => {
     const mocks = makeMocks();
     mocks.roleRepo.findByIdGuardSelect.mockResolvedValue(PLAIN_ROLE);
-    const service = buildService(mocks, new ActionConfirmationService({} as never));
+    const service = buildService(mocks, new ActionConfirmationService({} as never, {} as never, {} as never, {} as never));
     await service.softDelete('role-1', GOOD_CREDS('Care Team'));
     await expectStatus(service.softDelete('role-1'), 428);
     const [confirmed, missing] = breakGlassAudits(mocks);

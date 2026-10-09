@@ -19,7 +19,7 @@ function build(mode: 'required' | 'not-required') {
     clsService: cls,
     resourceType: 'DnaWritingStyleReport',
     getDnaSettings: vi.fn(async () => ({})),
-    confirmations: new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never),
+    confirmations: new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never),
   });
   return { service: svc as unknown as DnaWritingStyleService, repository, emit };
 }

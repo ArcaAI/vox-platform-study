@@ -21,7 +21,7 @@ const databaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) =
 const SOURCE = { id: 'agent-1', slug: 'clinic-summarizer', name: 'Clinic summarizer', versionNumber: 3 };
 
 function confirmations(mode?: string) {
-  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
 }
 
 function makeService(policy: ActionConfirmationService) {

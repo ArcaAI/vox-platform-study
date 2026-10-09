@@ -66,7 +66,7 @@ function build(modes: Modes, withConsumer: boolean) {
   const tenantSettings = {
     resolve: vi.fn((key: string) => ({ value: key.includes('publishImpact') ? modes.impact : modes.reason })),
   };
-  const confirmations = new ActionConfirmationService(tenantSettings as never);
+  const confirmations = new ActionConfirmationService(tenantSettings as never, {} as never, {} as never, {} as never);
   const service = new ConsultationContextSchemaService(
     schemas as never,
     versions as never,

@@ -18,7 +18,7 @@ function build(mode: 'required' | 'not-required') {
     eventEmitter,
     
     safeChannelPublish: vi.fn(async () => undefined),
-    confirmations: new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never),
+    confirmations: new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never),
   });
   return { svc: svc as unknown as LiveDocumentationService, cacheService, warn, eventEmitter };
 }

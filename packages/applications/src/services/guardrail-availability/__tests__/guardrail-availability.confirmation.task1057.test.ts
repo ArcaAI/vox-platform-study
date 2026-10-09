@@ -14,7 +14,7 @@ function build(mode: 'required' | 'not-required') {
   const emit = vi.fn();
   const user = { id: 'root', tenantId: SYSTEM_TENANT_ID, roles: ['SUPER_ADMIN'] };
   const cls = { get: vi.fn((k: string) => (k === 'user' ? user : k === 'tenantId' ? SYSTEM_TENANT_ID : undefined)) };
-  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
   const service = new GuardrailAvailabilityService(repository as never, { emit } as never, cls as never, undefined, confirmations);
   return { service, repository, emit };
 }

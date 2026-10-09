@@ -14,7 +14,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GlobalSettingService, GLOBAL_SETTING_SECRET_ROTATED } from '../globalSetting.service';
 import { SysEventType, ValueType } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
-import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
 
 const mockClsService = {
   get: vi.fn(),
@@ -351,7 +350,6 @@ describe('GlobalSettingService.rotateSecret', () => {
         mockSecretsService as any,
         mockEventEmitter as any,
         mockClsService as any,
-        new ActionConfirmationService({} as never),
       );
 
     it('stamps the rotate audit once the step-up passed', async () => {

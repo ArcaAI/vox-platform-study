@@ -20,7 +20,7 @@ import { BaseService, FetchResponse, PaginatedQuery, isSuperAdmin, withFormatted
 import { IActiveUserContext } from '../../interfaces';
 import { ICryptoService } from '../crypto/ICryptoService';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
+import { type ActionConfirmationAuditStamp, lockedConfirmationStamp } from '@arcaai/types';
 
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
@@ -39,9 +39,6 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     @Inject(SecretsService) private readonly secretsService: SecretsService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-1057 — stamps the locked `globalSetting.secretStepUp` confirmation on the reveal / rotate audit.
-    // Optional + trailing so positional fixtures keep their arity; the module always wires it.
-    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.GlobalSetting);
   }
@@ -690,7 +687,9 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /** TASK-1057 — the locked step-up stamp; reached only after the password check passed. */
-  private stepUpConfirmation(): { confirmation?: ReturnType<ActionConfirmationService['decide']> } {
-    return this.confirmations ? { confirmation: this.confirmations.decide('globalSetting.secretStepUp', { value: true }) } : {};
+  // TASK-1057 — `globalSetting.secretStepUp` is LOCKED, so its stamp is a constant: no settings read,
+  // and no module edge from this module into the settings registry (which imports it — a cycle).
+  private stepUpConfirmation(): { confirmation: ActionConfirmationAuditStamp } {
+    return { confirmation: lockedConfirmationStamp('globalSetting.secretStepUp') };
   }
 }

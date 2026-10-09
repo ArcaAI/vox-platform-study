@@ -268,7 +268,7 @@ function makeWorld(config: WorldConfig = {}) {
     priceBook as never,
     unitOfWork as never,
     // TASK-1057 — `billing.adjustment` is a locked row: it never reads a setting.
-    new ActionConfirmationService({} as never),
+    new ActionConfirmationService({} as never, {} as never, {} as never, {} as never),
   );
 
   return {

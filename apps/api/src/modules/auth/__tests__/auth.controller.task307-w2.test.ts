@@ -225,7 +225,7 @@ function buildController(opts: {
     undefined, // dnaQueue
     undefined, // policyEngine
     undefined, // runTraceAccess
-    new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
+    new ActionConfirmationService({} as never, {} as never, {} as never, {} as never), // TASK-1057 — locked `impersonation.start` reads no setting
   );
 }
 
@@ -320,7 +320,7 @@ describe('auth.controller uses SecretsService only', () => {
         undefined, // dnaQueue
         undefined, // policyEngine
         undefined, // runTraceAccess
-        new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
+        new ActionConfirmationService({} as never, {} as never, {} as never, {} as never), // TASK-1057 — locked `impersonation.start` reads no setting
       );
 
       await controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' } as any, createMockRequest() as any);
@@ -429,7 +429,7 @@ describe('auth.controller — sign-path survives SecretsService TTL expiry (getS
       undefined, // dnaQueue
       undefined, // policyEngine
       undefined, // runTraceAccess
-      new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
+      new ActionConfirmationService({} as never, {} as never, {} as never, {} as never), // TASK-1057 — locked `impersonation.start` reads no setting
     );
 
     const res = await controller.impersonate({ targetUserId: 'doctor-001', reason: 'support ticket #7' } as any, createMockRequest() as any);

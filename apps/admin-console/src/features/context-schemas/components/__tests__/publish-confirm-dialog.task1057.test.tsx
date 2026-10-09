@@ -17,11 +17,6 @@ vi.mock('@/shared/api', async () => ({
 
 afterEach(cleanup);
 
-const IMPACT = {
-  consumers: [
-    { kind: 'API_KEY', key: 'k1', name: 'Portal key', pinnedVersion: 1, boundLabel: 'pinned to v1', refusesNew: true },
-  ],
-} as never;
 
 function renderDialog(onConfirm = vi.fn(), impact: unknown = null) {
   renderWithProviders(

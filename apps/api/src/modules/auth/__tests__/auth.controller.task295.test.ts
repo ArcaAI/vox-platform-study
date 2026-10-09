@@ -175,7 +175,7 @@ function buildController(opts: {
     undefined, // dnaQueue
     undefined, // policyEngine
     undefined, // runTraceAccess
-    new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
+    new ActionConfirmationService({} as never, {} as never, {} as never, {} as never), // TASK-1057 — locked `impersonation.start` reads no setting
   );
   return {
     controller,

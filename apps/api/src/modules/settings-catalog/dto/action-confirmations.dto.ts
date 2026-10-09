@@ -57,7 +57,7 @@ export class ActionConfirmationPlatformRowResponse {
   default!: string;
 
   @ApiProperty({ enum: CONFIRMATION_MODES, isArray: true, description: 'The modes this row may hold.' })
-  modes!: string[];
+  modes!: readonly string[];
 
   @ApiProperty()
   locked!: boolean;
@@ -69,7 +69,7 @@ export class ActionConfirmationPlatformRowResponse {
   maxLength?: number;
 
   @ApiProperty({ type: [String], description: 'Gateway route(s) the action reaches.' })
-  routes!: string[];
+  routes!: readonly string[];
 
   @ApiProperty({ enum: CONFIRMATION_MODES, description: 'The effective mode.' })
   mode!: string;

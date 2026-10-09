@@ -85,8 +85,10 @@ describe('OD-12 — the per-agent harnessOverrides tier is gone', () => {
     // find its default agent) — were its ONLY reason to exist on this service.
     // Constructing with eight arguments is what proved they left. TASK-876 added a NINTH,
     // `TextAgentResolverService` — the assigned-agent text selection seam, not a repository and
-    // not a per-agent override tier — so the pin is nine, with that one named here.
-    expect(HarnessPolicyService.length).toBe(9);
+    // not a per-agent override tier — so the pin is nine, with that one named here. TASK-1057 added
+    // two more trailing `@Optional()` seams — `ActionConfirmationService` (the platform reason policy)
+    // and `EventEmitter2` (the forced audit event carrying its stamp) — neither a repository.
+    expect(HarnessPolicyService.length).toBe(11);
   });
 
   it('a consultationId no longer changes the resolved policy', async () => {

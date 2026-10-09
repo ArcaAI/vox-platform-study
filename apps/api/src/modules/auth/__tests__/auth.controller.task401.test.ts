@@ -80,7 +80,7 @@ function buildController(user: ClsUserStub | null) {
     undefined, // policyEngine
     undefined, // runTraceAccess
     // TASK-1057 — `impersonation.start` is a locked row: it never reads a setting.
-    new ActionConfirmationService({} as never),
+    new ActionConfirmationService({} as never, {} as never, {} as never, {} as never),
   );
 
   return { controller, eventEmitter, jwtRevocationService, userRepository, authService };

@@ -140,13 +140,15 @@ describe('TenantCheckpointController — metadata the boot audits and guards rea
 describe('request DTOs', () => {
   const errors = async (cls: new () => object, plain: object) => (await validate(plainToInstance(cls, plain))).map((e) => e.property);
 
-  it('restore: categories must be non-empty, unique and known; reason 10-1000; password/name optional (428 comes from the service)', async () => {
+  it('restore: categories must be non-empty, unique and known; reason ≤1000 (the 10-char minimum is the platform policy, enforced in the service — TASK-1057); password/name optional (428 comes from the service)', async () => {
     const ok = { categories: ['CONFIG_CONTENT'], reason: 'long enough reason' };
     expect(await errors(RestoreCheckpointRequest, ok)).toEqual([]);
     expect(await errors(RestoreCheckpointRequest, { ...ok, categories: [] })).toContain('categories');
     expect(await errors(RestoreCheckpointRequest, { ...ok, categories: ['CONFIG_CONTENT', 'CONFIG_CONTENT'] })).toContain('categories');
     expect(await errors(RestoreCheckpointRequest, { ...ok, categories: ['LOGS'] })).toContain('categories');
-    expect(await errors(RestoreCheckpointRequest, { ...ok, reason: 'short' })).toContain('reason');
+    expect(await errors(RestoreCheckpointRequest, { ...ok, reason: 'short' })).toEqual([]);
+    expect(await errors(RestoreCheckpointRequest, { categories: ['CONFIG_CONTENT'] })).toEqual([]);
+    expect(await errors(RestoreCheckpointRequest, { ...ok, reason: 'x'.repeat(1001) })).toContain('reason');
   });
 
   it('create: passphrase 12-256 characters', async () => {

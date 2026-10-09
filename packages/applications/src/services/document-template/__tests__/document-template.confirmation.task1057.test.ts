@@ -11,7 +11,7 @@ function build(mode: 'required' | 'not-required') {
   const versions = { findLatestForTemplate: vi.fn(async () => null), create: vi.fn(async (v: { versionNumber: number }) => ({ id: 'v1', ...v })) };
   const emit = vi.fn();
   const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: ['TENANT_ADMIN'] } : k === 'tenantId' ? 'tenant-1' : undefined)) };
-  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
   const service = new DocumentTemplateService(templates as never, versions as never, { emit } as never, cls as never, confirmations);
   return { service, versions, templates, emit };
 }

@@ -90,7 +90,7 @@ const entity = (overrides: Record<string, unknown> = {}) => ({
 });
 
 function confirmations(mode?: string) {
-  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
 }
 
 const construct = (policy: ActionConfirmationService) =>

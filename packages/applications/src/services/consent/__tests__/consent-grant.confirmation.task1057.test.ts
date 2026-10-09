@@ -37,7 +37,7 @@ function build(mode: 'required' | 'not-required') {
   };
   const emit = vi.fn();
   const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? 'tenant-1' : k === 'user' ? { id: 'u1', roles: ['TENANT_ADMIN'] } : undefined)) };
-  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
   const service = new ConsentGrantService(repository as never, { emit } as never, cls as never, undefined, confirmations);
   return { service, repository, emit, entity };
 }

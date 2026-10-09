@@ -41,7 +41,7 @@ function confirmationsStub(modes: Record<string, string> = {}): ActionConfirmati
       const actionId = key.slice('confirmation.'.length);
       return { key, value: actionId in modes ? modes[actionId] : HOPE_SETTINGS_REGISTRY.getOrThrow(key).default };
     },
-  } as never);
+  } as never, {} as never, {} as never, {} as never);
 }
 
 export function buildService(actor: Actor = TENANT_ADMIN, opts: { confirmationModes?: Record<string, string> } = {}) {

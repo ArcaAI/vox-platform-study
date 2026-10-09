@@ -11,5 +11,5 @@ export function confirmationsStub(modes: Record<string, string> = {}): ActionCon
       const actionId = key.slice('confirmation.'.length);
       return { key, value: actionId in modes ? modes[actionId] : HOPE_SETTINGS_REGISTRY.getOrThrow(key).default };
     },
-  } as never);
+  } as never, {} as never, {} as never, {} as never);
 }

@@ -14,7 +14,7 @@ function makeService(stored: Record<string, unknown> = {}) {
     const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
     return { key, value: key in stored ? stored[key] : descriptor.default, source: key in stored ? 'system' : 'code-default', tenantId };
   });
-  return { service: new ActionConfirmationService({ resolve } as never), resolve };
+  return { service: new ActionConfirmationService({ resolve } as never, {} as never, {} as never, {} as never), resolve };
 }
 
 describe('action-confirmation descriptors', () => {

@@ -14,7 +14,7 @@ import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 
 /** TASK-1057 — the platform action-confirmation policy at its catalogue defaults. */
 const defaultConfirmations = () =>
-  new ActionConfirmationService({ resolve: (key: string) => ({ key, value: HOPE_SETTINGS_REGISTRY.getOrThrow(key).default }) } as never);
+  new ActionConfirmationService({ resolve: (key: string) => ({ key, value: HOPE_SETTINGS_REGISTRY.getOrThrow(key).default }) } as never, {} as never, {} as never, {} as never);
 
 const GLOBAL = '50000000-0000-0000-0000-000000000000';
 

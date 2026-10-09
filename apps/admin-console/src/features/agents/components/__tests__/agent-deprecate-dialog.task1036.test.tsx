@@ -3,9 +3,10 @@
  * running it. No route answers "which workflows pin this version" without reading every graph,
  * so the warning is stated without a count (the report lists it as an open item).
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+import { renderWithProviders as render } from '@/test/render';
 import { AgentDeprecateDialog } from '../agent-deprecate-dialog';
 
 afterEach(cleanup);

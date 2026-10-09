@@ -272,3 +272,15 @@ export interface ActionConfirmationAuditStamp {
 
 /** The 400 body when a required confirmation is missing or too short. */
 export const CONFIRMATION_REQUIRED_CODE = 'CONFIRMATION_REQUIRED';
+
+/**
+ * The audit stamp of a LOCKED row (always required, never switchable). Pure, so a service that
+ * records a locked confirmation needs no settings dependency (and no module edge to the settings
+ * registry — `GlobalSettingServiceModule` is imported BY it, so the edge would close a cycle).
+ */
+export function lockedConfirmationStamp(actionId: string, provided = true): ActionConfirmationAuditStamp {
+  const spec = findActionConfirmation(actionId);
+  if (!spec || !spec.locked) throw new Error(`'${actionId}' is not a locked action confirmation.`);
+  const noun = spec.kind === 'stepUp' ? 'password confirmation' : spec.kind === 'breakGlass' ? 'break-glass confirmation' : spec.kind === 'reasonCode' ? 'reason code' : 'reason';
+  return { actionId, kind: spec.kind, mode: 'required', locked: true, required: true, provided, note: `${noun} required` };
+}

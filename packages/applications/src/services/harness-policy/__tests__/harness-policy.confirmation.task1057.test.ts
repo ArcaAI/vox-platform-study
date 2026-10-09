@@ -19,7 +19,7 @@ function build(mode: 'required' | 'not-required') {
   const databaseService = { baseClient: { $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb({})) } };
   const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? TENANT : k === 'user' ? { id: 'u1' } : undefined)) };
   const eventEmitter = { emit: vi.fn() };
-  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
   const service = new HarnessPolicyService(
     policyRepository as never,
     policyChangeRepository as never,

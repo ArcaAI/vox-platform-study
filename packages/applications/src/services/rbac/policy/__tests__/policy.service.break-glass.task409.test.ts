@@ -301,7 +301,7 @@ describe('isProtected is read-only through the service', () => {
 describe('TASK-1057 — the locked rbac.breakGlass stamp', () => {
   it('stamps every break-glass audit (confirmed and rejected) with the locked confirmation', async () => {
     const mocks = makeMocks();
-    const service = buildService(mocks, new ActionConfirmationService({} as never));
+    const service = buildService(mocks, new ActionConfirmationService({} as never, {} as never, {} as never, {} as never));
     mocks.policyRepo.findById.mockResolvedValue(row());
     await service.softDelete('policy-x', GOOD_CREDS('team-policy'));
     await expectStatus(service.softDelete('policy-x'), 428);

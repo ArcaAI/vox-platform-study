@@ -10,7 +10,7 @@ const events = { emit: vi.fn() };
 const repo = { findById: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
 
 function confirmations(mode?: string) {
-  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
 }
 
 function make(policy: ActionConfirmationService) {

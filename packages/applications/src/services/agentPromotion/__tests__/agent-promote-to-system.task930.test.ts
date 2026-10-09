@@ -112,7 +112,7 @@ const confirmationsStub = (modes: Record<string, string> = {}) =>
       const actionId = key.slice('confirmation.'.length);
       return { key, value: actionId in modes ? modes[actionId] : HOPE_SETTINGS_REGISTRY.getOrThrow(key).default };
     },
-  } as never);
+  } as never, {} as never, {} as never, {} as never);
 
 const construct = (modes: Record<string, string> = {}) =>
   new AgentPromoteToSystemService(

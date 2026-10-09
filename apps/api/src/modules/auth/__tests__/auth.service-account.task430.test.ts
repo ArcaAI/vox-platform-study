@@ -120,7 +120,7 @@ function buildAdminController(target: Record<string, unknown>) {
     cls as never,
     { getSecretSync: vi.fn(() => 'test-secret-key'), getSecretOptional: vi.fn(async () => undefined) } as never,
     eventEmitter as never,
-    new ActionConfirmationService({} as never), // TASK-1057 — locked `impersonation.start` reads no setting
+    new ActionConfirmationService({} as never, {} as never, {} as never, {} as never), // TASK-1057 — locked `impersonation.start` reads no setting
   );
 
   return { controller, eventEmitter };

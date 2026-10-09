@@ -15,7 +15,7 @@
 // The mode is resolved on the PLATFORM lane only (`resolve(key, null)`): the switch is SYSTEM-tier,
 // owner decision 2026-10-09. Locked catalogue rows have no setting and are always `required`.
 
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { GlobalSettingRepository } from '@arcaai/domains';
 import {
@@ -99,7 +99,10 @@ export class ActionConfirmationService {
   constructor(
     private readonly tenantSettings: TenantSettingsService,
     private readonly cls: ClsService<IActiveUserContext>,
-    private readonly writeService: SettingsRegistryWriteService,
+    // Optional: `GlobalSettingServiceModule` provides this service for the locked step-up stamp only
+    // (importing EffectiveSettingsModule there would close a cycle) and has no write lane. Only
+    // `applyPlatform` needs it, and that is served from EffectiveSettingsModule.
+    @Optional() private readonly writeService: SettingsRegistryWriteService,
     private readonly globalSettingRepository: GlobalSettingRepository,
   ) {}
 
@@ -177,6 +180,7 @@ export class ActionConfirmationService {
       const current = (await this.readSystemRows()).get(key);
       if (!current || toValue(current) === value) return;
     }
+    if (!this.writeService) throw new Error('ActionConfirmationService: the settings write lane is not available in this module.');
     await this.writeService.write(key, value, {
       scope: 'system',
       ...(cell.expectedVersion === undefined ? {} : { expectedVersion: cell.expectedVersion }),

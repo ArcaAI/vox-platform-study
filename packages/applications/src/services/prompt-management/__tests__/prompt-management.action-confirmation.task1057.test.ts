@@ -33,7 +33,7 @@ const registry = {
 
 /** The REAL policy service over a fake settings resolver — `mode` undefined = no SYSTEM row = code default. */
 function confirmations(mode?: string) {
-  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
+  return new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never, {} as never, {} as never, {} as never);
 }
 
 function template() {

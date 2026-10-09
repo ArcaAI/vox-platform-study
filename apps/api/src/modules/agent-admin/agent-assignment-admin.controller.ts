@@ -95,7 +95,11 @@ export class AgentAssignmentAdminController {
     example: '"7"',
   })
   @ApiParam({ name: 'id', type: String })
-  @ApiQuery({ name: 'reason', required: false, description: 'Why the assignment is removed (WORM change row + audit). Required when the platform confirmation policy says so.' })
+  @ApiQuery({
+    name: 'reason',
+    required: false,
+    description: 'Why the assignment is removed (WORM change row + audit). Required when the platform confirmation policy says so.',
+  })
   @ApiResponse({ status: 200, type: AgentAssignmentResponse })
   @ApiResponse({ status: 400, description: 'CONFIRMATION_REQUIRED — the platform policy requires a reason.' })
   @ApiResponse({ status: 404, description: 'Not found (also returned for another tenant’s assignment).' })

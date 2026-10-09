@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
-import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { IWorkflowAssignmentService } from './IWorkflowAssignmentService';
 import { WorkflowAssignmentService } from './workflow-assignment.service';
 
@@ -14,9 +15,15 @@ import { WorkflowAssignmentService } from './workflow-assignment.service';
  *   `Department` repositories.
  */
 @Module({
-  // TASK-1057 — `ActionConfirmationService` (the platform reason policy).
-  imports: [CommonServiceModule, CoreDatabaseModule, EffectiveSettingsModule],
+  imports: [CommonServiceModule, CoreDatabaseModule],
   providers: [
+    // TASK-1057 — `ActionConfirmationService` (the platform reason policy) is provided LOCALLY, with
+    // its stateless `TenantSettingsService` reader, rather than by importing EffectiveSettingsModule:
+    // that import puts `effective-settings.module` in flight on the summary module's load path and
+    // leaves `GateEditMiningServiceModule` holding an undefined import (summary.di-wiring.task972).
+    // Only `mode`/`assert` are used here, so the optional platform write lane is not needed.
+    TenantSettingsService,
+    ActionConfirmationService,
     WorkflowAssignmentService,
     {
       provide: IWorkflowAssignmentService,
