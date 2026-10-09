@@ -89,6 +89,8 @@ export interface EngineDecision {
 export const UNKNOWN_RELOAD_SECONDS = 10;
 
 const keyOf = (m: Pick<EngineModel, 'service' | 'modelRef'>): string => residencyKey(m.service, m.modelRef);
+/** TASK-1055 review R1-F9 — one resident COPY (stt / nlp keep one per device): evicting one copy leaves the others. */
+const copyOf = (m: Pick<EngineModel, 'service' | 'modelRef' | 'devices'>): string => `${keyOf(m)}|${m.devices.join(',')}`;
 
 /** `1 + max(0, priority)` — priority 0 is weight 1; a negative priority is not made MORE evictable than the default. */
 function priorityWeight(priority: number): number {
@@ -267,7 +269,7 @@ export function planTick(input: PlanTickInput): EngineDecision[] {
       continue;
     }
     const need = m.bytes;
-    const residents = models.filter((r) => r.resident && !evicted.has(keyOf(r)));
+    const residents = models.filter((r) => r.resident && !evicted.has(copyOf(r)));
     const plan = planMakeRoom(need, m.devices, devices, residents, settings, usable);
 
     if (!plan.fits) {
@@ -275,7 +277,7 @@ export function planTick(input: PlanTickInput): EngineDecision[] {
       continue;
     }
     for (const victim of plan.evict) {
-      evicted.add(keyOf(victim));
+      evicted.add(copyOf(victim));
       decisions.push({
         action: 'unload',
         service: victim.service,
@@ -293,7 +295,7 @@ export function planTick(input: PlanTickInput): EngineDecision[] {
 
   // ── expire ──────────────────────────────────────────────────────────────
   for (const m of models) {
-    if (!m.resident || evicted.has(keyOf(m)) || isDesired(m)) continue;
+    if (!m.resident || evicted.has(copyOf(m)) || isDesired(m)) continue;
     if (m.idleTtlSeconds === null || m.idleSeconds <= m.idleTtlSeconds) continue;
     if (m.residentSeconds < settings.minResidencySeconds) continue;
     decisions.push({ action: 'unload', service: m.service, modelRef: m.modelRef, reason: 'idle_ttl_expired', devices: m.devices, bytes: m.bytes });

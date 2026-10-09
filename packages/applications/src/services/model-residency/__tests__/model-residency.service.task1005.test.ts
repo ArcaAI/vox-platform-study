@@ -352,7 +352,8 @@ describe('ModelResidencyService (TASK-1005)', () => {
       await h.service.tick();
       await h.service.drain();
 
-      expect(h.agents.unload).toHaveBeenCalledWith('nlp', { modelRef: NER, force: false, reason: 'policy' });
+      // TASK-1055 review R1-F9 — a policy unload is scoped to the copy it judged (here nlp's host-memory copy).
+      expect(h.agents.unload).toHaveBeenCalledWith('nlp', { modelRef: NER, force: false, reason: 'policy', device: 'cpu' });
       expect(h.agents.setPolicy).toHaveBeenCalledWith('stt', LIVE_ASR, { adminPinned: true });
       // TASK-1055 — through the LM Studio agent, with the model's resolved serving profile as its load_spec.
       expect(h.lmStudio.load).toHaveBeenCalledWith(GEMMA, expect.objectContaining({ identifier: GEMMA }));

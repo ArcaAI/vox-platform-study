@@ -38,10 +38,16 @@ export class ModelResidencyPlacementCandidate {
   @ApiProperty({ nullable: true, type: Number }) totalBytes!: number | null;
   @ApiProperty({ nullable: true, type: Number }) freeBytes!: number | null;
   @ApiProperty({ nullable: true, type: Number }) headroomBytes!: number | null;
-  @ApiProperty({ nullable: true, type: Number, description: 'Free minus headroom minus the need; negative = short.' }) remainingBytes!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'Free minus headroom minus the need; negative = short. A split (`multi`) is judged per card: the summed spare room when every card holds its share, else minus the summed shortfall.',
+  })
+  remainingBytes!: number | null;
   @ApiProperty() shortfallBytes!: number;
   @ApiProperty() fits!: boolean;
-  @ApiProperty({ description: 'Need > free memory: refused even with force.' }) exceedsDevice!: boolean;
+  @ApiProperty({ description: 'Need (a split: some card`s share) > free memory: refused even with force.' }) exceedsDevice!: boolean;
   @ApiProperty({ description: 'Live-path models already resident on this card.' }) livePathModels!: number;
   @ApiProperty({
     type: [ModelResidencyPreviewModel],
@@ -56,10 +62,15 @@ export class ModelResidencyLoadPreviewResponse {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Where the load would land (`gpu0`, `multi`, `cpu:<service>`); `null` when the service`s device is unknown.',
+    description: 'Where the load would land, in the request vocabulary (`gpu0`, `multi`, `cpu`); `null` when the service`s device is unknown.',
   })
   device!: string | null;
-  @ApiProperty({ nullable: true, type: Number, description: 'Bytes admission reserves (measured, else catalogue × 1.2); `null` = no size known.' })
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'Bytes admission reserves (measured, else catalogue × 1.2; LM Studio at a longer context than it was measured at: scaled by the ratio); `null` = no size known.',
+  })
   needBytes!: number | null;
   @ApiProperty({ enum: ['measured', 'catalogue', 'unknown'] }) needSource!: CatalogueSizeSource;
   @ApiProperty({ nullable: true, type: Number }) freeBytes!: number | null;
@@ -95,7 +106,7 @@ export class ModelResidencyLoadPreviewResponse {
     nullable: true,
     type: String,
     description:
-      'TASK-1055 — the most suitable device: one that fits with the most remaining memory (ties: fewer live-path models, then lower index); if none fits, the smallest shortfall. Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`).',
+      'TASK-1055 — the most suitable device: where the load goes with no device named (the model`s default device, its profile, else the service`s own placement) whenever it fits; otherwise the single card that fits with the most remaining memory (ties: fewer live-path models, then lower index), `multi` only when no single card fits and the split does; if none fits, the smallest shortfall (single cards first). Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`).',
   })
   suggestedDevice!: string | null;
 

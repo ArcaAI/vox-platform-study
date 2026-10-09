@@ -62,6 +62,8 @@ export interface ResidencyAgentErrorDetail {
   neededBytes?: number;
   freeBytes?: number;
   headroomBytes?: number;
+  /** TASK-1055 review R1-F5 — the GATEWAY gave up waiting (the agent may still be working on it). */
+  timedOut?: boolean;
 }
 
 /** A refused or failed agent call. `status` is the agent's own HTTP status (0 when it never answered). */
@@ -70,6 +72,7 @@ export class ResidencyAgentError extends Error {
   readonly neededBytes?: number;
   readonly freeBytes?: number;
   readonly headroomBytes?: number;
+  readonly timedOut?: boolean;
 
   constructor(
     readonly code: ResidencyAgentErrorCode,
@@ -85,6 +88,7 @@ export class ResidencyAgentError extends Error {
     if (detail.neededBytes !== undefined) this.neededBytes = detail.neededBytes;
     if (detail.freeBytes !== undefined) this.freeBytes = detail.freeBytes;
     if (detail.headroomBytes !== undefined) this.headroomBytes = detail.headroomBytes;
+    if (detail.timedOut) this.timedOut = true;
   }
 }
 
@@ -131,8 +135,16 @@ const URL_KEYS: Record<ResidencyAgentService, string> = { stt: 'STT_URL', nlp: '
 
 /** A report is cheap; it must never hold up the 10 s decision tick. */
 const REPORT_TIMEOUT_MS = 3_000;
-/** A load runs off every request path (async 202 / background tick); the agent's own budget is shorter. */
-const LOAD_TIMEOUT_MS = 300_000;
+/**
+ * A load runs off every request path (async 202 / background tick), and the gateway must outwait the
+ * agent's OWN load budget — otherwise it reports a timeout (and frees the card) while the agent is still
+ * loading. LM Studio's agent allows 600 s by default (`LMS_AGENT_LOAD_TIMEOUT_SECONDS`, infrastructure/
+ * docker/lmstudio/agent/server.mjs), the python agents less; 900 s leaves a margin over the longest.
+ * A constant (TASK-1055 review R1-F5): there is no residency transport-timeout setting to resolve it from,
+ * and a timeout that disagrees with the agents' is a bug in either place, not a tuning knob.
+ */
+export const RESIDENCY_AGENT_LOAD_TIMEOUT_MS = 900_000;
+const LOAD_TIMEOUT_MS = RESIDENCY_AGENT_LOAD_TIMEOUT_MS;
 const COMMAND_TIMEOUT_MS = 30_000;
 
 type Json = Record<string, unknown>;
@@ -350,8 +362,16 @@ export class ResidencyAgentClient {
         signal: controller.signal,
       });
     } catch (error) {
-      const reason = error instanceof Error && error.name === 'AbortError' ? `timed out after ${timeoutMs} ms` : String(error);
-      throw new ResidencyAgentError('SERVICE_UNREACHABLE', `The ${service} residency agent did not answer ${method} ${path}: ${reason}`, 0);
+      const timedOut = error instanceof Error && error.name === 'AbortError';
+      const reason = timedOut ? `timed out after ${timeoutMs} ms` : String(error);
+      throw new ResidencyAgentError(
+        'SERVICE_UNREACHABLE',
+        `The ${service} residency agent did not answer ${method} ${path}: ${reason}`,
+        0,
+        undefined,
+        undefined,
+        timedOut ? { timedOut: true } : {},
+      );
     } finally {
       clearTimeout(timer);
     }

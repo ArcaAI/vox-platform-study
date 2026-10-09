@@ -37,6 +37,11 @@ export interface PlacementOption {
   lmsIndices?: number[];
   /** The tie-break index: a GPU's number; `multi` and `cpu` sort after every card. */
   order: number;
+  /**
+   * A split's share per card (`physical` id → fraction, summing to 1): a `custom` profile ratio.
+   * Absent = an even split across `physical` (`evenly`, and — conservatively — any other strategy).
+   */
+  weights?: Record<string, number>;
 }
 
 export interface JudgeInput {
@@ -46,6 +51,8 @@ export interface JudgeInput {
   needBytes: number | null;
   /** Bytes a replace returns on these devices before it loads. */
   creditBytes: number;
+  /** A split's credit per card (`physical` id → bytes); absent = `creditBytes` shared by the split's weights. */
+  creditByDevice?: Record<string, number>;
   headroomPercent: number;
   livePathModels: number;
   evictable: ModelResidencyPreviewModel[];
@@ -57,9 +64,13 @@ const headroomOf = (r: PlacementReading, percent: number): number => Math.floor(
 
 /**
  * Judge one option. A single device is unclamped (`free − headroom − need`, negative = short), the
- * fixture's arithmetic; a split (`multi`) pools each card's CLAMPED room, since a card below its
- * headroom offers the split nothing. `exceedsDevice` = the need is larger than the FREE memory
- * outright (headroom ignored): even a forced load would OOM its card-mates (OD-5).
+ * fixture's arithmetic. A split (`multi`, or a profile spanning several cards) is judged PER CARD
+ * (TASK-1055 review R2-F5): each card must hold its share (`need × weight`) above its own headroom —
+ * a split is only as good as its tightest card, however much room the others pool. `remainingBytes`
+ * is the sum of the cards' spare room when every card fits, else minus the summed shortfall, so
+ * `fits ⇔ remainingBytes ≥ 0 ⇔ shortfallBytes = 0` holds for both shapes. `exceedsDevice` = some
+ * card's share is larger than that card's FREE memory outright (headroom ignored): even a forced
+ * load would OOM its card-mates (OD-5).
  */
 export function judgePlacement(input: JudgeInput): JudgedPlacement {
   const { option, readings, needBytes, creditBytes, headroomPercent } = input;
@@ -68,14 +79,37 @@ export function judgePlacement(input: JudgeInput): JudgedPlacement {
   const freeBytes = known ? sum((r) => r.freeBytes) : null;
   const headroomBytes = known ? sum((r) => headroomOf(r, headroomPercent)) : null;
   const totalBytes = known ? sum((r) => r.totalBytes) : null;
-  const room = !known
-    ? 0
-    : readings.length > 1
-      ? sum((r) => Math.max(0, r.freeBytes - headroomOf(r, headroomPercent)))
-      : readings[0].freeBytes - headroomOf(readings[0], headroomPercent);
-  const available = room + creditBytes;
-  const remainingBytes = needBytes === null || !known ? null : Math.round(available - needBytes);
-  const shortfallBytes = needBytes === null ? 0 : !known ? Math.round(needBytes) : Math.max(0, Math.round(needBytes - available));
+
+  let remainingBytes: number | null;
+  let shortfallBytes: number;
+  let exceedsDevice: boolean;
+  if (needBytes === null || !known) {
+    remainingBytes = null;
+    shortfallBytes = needBytes === null ? 0 : Math.round(needBytes);
+    exceedsDevice = false;
+  } else if (readings.length === 1) {
+    const [r] = readings;
+    const available = r.freeBytes - headroomOf(r, headroomPercent) + creditBytes;
+    remainingBytes = Math.round(available - needBytes);
+    shortfallBytes = Math.max(0, Math.round(needBytes - available));
+    exceedsDevice = needBytes > r.freeBytes + creditBytes;
+  } else {
+    const weights = splitWeights(option, readings);
+    let spare = 0;
+    let short = 0;
+    exceedsDevice = false;
+    for (const r of readings) {
+      const weight = weights[r.id] ?? 0;
+      const share = needBytes * weight;
+      const credit = input.creditByDevice?.[r.id] ?? creditBytes * weight;
+      const left = r.freeBytes - headroomOf(r, headroomPercent) + credit - share;
+      if (left >= 0) spare += left;
+      else short += -left;
+      if (share > r.freeBytes + credit) exceedsDevice = true;
+    }
+    shortfallBytes = Math.round(short);
+    remainingBytes = shortfallBytes > 0 ? -shortfallBytes : Math.round(spare);
+  }
   return {
     device: option.device,
     label: placementLabel(option.device, readings),
@@ -85,23 +119,41 @@ export function judgePlacement(input: JudgeInput): JudgedPlacement {
     remainingBytes,
     shortfallBytes,
     fits: remainingBytes !== null && remainingBytes >= 0,
-    exceedsDevice: needBytes !== null && freeBytes !== null && needBytes > freeBytes + creditBytes,
+    exceedsDevice,
     livePathModels: input.livePathModels,
     evictable: input.evictable,
     order: option.order,
   };
 }
 
+/** A split's per-card fractions over the cards it has readings for (the option's `weights`, else even), normalised to 1. */
+function splitWeights(option: PlacementOption, readings: PlacementReading[]): Record<string, number> {
+  const raw = readings.map((r) => [r.id, option.weights ? Math.max(0, option.weights[r.id] ?? 0) : 1] as const);
+  const total = raw.reduce((t, [, w]) => t + w, 0);
+  if (total <= 0) return Object.fromEntries(readings.map((r) => [r.id, 1 / readings.length]));
+  return Object.fromEntries(raw.map(([id, w]) => [id, w / total]));
+}
+
 /**
- * The fixture's `$suggestionRule`: fits first; among fits the most `remainingBytes`; ties → fewer
- * live-path models → lower index. If none fits: the smallest `shortfallBytes`, same tie-breaks. A
- * model with no known size ranks by free memory above headroom.
+ * The suggestion order (TASK-1055 review R1-F1 — the suggestion never flips a model off its own
+ * placement):
+ *  1. `preferred` — where the load goes with no device named (the model's default device, its
+ *     profile, else the service's own placement) — leads whenever it FITS;
+ *  2. then the other fitting options, a single card before a split (`multi` is only suggested when
+ *     no single card fits and the split does): most `remainingBytes`, ties → fewer live-path
+ *     models → lower index;
+ *  3. then the options that do not fit, single cards first again: smallest `shortfallBytes`, same
+ *     tie-breaks (a model with no known size ranks by free memory above headroom).
  */
-export function rankPlacements(candidates: JudgedPlacement[]): JudgedPlacement[] {
+export function rankPlacements(candidates: JudgedPlacement[], preferred: string | null = null): JudgedPlacement[] {
   const tieBreak = (a: JudgedPlacement, b: JudgedPlacement) => a.livePathModels - b.livePathModels || a.order - b.order;
   const room = (c: JudgedPlacement) => (c.freeBytes ?? 0) - (c.headroomBytes ?? 0);
+  const isSplit = (c: JudgedPlacement) => (c.device === 'multi' ? 1 : 0);
+  const leads = (c: JudgedPlacement) => (c.fits && c.device === preferred ? 0 : 1);
   return [...candidates].sort((a, b) => {
     if (a.fits !== b.fits) return a.fits ? -1 : 1;
+    if (leads(a) !== leads(b)) return leads(a) - leads(b);
+    if (isSplit(a) !== isSplit(b)) return isSplit(a) - isSplit(b);
     if (a.remainingBytes === null || b.remainingBytes === null) return room(b) - room(a) || tieBreak(a, b);
     if (a.fits) return b.remainingBytes - a.remainingBytes || tieBreak(a, b);
     return a.shortfallBytes - b.shortfallBytes || tieBreak(a, b);
