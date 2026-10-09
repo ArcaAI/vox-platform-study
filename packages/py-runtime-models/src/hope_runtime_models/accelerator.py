@@ -54,7 +54,9 @@ def release_accelerator_memory(device_id: str | None = None) -> None:
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
     except Exception:  # noqa: BLE001 — releasing memory must never fail an unload
-        logger.warning("hope_runtime_models.release_failed", extra={"device": device_id}, exc_info=True)
+        logger.warning(
+            "hope_runtime_models.release_failed", extra={"device": device_id}, exc_info=True
+        )
 
 
 def torch_module_bytes(obj: Any) -> int | None:
