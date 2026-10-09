@@ -122,6 +122,8 @@ export interface CreateTemplateRequest {
   tags?: string[];
   scope?: PromptTemplateScope;
   ownerUserId?: string;
+  /** TASK-1057 — audit note on create; demanded when the `promptTemplate.create` policy is required. */
+  changeReason?: string;
 }
 
 /** PATCH :id body — If-Match route; expectedVersion is added by the client. */

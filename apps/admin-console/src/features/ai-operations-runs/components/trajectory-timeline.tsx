@@ -95,9 +95,9 @@ export function TrajectoryTimeline({ session }: { session: TrajectorySession }) 
     return [...merged.values()].sort((a, b) => a.seq - b.seq);
   }, [stepsQuery.data, liveSteps]);
 
-  function handleCancelConfirmed() {
+  function handleCancelConfirmed({ reason }: { reason?: string }) {
     cancel.mutate(
-      { workflowId: session.sessionId, reason: 'Cancelled from AI Operations' },
+      { workflowId: session.sessionId, reason: reason ?? 'Cancelled from AI Operations' },
       {
         onSuccess: (result) => {
           toast.success(result.requested ? `Cancel requested for ${session.sessionId}` : `Workflow ${session.sessionId} already closed`);
@@ -196,6 +196,7 @@ export function TrajectoryTimeline({ session }: { session: TrajectorySession }) 
         description={`Gracefully cancels the harness workflow ${session.sessionId}. In-flight activities finish; no new work starts.`}
         confirmLabel="Cancel run"
         destructive
+        reasonActionId="workflowRun.cancel"
         onConfirm={handleCancelConfirmed}
         isPending={cancel.isPending}
       />

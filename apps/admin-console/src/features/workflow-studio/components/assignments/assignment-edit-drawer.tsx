@@ -25,9 +25,10 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
-  Textarea,
 } from '@arcaai/ui';
 import { IconInfoCircle } from '@tabler/icons-react';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { GatewayError } from '@/shared/api';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
@@ -98,7 +99,8 @@ export function AssignmentEditDrawer({
   const pending = create.isPending || update.isPending || remove.isPending;
   const error = create.error ?? update.error ?? remove.error;
   const dirty = selected !== initialSelected;
-  const canSave = dirty && !(selected === INHERIT_SENTINEL && !existing);
+  const reasonPolicy = useActionConfirmation('workflowAssignment.set');
+  const canSave = dirty && !(selected === INHERIT_SENTINEL && !existing) && reasonPolicy.isSatisfied(reason);
 
   const inheritDescription = scope === 'TENANT' ? 'platform default' : 'the tenant default (or the platform default)';
 
@@ -218,17 +220,14 @@ export function AssignmentEditDrawer({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`${uid}-reason`}>Reason</Label>
-          <Textarea
-            id={`${uid}-reason`}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            rows={2}
-            className="resize-none"
-            placeholder="Why this assignment changed — recorded on the audit trail."
-          />
-        </div>
+        <ReasonField
+          actionId="workflowAssignment.set"
+          id={`${uid}-reason`}
+          value={reason}
+          onChange={setReason}
+          disabled={pending}
+          placeholder="Why this assignment changed — recorded on the audit trail."
+        />
       </div>
     </DetailDrawer>
   );
