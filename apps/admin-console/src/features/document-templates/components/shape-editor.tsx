@@ -32,6 +32,8 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Separator } from '@arcaai/ui/components/shadcn/separator';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { GatewayError } from '@/shared/api';
 import { EmptyState } from '@/shared/state/empty-state';
 import { usePublishDocumentTemplate } from '../api/hooks';
@@ -60,6 +62,7 @@ export function ShapeEditor({
 }) {
   const uid = useId();
   const publish = usePublishDocumentTemplate();
+  const reasonPolicy = useActionConfirmation('documentTemplate.update');
   const [changeReason, setChangeReason] = useState('');
   const [breakingChanges, setBreakingChanges] = useState<string[] | null>(null);
   const problems = publish.error instanceof GatewayError ? (publishRejection(publish.error)?.problems ?? null) : null;
@@ -248,17 +251,17 @@ export function ShapeEditor({
           </Alert>
         ) : (
           <>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={`${uid}-change-reason`}>Change reason (optional)</Label>
-              <Input
-                id={`${uid}-change-reason`}
-                value={changeReason}
-                onChange={(event) => setChangeReason(event.target.value)}
-                placeholder="Add a discharge medications section for the cardiology ward"
-              />
-            </div>
+            <ReasonField
+              actionId="documentTemplate.update"
+              id={`${uid}-change-reason`}
+              label="Change reason"
+              value={changeReason}
+              onChange={setChangeReason}
+              disabled={publish.isPending}
+              placeholder="Add a discharge medications section for the cardiology ward"
+            />
             <div className="flex justify-end">
-              <Button type="button" disabled={sections.length === 0 || !shape.title.trim() || publish.isPending} onClick={() => runPublish()}>
+              <Button type="button" disabled={sections.length === 0 || !shape.title.trim() || !reasonPolicy.isSatisfied(changeReason) || publish.isPending} onClick={() => runPublish()}>
                 {publish.isPending ? <Spinner /> : null}
                 Publish
               </Button>

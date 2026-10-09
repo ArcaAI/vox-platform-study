@@ -68,7 +68,7 @@ describe('EditTemplateForm — Save is gated on a dirty form', () => {
 
   it('a change reason alone does not make the form dirty', () => {
     renderForm();
-    fireEvent.change(screen.getByLabelText('Change reason'), { target: { value: 'nothing really' } });
+    fireEvent.change(screen.getByLabelText(/Change reason/), { target: { value: 'nothing really' } });
     expect(saveButton().disabled).toBe(true);
   });
 

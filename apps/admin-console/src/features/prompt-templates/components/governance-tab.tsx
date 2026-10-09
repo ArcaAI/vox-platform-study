@@ -27,10 +27,11 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Input } from '@arcaai/ui/components/shadcn/input';
-import { Label } from '@arcaai/ui/components/shadcn/label';
 import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/native-select';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { GatewayError } from '@/shared/api';
 import { can, usePermissions, useSession } from '@/shared/auth';
 import { formatDateTime } from '@/shared/format';
@@ -290,13 +291,14 @@ function canApproveRow(template: PromptTemplate, elevated: boolean, rules: reado
 }
 
 /** The approve write itself — OCC via If-Match folded from the detail ETag. */
-function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: string | null }) {
+export function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: string | null }) {
   const uid = useId();
   const approve = useApproveTemplate();
   const [reason, setReason] = useState('');
   const session = useSession();
   const permissions = usePermissions();
   const allowed = canApproveRow(template, session.data?.isElevated ?? false, permissions.data);
+  const reasonPolicy = useActionConfirmation('promptTemplate.approve');
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -337,20 +339,19 @@ function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: stri
       </div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${uid}-reason`} className="text-muted-foreground text-xs font-medium">
-            Approval reason
-          </Label>
-          <Input
+          <ReasonField
+            actionId="promptTemplate.approve"
             id={`${uid}-reason`}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            maxLength={500}
+            label="Approval reason"
             placeholder={'Why this template is cleared…'}
+            value={reason}
+            onChange={setReason}
+            disabled={approve.isPending}
           />
         </div>
         <OccConflictAlert error={approve.error} onReload={() => approve.reset()} />
         <div className="flex justify-end">
-          <Button type="submit" disabled={!allowed || !etag || approve.isPending}>
+          <Button type="submit" disabled={!allowed || !etag || !reasonPolicy.isSatisfied(reason) || approve.isPending}>
             {approve.isPending ? <Spinner /> : <IconCircleCheck aria-hidden />}
             Approve for clinical use
           </Button>

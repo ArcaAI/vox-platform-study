@@ -14,6 +14,8 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
 import { TemplateField, templateSyntaxLint, variableNamePaths, withPlatformPaths } from '@/shared/template-editor';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { TagsField } from '@/shared/tags-field';
@@ -284,6 +286,8 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
   const [content, setContent] = useState('');
   const [variables, setVariables] = useState<PromptVariableDeclaration[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [changeReason, setChangeReason] = useState('');
+  const reasonPolicy = useActionConfirmation('promptTemplate.create');
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -297,6 +301,7 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
         departmentId: departmentId || undefined,
         variables: variables.length > 0 ? variables : undefined,
         tags: tags.length > 0 ? tags : undefined,
+        changeReason: changeReason.trim() || undefined,
       },
       {
         onSuccess: (template) => {
@@ -391,11 +396,12 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
       />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
       <TagsField id="create-template-tags" value={tags} onChange={setTags} description={TAGS_DESCRIPTION} />
+      <ReasonField actionId="promptTemplate.create" label="Change reason" value={changeReason} onChange={setChangeReason} disabled={createTemplate.isPending} />
       <FormActions>
         <Button type="button" variant="outline" onClick={onCancel} disabled={createTemplate.isPending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!name.trim() || !content || createTemplate.isPending}>
+        <Button type="submit" disabled={!name.trim() || !content || !reasonPolicy.isSatisfied(changeReason) || createTemplate.isPending}>
           {createTemplate.isPending ? <Spinner /> : null}
           Create Prompt
         </Button>
@@ -429,6 +435,7 @@ export function EditTemplateForm({
   const [variables, setVariables] = useState<PromptVariableDeclaration[]>(template.declaredVariables ?? []);
   const [tags, setTags] = useState<string[]>(template.tags ?? []);
   const [changeReason, setChangeReason] = useState('');
+  const reasonPolicy = useActionConfirmation('promptTemplate.update');
   /**
    * `PATCH :id` accepts DRAFT|PUBLISHED only — APPROVED is granted by
    * `POST :id/approve`, never by an edit. So an APPROVED row needs its own
@@ -533,19 +540,18 @@ export function EditTemplateForm({
       <TemplateContentField value={content} onChange={setContent} variables={variables} />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
       <TagsField id="edit-template-tags" value={tags} onChange={setTags} description={TAGS_DESCRIPTION} />
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="edit-template-change-reason">Change reason</Label>
-        <Input
-          id="edit-template-change-reason"
-          value={changeReason}
-          onChange={(event) => setChangeReason(event.target.value)}
-          placeholder="Stored in the version history"
-          autoComplete="off"
-        />
-      </div>
+      <ReasonField
+        actionId="promptTemplate.update"
+        id="edit-template-change-reason"
+        label="Change reason"
+        placeholder="Stored in the version history"
+        value={changeReason}
+        onChange={setChangeReason}
+        disabled={updateTemplate.isPending}
+      />
       <FormActions>
         {isDirty ? null : <p className="text-sm text-muted-foreground">No changes to save</p>}
-        <Button type="submit" disabled={!isDirty || !name.trim() || !content || !etag || updateTemplate.isPending}>
+        <Button type="submit" disabled={!isDirty || !name.trim() || !content || !etag || !reasonPolicy.isSatisfied(changeReason) || updateTemplate.isPending}>
           {updateTemplate.isPending ? <Spinner /> : null}
           Save changes
         </Button>

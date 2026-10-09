@@ -68,6 +68,7 @@ import {
   type AgentProblemBody,
 } from '../api';
 import { AgentDeprecateDialog } from './agent-deprecate-dialog';
+import { useReasonGate } from './reason-gate';
 import { AgentConfigurationSummary, AgentOverview, FindingsList } from './agent-overview';
 import { taskSwitchFacts } from './agent-summary';
 import { FallbackModelsField } from './fallback-models-field';
@@ -304,6 +305,8 @@ export function AgentLineageDrawer({
   const update = useUpdateAgent();
   const upsertAssignment = useUpsertAgentAssignment();
   const removeAssignment = useRemoveAgentAssignment();
+  const setReasonGate = useReasonGate('agentAssignment.set', 'Set from the Agents screen');
+  const removeReasonGate = useReasonGate('agentAssignment.remove', 'Removed from the Agents screen');
   const exportAgent = useExportAgent();
   const catalogue = useTaskModelCatalogue(lineage?.task ?? 'TEXT_GENERATION');
   const session = useSession();
@@ -470,7 +473,7 @@ export function AgentLineageDrawer({
    * department's row instead. The API takes a `scope` for any task the same way, so this is not
    * speech-to-text-specific — every task can be assigned to a department from here.
    */
-  async function writeAssignment() {
+  async function writeAssignment(reason: string) {
     if (!lineage) return;
     try {
       await upsertAssignment.mutateAsync({
@@ -480,7 +483,7 @@ export function AgentLineageDrawer({
           task: lineage.task,
           agentSlug: lineage.slug,
           ...(selectorTags.length ? { selectorTags } : {}),
-          reason: `Set from the Agents screen (${lineage.slug})`,
+          reason: reason === 'Set from the Agents screen' ? `Set from the Agents screen (${lineage.slug})` : reason,
         },
         ...(targetRow ? { etag: `"${targetRow.version}"` } : {}),
       });
@@ -993,11 +996,13 @@ export function AgentLineageDrawer({
                             size="sm"
                             disabled={removeAssignment.isPending}
                             onClick={() =>
-                              void run(
-                                () => removeAssignment.mutateAsync({ id: row.id, version: row.version, reason: 'Removed from the Agents screen' }),
-                                'Assignment removed',
-                                'Could not remove that assignment.',
-                              )
+                              removeReasonGate.request({
+                                title: 'Remove agent assignment',
+                                description: `Record why the ${scopeLabel(row, departmentName)} assignment for ${row.agentSlug} is being removed.`,
+                                confirmLabel: 'Remove assignment',
+                                run: (reason) =>
+                                  run(() => removeAssignment.mutateAsync({ id: row.id, version: row.version, reason }), 'Assignment removed', 'Could not remove that assignment.'),
+                              })
                             }
                             aria-label={`Remove the ${scopeLabel(row, departmentName)} assignment for ${row.agentSlug}`}
                           >
@@ -1029,7 +1034,14 @@ export function AgentLineageDrawer({
                       size="sm"
                       disabled={isTargetAssigned || upsertAssignment.isPending || !!selectorProblem || sttTagsBlocked}
                       aria-describedby={sttTagsBlocked ? 'assignment-selector-stt-warning' : undefined}
-                      onClick={() => void writeAssignment()}
+                      onClick={() =>
+                        setReasonGate.request({
+                          title: 'Set agent assignment',
+                          description: `Record why ${lineage.name} should serve this assignment.`,
+                          confirmLabel: 'Set assignment',
+                          run: writeAssignment,
+                        })
+                      }
                     >
                       {upsertAssignment.isPending ? <Spinner /> : null}
                       {isTargetAssigned ? 'Is assigned' : departmentId ? `Assign to ${departmentName(departmentId)}` : selectorTags.length ? 'Assign for these tags' : 'Set as tenant default'}
@@ -1222,6 +1234,8 @@ export function AgentLineageDrawer({
           description={`What changed between these two versions of ${lineage?.slug ?? 'this agent'}. A published version compares its frozen compiled config; a draft compares its editable body.`}
         />
       ) : null}
+      {setReasonGate.dialog}
+      {removeReasonGate.dialog}
     </Tabs>
   );
 }
