@@ -44,8 +44,13 @@ export const DEFAULT_AI_MODELS: AiModelSeed[] = withCapabilityMetadata([...AUDIO
 
 type SeedMetaData = NonNullable<AiModelSeed['metaData']>;
 
-/** `_metadata` keys whose CURRENT value a platform admin edits (W2h); the seed never overwrites them. */
-const ADMIN_EDITABLE_METADATA_KEYS = ['policy', 'judge'] as const;
+/**
+ * `_metadata` keys whose CURRENT value a platform admin edits; the seed never overwrites them. `policy` /
+ * `judge` are edited on `/guardrails/control` (W2h); `residency` is written by the gateway's model-residency
+ * service (TASK-1055: `defaultDevice` by makeDefault, measured facts such as `observedContextLength`), so a
+ * reseed keeps it and only adds the seed's factory default where the row has none.
+ */
+const ADMIN_EDITABLE_METADATA_KEYS = ['policy', 'judge', 'residency'] as const;
 
 /** `policy` keys the runtime no longer reads; a reseed removes them from an existing row (and its defaults). */
 const RETIRED_POLICY_KEYS = ['outboundRecordOnlyChecks'] as const;

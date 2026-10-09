@@ -78,19 +78,25 @@ export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
   'vlm.extract': 'No deployable vision model is loaded on the LM Studio instance; a SYSTEM default would replace a clean 503 with an upstream 404.',
   'nlp.sentiment': 'No checkpoint has been selected and no gateway route reaches the key — an OPEN OWNER DECISION.',
   'nlp.toxicity': 'No checkpoint has been selected (multi-label, needs a per-label head + `labelTaxonomy.cls_threshold`) — an OPEN OWNER DECISION.',
+  // TASK-1055 — this key used to ELECT `nlp-doc-type-classifier`, a DISABLED placeholder TASK-860
+  // retired, so every seed skipped it with a warning. Nothing resolves the key at run time (the gateway's
+  // `text-analyses` routes resolve `nlp.ner` / `nlp.diagnosis` / `nlp.topic` / `nlp.intent` only, the
+  // harness `core.classify` node names its model by slug, and the effective-config weight push omits an
+  // unelected key), and no seeded TEXT_CLASSIFICATION row is a document-type classifier.
+  'nlp.classification': 'No document-type classifier is seeded and no caller resolves the key — an OPEN OWNER DECISION.',
 };
 
 /**
- * The sixteen SYSTEM elected defaults — the retired seed's twelve minus the three `text.*`
- * elections (TASK-881), plus `nlp.topic` / `nlp.intent` (TASK-1016, owner decision OD-1a), plus
- * `guardrail.injection` and the four `guardrail.judge.*` lanes (TASK-1049 R1 / TASK-1050 §12.2).
+ * The fifteen SYSTEM elected defaults — the retired seed's twelve minus the three `text.*`
+ * elections (TASK-881) and the dangling `nlp.classification` one (TASK-1055, now an exemption), plus
+ * `nlp.topic` / `nlp.intent` (TASK-1016, owner decision OD-1a), plus `guardrail.injection` and the
+ * four `guardrail.judge.*` lanes (TASK-1049 R1 / TASK-1050 §12.2).
  */
 export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   { id: '89000000-0000-0000-0000-000000000001', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' },
   { id: '89000000-0000-0000-0000-000000000002', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.ner', modelSlug: 'medical-ner' },
-  // The `/classify/text` document-type classifier — an explicitly DISABLED
-  // placeholder until a real doc-type model is seeded (fails closed).
-  { id: '89000000-0000-0000-0000-000000000003', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.classification', modelSlug: 'nlp-doc-type-classifier' },
+  // TASK-1055: id …003 (`nlp.classification` → the retired `nlp-doc-type-classifier`) is gone — it
+  // was never written (the slug resolved to nothing), so no database carries it. Never reuse the id.
   { id: '89000000-0000-0000-0000-000000000009', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.diagnosis', modelSlug: 'symps-disease-bert-v3-c41' },
   // TASK-881: the `text.live` / `text.finalize` / `text.test` elections
   // (ids …004 / …005 / …010) are gone — text generation selects through the
