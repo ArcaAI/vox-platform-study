@@ -36,6 +36,7 @@ import {
   residencyServiceOf,
 } from './model-residency.types';
 import { budgetFor } from './residency-budget';
+import { loadBlockedReasonFor } from './residency-load-rules';
 import { rankRuntimeKeyCandidates, resolveRuntimeKey, runtimeKeysFor } from './runtime-key';
 import type { ModelResidencyUsageIndex } from './model-usage-index';
 
@@ -67,6 +68,11 @@ export interface CatalogueModelRow extends ServingIdentity, CatalogueRefFields {
   memorySizeMb?: number | null;
   observedMemoryMb?: number | null;
   observedLoadSeconds?: number | null;
+  /** TASK-1055 — what `loadBlockedReasonFor` reads (the row-only load refusals); `AiModelEntity` carries them all. */
+  taskType?: unknown;
+  architecture?: string | null;
+  bucketPrefix?: string | null;
+  primaryObject?: string | null;
 }
 
 /** The slice of a ledger entry the view reads (one resident instance). */
@@ -488,6 +494,9 @@ function modelRow(
       actions: [],
     };
   }
+  const actions = actionsFor(service, status, modelRef, aiModelId);
+  // Only while a Load is on offer: the row alone says it cannot succeed (the load refusal's own words).
+  const loadBlockedReason = model && actions.includes('load') ? loadBlockedReasonFor(service, model) : null;
   return {
     aiModelId,
     name: model?.name ?? primary?.aiModelName ?? failure?.aiModelName ?? modelRef ?? 'Unnamed model',
@@ -508,7 +517,8 @@ function modelRow(
       primary?.ttlSeconds ?? null,
       entries.some((e) => e.adminPinned),
     ),
-    actions: actionsFor(service, status, modelRef, aiModelId),
+    actions,
+    ...(loadBlockedReason ? { loadBlockedReason } : {}),
   };
 }
 

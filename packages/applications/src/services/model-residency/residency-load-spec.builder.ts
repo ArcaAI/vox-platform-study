@@ -4,7 +4,6 @@ import {
   AgentTask,
   AiModelRepository,
   AiRoutingPolicyRepository,
-  ModelTaskType,
   ResourceStatusType,
   SYSTEM_TENANT_ID,
   WorkflowDefinitionStatus,
@@ -12,6 +11,9 @@ import {
 import { derivedLocalPath } from '../ai-model/constants';
 import { AsrAgentResolverService } from '../stt/agent-resolver/asr-agent-resolver.service';
 import { ImplicitLivePathReader } from './implicit-live-path';
+import { ENTAILMENT, NLP_CACHES, type NlpRow, SUGGESTER, isRec, loadBlockedReasonFor, staticNlpSlot } from './residency-load-rules';
+
+export { loadBlockedReasonFor, type LoadSpecRow } from './residency-load-rules';
 
 /**
  * TASK-1005 — the `load_spec` a residency agent needs to load a model it does
@@ -29,10 +31,20 @@ import { ImplicitLivePathReader } from './implicit-live-path';
  * nlp — the cache the model was last seen in (from the agent's own report),
  * else the one its catalogue row implies, with `model_path` = the row's derived
  * local path. Derivation, first match wins (TASK-1055, cluster e2e 2026-10-09 —
- * `taskType` alone sent GLiGuard to the transformers text classifier):
+ * `taskType` alone sent GLiGuard to the transformers text classifier, and Prompt
+ * Guard 2 to it too):
  *  - `libraryName` / `architecture` `gliner2` → `nlp_gliner2_guard`;
  *  - `_metadata.entailment` declared → `nlp_entailment_scorer`, + `calibration`
  *    (that object verbatim, camelCase, as the guard route sends it);
+ *  - `_metadata.judge` declared → `nlp_judge_guard` (`POST /guard/judge`), when its
+ *    `protocol` is `qwen3guard_native` — the only judge runtime nlp has; another
+ *    protocol is refused by name. (The seeded judges are LM Studio-served, so
+ *    they never reach here; this is the nlp-served transport guardrail's judge
+ *    runner also supports.)
+ *  - `_metadata.labelTaxonomy` declared → the row is a guardrail CLASSIFIER, served
+ *    by `POST /guard/classify`, whose runtime `libraryName` picks exactly as
+ *    guardrail's client sends it: `transformers` → `nlp_seq_cls_guard` (Prompt
+ *    Guard 2); `gliner2` was taken above; anything else is refused by name;
  *  - the SYSTEM `nlp.diagnosis` election → `nlp_medical_suggester`, + the
  *    SYSTEM `nlp.ner` election as its NER — the pair the gateway's diagnosis
  *    route sends (`ai-inference.controller.ts#suggestDiagnosis`);
@@ -40,6 +52,10 @@ import { ImplicitLivePathReader } from './implicit-live-path';
  * The scorer and the suggester refuse BY NAME when what they need is absent
  * (no calibration, no published path, no `nlp.ner` election) — nlp fails closed
  * on all three anyway, less legibly.
+ *
+ * Every refusal that depends on the ROW alone is `loadBlockedReasonFor` — the
+ * catalogue shows it before a Load is attempted, and this builder throws the
+ * same words, so the two can never disagree.
  */
 
 export class ResidencyLoadSpecError extends Error {
@@ -51,25 +67,6 @@ export class ResidencyLoadSpecError extends Error {
     this.name = 'ResidencyLoadSpecError';
   }
 }
-
-/** nlp caches whose slot needs nothing beyond `{cache, model_path}`. */
-const SIMPLE_NLP_CACHES = new Set(['nlp_token_classifier', 'nlp_text_classifier', 'nlp_gliner2_guard']);
-const SUGGESTER = 'nlp_medical_suggester';
-const ENTAILMENT = 'nlp_entailment_scorer';
-/** Every cache `apps/nlp/src/nlp/residency.py#_plan` accepts. */
-const NLP_CACHES = new Set([...SIMPLE_NLP_CACHES, SUGGESTER, ENTAILMENT]);
-
-type NlpRow = {
-  id: string;
-  sourceUri: string;
-  taskType?: unknown;
-  libraryName?: string | null;
-  architecture?: string | null;
-  metaData?: unknown;
-  bucketPrefix?: string | null;
-  primaryObject?: string | null;
-};
-const isRec = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 @Injectable()
 export class ResidencyLoadSpecBuilder {
@@ -95,6 +92,9 @@ export class ResidencyLoadSpecBuilder {
       .map((m) => ({ tenantId: m.tenantId, slug: m.agentSlug }));
     if (candidates.length === 0) candidates.push(...(await this.agentsNaming(modelRef)));
     if (candidates.length === 0) {
+      const [row] = await this.aiModels.findAll({ filters: { slug: modelRef } as never, limit: 1 });
+      const blocked = row ? loadBlockedReasonFor('stt', row as never) : null;
+      if (blocked) throw new ResidencyLoadSpecError('LOAD_FAILED', blocked);
       throw new ResidencyLoadSpecError(
         'MODEL_UNKNOWN',
         `No active published speech-to-text agent names '${modelRef}' as its primary model, so no runnable spec can be built for it.`,
@@ -138,28 +138,19 @@ export class ResidencyLoadSpecBuilder {
     const row = found as unknown as NlpRow | undefined;
     const modelPath = row ? derivedLocalPath(row as never) : null;
 
-    const cache = (lastSeenCache && NLP_CACHES.has(lastSeenCache) ? lastSeenCache : undefined) ?? (row ? await this.deriveNlpCache(row) : undefined);
-    if (!cache) {
-      throw new ResidencyLoadSpecError(
-        row ? 'LOAD_FAILED' : 'MODEL_UNKNOWN',
-        row
-          ? `nlp slot for '${modelRef}' cannot be derived from its catalogue row (taskType ${String(row.taskType)}); load it once through the serving path so nlp reports its cache.`
-          : `No platform nlp model is served under '${modelRef}'.`,
-      );
-    }
+    const reported = lastSeenCache && NLP_CACHES.has(lastSeenCache) ? lastSeenCache : undefined;
+    if (!reported && !row) throw new ResidencyLoadSpecError('MODEL_UNKNOWN', `No platform nlp model is served under '${modelRef}'.`);
+    const cache = reported ?? (await this.deriveNlpCache(row!));
     if (cache === ENTAILMENT) return this.entailmentSpec(modelRef, row, modelPath);
     if (cache === SUGGESTER) return this.suggesterSpec(modelRef, modelPath);
     return { cache, model_path: modelPath };
   }
 
-  private async deriveNlpCache(row: NlpRow): Promise<string | undefined> {
-    if (row.libraryName === 'gliner2' || row.architecture === 'gliner2') return 'nlp_gliner2_guard';
-    if (isRec(row.metaData) && row.metaData.entailment !== undefined) return ENTAILMENT;
-    if (row.taskType === ModelTaskType.TOKEN_CLASSIFICATION) return 'nlp_token_classifier';
-    if (row.taskType === ModelTaskType.TEXT_CLASSIFICATION) {
-      return (await this.electedModelId('nlp.diagnosis')) === row.id ? SUGGESTER : 'nlp_text_classifier';
-    }
-    return undefined;
+  private async deriveNlpCache(row: NlpRow): Promise<string> {
+    const slot = staticNlpSlot(row);
+    if ('refusal' in slot) throw new ResidencyLoadSpecError('LOAD_FAILED', slot.refusal);
+    if ('cache' in slot) return slot.cache;
+    return (await this.electedModelId('nlp.diagnosis')) === row.id ? SUGGESTER : 'nlp_text_classifier';
   }
 
   /** The groundedness scorer never auto-downloads and fails closed without its calibration: both are required. */

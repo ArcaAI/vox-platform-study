@@ -230,6 +230,14 @@ export class ModelResidencyCatalogueModel {
   @ApiProperty({ type: ModelResidencyKeepPolicy }) keepPolicy!: ModelResidencyKeepPolicy;
   @ApiProperty({ enum: ['load', 'unload', 'reload', 'edit_policy'], isArray: true, description: 'What the console may offer for this row now.' })
   actions!: CatalogueAction[];
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'TASK-1055 — present only while `actions` offers `load` and the catalogue row ALONE says the load cannot succeed (an stt stage model that loads with its ASR agent, an entailment scorer not published to the models bucket or with no calibration, a guard judge or classifier on a runtime nlp does not have). The same words the load refusal carries. Absent = nothing static stands in the way.',
+    example:
+      "nlp_entailment_scorer for 'nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF' needs the model's local path, and the catalogue row has none (not published to the models bucket); the scorer never auto-downloads.",
+  })
+  loadBlockedReason?: string;
 }
 
 export class ModelResidencyCatalogueService {

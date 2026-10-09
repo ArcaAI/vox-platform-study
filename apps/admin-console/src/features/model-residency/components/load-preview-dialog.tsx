@@ -258,12 +258,14 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
     setPicked((target?.fits ? target : (suggested ?? target ?? candidates[0]!)).device);
   }
 
+  /** TASK-1055 — the catalogue row alone says this load cannot succeed: say why instead of a dry run. */
+  const blockedReason = model.loadBlockedReason ?? null;
   const requestedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open || blockedReason) return;
     requestedFor.current = null;
     requestPreview({ service: service.service, modelRef: model.modelRef });
-  }, [open, service.service, model.modelRef, requestPreview]);
+  }, [open, blockedReason, service.service, model.modelRef, requestPreview]);
   // Every pick is re-checked with the same admission arithmetic (once per pick — a server that answers for another device cannot loop this).
   const previewPending = preview.isPending && !!data && !busy;
   useEffect(() => {
@@ -519,7 +521,11 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
           <DialogDescription>{service.label}</DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {(preview.isPending || preview.isIdle) && !data ? (
+          {blockedReason ? (
+            <Callout tone="warn" role="alert" title="This model can&rsquo;t be loaded from the console">
+              <p>{blockedReason}</p>
+            </Callout>
+          ) : (preview.isPending || preview.isIdle) && !data ? (
             <PreviewSkeleton />
           ) : !data ? (
             <Callout tone="warn" role="alert" title="Couldn&rsquo;t check placement">
@@ -714,9 +720,9 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
             </span>
           ) : null}
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
-            Cancel
+            {blockedReason ? 'Close' : 'Cancel'}
           </Button>
-          {data && !alreadyLoaded ? (
+          {data && !alreadyLoaded && !blockedReason ? (
             <Button
               variant={needsReason ? 'destructive' : 'default'}
               disabled={!armed || busy || previewPending || awaitingPreview}
