@@ -253,6 +253,13 @@ function toSpecModel(
   };
 }
 
+/**
+ * TASK-1055 wave 3 — the wire projection of ONE model in one role, exported under a distinct name for the
+ * residency console's model-only stt load (`{model}`), so a console-loaded model is the same object a
+ * session's spec names (same slug key, weights and compute type) and the stt cache reuses it.
+ */
+export { toSpecModel as toAsrSpecModel };
+
 function primaryOf(agent: ResolvedAgent): ResolvedAgentModel {
   const primary = agent.models.find((m) => m.role === 'primary');
   if (!primary) throw new AsrSpecBuildError(`Agent '${agent.slug}' v${agent.versionNumber} resolved no primary ASR model.`);

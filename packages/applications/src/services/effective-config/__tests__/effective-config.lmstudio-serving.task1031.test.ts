@@ -108,6 +108,8 @@ describe('TASK-1031 — service=lmstudio: the boot serving plan', () => {
           kvCacheQuant: { k: 'q8_0', v: 'q8_0' },
         },
       ],
+      // TASK-1055 wave 3 — the on-request profiles (covered in effective-config.lmstudio-profiles.task1055.test.ts).
+      profiles: expect.any(Array),
     });
   });
 

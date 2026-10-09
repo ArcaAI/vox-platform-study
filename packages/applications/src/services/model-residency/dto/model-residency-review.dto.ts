@@ -98,7 +98,7 @@ export class ModelResidencyLoadPreviewResponse {
   @ApiProperty({
     type: [ModelResidencyPlacementCandidate],
     description:
-      'TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`.',
+      'TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; tts: its host memory only; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`.',
   })
   candidates!: ModelResidencyPlacementCandidate[];
 

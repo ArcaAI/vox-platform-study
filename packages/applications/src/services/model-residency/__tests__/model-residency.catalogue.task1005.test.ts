@@ -366,7 +366,8 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
   it('every enum value it emits is one the fixture declares', async () => {
     const view = await h.service.getCatalogue();
     const enums = FIXTURE.enums;
-    expect(view.services.map((s) => s.service)).toEqual(enums.service);
+    // TASK-1055 wave 3 — `tts` is the fifth group (contract `wave3.gateway`); this fixture predates it.
+    expect(view.services.map((s) => s.service)).toEqual([...enums.service, 'tts']);
     for (const s of view.services) {
       expect(enums.runsOn).toContain(s.runsOn);
       for (const m of s.models) {
@@ -397,11 +398,11 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
     });
   });
 
-  it('never lists a CLOUD model, a model no residency workload runs (tts), or a DELETED one', async () => {
+  it('never lists a CLOUD model or a DELETED one; a self-hosted tts model is listed under tts (TASK-1055 wave 3)', async () => {
     const view = await h.service.getCatalogue();
     const ids = view.services.flatMap((s) => s.models.map((m) => m.aiModelId));
     expect(ids).not.toContain('model-cloud');
-    expect(ids).not.toContain('model-tts');
+    expect(view.services.find((s) => s.service === 'tts')!.models.map((m) => m.aiModelId)).toEqual(['model-tts']);
     expect(ids).not.toContain('model-gone');
     // The catalogue read is explicit: SYSTEM rows, SELF_HOSTED only.
     expect(h.aiModels.findAll).toHaveBeenCalledWith({

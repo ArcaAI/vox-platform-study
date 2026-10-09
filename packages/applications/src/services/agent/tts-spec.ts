@@ -169,6 +169,9 @@ function toSpecModel(model: ResolvedAgentModel, metaData: unknown): TtsSpecModel
   };
 }
 
+/** TASK-1055 wave 3 — the same projection, for the residency console's cold tts load (`{engine, model}`). */
+export { toSpecModel as toTtsSpecModel };
+
 /**
  * One candidate. The runtime key is the agent VERSION id for anything the agent serves as its
  * primary, and a DERIVED key for a model-level fallback over the same agent — two candidates must

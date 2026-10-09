@@ -1,17 +1,10 @@
 import { Injectable, Optional } from '@nestjs/common';
-import {
-  AgentRepository,
-  AgentTask,
-  AiModelRepository,
-  AiRoutingPolicyRepository,
-  ResourceStatusType,
-  SYSTEM_TENANT_ID,
-  WorkflowDefinitionStatus,
-} from '@arcaai/domains';
+import { AiModelRepository, AiRoutingPolicyRepository, ResourceStatusType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { derivedLocalPath } from '../ai-model/constants';
-import { AsrAgentResolverService } from '../stt/agent-resolver/asr-agent-resolver.service';
-import { ImplicitLivePathReader } from './implicit-live-path';
-import { ENTAILMENT, NLP_CACHES, type NlpRow, SUGGESTER, isRec, loadBlockedReasonFor, staticNlpSlot } from './residency-load-rules';
+import { AgentResolverService } from '../agent/agent-resolver.service';
+import { toTtsSpecModel } from '../agent/tts-spec';
+import { toAsrSpecModel } from '../stt/agent-resolver/build-resolved-asr-spec';
+import { ENTAILMENT, NLP_CACHES, type NlpRow, SUGGESTER, isRec, staticNlpSlot, sttSpecRoleFor } from './residency-load-rules';
 
 export { loadBlockedReasonFor, type LoadSpecRow } from './residency-load-rules';
 
@@ -21,12 +14,18 @@ export { loadBlockedReasonFor, type LoadSpecRow } from './residency-load-rules';
  * `loadSpecExamples`). The agents keep no catalogue, so the gateway supplies
  * it; an EMPTY spec is valid only for a model already resident.
  *
- * stt — `{resolved_spec: <ResolvedAsrSpec>}`, built by the ONE producer of that
- * contract (`AsrAgentResolverService` → `buildResolvedAsrSpec`), for an ACTIVE
- * PUBLISHED speech-to-text agent whose primary model IS `modelRef`: first an
- * agent already on the implicit live path, else any tenant's agent naming that
- * model. The agent refuses a spec whose primary slug is not `modelRef`, and so
- * does this builder, before sending it.
+ * stt — TASK-1055 wave 3 (W3-2): ALWAYS the model-only spec `{model: <AsrSpecModel>}`
+ * (`model-residency-task1055.fixture.json` → `wave3.sttModelOnly`), built from the
+ * SYSTEM row with the SAME projection `buildResolvedAsrSpec` uses for that role
+ * (`AgentResolverService` → `ResolvedAgentModel`, then `toAsrSpecModel`) — for ASR
+ * AND stage rows (VAD, denoise, diarization embedding, punctuation, endpointing).
+ * No agent is consulted to LOAD; stt caches it under the slug sessions use, so a
+ * later session reuses it.
+ *
+ * tts — `{engine, model}` (`wave3.ttsResidency`, + `$amendment`): the engine
+ * `apps/tts` registers the provider under, and the `TtsSpecModel` the synth path
+ * would carry (`toTtsSpecModel`), so a cold load on a fresh pod builds the same
+ * engine instance a request reuses.
  *
  * nlp — the cache the model was last seen in (from the agent's own report),
  * else the one its catalogue row implies, with `model_path` = the row's derived
@@ -71,66 +70,44 @@ export class ResidencyLoadSpecError extends Error {
 @Injectable()
 export class ResidencyLoadSpecBuilder {
   constructor(
-    private readonly livePath: ImplicitLivePathReader,
-    private readonly agents: AgentRepository,
     private readonly aiModels: AiModelRepository,
-    // Optional so the controller composes without the STT resolver graph; an stt load then fails closed with a named cause.
-    @Optional() private readonly asr?: AsrAgentResolverService,
-    // TASK-1055 — the SYSTEM nlp elections that mark (and pair) the medical suggester. Optional like `asr`: absent, the suggester refuses by name.
+    // TASK-1055 — the SYSTEM nlp elections that mark (and pair) the medical suggester. Optional: absent, the suggester refuses by name.
     @Optional() private readonly routing?: AiRoutingPolicyRepository,
+    // TASK-1055 wave 3 — the row → `ResolvedAgentModel` half of the stt / tts projections (derived `localPath`). Optional: absent, those loads fail closed by name.
+    @Optional() private readonly agentModels?: AgentResolverService,
   ) {}
 
-  async build(service: 'stt' | 'nlp', modelRef: string, lastSeenCache?: string): Promise<Record<string, unknown>> {
-    return service === 'stt' ? this.sttSpec(modelRef) : this.nlpSpec(modelRef, lastSeenCache);
+  async build(service: 'stt' | 'nlp' | 'tts', modelRef: string, lastSeenCache?: string): Promise<Record<string, unknown>> {
+    if (service === 'stt') return this.sttSpec(modelRef);
+    if (service === 'tts') return this.ttsSpec(modelRef);
+    return this.nlpSpec(modelRef, lastSeenCache);
   }
 
   private async sttSpec(modelRef: string): Promise<Record<string, unknown>> {
-    if (!this.asr) throw new ResidencyLoadSpecError('LOAD_FAILED', 'The speech-to-text agent resolver is not wired in this composition.');
-
-    const candidates = (await this.livePath.read())
-      .filter((m) => m.service === 'stt' && m.modelRef === modelRef)
-      .map((m) => ({ tenantId: m.tenantId, slug: m.agentSlug }));
-    if (candidates.length === 0) candidates.push(...(await this.agentsNaming(modelRef)));
-    if (candidates.length === 0) {
-      const [row] = await this.aiModels.findAll({ filters: { slug: modelRef } as never, limit: 1 });
-      const blocked = row ? loadBlockedReasonFor('stt', row as never) : null;
-      if (blocked) throw new ResidencyLoadSpecError('LOAD_FAILED', blocked);
-      throw new ResidencyLoadSpecError(
-        'MODEL_UNKNOWN',
-        `No active published speech-to-text agent names '${modelRef}' as its primary model, so no runnable spec can be built for it.`,
-      );
-    }
-
-    let lastProblem = '';
-    for (const { tenantId, slug } of candidates) {
-      try {
-        const { spec } = await this.asr.resolve({ tenantId, agentSlug: slug });
-        if (spec.models.asr.slug === modelRef) return { resolved_spec: spec };
-        lastProblem = `agent '${slug}' resolves primary '${spec.models.asr.slug}', not '${modelRef}'`;
-      } catch (error) {
-        lastProblem = error instanceof Error ? error.message : String(error);
-      }
-    }
-    throw new ResidencyLoadSpecError('LOAD_FAILED', `No runnable speech-to-text spec for '${modelRef}': ${lastProblem}`);
+    const [row] = await this.aiModels.findAll({ filters: { tenantId: SYSTEM_TENANT_ID, slug: modelRef } as never, limit: 1 });
+    if (!row) throw new ResidencyLoadSpecError('MODEL_UNKNOWN', `No platform speech-to-text model has the slug '${modelRef}'.`);
+    const slot = sttSpecRoleFor(row as never);
+    if ('refusal' in slot) throw new ResidencyLoadSpecError('LOAD_FAILED', slot.refusal);
+    const model = await this.resolvedModel(modelRef, slot.role === 'asr' ? 'primary' : slot.role, String(row.taskType));
+    return { model: toAsrSpecModel(model, slot.role) };
   }
 
-  /** Active published SPEECH_TO_TEXT agents (any tenant) whose primary is the model with this slug. */
-  private async agentsNaming(modelRef: string): Promise<Array<{ tenantId: string; slug: string }>> {
-    const models = await this.aiModels.findAll({ filters: { slug: modelRef } as never });
-    if (models.length === 0) return [];
-    const agents = await this.agents.findAll({
-      filters: {
-        modelId: { in: models.map((m) => m.id) },
-        task: AgentTask.SPEECH_TO_TEXT,
-        isActive: true,
-        status: WorkflowDefinitionStatus.PUBLISHED,
-        resourceStatus: ResourceStatusType.ENABLED,
-      } as never,
-    });
-    // SYSTEM's own agent first: it is the one every tenant was cloned from.
-    return agents
-      .sort((a, b) => Number(b.tenantId === SYSTEM_TENANT_ID) - Number(a.tenantId === SYSTEM_TENANT_ID))
-      .map((a) => ({ tenantId: a.tenantId, slug: a.slug }));
+  private async ttsSpec(modelRef: string): Promise<Record<string, unknown>> {
+    const [row] = await this.aiModels.findAll({ filters: { tenantId: SYSTEM_TENANT_ID, servedBy: 'tts', slug: modelRef } as never, limit: 1 });
+    if (!row) throw new ResidencyLoadSpecError('MODEL_UNKNOWN', `No platform text-to-speech model has the slug '${modelRef}'.`);
+    const model = toTtsSpecModel(await this.resolvedModel(modelRef, 'primary', String(row.taskType)), row.metaData);
+    if (!model.provider) throw new ResidencyLoadSpecError('MODEL_UNKNOWN', `'${modelRef}' names no text-to-speech engine.`);
+    return { engine: model.provider, model };
+  }
+
+  /** The SYSTEM row as `AgentResolverService` materialises an agent's model — the projections' only input. */
+  private async resolvedModel(modelRef: string, role: 'primary' | 'vad' | 'denoise' | 'embedding' | 'punctuation' | 'endpointing', taskType: string) {
+    if (!this.agentModels) {
+      throw new ResidencyLoadSpecError('LOAD_FAILED', 'The model projection (AgentResolverService) is not wired in this composition.');
+    }
+    const model = await this.agentModels.resolveModelBySlug(modelRef, SYSTEM_TENANT_ID, { role, taskType });
+    if (!model) throw new ResidencyLoadSpecError('MODEL_UNKNOWN', `No platform model has the slug '${modelRef}'.`);
+    return model;
   }
 
   private async nlpSpec(modelRef: string, lastSeenCache?: string): Promise<Record<string, unknown>> {

@@ -41,8 +41,7 @@ function build(rows: Row[], policies = seededPolicies(rows)) {
   const routing = {
     findCandidates: async (tenantIds: string[], taskKey: string) => policies.filter((p) => tenantIds.includes(p.tenantId) && p.taskKey === taskKey),
   };
-  const livePath = { read: async () => [] };
-  return new ResidencyLoadSpecBuilder(livePath as never, {} as never, aiModels as never, undefined, routing as never);
+  return new ResidencyLoadSpecBuilder(aiModels as never, routing as never);
 }
 
 const ALL = (): Row[] => NLP_AI_MODELS.map((m) => ({ resourceStatus: 'ENABLED', ...m }));

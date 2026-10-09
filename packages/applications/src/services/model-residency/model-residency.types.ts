@@ -8,8 +8,11 @@
  * contract; these types are its TypeScript spelling.
  */
 
-/** Services the controller can COMMAND. `stt-worker` has no HTTP API — it is observed through Prometheus only. */
-export const RESIDENCY_CONTROLLED_SERVICES = ['stt', 'nlp', 'lm-studio'] as const;
+/**
+ * Services the controller can COMMAND. `stt-worker` has no HTTP API — it is observed through Prometheus only.
+ * TASK-1055 wave 3 — `tts` joins (its residency agent at `TTS_URL`, CPU only).
+ */
+export const RESIDENCY_CONTROLLED_SERVICES = ['stt', 'nlp', 'lm-studio', 'tts'] as const;
 export type ResidencyControlledService = (typeof RESIDENCY_CONTROLLED_SERVICES)[number];
 
 /** Services that appear in the residency view. */
@@ -139,21 +142,21 @@ export interface ServingIdentity {
 /**
  * The residency service that runs a catalogue model, from `AiModel.servedBy`
  * (normalised: `lmstudio` → `lm-studio`), or `null` for a workload the
- * controller does not govern (`tts`, `tts-worker`, `text`, `gateway-proxy`).
+ * controller does not govern (`tts-worker`, `text`, `gateway-proxy`).
  * A row whose PROVIDER is LM Studio counts as LM Studio's whatever its
  * `servedBy` says — it is the engine's key that the service reports.
  */
 export function residencyServiceOf(model: ServingIdentity): ResidencyServiceName | null {
   if (model.servedBy === 'lmstudio' || model.servedBy === 'lm-studio' || (model.provider && LM_STUDIO_PROVIDERS.has(model.provider)))
     return 'lm-studio';
-  if (model.servedBy === 'stt' || model.servedBy === 'stt-worker' || model.servedBy === 'nlp') return model.servedBy;
+  if (model.servedBy === 'stt' || model.servedBy === 'stt-worker' || model.servedBy === 'nlp' || model.servedBy === 'tts') return model.servedBy;
   return null;
 }
 
 // ── TASK-1005 §13 — the catalogue-first view (`tests/contracts/model-residency-catalogue.fixture.json` `enums`) ──
 
 /** The catalogue view's service groups, in their FIXED display order. */
-export const CATALOGUE_SERVICES = ['stt', 'stt-worker', 'lm-studio', 'nlp'] as const satisfies readonly ResidencyServiceName[];
+export const CATALOGUE_SERVICES = ['stt', 'stt-worker', 'lm-studio', 'nlp', 'tts'] as const satisfies readonly ResidencyServiceName[];
 export type CatalogueRunsOn = 'gpu' | 'cpu';
 export type CatalogueModelStatus = ResidencyModelState | 'not_loaded' | 'failed';
 export type CatalogueSizeSource = 'measured' | 'catalogue' | 'unknown';
@@ -188,7 +191,7 @@ export interface CatalogueRefFields {
   metaData?: unknown;
 }
 
-/** The key a service caches a catalogue model under: stt / stt-worker = slug, nlp = sourceUri (hub id), LM Studio = wireModelId. */
+/** The key a service caches a catalogue model under: stt / stt-worker / tts = slug, nlp = sourceUri (hub id), LM Studio = wireModelId. */
 export function refFor(service: string, model: CatalogueRefFields | undefined): string | null {
   if (!model) return null;
   if (service === 'lm-studio') return model.wireModelId ?? null;

@@ -19,8 +19,8 @@
 
 export type ModelResidencyMode = 'shadow' | 'enforce';
 
-/** `AiModel.servedBy`, normalised. Fixed rendering order: stt, stt-worker, lm-studio, nlp. */
-export type ResidencyServiceId = 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
+/** `AiModel.servedBy`, normalised. Fixed rendering order: stt, stt-worker, lm-studio, nlp, tts (TASK-1055 wave 3). */
+export type ResidencyServiceId = 'stt' | 'stt-worker' | 'lm-studio' | 'nlp' | 'tts';
 
 export type ResidencyRunsOn = 'gpu' | 'cpu';
 
