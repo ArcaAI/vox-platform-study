@@ -6,12 +6,15 @@ import { TenantOnboardingServiceModule } from '../../tenant/onboarding';
 import { IPasswordResetMailer } from '../../user/userPassword/IPasswordResetMailer';
 import { createPasswordResetMailer } from '../../user/userPassword/msgraph-mailer';
 import { RegistrationService } from './registration.service';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { IRegistrationService } from './IRegistrationService';
 
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, UserServiceModule, TenantOnboardingServiceModule],
   providers: [
     { provide: IRegistrationService, useClass: RegistrationService },
+    // TASK-1056 — resolves `console.publicBaseUrl` for the verification link.
+    TenantSettingsService,
     // Same provider-selection factory as UserPasswordServiceModule
     // (env-selected: MS Graph / dev outbox / log-only) — reused, not exported
     // from that module, so provided again here (module-scoped DI).

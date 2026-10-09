@@ -26469,7 +26469,7 @@
             "type": "string"
           },
           "resetPath": {
-            "description": "Relative reset path carrying the token (mode=link)",
+            "description": "Reset link carrying the token (mode=link). Absolute on the `console.publicBaseUrl` origin (tenant → platform) when configured; a relative path when it is not — the caller prefixes its own origin.",
             "type": "string"
           },
           "temporaryPassword": {

@@ -7138,7 +7138,7 @@ export interface ResetPasswordResponse {
   expiresInSeconds?: number;
   /** The flow that was executed */
   mode: 'temporary' | 'link';
-  /** Relative reset path carrying the token (mode=link) */
+  /** Reset link carrying the token (mode=link). Absolute on the `console.publicBaseUrl` origin (tenant → platform) when configured; a relative path when it is not — the caller prefixes its own origin. */
   resetPath?: string;
   /** Temporary password (mode=temporary) — convey out-of-band */
   temporaryPassword?: string;

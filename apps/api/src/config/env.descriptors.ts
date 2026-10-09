@@ -108,14 +108,6 @@ const TOPOLOGY: SettingDescriptor[] = [
     'http://localhost:5176',
   ),
   envKnob(
-    'passwordReset.baseUrl',
-    'string',
-    'Topology',
-    'Password-reset link base URL',
-    'Base URL embedded in password-reset emails (`IPasswordResetMailer.DEFAULT_PASSWORD_RESET_BASE_URL`).',
-    'http://localhost:5176',
-  ),
-  envKnob(
     'prometheus.url',
     'string',
     'Topology',

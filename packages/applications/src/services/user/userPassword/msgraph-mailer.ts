@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { MicrosoftGraphIntegration } from '../../baseServices/integrations/microsoftGraph/microsoftGraph.integration';
-import { DEFAULT_PASSWORD_RESET_BASE_URL, IPasswordResetMailer, LoggingPasswordResetMailer, PasswordResetMailPayload } from './IPasswordResetMailer';
+import { IPasswordResetMailer, LoggingPasswordResetMailer, PasswordResetMailPayload } from './IPasswordResetMailer';
 import { DevOutboxPasswordResetMailer } from './dev-outbox-mailer';
 
 /**
@@ -14,8 +14,10 @@ import { DevOutboxPasswordResetMailer } from './dev-outbox-mailer';
  *   MSGRAPH_CLIENT_SECRET — client secret for that app
  *   MSGRAPH_TENANT_ID     — Azure AD tenant id
  *   MSGRAPH_SENDER        — mailbox to send from (user id or UPN; needs Mail.Send)
- *   PASSWORD_RESET_BASE_URL — public admin-app origin used to absolutize the
- *                             reset link (default http://localhost:5176)
+ *
+ * The link's origin is NOT configured here: the service resolves the
+ * `console.publicBaseUrl` setting (tenant → SYSTEM) and passes the absolute
+ * `resetUrl` in the payload (TASK-1056).
  *
  * All four MSGRAPH_* present → `MsGraphPasswordResetMailer`; anything missing →
  * `LoggingPasswordResetMailer` (dev transport: logs, reports not-sent, never
@@ -33,7 +35,6 @@ export type PasswordResetMailerConfig =
       clientSecret: string;
       tenantId: string;
       sender: string;
-      baseUrl: string;
     }
   | { kind: 'logging'; missing: string[] };
 
@@ -48,7 +49,6 @@ export function resolvePasswordResetMailerConfig(env: Record<string, string | un
     clientSecret: env.MSGRAPH_CLIENT_SECRET!.trim(),
     tenantId: env.MSGRAPH_TENANT_ID!.trim(),
     sender: env.MSGRAPH_SENDER!.trim(),
-    baseUrl: env.PASSWORD_RESET_BASE_URL?.trim() || DEFAULT_PASSWORD_RESET_BASE_URL,
   };
 }
 
@@ -57,11 +57,11 @@ export class MsGraphPasswordResetMailer implements IPasswordResetMailer {
 
   constructor(
     private readonly graph: Pick<MicrosoftGraphIntegration, 'sendEmail'>,
-    private readonly options: { sender: string; baseUrl: string },
+    private readonly options: { sender: string },
   ) {}
 
   async sendResetLink(payload: PasswordResetMailPayload): Promise<boolean> {
-    const link = `${this.options.baseUrl.replace(/\/$/, '')}${payload.resetPath}`;
+    const link = payload.resetUrl;
     const minutes = Math.round(payload.expiresInSeconds / 60);
     const content = [
       'A password reset was requested for your HOPE account.',
@@ -103,5 +103,5 @@ export function createPasswordResetMailer(env: Record<string, string | undefined
 
   logger.log(`Password-reset mailer: MS Graph transport (sender ${config.sender})`);
   const graph = new MicrosoftGraphIntegration(config.clientId, config.clientSecret, config.tenantId, GRAPH_SCOPES);
-  return new MsGraphPasswordResetMailer(graph, { sender: config.sender, baseUrl: config.baseUrl });
+  return new MsGraphPasswordResetMailer(graph, { sender: config.sender });
 }

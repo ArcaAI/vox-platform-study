@@ -56,3 +56,4 @@ export * from './descriptors/dna-regeneration.descriptors';
 export * from './descriptors/workflow-runs.descriptors';
 export * from './descriptors/media-upload.descriptors';
 export * from './descriptors/workflow-definitions.descriptors';
+export * from './descriptors/console-public-url.descriptors';

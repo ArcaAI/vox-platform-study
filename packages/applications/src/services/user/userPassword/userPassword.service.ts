@@ -16,7 +16,10 @@ import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { ICryptoService } from '../../crypto/ICryptoService';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
-import { DEFAULT_PASSWORD_RESET_BASE_URL, IPasswordResetMailer } from './IPasswordResetMailer';
+import { IPasswordResetMailer } from './IPasswordResetMailer';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
+import { CONSOLE_PUBLIC_BASE_URL_KEY } from '../../settings-registry/descriptors/console-public-url.descriptors';
+import { absolutizeConsoleLink } from './console-link';
 import { resolvePasswordPolicy, validatePasswordComplexity, PasswordPolicy } from './password-policy';
 
 /**
@@ -90,6 +93,9 @@ export class UserPasswordService extends BaseService {
     // Optional so the reset flow works (returning the link) when no provider is
     // wired; a delivery failure never blocks the reset.
     @Optional() @Inject(IPasswordResetMailer) private readonly mailer?: IPasswordResetMailer,
+    // TASK-1056 — resolves `console.publicBaseUrl` (tenant → SYSTEM). Optional: unwired ⇒ no
+    // absolute link and no email, exactly like an unset setting.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.User);
   }
@@ -123,15 +129,18 @@ export class UserPasswordService extends BaseService {
       requestedByUserId: this.requestUser?.id ?? null,
     });
 
+    // The admin acts inside a working tenant and `assertUserInScope` put the target in it, so that
+    // tenant's console origin applies (User rows carry no tenant of their own).
+    const resetUrl = this.absolutize(resetPath, this.tenantId);
     const email = (user as UserWithProfileEmail).UserProfile?.email ?? null;
-    const emailSent = await this.tryDeliver(email, resetPath, raw);
+    const emailSent = await this.tryDeliver(email, resetPath, resetUrl, raw);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: userId,
       data: { kind: 'password-reset', mode: 'reset-link', emailSent },
     });
 
-    return { token: raw, resetPath: UserPasswordService.absolutize(resetPath), expiresInSeconds: RESET_EXPIRES_IN_SECONDS, emailSent };
+    return { token: raw, resetPath: resetUrl ?? resetPath, expiresInSeconds: RESET_EXPIRES_IN_SECONDS, emailSent };
   }
 
   /**
@@ -267,7 +276,8 @@ export class UserPasswordService extends BaseService {
       if ((user as { isServiceAccount?: boolean }).isServiceAccount) return 0;
 
       const { raw, resetPath } = await this.issueToken(profile.userId, { requestedVia: 'self-service' });
-      await this.tryDeliver(profile.email ?? null, resetPath, raw);
+      // Public route: no tenant context, and the request Host is never trusted — platform tier only.
+      await this.tryDeliver(profile.email ?? null, resetPath, this.absolutize(resetPath, null), raw);
       return 1;
     } catch (error) {
       this.logger.warn(`forgot-password issue failed for a matched profile (non-fatal): ${(error as Error).message}`);
@@ -275,10 +285,14 @@ export class UserPasswordService extends BaseService {
     }
   }
 
-  private async tryDeliver(email: string | null, resetPath: string, token: string): Promise<boolean> {
+  private async tryDeliver(email: string | null, resetPath: string, resetUrl: string | null, token: string): Promise<boolean> {
     if (!this.mailer || !email) return false;
+    if (!resetUrl) {
+      this.logger.warn(`Password-reset email NOT sent: '${CONSOLE_PUBLIC_BASE_URL_KEY}' is not configured, so there is no absolute link to send.`);
+      return false;
+    }
     try {
-      return await this.mailer.sendResetLink({ email, resetPath, token, expiresInSeconds: RESET_EXPIRES_IN_SECONDS });
+      return await this.mailer.sendResetLink({ email, resetPath, resetUrl, token, expiresInSeconds: RESET_EXPIRES_IN_SECONDS });
     } catch (error) {
       this.logger.warn(`Password-reset email delivery failed (non-fatal): ${(error as Error).message}`);
       return false;
@@ -300,9 +314,8 @@ export class UserPasswordService extends BaseService {
     return createHash('sha256').update(raw).digest('hex');
   }
 
-  private static absolutize(resetPath: string): string {
-    const baseUrl = (process.env.PASSWORD_RESET_BASE_URL?.trim() || DEFAULT_PASSWORD_RESET_BASE_URL).replace(/\/$/, '');
-    return `${baseUrl}${resetPath}`;
+  private absolutize(resetPath: string, tenantId: string | null): string | null {
+    return absolutizeConsoleLink(this.tenantSettings, resetPath, tenantId);
   }
 
   private static digest(value: string): string {

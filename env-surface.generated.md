@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 146 |
+| Declared keys (distinct) | 145 |
 | … of which required (`failMode: closed`) | 28 |
 | … of which secret | 27 |
-| … tier `env` | 114 |
+| … tier `env` | 113 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
 | Python declared fields | 312 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 364 |
-| `turbo.json#globalEnv` entries | 524 |
+| `turbo.json#globalEnv` entries | 523 |
 
 ## Variables — the TypeScript platform surface
 
@@ -117,7 +117,6 @@ disagree with those declarations.
 | `OTEL_SERVICE_VERSION` | `env` | no | `1.0.0` | `apps/api` | Value of the `service.version` resource attribute. |
 | `OTEL_TRACES_ENABLED` | `env` | no | `false` | `apps/api` | Turns on the OpenTelemetry tracing pipeline. |
 | `OUTPUT_PATH` | `env` | no | `..` | `packages/tools` | Base path the domain-layer generators write to, relative to `packages/tools` (`generate-data-model`, `generate-data-entity`, `generate-factory`). |
-| `PASSWORD_RESET_BASE_URL` | `env` | no | `http://localhost:5176` | `apps/api` | Base URL embedded in password-reset emails (`IPasswordResetMailer.DEFAULT_PASSWORD_RESET_BASE_URL`). |
 | `PG_DATABASE` | `env` | no | `hope_main` | `apps/api` | Database used when assembling a dynamic-credential connection. |
 | `PG_DYNAMIC_CREDS` | `env` | no | `false` | `apps/api` | Opt in to Vault-issued, short-lived PostgreSQL credentials (plan §4 B6). |
 | `PG_HOST` | `env` | no | `localhost` | `apps/api` | Host used when assembling a dynamic-credential connection (`vault-client.ts`). |

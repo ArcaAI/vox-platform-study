@@ -8,6 +8,8 @@ import { IActiveUserContext } from '../../../interfaces';
 import { IUserService } from '../../user/user/IUserService';
 import { ITenantOnboardingService } from '../../tenant/onboarding';
 import { IPasswordResetMailer } from '../../user/userPassword/IPasswordResetMailer';
+import { absolutizeConsoleLink } from '../../user/userPassword/console-link';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { IRegistrationService } from './IRegistrationService';
 import { RegisterRequest, RegisterVerifyResponse } from './dto';
 
@@ -47,6 +49,9 @@ export class RegistrationService extends BaseService implements IRegistrationSer
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     @Optional() @Inject(IPasswordResetMailer) private readonly mailer?: IPasswordResetMailer,
+    // TASK-1056 — origin of the verification link (`console.publicBaseUrl`, platform tier: a
+    // sign-up has no tenant yet). Unwired or unset ⇒ no email is sent.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.User);
   }
@@ -80,9 +85,19 @@ export class RegistrationService extends BaseService implements IRegistrationSer
     await this.passwordResetTokenRepository.create(tokenEntity);
 
     const verifyPath = `/verify-email?token=${encodeURIComponent(raw)}`;
-    if (this.mailer) {
+    const verifyUrl = absolutizeConsoleLink(this.tenantSettings, verifyPath, null);
+    if (this.mailer && !verifyUrl) {
+      this.logger.warn("Verification email NOT sent: 'console.publicBaseUrl' is not configured at the platform tier.");
+    }
+    if (this.mailer && verifyUrl) {
       try {
-        await this.mailer.sendResetLink({ email, resetPath: verifyPath, token: raw, expiresInSeconds: VERIFICATION_EXPIRES_IN_SECONDS });
+        await this.mailer.sendResetLink({
+          email,
+          resetPath: verifyPath,
+          resetUrl: verifyUrl,
+          token: raw,
+          expiresInSeconds: VERIFICATION_EXPIRES_IN_SECONDS,
+        });
       } catch (error) {
         this.logger.warn(`Verification email delivery failed (non-fatal): ${error instanceof Error ? error.message : String(error)}`);
       }

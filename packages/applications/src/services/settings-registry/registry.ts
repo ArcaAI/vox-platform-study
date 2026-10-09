@@ -62,6 +62,7 @@ import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
 import { TRAINING_CAPTURE_SETTINGS } from './descriptors/training-capture.descriptors';
 import { USER_IDENTITY_SETTINGS } from './descriptors/user-identity.descriptors';
 import { DNA_REGEN_SETTINGS } from './descriptors/dna-regeneration.descriptors';
+import { CONSOLE_PUBLIC_URL_SETTINGS } from './descriptors/console-public-url.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
 export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().registerAll([
@@ -72,6 +73,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...STORAGE_SETTINGS,
   // TASK-1034 — weekly, feedback-gated DNA writing-style regeneration (tenant-overridable).
   ...DNA_REGEN_SETTINGS,
+  // TASK-1056 — admin-console public origin for out-of-console links (tenant → SYSTEM).
+  ...CONSOLE_PUBLIC_URL_SETTINGS,
   // TASK-1025 — deleted-tenant bucket retention + purge schedule.
   ...TENANT_STORAGE_LIFECYCLE_SETTINGS,
   ...TENANT_CHECKPOINT_SETTINGS,

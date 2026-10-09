@@ -16,6 +16,8 @@ const mockPasswordResetTokenRepository = {
 const mockUserService = { create: vi.fn(), update: vi.fn() };
 const mockTenantOnboardingService = { provisionTenantWithAdmin: vi.fn() };
 const mockMailer = { sendResetLink: vi.fn() };
+// TASK-1056 — the platform `console.publicBaseUrl`; `null` tenant = platform tier.
+const mockTenantSettings = { resolve: vi.fn(() => ({ value: 'https://admin.example.com', source: 'system' })) };
 
 vi.mock('@arcaai/domains', async () => {
   const actual = await vi.importActual('@arcaai/domains');
@@ -63,6 +65,7 @@ describe('RegistrationService', () => {
       mockEventEmitter as any,
       mockClsService as any,
       mockMailer as any,
+      mockTenantSettings as any,
     );
   });
 
@@ -85,6 +88,24 @@ describe('RegistrationService', () => {
         }),
       );
       expect(mockMailer.sendResetLink).toHaveBeenCalledWith(expect.objectContaining({ email: 'doctor@example.com' }));
+    });
+
+    it('TASK-1056: the verification link is absolute on the platform console origin', async () => {
+      await service.register({ email: 'doctor@example.com', password: 'S3cret!Pass', tenantName: 'Acme Health' });
+
+      expect(mockTenantSettings.resolve).toHaveBeenCalledWith('console.publicBaseUrl', null);
+      const payload = mockMailer.sendResetLink.mock.calls[0][0] as { resetUrl: string };
+      expect(payload.resetUrl.startsWith('https://admin.example.com/verify-email?token=')).toBe(true);
+    });
+
+    it('TASK-1056: no console origin configured ⇒ no email, sign-up still succeeds (never localhost)', async () => {
+      mockTenantSettings.resolve.mockImplementationOnce(() => {
+        throw new Error('fail-closed');
+      });
+
+      await expect(service.register({ email: 'doctor@example.com', password: 'S3cret!Pass', tenantName: 'Acme Health' })).resolves.toBeUndefined();
+      expect(mockPasswordResetTokenRepository.create).toHaveBeenCalled();
+      expect(mockMailer.sendResetLink).not.toHaveBeenCalled();
     });
 
     it('is a silent no-op for an email that already has an account (anti-enumeration)', async () => {

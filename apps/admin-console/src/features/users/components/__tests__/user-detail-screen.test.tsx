@@ -313,7 +313,26 @@ describe('UserDetailScreen', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /reset password/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/hope/admin/users/u-1/reset-password')).toBe(true));
-    expect(await screen.findByText('/reset-password?token=tok-1')).toBeDefined();
+    // TASK-1056: no `console.publicBaseUrl` configured ⇒ the gateway returns a RELATIVE path and the
+    // console shows it on its own origin — never a guessed host.
+    expect(await screen.findByText(`${window.location.origin}/reset-password?token=tok-1`)).toBeDefined();
+  });
+
+  it('shows an absolute reset link from the gateway unchanged (TASK-1056)', async () => {
+    stubDetailFetch();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/reset-password')) {
+        return Response.json({ mode: 'link', token: 'tok-2', resetPath: 'https://admin.example.com/reset-password?token=tok-2', emailSent: true });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    renderWithProviders(<UserDetailScreen id="u-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /reset password/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /reset password/i }));
+
+    expect(await screen.findByText('https://admin.example.com/reset-password?token=tok-2')).toBeDefined();
   });
 
   it('requires typing the username to arm delete, then navigates back to the list', async () => {

@@ -13,7 +13,10 @@ export class ResetPasswordResponse {
   @ApiPropertyOptional({ description: 'Reset token (mode=link)' })
   token?: string;
 
-  @ApiPropertyOptional({ description: 'Relative reset path carrying the token (mode=link)' })
+  @ApiPropertyOptional({
+    description:
+      'Reset link carrying the token (mode=link). Absolute on the `console.publicBaseUrl` origin (tenant → platform) when configured; a relative path when it is not — the caller prefixes its own origin.',
+  })
   resetPath?: string;
 
   @ApiPropertyOptional({ description: 'Token lifetime in seconds (mode=link)' })

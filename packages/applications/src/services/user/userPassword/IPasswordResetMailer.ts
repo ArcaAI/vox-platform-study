@@ -14,6 +14,8 @@ import { Logger } from '@nestjs/common';
 export interface PasswordResetMailPayload {
   email: string;
   resetPath: string;
+  /** Absolute link (`console.publicBaseUrl` + resetPath). The service never calls a mailer without one. */
+  resetUrl: string;
   token: string;
   expiresInSeconds: number;
 }
@@ -24,9 +26,6 @@ export interface IPasswordResetMailer {
 }
 
 export const IPasswordResetMailer = Symbol('IPasswordResetMailer');
-
-/** Shared fallback origin for password-reset links when no public URL is configured. */
-export const DEFAULT_PASSWORD_RESET_BASE_URL = 'http://localhost:5176';
 
 /**
  * Default mailer: logs and reports `false` (not sent). Used in dev/test and any

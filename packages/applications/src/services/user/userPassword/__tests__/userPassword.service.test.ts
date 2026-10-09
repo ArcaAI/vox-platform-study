@@ -97,6 +97,8 @@ const buildService = (withMailer = true) =>
     mockEventEmitter as never,
     mockClsService as never,
     withMailer ? (mockMailer as never) : undefined,
+    // TASK-1056 — a platform `console.publicBaseUrl`, so the reset email has an absolute link.
+    { resolve: () => ({ value: 'https://admin.example.com', source: 'system' }) } as never,
   );
 
 const sha256 = (raw: string) => createHash('sha256').update(raw).digest('hex');

@@ -24,9 +24,19 @@ function errorMessage(error: unknown): string {
   return 'The action failed. Try again.';
 }
 
+/**
+ * The gateway returns an ABSOLUTE link when `console.publicBaseUrl` is configured, and a RELATIVE
+ * path when it is not (it never guesses a host). A relative path is shown on this console's own
+ * origin — the one the admin is using right now (TASK-1056).
+ */
+function absoluteResetLink(resetPath: string | undefined): string | undefined {
+  if (!resetPath?.startsWith('/') || typeof window === 'undefined') return resetPath;
+  return `${window.location.origin}${resetPath}`;
+}
+
 /** The one-time secret a reset produced (link or temporary password). */
 function ResetResultDialog({ result, onClose }: { result: ResetPasswordResult | null; onClose: () => void }) {
-  const secret = result?.mode === 'temporary' ? result.temporaryPassword : (result?.resetPath ?? result?.token);
+  const secret = result?.mode === 'temporary' ? result.temporaryPassword : (absoluteResetLink(result?.resetPath) ?? result?.token);
   return (
     <Dialog open={result !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
