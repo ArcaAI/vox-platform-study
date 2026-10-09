@@ -7,6 +7,9 @@ and the boot warm (`stt.main._warm_default_asr_model`) take, so the model is key
 and budgeted exactly as a served one. Pinned in
 `tests/contracts/model-residency-agent.fixture.json` → `loadSpecExamples.stt`.
 
+TASK-1055 wave 3 — a second shape, ``{"model": <one ResolvedAsrSpec model object>}``
+(contract ``wave3.sttModelOnly``), loads a single model of any role under its slug.
+
 stt keeps no catalogue (no DB on the agent path since TASK-861), so a bare
 `model_ref` with an empty `load_spec` can only answer for a model already resident.
 
@@ -66,23 +69,42 @@ async def _plan(
         raise DeviceUnavailable(f"{SERVICE} sees no device {device}")
     if not load_spec:
         return None
-    if set(load_spec) != {"resolved_spec"}:
-        raise InvalidLoadSpec('stt expects {"resolved_spec": <ResolvedAsrSpec>}')
+    keys = set(load_spec)
+    if keys not in ({"resolved_spec"}, {"model"}):
+        raise InvalidLoadSpec(
+            'stt expects {"resolved_spec": <ResolvedAsrSpec>} or '
+            '{"model": <one ResolvedAsrSpec model object>}'
+        )
 
     from stt.models.cache import get_model_cache
-    from stt.pipeline.spec import bundle_from_resolved
+    from stt.pipeline.spec import AsrSpecModel, bundle_from_resolved, to_ai_model_config
 
-    try:
-        bundle = bundle_from_resolved(load_spec["resolved_spec"])
-    except Exception as exc:  # noqa: BLE001 — pydantic / unsupported-spec errors alike
-        raise InvalidLoadSpec(str(exc)) from exc
+    if "model" in keys:
+        # TASK-1055 wave 3 — one model of any role (asr, vad, denoise, embedding, …),
+        # keyed by slug in the same cache a session uses, so sessions reuse the weights.
+        try:
+            model = AsrSpecModel.model_validate(load_spec["model"])
+            slug = model.slug
+            if slug != model_ref:
+                raise InvalidLoadSpec(f"the model is {slug}, not {model_ref}")
+            model_config = to_ai_model_config(model)
+        except InvalidLoadSpec:
+            raise
+        except Exception as exc:  # noqa: BLE001 — pydantic / unsupported-format errors alike
+            raise InvalidLoadSpec(str(exc)) from exc
+    else:
+        try:
+            bundle = bundle_from_resolved(load_spec["resolved_spec"])
+        except Exception as exc:  # noqa: BLE001 — pydantic / unsupported-spec errors alike
+            raise InvalidLoadSpec(str(exc)) from exc
 
-    slug = bundle.spec.models.asr.slug
-    if slug != model_ref:
-        raise InvalidLoadSpec(f"the spec's primary ASR model is {slug}, not {model_ref}")
-    model_config = bundle.model_configs.get(slug)
-    if model_config is None:
-        raise InvalidLoadSpec(f"the spec maps no model config for {slug}")
+        slug = bundle.spec.models.asr.slug
+        if slug != model_ref:
+            raise InvalidLoadSpec(f"the spec's primary ASR model is {slug}, not {model_ref}")
+        found = bundle.model_configs.get(slug)
+        if found is None:
+            raise InvalidLoadSpec(f"the spec maps no model config for {slug}")
+        model_config = found
 
     if device is not None and device != wiring.stt_device().id:
         try:  # every cache carries the same loader registry; ask before building one
