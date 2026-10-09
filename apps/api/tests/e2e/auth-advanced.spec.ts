@@ -120,7 +120,7 @@ test.describe('Auth Advanced Controller', () => {
   test.describe.serial('POST /auth/impersonate', () => {
     test('should return 401 without authentication', async ({ request }) => {
       const response = await request.post('/api/v1/auth/impersonate', {
-        data: { targetUserId: SEEDED_USERS.doctor.id },
+        data: { targetUserId: SEEDED_USERS.doctor.id, reason: 'e2e impersonation test' },
       });
 
       expect(response.status()).toBe(401);
@@ -146,7 +146,7 @@ test.describe('Auth Advanced Controller', () => {
 
       const response = await request.post('/api/v1/auth/impersonate', {
         headers: { Authorization: `Bearer ${superAdminLogin!.token}` },
-        data: { targetUserId: SEEDED_USERS.doctor.id },
+        data: { targetUserId: SEEDED_USERS.doctor.id, reason: 'e2e impersonation test' },
       });
 
       expect(response.status()).toBe(200);
@@ -168,7 +168,7 @@ test.describe('Auth Advanced Controller', () => {
       const nonExistentUserId = '99999999-9999-9999-9999-999999999999';
       const response = await request.post('/api/v1/auth/impersonate', {
         headers: { Authorization: `Bearer ${superAdminLogin!.token}` },
-        data: { targetUserId: nonExistentUserId },
+        data: { targetUserId: nonExistentUserId, reason: 'e2e impersonation test' },
       });
 
       // Server may return 400/404 (properly handled) or 500 (unhandled lookup failure)
@@ -181,7 +181,7 @@ test.describe('Auth Advanced Controller', () => {
 
       const impersonateResponse = await request.post('/api/v1/auth/impersonate', {
         headers: { Authorization: `Bearer ${superAdminLogin!.token}` },
-        data: { targetUserId: SEEDED_USERS.doctor.id },
+        data: { targetUserId: SEEDED_USERS.doctor.id, reason: 'e2e impersonation test' },
       });
 
       expect(impersonateResponse.status(), 'impersonate failed').toBe(200);
@@ -245,7 +245,7 @@ test.describe('Auth Advanced Controller', () => {
 
         const response = await request.post('/api/v1/auth/impersonate', {
           headers: { Authorization: `Bearer ${superAdminLogin!.token}` },
-          data: { targetUserId: targetId },
+          data: { targetUserId: targetId, reason: 'e2e impersonation test' },
         });
 
         expect(response.status()).toBe(400);
@@ -295,7 +295,7 @@ test.describe('Auth Advanced Controller', () => {
 
       const impersonateResponse = await request.post('/api/v1/auth/impersonate', {
         headers: { Authorization: `Bearer ${superAdminLogin!.token}` },
-        data: { targetUserId: SEEDED_USERS.doctor.id },
+        data: { targetUserId: SEEDED_USERS.doctor.id, reason: 'e2e impersonation test' },
       });
 
       expect(impersonateResponse.status(), 'impersonate failed').toBe(200);

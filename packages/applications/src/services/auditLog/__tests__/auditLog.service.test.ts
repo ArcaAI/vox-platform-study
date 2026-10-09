@@ -834,6 +834,26 @@ describe('AuditLogService', () => {
           expect(call.data.data.phase).toBe('STOP');
         });
 
+        it('TASK-1057 — keeps the action-confirmation stamp on the START bracket', async () => {
+          const confirmation = { actionId: 'impersonation.start', kind: 'reason', mode: 'required', locked: true, required: true, provided: true, note: 'reason required' };
+          const event = {
+            userId: 'admin-007',
+            impersonatedUserId: 'doctor-001',
+            phase: 'START',
+            reason: 'support ticket 42',
+            confirmation,
+            timestamp: new Date('2026-06-03T15:00:00Z'),
+            endpoint: '/auth/impersonate',
+            method: 'POST',
+          } as any;
+
+          await service.handleUserAuthenticatedEvent(event);
+
+          const call = mockDatabaseService.baseClient.auditLog.create.mock.calls[0][0];
+          expect(call.data.data.confirmation).toEqual(confirmation);
+          expect(call.data.data.reason).toBe('support ticket 42');
+        });
+
         it('persists phase=null for a per-request impersonated action (no phase) so existing behavior is preserved', async () => {
           const event = {
             userId: 'admin-001',

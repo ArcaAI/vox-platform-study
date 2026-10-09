@@ -58,7 +58,7 @@ export async function impersonateUser(page: Page, username: string): Promise<voi
     const impersonate = await fetch('/api/auth/impersonate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId: user.id }),
+      body: JSON.stringify({ userId: user.id, reason: 'e2e impersonation test' }),
     });
     return impersonate.ok ? null : `Failed to impersonate "${targetUsername}" (${impersonate.status})`;
   }, username);

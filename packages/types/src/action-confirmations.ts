@@ -84,10 +84,10 @@ function typed(actionId: string, domain: string, label: string, audience: Confir
 
 export const ACTION_CONFIRMATION_CATALOGUE: readonly ActionConfirmationSpec[] = [
   // ── Model residency & serving (platform) ─────────────────────────────────
-  reason('modelResidency.load', 'Model residency', 'Load a model', 'platform', 'when-risky', ['POST admin/model-residency/…/load'], { modes: RISKY, maxLength: 500 }),
-  reason('modelResidency.reload', 'Model residency', 'Apply & reload a model', 'platform', 'when-risky', ['POST admin/model-residency/…/reload'], { modes: RISKY, maxLength: 500 }),
-  reason('modelResidency.unload', 'Model residency', 'Unload a model', 'platform', 'when-risky', ['POST admin/model-residency/…/unload'], { modes: RISKY, maxLength: 500 }),
-  reason('lmStudioServing.apply', 'Model residency', 'Apply an LM Studio serving profile', 'platform', 'when-risky', ['admin/inference-engines/lm-studio/…'], { modes: RISKY, maxLength: 500 }),
+  reason('modelResidency.load', 'Model residency', 'Load a model', 'platform', 'when-risky', ['POST admin/model-residency/load'], { modes: RISKY, maxLength: 500 }),
+  reason('modelResidency.reload', 'Model residency', 'Apply & reload a model', 'platform', 'when-risky', ['POST admin/model-residency/load (replace: true, stt / nlp)'], { modes: RISKY, maxLength: 500 }),
+  reason('modelResidency.unload', 'Model residency', 'Unload a model', 'platform', 'when-risky', ['POST admin/model-residency/unload'], { modes: RISKY, maxLength: 500 }),
+  reason('lmStudioServing.apply', 'Model residency', 'Apply an LM Studio serving profile', 'platform', 'when-risky', ['POST admin/model-residency/load (service: lm-studio, replace: true)'], { modes: RISKY, maxLength: 500 }),
 
   // ── Prompt templates ─────────────────────────────────────────────────────
   reason('promptTemplate.create', 'Prompt templates', 'Create a prompt template', 'both', 'not-required', ['POST admin/prompt-templates'], { maxLength: 500 }),

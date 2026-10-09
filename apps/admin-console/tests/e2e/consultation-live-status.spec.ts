@@ -46,7 +46,7 @@ async function impersonateExact(page: Page, username: string): Promise<void> {
     const impersonate = await fetch('/api/auth/impersonate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId: user.id }),
+      body: JSON.stringify({ userId: user.id, reason: 'e2e impersonation test' }),
     });
     return impersonate.ok ? null : `Failed to impersonate (${impersonate.status})`;
   }, username);

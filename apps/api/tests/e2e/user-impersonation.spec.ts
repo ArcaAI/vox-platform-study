@@ -72,7 +72,8 @@ let saToken: string;
 let saUserId: string;
 
 const impersonate = (request: APIRequestContext, targetId: string, body: Record<string, unknown> = {}, token = saToken) =>
-  request.post(`/api/v1/admin/users/${targetId}/impersonate`, { headers: bearer(token), data: body });
+  // TASK-1057 — `impersonation.start` is a LOCKED required reason; every call carries one unless a test overrides it.
+  request.post(`/api/v1/admin/users/${targetId}/impersonate`, { headers: bearer(token), data: { reason: 'e2e impersonation test', ...body } });
 
 /** Poll the (async, queue-backed) audit log until `predicate` matches a row. */
 async function pollAuditRows(

@@ -500,6 +500,8 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       reason?: string;
       expiresAt?: string;
       impersonationTenantId?: string;
+      /** TASK-1057 — the action-confirmation audit stamp (`impersonation.start`). */
+      confirmation?: unknown;
     } & Record<string, unknown>,
   ): Promise<void> {
     try {
@@ -536,6 +538,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
               ...(event.reason ? { reason: event.reason } : {}),
               ...(event.expiresAt ? { expiresAt: event.expiresAt } : {}),
               ...(event.impersonationTenantId ? { impersonationTenantId: event.impersonationTenantId } : {}),
+              ...(event.confirmation ? { confirmation: event.confirmation } : {}),
             }
           : {
               method: event.method || 'oauth',
