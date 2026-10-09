@@ -366,10 +366,57 @@ CI #1422 green (verify-dev included); Argo Synced/Healthy at `0149fe3`; Promethe
 
 **Open (not this wave's code):** Llama Prompt Guard 2 86M fails every load with `LocalEntryNotFoundError` — the gated `meta-llama` weights were never published to `hope-models` and the nlp pod is offline, so the live inbound screen tries (and fails) to load it every minute or two for SYSTEM, Global and ArcaAI. Needs the weights published (a gated-model download — owner approval + HF licence).
 
+## 10. Wave 3 — every agent kind: loaded on request OR by the platform admin (owner, 2026-10-09)
+
+**Requirement (owner):** for every kind of agent, the model is loaded when a request reaches an agent that uses it, OR the platform admin loads it manually — and an agent is never needed just to LOAD a model ("model is loaded separately; agents are based on the loaded models or load when there is any request").
+
+### 10.1 Audit (three read-only scouts, 2026-10-09)
+
+| Agent task / consumer | Served by | Loads on request? | Console load? | Gap |
+|---|---|---|---|---|
+| TEXT_GENERATION (summary, DNA analyst, harness `text_generate`, guardrail + harness judges) | apps/text → LM Studio (local) or cloud | **Partly** — LM Studio JIT-loads an unloaded id with LM Studio's OWN defaults (`apps/text/.../providers/lmstudio.py` sends no profile; `entrypoint.sh:414` "no JIT control"); the row's `_metadata.serving` (GPU split, context, parallel, KV quant) is applied only at boot preload and by a console Load | Yes (LM Studio agent) | **G1** |
+| NAMED_ENTITY_RECOGNITION + nlp routing policies (`nlp.ner`, guardrail classifiers, Qwen3Guard judge) | apps/nlp | Yes (`dependencies.py` request-path getters; forward + reverse alias, §8f) | Yes | — (Prompt Guard 2 weights unpublished: ops, §8g) |
+| SPEECH_TO_TEXT (live sessions, batch jobs) | apps/stt (+ stt-worker) | Yes — `ModelCache.get_or_load` keyed by model SLUG (`models/cache.py:586`) | **Only for a model a published agent names**; VAD / denoise / diarization / embedding rows refused (`residency-load-rules.ts:92`, builder `MODEL_UNKNOWN`) | **G2** |
+| TEXT_TO_SPEECH (Kokoro, Indic Parler, Indic F5) | apps/tts (CPU) | Yes — per-provider `hope_runtime_models.ModelCache`, released when idle | **No** — tts has no residency agent and is not a controlled service | **G3** |
+| ASR on the vLLM pool | apps/vllm | Yes (lazy, single-flight) | No (own `/engines/warm`, no unload) | deferred — `hope-vllm-asr` runs 0 replicas in dev |
+| Batch ASR on stt-worker | stt-worker | Yes (per job) | Read-only in the console | deferred — a per-job pool |
+| Cloud (Azure, Bedrock, Sarvam, Deepgram, OpenAI, ElevenLabs) | provider API | n/a — nothing to hold in memory | n/a | — |
+
+Weight sharing holds for stt: sessions, batch, boot warm and the residency agent all key the stt cache by the ASR model slug, so a console-loaded model is REUSED by a later agent session (same `local_path`/format/compute type — built by the same projection).
+
+### 10.2 Design
+
+- **G1 — LM Studio loads on request with the row's profile.** The gateway's LM Studio plan (`GET /internal/effective-config?service=lmstudio`) gains `profiles`: one resolved entry (same shape as `preload`, `lmStudioPreloadEntryFor`) for EVERY enabled SYSTEM lm-studio model. The LM Studio agent refreshes that plan on its existing cadence and serves `POST /internal/residency/ensure {model_ref}`: already loaded (by identifier or model key) → `already_loaded`; else load with the cached profile through the same single-flight path a console Load uses → `loaded`; no profile → 404 `MODEL_UNKNOWN`. apps/text calls `ensure` before every LM Studio request (`X-Service-Token` = the shared `INTERNAL_ACCESS_TOKEN`; agent URL `TEXT_LMSTUDIO_AGENT_URL`, an env-tier bootstrap transport address). Fail posture: agent unreachable / timeout / `MODEL_UNKNOWN` → proceed as today (JIT) with a warning; a load the agent attempted and LM Studio refused → the request fails with that cause (503), never a silent second JIT copy. No request-path call to the gateway, so no new call cycle.
+- **G2 — stt loads any self-hosted model without an agent.** New stt load spec `{"model": <AsrSpecModel>}` (the spec's model projection, snake_case, `extra=forbid` as in `pipeline/spec.py`): `_plan` builds the `AiModelConfig` with the same `to_ai_model_config` and loads through `get_model_cache(device).get_or_load` — the same slug key sessions use. The gateway builds it from the AiModel row with the SAME projection `buildResolvedAsrSpec` uses, for ASR AND stage rows (VAD, denoise, diarization, embedding); the `{"resolved_spec"}` shape stays accepted. `loadBlockedReason` no longer refuses stt stage rows; built-in and remote rows stay "nothing to load".
+- **G3 — tts under console control.** apps/tts mounts the shared residency router (`hope_runtime_models`, `/internal/residency`, `X-Service-Token`) over its registered LOCAL providers' caches (Kokoro, Indic Parler, Indic F5); `model_ref` = the AiModel slug, `load_spec` = `{"engine": "<registered provider name>"}`, device `cpu`; remote engines are not resident. The gateway adds `tts` to the controlled services (`TTS_URL`), the catalogue gets a "Text-to-speech" section, the console labels it.
+
+### 10.3 Decisions taken (owner may override)
+
+| # | Decision |
+|---|---|
+| W3-1 | LM Studio `ensure` falls back to JIT ONLY when the agent cannot answer (unreachable, timeout, unknown model); a real load failure fails the request with its cause. |
+| W3-2 | The console always loads an stt model through the model-only spec (one model, the row's own weights) — an agent is never consulted to LOAD. |
+| W3-3 | The vLLM ASR pool and the stt-worker batch pool stay out of console control in this wave (0 replicas / per-job pool; both already load on request). |
+| W3-4 | Prompt Guard 2 weights are an owner action (gated `meta-llama` download + publish). |
+
+### 10.4 Lanes (worktrees off the wave-3 contract commit; one writer per file)
+
+| Lane | Owns |
+|---|---|
+| W3-STT | `apps/stt/src/stt/residency/**` + its tests |
+| W3-TTS | `apps/tts/src/tts/residency/**` (new), the router mount in `apps/tts/src/tts/main.py`, tts tests |
+| W3-LMS | `infrastructure/docker/lmstudio/agent/**` (`ensure`, plan refresh with `profiles`) |
+| W3-TEXT | `apps/text/src/text/providers/lmstudio.py` (+ config for the agent URL), text tests; `turbo.json` globalEnv + env samples |
+| W3-GW | `packages/applications/src/services/{model-residency,effective-config}/**`, `apps/admin-console/src/features/model-residency/**`, regenerated API artifacts |
+| W3-DEPLOY | hope-v2-deployment: text env `TEXT_LMSTUDIO_AGENT_URL`, `hope-lmstudio-ingress` allows hope-text on 8869 |
+
+Contract: `tests/contracts/model-residency-task1055.fixture.json` → `wave3`. TDD per lane, own files' tests only; the orchestrator gates once after the merge, then pushes, deploys and re-runs the cluster e2e (LM Studio ensure on a cold model, an unnamed ASR variant + a VAD loaded from the console, Kokoro loaded/unloaded from the console).
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
+| 2026-10-09 | Owner: every agent kind loads on request OR by the platform admin, never needing an agent to load. Audit + plan §10 (G1 LM Studio profile on request, G2 stt model-only console loads, G3 tts console control); decisions W3-1..4 taken as recommended. Status In Progress. |
 | 2026-10-09 | Follow-up wave pushed (`31504362`, deployment `0149fe3`) and e2e-verified on the cluster (§8g); Granite moved to GPU 1 as default; phantom in-flight defect fixed (`164b453d3`, CI #1425) and verified; Prompt Guard 2 weights missing (open). |
 | 2026-10-09 | Follow-up wave §8f merged locally (6 lanes): guard + judge caches under console control, reverse-duplicate alias + NER callers send `model_path`, LM Studio residency metrics + scrape, `nlp.classification` seed skip removed, default alignment GPU 0 NER/GLiGuard/Whisper, GPU 1 Gemma/Granite. Not pushed. |
 | 2026-10-09 | Ticket opened from the live e2e; findings E1–E13; plan and owner decisions written (status Pending). |

@@ -1,22 +1,28 @@
 {
   "$comment": "TASK-1055 — additions to the model-residency contracts, PINNED by the orchestrator before the lanes branched (wave 0). Additive to model-residency-agent.fixture.json / -admin / -catalogue: every TASK-1005/1051 shape stays valid. Lanes: L-KERNEL (packages/py-runtime-models), L-STT, L-NLP, L-LMS-AGENT (infrastructure/docker/lmstudio/agent), L-GATEWAY, L-CONSOLE, L-DEPLOY.",
-
   "deviceIds": {
     "$comment": "Two vocabularies, one mapping. Agents speak `cuda:<n>` = the n-th GPU the PROCESS sees with CUDA_DEVICE_ORDER=PCI_BUS_ID (deployment sets it on stt, stt-worker, nlp, lmstudio). The gateway/console speak the catalogue id `gpu<n>` = DCGM's `gpu` label (PCI order on this node). Mapping rule in the gateway: match the agent device's `uuid` against DCGM's `UUID` label; fall back to `cuda:<n>` -> `gpu<n>` only when the agent reports no uuid. `multi` (LM Studio split per profile) and `cpu` pass through unchanged.",
     "agent": ["cuda:0", "cuda:1", "cpu"],
     "gateway": ["gpu0", "gpu1", "multi", "cpu"]
   },
-
   "python": {
     "$comment": "Residency agent v2 (stt, nlp — and the LM Studio agent speaks the SAME snake_case shapes). New fields are optional; an absent `device` keeps TASK-1005 behaviour.",
     "loadRequest": {
       "model_ref": "fastino/gliguard-LLMGuardrails-300M",
-      "load_spec": { "cache": "nlp_gliner2_guard", "model_path": null },
+      "load_spec": {
+        "cache": "nlp_gliner2_guard",
+        "model_path": null
+      },
       "pin": false,
       "ttl_seconds": null,
       "device": "cuda:1"
     },
-    "unloadRequest": { "model_ref": "fastino/gliguard-LLMGuardrails-300M", "force": false, "reason": "admin", "device": "cuda:1" },
+    "unloadRequest": {
+      "model_ref": "fastino/gliguard-LLMGuardrails-300M",
+      "force": false,
+      "reason": "admin",
+      "device": "cuda:1"
+    },
     "report": {
       "service": "nlp",
       "instance": "hope-nlp-98c7fb9b4-55z22",
@@ -76,12 +82,15 @@
         }
       },
       "DEVICE_UNAVAILABLE": {
-        "error": { "code": "DEVICE_UNAVAILABLE", "message": "nlp sees no device cuda:2", "device": "cuda:2" }
+        "error": {
+          "code": "DEVICE_UNAVAILABLE",
+          "message": "nlp sees no device cuda:2",
+          "device": "cuda:2"
+        }
       }
     },
     "unloadSemantics": "An unload MUST return the memory to the driver before it answers: drop every reference (cache entry, service shutdown(), weight registry), gc, then `release_accelerator_memory(device)` (torch empty_cache on that device). The next load's measurement starts from a clean baseline."
   },
-
   "lmStudioAgent": {
     "$comment": "L-LMS-AGENT: a sidecar container in the hope-lmstudio pod, Node, listening on :8869, talking to the daemon over loopback ws://127.0.0.1:1234 with the SDK `loadModel` channel (reusing infrastructure/docker/lmstudio/loader/kvconfig.mjs). Routes and snake_case bodies are the `python` block's, prefixed /internal/residency. Auth: `X-Service-Token` = INTERNAL_ACCESS_TOKEN (constant-time compare; empty = dev bypass, as the python services). The gateway reaches it at env LMSTUDIO_AGENT_URL (k8s: http://hope-lmstudio:8869). GET /health answers 200 when the daemon greets — this is what the pod's readiness becomes (OD-6).",
     "loadRequest": {
@@ -91,8 +100,16 @@
         "context_length": 65536,
         "parallel": 10,
         "flash_attention": true,
-        "kv_cache_quant": { "k": "f16", "v": "f16" },
-        "gpu_split": { "strategy": "priorityOrder", "priority": [1], "disabled_gpus": [0], "custom_ratio": [] },
+        "kv_cache_quant": {
+          "k": "f16",
+          "v": "f16"
+        },
+        "gpu_split": {
+          "strategy": "priorityOrder",
+          "priority": [1],
+          "disabled_gpus": [0],
+          "custom_ratio": []
+        },
         "ttl_seconds": null
       },
       "pin": false,
@@ -110,7 +127,9 @@
       "device": "cuda:1",
       "bytes": 4294967296,
       "bytes_source": "measured",
-      "device_bytes": { "cuda:1": 4294967296 },
+      "device_bytes": {
+        "cuda:1": 4294967296
+      },
       "in_flight": null,
       "pinned": false,
       "admin_pinned": false,
@@ -123,15 +142,29 @@
         "context_length": 65536,
         "parallel": 10,
         "flash_attention": true,
-        "kv_cache_quant": { "k": "f16", "v": "f16" },
-        "gpu_split": { "strategy": "priorityOrder", "priority": [1], "disabled_gpus": [0], "custom_ratio": [] }
+        "kv_cache_quant": {
+          "k": "f16",
+          "v": "f16"
+        },
+        "gpu_split": {
+          "strategy": "priorityOrder",
+          "priority": [1],
+          "disabled_gpus": [0],
+          "custom_ratio": []
+        }
       }
     },
     "$reportNotes": "`device` = `cuda:<n>` when the instance sits on one card, `multi` when split. `device_bytes` = per-card delta measured by nvidia-smi around the agent's OWN serialised load (one load at a time per daemon); instances loaded before the agent started (boot plan) report `bytes_source: estimated` with the file size split by the configured split. Instances in the daemon that no `identifier` names (JIT loads) are reported with model_ref = their engine key."
   },
-
   "gateway": {
-    "loadRequest": { "service": "nlp", "modelRef": "fastino/gliguard-LLMGuardrails-300M", "device": "gpu1", "makeDefault": false, "force": false, "reason": null },
+    "loadRequest": {
+      "service": "nlp",
+      "modelRef": "fastino/gliguard-LLMGuardrails-300M",
+      "device": "gpu1",
+      "makeDefault": false,
+      "force": false,
+      "reason": null
+    },
     "loadPreviewResponseAdditions": {
       "candidates": [
         {
@@ -168,40 +201,316 @@
     "loadRefusals": {
       "OVER_BUDGET": {
         "status": 409,
-        "body": { "code": "OVER_BUDGET", "message": "GPU 0 cannot hold … (short 1.7 GB). GPU 1 can.", "device": "gpu0", "shortfallBytes": 1834798285, "suggestedDevice": "gpu1", "candidates": "<loadPreviewResponseAdditions.candidates>" },
+        "body": {
+          "code": "OVER_BUDGET",
+          "message": "GPU 0 cannot hold … (short 1.7 GB). GPU 1 can.",
+          "device": "gpu0",
+          "shortfallBytes": 1834798285,
+          "suggestedDevice": "gpu1",
+          "candidates": "<loadPreviewResponseAdditions.candidates>"
+        },
         "note": "Un-forced load over the chosen device's budget. `force: true` + reason proceeds unless EXCEEDS_DEVICE."
       },
       "EXCEEDS_DEVICE": {
         "status": 409,
-        "body": { "code": "EXCEEDS_DEVICE", "message": "…needs more than GPU 0 has free at all; a forced load would OOM its card-mates", "device": "gpu0", "suggestedDevice": "gpu1", "candidates": "<…>" },
+        "body": {
+          "code": "EXCEEDS_DEVICE",
+          "message": "…needs more than GPU 0 has free at all; a forced load would OOM its card-mates",
+          "device": "gpu0",
+          "suggestedDevice": "gpu1",
+          "candidates": "<…>"
+        },
         "note": "OD-5 hard refusal, even with force."
       },
-      "DEVICE_UNAVAILABLE": { "status": 400, "body": { "code": "DEVICE_UNAVAILABLE", "message": "nlp has no device gpu2", "device": "gpu2" } }
+      "DEVICE_UNAVAILABLE": {
+        "status": 400,
+        "body": {
+          "code": "DEVICE_UNAVAILABLE",
+          "message": "nlp has no device gpu2",
+          "device": "gpu2"
+        }
+      }
     },
     "reviewRefusals": {
       "$comment": "Added by the review fix wave (R2-F6, R2-F7, R2-F8).",
-      "CONTEXT_LENGTH_UNSUPPORTED": { "status": 400, "body": { "code": "CONTEXT_LENGTH_UNSUPPORTED", "message": "...", "contextLength": 262144, "maxContextLength": 131072 } },
-      "MAKE_DEFAULT_OVER_BUDGET": { "status": 409, "body": { "code": "MAKE_DEFAULT_OVER_BUDGET", "message": "a forced over-budget load is never made the default", "device": "gpu0", "shortfallBytes": 1834798285, "suggestedDevice": "gpu1", "candidates": "<...>" } },
-      "ALREADY_LOADED_ELSEWHERE": { "status": 409, "body": { "code": "ALREADY_LOADED_ELSEWHERE", "message": "...", "device": "gpu1", "loadedOn": "gpu0" } },
+      "CONTEXT_LENGTH_UNSUPPORTED": {
+        "status": 400,
+        "body": {
+          "code": "CONTEXT_LENGTH_UNSUPPORTED",
+          "message": "...",
+          "contextLength": 262144,
+          "maxContextLength": 131072
+        }
+      },
+      "MAKE_DEFAULT_OVER_BUDGET": {
+        "status": 409,
+        "body": {
+          "code": "MAKE_DEFAULT_OVER_BUDGET",
+          "message": "a forced over-budget load is never made the default",
+          "device": "gpu0",
+          "shortfallBytes": 1834798285,
+          "suggestedDevice": "gpu1",
+          "candidates": "<...>"
+        }
+      },
+      "ALREADY_LOADED_ELSEWHERE": {
+        "status": 409,
+        "body": {
+          "code": "ALREADY_LOADED_ELSEWHERE",
+          "message": "...",
+          "device": "gpu1",
+          "loadedOn": "gpu0"
+        }
+      },
       "LIVE_PATH_REASON_REQUIRED_on_replace": "A `load` with `replace: true` of a live-path model answers the same 409 LIVE_PATH_REASON_REQUIRED body as unload.",
       "auditAction": "makeDefault writes emit `model-residency.default-device {service, aiModelId, modelRef, device, previousDevice[, gpuSplit, previousGpuSplit]}` only after the load succeeds (or at once when already loaded on that device).",
       "metadata": "`AiModel._metadata.residency.observedContextLength` = the context the observed footprint was measured at (scales the need of a larger-context load)."
     },
-    "metrics": { "residency_service_reachable": "{service} 1/0 per tick", "residency_live_path_model_loaded": "{service, model_ref} 1/0 per tick" },
-    "lmStudioAgentExtras": { "load_spec.expected_bytes": "optional positive int — the agent refuses 503 INSUFFICIENT_MEMORY {device, needed_bytes, free_bytes} when a target card's share exceeds nvidia-smi free", "deployedWithoutToken": "503 AUTH_NOT_CONFIGURED on every /internal route" },
+    "metrics": {
+      "residency_service_reachable": "{service} 1/0 per tick",
+      "residency_live_path_model_loaded": "{service, model_ref} 1/0 per tick"
+    },
+    "lmStudioAgentExtras": {
+      "load_spec.expected_bytes": "optional positive int — the agent refuses 503 INSUFFICIENT_MEMORY {device, needed_bytes, free_bytes} when a target card's share exceeds nvidia-smi free",
+      "deployedWithoutToken": "503 AUTH_NOT_CONFIGURED on every /internal route"
+    },
     "unloadRefusals": {
       "LIVE_PATH_REASON_REQUIRED": {
         "status": 409,
-        "body": { "code": "LIVE_PATH_REASON_REQUIRED", "message": "Medical NER is on the live consultation path; give a reason to unload it", "consumers": ["10 agents · 10 tenants (live consultations)"] },
+        "body": {
+          "code": "LIVE_PATH_REASON_REQUIRED",
+          "message": "Medical NER is on the live consultation path; give a reason to unload it",
+          "consumers": ["10 agents · 10 tenants (live consultations)"]
+        },
         "note": "OD-2: a live-path model (implicit or PINNED policy) may be unloaded with a non-empty reason, audited. No policy row is created or changed by an unload."
       }
     },
     "makeDefault": "OD-4: `makeDefault: true` (requires `device`) writes `AiModel._metadata.residency.defaultDevice = <gpuN|multi|cpu>` with OCC; for lm-studio it ALSO writes `_metadata.serving.gpuSplit` (priorityOrder [n] / evenly) so the boot plan follows. A load without `device` uses `defaultDevice`, else the service default.",
     "catalogueAdditions": {
-      "placement.deviceBytes": [ { "device": "gpu1", "bytes": 4294967296 } ],
-      "placement.loadConfig": { "contextLength": 65536, "parallel": 10, "flashAttention": true, "kvCacheQuantK": "f16", "kvCacheQuantV": "f16", "device": "gpu1" },
+      "placement.deviceBytes": [
+        {
+          "device": "gpu1",
+          "bytes": 4294967296
+        }
+      ],
+      "placement.loadConfig": {
+        "contextLength": 65536,
+        "parallel": 10,
+        "flashAttention": true,
+        "kvCacheQuantK": "f16",
+        "kvCacheQuantV": "f16",
+        "device": "gpu1"
+      },
       "bytesSource": ["measured", "estimated", "unknown"]
     },
     "measurementRule": "A new measurement replaces `AiModel.observedMemoryMb` only when it is `measured` AND >= 50 % of the stored value (else it is logged at warn and the stored value kept). One unattributed formula: device.usedBytes - sum(per-device bytes of every instance on it), shared by catalogue and preview."
+  },
+  "wave3": {
+    "$comment": "TASK-1055 wave 3 (README §10) — every agent kind loads on request OR by the platform admin; loading never needs an agent. Frozen before the lanes start; lanes build against it in parallel.",
+    "lmStudioOnDemand": {
+      "effectiveConfig": {
+        "$comment": "GET /internal/effective-config?service=lmstudio → lmStudioServing gains `profiles`: one entry per ENABLED SYSTEM lm-studio AiModel row (same shape and resolver as `preload`, lmStudioPreloadEntryFor). `preload` is unchanged (still the boot list).",
+        "lmStudioServing": {
+          "defaults": {
+            "contextLength": 32768,
+            "parallel": 10,
+            "gpu": 1,
+            "flashAttention": true,
+            "kvCacheQuant": {
+              "k": "q4_0",
+              "v": "q4_0"
+            }
+          },
+          "preload": [
+            {
+              "slug": "gemma-4-e2b-it-qat",
+              "contextLength": 32768,
+              "parallel": 10,
+              "flashAttention": true,
+              "gpuSplit": {
+                "strategy": "priorityOrder",
+                "priority": [1],
+                "disabledGpus": [0]
+              },
+              "gpu": null,
+              "kvCacheQuant": {
+                "k": "q4_0",
+                "v": "q4_0"
+              }
+            }
+          ],
+          "profiles": [
+            {
+              "slug": "gemma-4-e2b-it-qat",
+              "contextLength": 32768,
+              "parallel": 10,
+              "flashAttention": true,
+              "gpuSplit": {
+                "strategy": "priorityOrder",
+                "priority": [1],
+                "disabledGpus": [0]
+              },
+              "gpu": null,
+              "kvCacheQuant": {
+                "k": "q4_0",
+                "v": "q4_0"
+              }
+            },
+            {
+              "slug": "granite-guardian-4.1-8b",
+              "contextLength": 16384,
+              "parallel": 10,
+              "flashAttention": true,
+              "gpuSplit": {
+                "strategy": "priorityOrder",
+                "priority": [1],
+                "disabledGpus": [0]
+              },
+              "gpu": null,
+              "kvCacheQuant": {
+                "k": "q8_0",
+                "v": "q8_0"
+              }
+            },
+            {
+              "slug": "qwen3guard-gen-0.6b",
+              "contextLength": 32768,
+              "parallel": 10,
+              "flashAttention": true,
+              "gpuSplit": null,
+              "gpu": 1,
+              "kvCacheQuant": {
+                "k": "q4_0",
+                "v": "q4_0"
+              }
+            }
+          ]
+        }
+      },
+      "ensure": {
+        "$comment": "LM Studio agent, port 8869, X-Service-Token = INTERNAL_ACCESS_TOKEN (same rule as every /internal route). Matches a resident instance by identifier OR model key. Loads with the cached profile through the SAME single-flight path as POST /internal/residency/load (a concurrent console load and ensure produce ONE instance). Profiles come from the agent's periodic plan refresh; never a request-time gateway call.",
+        "request": {
+          "method": "POST",
+          "path": "/internal/residency/ensure",
+          "body": {
+            "model_ref": "granite-guardian-4.1-8b"
+          }
+        },
+        "responses": {
+          "already_loaded": {
+            "status": 200,
+            "body": {
+              "outcome": "already_loaded",
+              "model_ref": "granite-guardian-4.1-8b",
+              "identifier": "granite-guardian-4.1-8b"
+            }
+          },
+          "loaded": {
+            "status": 200,
+            "body": {
+              "outcome": "loaded",
+              "model_ref": "granite-guardian-4.1-8b",
+              "identifier": "granite-guardian-4.1-8b",
+              "load_seconds": 21.4
+            }
+          },
+          "MODEL_UNKNOWN": {
+            "status": 404,
+            "body": {
+              "code": "MODEL_UNKNOWN",
+              "message": "no serving profile for 'x' in the LM Studio plan"
+            }
+          },
+          "LOAD_FAILED": {
+            "status": 503,
+            "body": {
+              "code": "LOAD_FAILED",
+              "message": "<LM Studio's error>"
+            }
+          }
+        }
+      },
+      "textCaller": {
+        "$comment": "apps/text lmstudio provider: before EVERY request to an LM Studio model, POST ensure {model_ref: <the request's model id>}. 200 → proceed. 503 LOAD_FAILED → fail the request (503, cause kept). Unreachable / timeout / 404 MODEL_UNKNOWN / 401 → log `text.lmstudio.ensure_skipped` (warning) and proceed (LM Studio JIT, today's behaviour). Agent URL: env `TEXT_LMSTUDIO_AGENT_URL` (bootstrap transport address; empty = feature off, proceed). Ensure timeout: the request's own timeout budget (a cold load can take minutes).",
+        "env": "TEXT_LMSTUDIO_AGENT_URL",
+        "devDefault": "http://localhost:8869",
+        "clusterValue": "http://hope-lmstudio:8869"
+      }
+    },
+    "sttModelOnly": {
+      "$comment": "New stt residency load spec: {\"model\": <one ResolvedAsrSpec model object, exactly the wire shape of models.<role>>}. `_plan` requires model.slug == model_ref, builds the AiModelConfig with the same to_ai_model_config, loads via get_model_cache(device).get_or_load (slug key — sessions reuse it). Any role: asr | vad | denoise | embedding (diarization embedding) | punctuation | endpointing. The {\"resolved_spec\"} shape stays accepted. The gateway ALWAYS sends the model-only shape from the console (W3-2), built from the AiModel row with the same projection buildResolvedAsrSpec uses for that role.",
+      "loadSpecExamples": [
+        {
+          "model_ref": "whisper-large-en-medical-260726-merged-gguf-q8_0",
+          "load_spec": {
+            "model": {
+              "role": "asr",
+              "slug": "whisper-large-en-medical-260726-merged-gguf-q8_0",
+              "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+              "format": "WHISPER_CPP",
+              "libraryName": "whisper.cpp",
+              "sourceUri": "taphuynh/whisper-large-en-medical-260726-merged-GGUF",
+              "sourceRevision": null,
+              "localPath": "/models/whisper-large-en-medical/ggml-model-q8_0.gguf",
+              "checksum": null,
+              "computeType": "q8_0",
+              "provider": null,
+              "tenantId": "00000000-0000-0000-0000-000000000000"
+            }
+          },
+          "device": "cuda:0"
+        },
+        {
+          "model_ref": "silero-vad",
+          "load_spec": {
+            "model": {
+              "role": "vad",
+              "slug": "silero-vad",
+              "taskType": "VOICE_ACTIVITY_DETECTION",
+              "format": "ONNX",
+              "libraryName": "onnxruntime",
+              "sourceUri": "onnx-community/silero-vad",
+              "sourceRevision": null,
+              "localPath": null,
+              "checksum": null,
+              "computeType": null,
+              "provider": null,
+              "tenantId": "00000000-0000-0000-0000-000000000000"
+            }
+          }
+        }
+      ],
+      "refusals": {
+        "INVALID_LOAD_SPEC": "model.slug != model_ref, or the object fails the spec model's validation (extra=forbid)",
+        "DEVICE_UNAVAILABLE": "device names a card this pod cannot place on"
+      }
+    },
+    "ttsResidency": {
+      "$comment": "apps/tts mounts the shared residency router at /internal/residency (X-Service-Token = INTERNAL_ACCESS_TOKEN; tenant header rule as stt/nlp). Resident set = the registered LOCAL providers' ModelCache entries (Kokoro, Indic Parler, Indic F5); remote engines (azure, sarvam) never appear. model_ref = the AiModel slug; cache = `tts_<engine>`; device = `cpu`. Unload evicts the provider's cache entry (the provider stays registered; the next synth request reloads it — on-request load is unchanged). Policy (ttl) follows the shared kernel.",
+      "service": "tts",
+      "gatewayUrlKey": "TTS_URL",
+      "loadSpec": {
+        "model_ref": "kokoro-82m",
+        "load_spec": {
+          "engine": "kokoro"
+        }
+      },
+      "engineFromRow": "ttsEngineProvider(row) in packages/applications/src/services/agent/tts-spec.ts (slug with '-' → '_' unless the row names its engine) — the SAME name apps/tts registers the provider under",
+      "reportExample": {
+        "model_ref": "kokoro-82m",
+        "cache": "tts_kokoro",
+        "device": "cpu",
+        "state": "loaded",
+        "bytes": null,
+        "bytes_source": "estimated"
+      },
+      "refusals": {
+        "MODEL_UNKNOWN": "no registered local provider named load_spec.engine (or a remote engine)"
+      }
+    },
+    "gateway": {
+      "$comment": "RESIDENCY_CONTROLLED_SERVICES gains 'tts' (agent at TTS_URL). Catalogue: a 'Text-to-speech' section (runsOn cpu) listing self-hosted tts rows (kokoro / indic-parler / indic-f5), cloud rows `remote`. stt stage rows (VAD / denoise / diarization / embedding) are loadable (loadBlockedReason no longer refuses them); built-in rows stay `builtin`. Console labels the tts service 'Text-to-speech'.",
+      "controlledServices": ["stt", "nlp", "lm-studio", "tts"]
+    }
   }
 }
