@@ -29,7 +29,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from . import vram
+from .accelerator import torch_reserved_bytes
 from .cache import UNSET, AdmissionRejected, LoadFailure, ModelInFlightError, ResidentModel
+from .devices import nvml_index_for
 
 
 @dataclass(frozen=True)
@@ -254,30 +257,21 @@ class ResidencyAgent:
     async def unload(
         self, model_ref: str, *, force: bool, reason: str, device: str | None = None
     ) -> dict[str, Any]:
-        found = self._find(model_ref, device)
-        in_flight = sum(item.model.in_flight for item in found)
+        # Keys only: a snapshot holds the model instance, and a reference kept across the
+        # cache's unload would stop it from handing the memory back (TASK-1055 E6).
+        targets, in_flight = self._unload_targets(model_ref, device)
         if in_flight and not force:
             raise _in_flight(model_ref, in_flight)
 
         # A model whose last load FAILED is not loaded, but an unload dismisses that failure
         # (outcome stays `not_loaded`: nothing was resident; the operator asked to forget it).
-        for binding in self._live_bindings():
-            for model in binding.cache.residency_snapshot():
-                if (
-                    model.state == "failed"
-                    and binding.describe(model.key, model.instance).model_ref == model_ref
-                    and (device is None or binding.cache.residency.device.id == device)
-                ):
-                    await _settle(binding.cache.unload(model.key, force=force, reason=reason))
+        for cache, key in self._failed_keys(model_ref, device):
+            await _settle(cache.unload(key, force=force, reason=reason))
 
         unloaded = False
-        for item in found:
+        for cache, key in targets:
             try:
-                unloaded |= bool(
-                    await _settle(
-                        item.binding.cache.unload(item.model.key, force=force, reason=reason)
-                    )
-                )
+                unloaded |= bool(await _settle(cache.unload(key, force=force, reason=reason)))
             except ModelInFlightError as exc:  # pinned between the check and the unload
                 raise _in_flight(model_ref, exc.in_flight) from exc
         return {"outcome": "unloaded" if unloaded else "not_loaded", "model_ref": model_ref}
@@ -338,6 +332,29 @@ class ResidencyAgent:
                     found.append(_Found(binding, model))
         return found
 
+    def _unload_targets(
+        self, model_ref: str, device: str | None
+    ) -> tuple[list[tuple[Any, str]], int]:
+        """``(cache, key)`` of every loaded copy, and their summed in-flight count."""
+        found = self._find(model_ref, device)
+        return [(item.binding.cache, item.model.key) for item in found], sum(
+            item.model.in_flight for item in found
+        )
+
+    def _failed_keys(self, model_ref: str, device: str | None) -> list[tuple[Any, str]]:
+        """``(cache, key)`` of every recorded failed load named ``model_ref``."""
+        keys: list[tuple[Any, str]] = []
+        for binding in self._live_bindings():
+            if device is not None and binding.cache.residency.device.id != device:
+                continue
+            for model in binding.cache.residency_snapshot():
+                if (
+                    model.state == "failed"
+                    and binding.describe(model.key, model.instance).model_ref == model_ref
+                ):
+                    keys.append((binding.cache, model.key))
+        return keys
+
     def _find_key(self, cache: Any, key: str) -> _Found | None:
         for binding in self._live_bindings():
             if binding.cache is not cache:
@@ -378,7 +395,7 @@ class ResidencyAgent:
             "state": model.state,
             "device": binding.cache.residency.device.id,
             "bytes": model.measured_bytes,
-            "bytes_source": "measured" if model.measured_bytes is not None else "unknown",
+            "bytes_source": model.bytes_source if model.measured_bytes is not None else "unknown",
             "in_flight": model.in_flight,
             "pinned": model.in_flight > 0 or model.admin_pinned,
             "admin_pinned": model.admin_pinned,
@@ -393,10 +410,21 @@ class ResidencyAgent:
 
     @staticmethod
     def _device_json(device: Any) -> dict[str, Any]:
+        """One ``devices[]`` entry (TASK-1055: + ``index``, ``name``, ``uuid``, ``process_bytes``).
+
+        ``index`` is the NVML index behind ``cuda:<i>`` (``uuid`` is what the gateway
+        matches against DCGM); ``process_bytes`` is what this process's torch holds on
+        the card. Every extra is None when unknowable (and always for ``cpu``).
+        """
         reading = device.memory()
+        index = nvml_index_for(device.id) if device.kind == "gpu" else None
         return {
             "id": device.id,
             "kind": device.kind,
             "total_bytes": None if reading is None else reading.total_bytes,
             "free_bytes": None if reading is None else reading.free_bytes,
+            "index": index,
+            "name": None if index is None else vram.nvml_device_name(index),
+            "uuid": None if index is None else vram.nvml_device_uuid(index),
+            "process_bytes": torch_reserved_bytes(device.id) if device.kind == "gpu" else None,
         }

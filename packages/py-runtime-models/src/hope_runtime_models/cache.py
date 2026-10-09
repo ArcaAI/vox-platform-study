@@ -48,7 +48,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Generic, NamedTuple, Protocol, TypeVar
 
-from .devices import LoadToken
+from .accelerator import release_accelerator_memory
+from .devices import LoadReading, LoadToken
 from .residency import AdmissionPolicy, CacheResidency
 
 logger = logging.getLogger(__name__)
@@ -175,11 +176,13 @@ class _Entry(Generic[T]):
     bytes_estimate: int = 0
     pin_count: int = 0
     #: Residency (TASK-1005): when it was admitted (the cache clock), and what
-    #: its load measured. `measured_bytes` is None whenever the load could not
-    #: be attributed — never an estimate.
+    #: its load measured. `measured_bytes` is the load's footprint reading and
+    #: `bytes_source` says how far to trust it (TASK-1055): `measured`,
+    #: `estimated` (a polluted delta, or a distrusted remeasure) or `unknown`.
     loaded_at: float = 0.0
     measured_bytes: int | None = None
     load_seconds: float | None = None
+    bytes_source: str = "unknown"
 
 
 #: A failure message is an operator diagnostic, not a log: keep it bounded.
@@ -212,6 +215,10 @@ class ResidentModel:
     ``state`` is ``failed`` for a key whose last load raised (TASK-1019): it holds
     no memory, ``error`` says why, and it stays until the next successful load, an
     explicit ``unload`` or ``clear``.
+
+    ``bytes_source`` (TASK-1055) qualifies ``measured_bytes``: ``measured`` (the cache's
+    ``measure`` hook, or a clean per-device delta), ``estimated`` (a polluted delta, or a
+    remeasure below half the trusted footprint) or ``unknown`` (no reading).
     """
 
     key: str
@@ -225,6 +232,12 @@ class ResidentModel:
     loaded_seconds_ago: float | None
     idle_seconds: float | None
     error: LoadFailure | None = None
+    bytes_source: str = "unknown"
+
+
+#: TASK-1055 — a remeasure below this fraction of the last trusted footprint is
+#: distrusted (logged, reported `estimated`, never stored for admission).
+_REMEASURE_TRUST_FLOOR = 0.5
 
 
 class _PendingLoad(NamedTuple):
@@ -296,10 +309,11 @@ class _CacheCore(Generic[T]):
         self._admin_pins: set[str] = set()
         #: Per-model idle TTL overrides (clamped), dropped when the model leaves.
         self._ttl_overrides: dict[str, int] = {}
-        #: key → (measured bytes, load seconds) of the load that just finished,
+        #: key → (bytes, load seconds, bytes source) of the load that just finished,
         #: consumed by `_admit_locked`.
-        self._measurements: dict[str, tuple[int | None, float]] = {}
-        #: key → last MEASURED footprint; survives eviction (admission sizing).
+        self._measurements: dict[str, tuple[int | None, float, str]] = {}
+        #: key → last TRUSTED (`measured`) footprint; survives eviction (admission
+        #: sizing). Estimates and distrusted remeasures never land here.
         self._footprints: dict[str, int] = {}
         #: key → cache-clock start of a factory call in progress.
         self._loading: dict[str, float] = {}
@@ -405,7 +419,9 @@ class _CacheCore(Generic[T]):
 
     def _admit_locked(self, key: str, instance: T) -> tuple[list[tuple[str, T]], int, int]:
         """Install a freshly-loaded instance. Returns (victims, resident, bytes)."""
-        measured_bytes, load_seconds = self._measurements.pop(key, (None, None))
+        measured_bytes, load_seconds, bytes_source = self._measurements.pop(
+            key, (None, None, "unknown")
+        )
         now = self._time()
         self._entries[key] = _Entry(
             instance=instance,
@@ -415,10 +431,12 @@ class _CacheCore(Generic[T]):
             loaded_at=now,
             measured_bytes=measured_bytes,
             load_seconds=load_seconds,
+            bytes_source=bytes_source,
         )
         self._loads += 1
         self._emit_state(key, "loaded")
-        self._emit_bytes(key, measured_bytes)
+        # The bytes gauge carries trusted readings only, as before TASK-1055.
+        self._emit_bytes(key, measured_bytes if bytes_source == "measured" else None)
         victims = self._enforce_size_locked()
         return victims, len(self._entries), self._resident_bytes()
 
@@ -650,7 +668,12 @@ class _CacheCore(Generic[T]):
         return _PendingLoad(key=key, started=time.perf_counter(), token=token)
 
     def _end_load(
-        self, pending: _PendingLoad, *, succeeded: bool, error: BaseException | None = None
+        self,
+        pending: _PendingLoad,
+        *,
+        succeeded: bool,
+        error: BaseException | None = None,
+        instance: Any = None,
     ) -> None:
         """Close the measurement; a success is attached to the entry at admit.
 
@@ -659,9 +682,9 @@ class _CacheCore(Generic[T]):
         """
         key = pending.key
         self._loading.pop(key, None)
-        measured = None
+        reading = None
         if pending.token is not None and self._residency is not None:
-            measured = self._residency.device.end_load(pending.token, succeeded=succeeded)
+            reading = self._residency.device.end_load_reading(pending.token, succeeded=succeeded)
         if not succeeded:
             if isinstance(error, Exception):
                 self._record_failure(key, error)
@@ -670,12 +693,54 @@ class _CacheCore(Generic[T]):
             return
         self._failures.pop(key, None)
         seconds = time.perf_counter() - pending.started
-        self._measurements[key] = (measured, seconds)
-        if measured is not None:
-            self._footprints[key] = measured
+        size, source = self._guard_measurement(key, *self._size_load(key, instance, reading))
+        self._measurements[key] = (size, seconds, source)
         residency = self._residency
         if residency is not None and residency.metrics is not None:
             residency.metrics.on_load_seconds(residency.service, residency.model_ref(key), seconds)
+
+    def _size_load(
+        self, key: str, instance: Any, reading: LoadReading | None
+    ) -> tuple[int | None, str]:
+        """A load's footprint and its source (TASK-1055).
+
+        The ``measure`` hook wins when it returns a positive int; otherwise the device
+        delta, ``measured`` when clean and ``estimated`` when another load or unload
+        overlapped it; otherwise ``unknown``.
+        """
+        if self._measure is not None:
+            try:
+                sized = self._measure(instance)
+            except Exception:
+                logger.warning("%s.measure_failed key=%s", self._name, key, exc_info=True)
+                sized = None
+            if isinstance(sized, int) and not isinstance(sized, bool) and sized > 0:
+                return sized, "measured"
+        if reading is None or reading.bytes is None:
+            return None, "unknown"
+        return reading.bytes, "measured" if reading.clean else "estimated"
+
+    def _guard_measurement(self, key: str, size: int | None, source: str) -> tuple[int | None, str]:
+        """Store a trusted reading as the footprint, unless it collapsed below half the last one.
+
+        A remeasure under :data:`_REMEASURE_TRUST_FLOOR` of the trusted footprint is what a
+        polluted baseline looks like (allocator reuse, a not-yet-freed predecessor): it is
+        logged, reported ``estimated``, and admission keeps the larger trusted value.
+        """
+        if source != "measured" or size is None:
+            return size, source
+        trusted = self._footprints.get(key)
+        if trusted is not None and size < trusted * _REMEASURE_TRUST_FLOOR:
+            logger.warning(
+                "%s.measurement_distrusted key=%s bytes=%d trusted_bytes=%d",
+                self._name,
+                key,
+                size,
+                trusted,
+            )
+            return size, "estimated"
+        self._footprints[key] = size
+        return size, source
 
     def _record_failure(self, key: str, error: Exception) -> None:
         failure = describe_load_failure(error, self._wall_clock())
@@ -700,15 +765,27 @@ class _CacheCore(Generic[T]):
         if self._residency is not None:
             self._residency.device.begin_unload()
 
-    def _finish_unload(self, key: str, instance: T) -> None:
-        if self._residency is not None:
-            self._residency.device.end_unload()
+    def _retire_unload(self, key: str, instance: Any) -> bool:
+        """Forget the unloading entry of ``instance`` (not a newer one of the same key)."""
         entry = self._unloading.get(key)
         if entry is not None and entry.instance is instance:
             self._unloading.pop(key, None)
-            if key not in self._entries:
-                self._emit_state(key, None)
-                self._emit_bytes(key, None)
+            return True
+        return False
+
+    def _releases_device_memory(self) -> str | None:
+        """The GPU device id an unload must hand memory back on, else None (TASK-1055)."""
+        residency = self._residency
+        if residency is None or residency.device.kind != "gpu":
+            return None
+        return residency.device.id
+
+    def _complete_unload(self, key: str, retired: bool) -> None:
+        if self._residency is not None:
+            self._residency.device.end_unload()
+        if retired and key not in self._entries:
+            self._emit_state(key, None)
+            self._emit_bytes(key, None)
 
     def _admission_policy(self) -> AdmissionPolicy | None:
         residency = self._residency
@@ -788,6 +865,7 @@ class _CacheCore(Generic[T]):
             loaded_seconds_ago=None if entry is None else now - entry.loaded_at,
             idle_seconds=None if entry is None else now - entry.last_accessed,
             error=error,
+            bytes_source="unknown" if entry is None else entry.bytes_source,
         )
 
     def _emit_state(self, key: str, state: str | None) -> None:
@@ -925,7 +1003,7 @@ class ModelCache(_CacheCore[T]):
             except BaseException as exc:
                 self._end_load(pending, succeeded=False, error=exc)
                 raise
-            self._end_load(pending, succeeded=True)
+            self._end_load(pending, succeeded=True, instance=instance)
         except BaseException as exc:
             if not future.done():
                 future.set_exception(exc)
@@ -1049,9 +1127,17 @@ class ModelCache(_CacheCore[T]):
         """Loading / loaded / unloading models (no await: atomic on the loop)."""
         return self._residency_snapshot_locked()
 
-    async def _run_unloads(self, victims: list[tuple[str, T]]) -> None:
-        """Best-effort unload of evicted instances — never fails the caller."""
-        for key, instance in victims:
+    async def _run_unloads(self, victims: list[tuple[str, Any]]) -> None:
+        """Best-effort unload of evicted instances — never fails the caller.
+
+        Per entry: the ``unload`` hook, then the cache drops its own references (the
+        list slot too — it keeps its length, callers count it), then on a GPU device
+        ``release_accelerator_memory`` (off the loop), and only then ``end_unload`` —
+        so the next load measures from a clean baseline (TASK-1055 E6).
+        """
+        for index in range(len(victims)):
+            key, instance = victims[index]
+            victims[index] = (key, None)
             self._begin_unload()
             try:
                 if self._unload is not None:
@@ -1061,7 +1147,14 @@ class ModelCache(_CacheCore[T]):
             except Exception:
                 logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)
             finally:
-                self._finish_unload(key, instance)
+                retired = self._retire_unload(key, instance)
+                instance = None
+                try:
+                    device_id = self._releases_device_memory()
+                    if device_id is not None:
+                        await asyncio.to_thread(release_accelerator_memory, device_id)
+                finally:
+                    self._complete_unload(key, retired)
 
 
 class _SyncLoad(Generic[T]):
@@ -1173,7 +1266,7 @@ class SyncModelCache(_CacheCore[T]):
             except BaseException as exc:
                 self._end_load(pending, succeeded=False, error=exc)
                 raise
-            self._end_load(pending, succeeded=True)
+            self._end_load(pending, succeeded=True, instance=instance)
         except BaseException as exc:
             load.error = exc
             raise
@@ -1278,9 +1371,11 @@ class SyncModelCache(_CacheCore[T]):
         with self._lock:
             return self._residency_snapshot_locked()
 
-    def _run_unloads(self, victims: list[tuple[str, T]]) -> None:
-        """Best-effort unload of evicted instances — never fails the caller."""
-        for key, instance in victims:
+    def _run_unloads(self, victims: list[tuple[str, Any]]) -> None:
+        """Best-effort unload of evicted instances — see :meth:`ModelCache._run_unloads`."""
+        for index in range(len(victims)):
+            key, instance = victims[index]
+            victims[index] = (key, None)
             self._begin_unload()
             try:
                 if self._unload is not None:
@@ -1296,4 +1391,11 @@ class SyncModelCache(_CacheCore[T]):
             except Exception:
                 logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)
             finally:
-                self._finish_unload(key, instance)
+                retired = self._retire_unload(key, instance)
+                instance = None
+                try:
+                    device_id = self._releases_device_memory()
+                    if device_id is not None:
+                        release_accelerator_memory(device_id)
+                finally:
+                    self._complete_unload(key, retired)

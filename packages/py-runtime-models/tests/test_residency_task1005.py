@@ -295,7 +295,8 @@ async def test_measured_bytes_equal_the_nvml_free_memory_delta(fake_nvml: _FakeN
     assert model["bytes_source"] == "measured"
     assert model["device"] == "cuda:0"
     (gpu,) = report["devices"]
-    assert gpu == {
+    # TASK-1055 added index/name/uuid/process_bytes (pinned in test_device_report_task1055.py).
+    assert {key: gpu[key] for key in ("id", "kind", "total_bytes", "free_bytes")} == {
         "id": "cuda:0",
         "kind": "gpu",
         "total_bytes": 17_175_674_880,
@@ -303,8 +304,11 @@ async def test_measured_bytes_equal_the_nvml_free_memory_delta(fake_nvml: _FakeN
     }
 
 
-async def test_overlapping_loads_on_one_device_are_never_attributed() -> None:
-    """Two loads in flight at once: a delta cannot be split, so neither gets bytes."""
+async def test_overlapping_loads_on_one_device_are_never_measured() -> None:
+    """Two loads in flight at once: a delta cannot be split, so neither is `measured`.
+
+    TASK-1055 reports the polluted delta as `estimated` (it was `unknown` / None before).
+    """
     memory = FakeDeviceMemory()
     gate = asyncio.Event()
     cache = make_cache(memory=memory, footprints={"a": GIB, "b": 2 * GIB}, gate=gate)
@@ -315,8 +319,8 @@ async def test_overlapping_loads_on_one_device_are_never_attributed() -> None:
     await asyncio.gather(*loads)
 
     models = {m["model_ref"]: m for m in make_agent([cache]).report()["models"]}
-    assert models["a"]["bytes"] is None and models["a"]["bytes_source"] == "unknown"
-    assert models["b"]["bytes"] is None and models["b"]["bytes_source"] == "unknown"
+    assert models["a"]["bytes_source"] == "estimated"
+    assert models["b"]["bytes_source"] == "estimated"
 
 
 async def test_a_load_that_frees_nothing_or_grows_free_memory_is_unknown_not_zero() -> None:
@@ -348,7 +352,8 @@ async def test_get_report_matches_the_fixture_key_set_exactly() -> None:
     assert report["instance"] == "hope-stt-test"
     assert report["reported_at"].endswith("Z")
     (device,) = report["devices"]
-    assert set(device) == set(expected["devices"][0])
+    # TASK-1055 v2 fixture: + index / name / uuid / process_bytes.
+    assert set(device) == set(expected["devices"][0]) | {"index", "name", "uuid", "process_bytes"}
     assert device["kind"] in ENUMS["deviceKind"]
     (model,) = report["models"]
     assert set(model) == set(expected["models"][0])
@@ -725,5 +730,14 @@ def test_a_declared_device_is_reported_before_any_cache_exists() -> None:
     report = agent.report()
     assert report["models"] == []
     assert report["devices"] == [
-        {"id": "cpu", "kind": "cpu", "total_bytes": 64 * GIB, "free_bytes": 32 * GIB}
+        {
+            "id": "cpu",
+            "kind": "cpu",
+            "total_bytes": 64 * GIB,
+            "free_bytes": 32 * GIB,
+            "index": None,
+            "name": None,
+            "uuid": None,
+            "process_bytes": None,
+        }
     ]

@@ -18,7 +18,10 @@ from __future__ import annotations
 import gc
 import importlib
 import logging
+import sys
 from typing import Any
+
+from .devices import cuda_index_of
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,25 @@ def release_accelerator_memory(device_id: str | None = None) -> None:
         logger.warning(
             "hope_runtime_models.release_failed", extra={"device": device_id}, exc_info=True
         )
+
+
+def torch_reserved_bytes(device_id: str) -> int | None:
+    """``torch.cuda.memory_reserved`` on ``cuda:<i>`` — only if torch is ALREADY imported.
+
+    Never imports torch (a report must not pull it into a service that does not use it)
+    and never initialises CUDA: None when torch is absent, CUDA is not initialised in
+    this process, the id is not ``cuda:<i>``, or the read fails.
+    """
+    torch = sys.modules.get("torch")
+    index = cuda_index_of(device_id)
+    if torch is None or index is None:
+        return None
+    try:
+        if not torch.cuda.is_initialized():
+            return None
+        return int(torch.cuda.memory_reserved(index))
+    except Exception:  # noqa: BLE001 — a report reading is never worth an error
+        return None
 
 
 def torch_module_bytes(obj: Any) -> int | None:

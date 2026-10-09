@@ -108,6 +108,51 @@ def _read_memory(device_index: int) -> DeviceMemory:
     return DeviceMemory(free_bytes=int(info.free), total_bytes=int(info.total))
 
 
+#: NVML_DEVICE_NAME_V2_BUFFER_SIZE / NVML_DEVICE_UUID_V2_BUFFER_SIZE.
+_NVML_STRING_BUFFER = 96
+
+
+def _text(value: Any) -> str | None:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    if not isinstance(value, str) or not value:
+        return None
+    return value
+
+
+def _read_string(device_index: int, ctypes_call: str, pynvml_call: str) -> str | None:
+    """One NVML string attribute of ``device_index``; None on ANY failure (TASK-1055)."""
+    try:
+        if not _init_nvml():
+            return None
+        if _nvml_lib is not None:
+            handle = ctypes.c_void_p()
+            if _nvml_lib.nvmlDeviceGetHandleByIndex_v2(device_index, ctypes.byref(handle)) != 0:
+                return None
+            buffer = ctypes.create_string_buffer(_NVML_STRING_BUFFER)
+            if getattr(_nvml_lib, ctypes_call)(handle, buffer, _NVML_STRING_BUFFER) != 0:
+                return None
+            return _text(buffer.value)
+
+        import pynvml  # noqa: PLC0415
+
+        handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+        return _text(getattr(pynvml, pynvml_call)(handle))
+    except Exception:  # noqa: BLE001 — a name/uuid is decoration; never fail a report
+        logger.debug("hope_runtime_models.nvml_string_failed call=%s", pynvml_call, exc_info=True)
+        return None
+
+
+def nvml_device_name(device_index: int) -> str | None:
+    """The product name of NVML device ``device_index`` (e.g. ``NVIDIA RTX A6000``), or None."""
+    return _read_string(device_index, "nvmlDeviceGetName", "nvmlDeviceGetName")
+
+
+def nvml_device_uuid(device_index: int) -> str | None:
+    """The ``GPU-…`` UUID of NVML device ``device_index`` (DCGM's ``UUID`` label), or None."""
+    return _read_string(device_index, "nvmlDeviceGetUUID", "nvmlDeviceGetUUID")
+
+
 def make_vram_info_probe(device_index: int = 0) -> Callable[[], DeviceMemory] | None:
     """Return a free + total VRAM probe, or None when NVML is unavailable."""
     if not _init_nvml():
