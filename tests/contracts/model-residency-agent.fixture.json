@@ -1,12 +1,13 @@
 {
   "$comment": "TASK-1005 — the model-residency agent contract. PINNED by the orchestrator before the lanes branched. PRODUCERS: the residency agent API in packages/py-runtime-models (hope_runtime_models), mounted by apps/stt and apps/nlp (lane L-AGENT) — snake_case JSON under `python`; the gateway-side LM Studio adapter (lane L-LMS) — which emits the camelCase `gateway` ResidencyReport shape directly from LM Studio REST v1. CONSUMER: the gateway ModelResidencyController (lane L-CTRL, wave 2), which maps every `python` report to the same camelCase `gateway` shape, and the console screen (lane L-UI). Transport for the Python agents: `X-Service-Token` + `X-Tenant-Id: tenantless:control-plane` (TENANTLESS.CONTROL_PLANE in packages/applications/src/common/internal-service-headers.ts). Routes: GET /internal/residency · POST /internal/residency/load · POST /internal/residency/unload · PUT /internal/residency/models/{model_ref}/policy. Lanes MAY add per-service `load_spec` examples under `loadSpecExamples`; they may NOT rename, retype or remove a pinned key. `bytes` is MEASURED (device free-memory delta around the load, loads serialised per device) or null — never a catalogue estimate; `bytes_source` says which. `in_flight` is the cache pin refcount (requests/sessions currently holding the model). `pinned` is true when ANY holder pins it; `admin_pinned` only when the operator/controller pinned it (survives idle TTL, never LRU/pressure-evicted). An unload with `in_flight > 0` and no `force` answers 409 IN_FLIGHT.",
+  "$task1055": "TASK-1055 extends this contract additively: `bytesSource` gains `estimated`; `errorCode` gains `DEVICE_UNAVAILABLE`; load/unload take an optional `device`; devices carry index/name/uuid/process_bytes; models may carry device_bytes / engine_key / instance_id / load_config (the LM Studio agent). Full shapes: tests/contracts/model-residency-task1055.fixture.json.",
   "enums": {
     "state": ["loading", "loaded", "unloading", "failed"],
-    "bytesSource": ["measured", "unknown"],
+    "bytesSource": ["measured", "estimated", "unknown"],
     "deviceKind": ["gpu", "cpu"],
     "loadOutcome": ["loaded", "already_loaded"],
     "unloadOutcome": ["unloaded", "not_loaded"],
-    "errorCode": ["MODEL_UNKNOWN", "IN_FLIGHT", "INSUFFICIENT_MEMORY", "LOAD_FAILED", "LOAD_IN_PROGRESS"]
+    "errorCode": ["MODEL_UNKNOWN", "IN_FLIGHT", "INSUFFICIENT_MEMORY", "LOAD_FAILED", "LOAD_IN_PROGRESS", "DEVICE_UNAVAILABLE"]
   },
   "python": {
     "report": {

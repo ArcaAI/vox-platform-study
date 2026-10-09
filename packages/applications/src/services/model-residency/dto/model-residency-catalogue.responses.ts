@@ -75,6 +75,20 @@ export class ModelResidencySize {
   source!: CatalogueSizeSource;
 }
 
+export class ModelResidencyDeviceShare {
+  @ApiProperty({ example: 'gpu0' }) device!: string;
+  @ApiProperty() bytes!: number;
+}
+
+export class ModelResidencyLoadConfig {
+  @ApiProperty({ nullable: true, type: Number }) contextLength!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) parallel!: number | null;
+  @ApiProperty({ nullable: true, type: Boolean }) flashAttention!: boolean | null;
+  @ApiProperty({ nullable: true, type: String, example: 'q8_0' }) kvCacheQuantK!: string | null;
+  @ApiProperty({ nullable: true, type: String, example: 'q8_0' }) kvCacheQuantV!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: '`gpu<N>` when pinned to one card, `multi` when split.' }) device!: string | null;
+}
+
 export class ModelResidencyPlacement {
   @ApiProperty({ description: '`gpu<N>`, `multi` (LM Studio spans every card), `cpu:<service>`, or the service`s own id when it cannot be mapped.' })
   device!: string;
@@ -98,20 +112,6 @@ export class ModelResidencyPlacement {
     description: 'TASK-1055 — LM Studio only: the config the instance was ACTUALLY loaded with (prefills Reload with options).',
   })
   loadConfig?: ModelResidencyLoadConfig | null;
-}
-
-export class ModelResidencyDeviceShare {
-  @ApiProperty({ example: 'gpu0' }) device!: string;
-  @ApiProperty() bytes!: number;
-}
-
-export class ModelResidencyLoadConfig {
-  @ApiProperty({ nullable: true, type: Number }) contextLength!: number | null;
-  @ApiProperty({ nullable: true, type: Number }) parallel!: number | null;
-  @ApiProperty({ nullable: true, type: Boolean }) flashAttention!: boolean | null;
-  @ApiProperty({ nullable: true, type: String, example: 'q8_0' }) kvCacheQuantK!: string | null;
-  @ApiProperty({ nullable: true, type: String, example: 'q8_0' }) kvCacheQuantV!: string | null;
-  @ApiProperty({ nullable: true, type: String, description: '`gpu<N>` when pinned to one card, `multi` when split.' }) device!: string | null;
 }
 
 export class ModelResidencyUse {

@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 615 component schemas the generated surface transitively
+ * Only the 618 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -4486,9 +4486,13 @@ export interface LoadLmStudioModelResponse {
 }
 
 export interface LoadModelResidencyRequest {
-  /** Proceed over the memory budget (409 `OVER_BUDGET` otherwise) — REQUIRES a non-empty `reason`, which is audited (owner OD-3). With `replace`, also unloads a model that is serving requests. */
+  /** TASK-1055 — where to load: `gpu<N>`, `multi` (LM Studio only: split across cards) or `cpu`. Absent = the model`s default placement (its `_metadata.residency.defaultDevice`, else the service default — LM Studio: the serving profile`s split). A device the service does not have is 400 `DEVICE_UNAVAILABLE`; one that cannot hold the model answers 409 `OVER_BUDGET` (or `EXCEEDS_DEVICE`) with `candidates` + `suggestedDevice`. */
+  device?: string | null;
+  /** Proceed over the memory budget (409 `OVER_BUDGET` otherwise) — REQUIRES a non-empty `reason`, which is audited (owner OD-3). Never lifts 409 `EXCEEDS_DEVICE` (the need is larger than the device`s free memory outright, TASK-1055 OD-5). With `replace`, also unloads a model that is serving requests. */
   force?: boolean;
-  /** The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the EXACT engine key (`AiModel.wireModelId`). */
+  /** TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write. Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise). */
+  makeDefault?: boolean;
+  /** The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref. */
   modelRef: string;
   options?: LmStudioResidencyLoadOptions;
   /** Pin the model once loaded (never evicted by TTL or pressure). */
@@ -4910,6 +4914,11 @@ export interface ModelResidencyDeviceModel {
   service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
 }
 
+export interface ModelResidencyDeviceShare {
+  bytes: number;
+  device: string;
+}
+
 export interface ModelResidencyFreshness {
   /** Age in seconds of the OLDEST service report the view is built from (target ≤ 15 s). */
   maxAgeSeconds: number;
@@ -4941,6 +4950,16 @@ export interface ModelResidencyKeepPolicy {
   source: 'policy' | 'implicit-live-path' | 'default';
 }
 
+export interface ModelResidencyLoadConfig {
+  contextLength: number | null;
+  /** `gpu<N>` when pinned to one card, `multi` when split. */
+  device: string | null;
+  flashAttention: boolean | null;
+  kvCacheQuantK: string | null;
+  kvCacheQuantV: string | null;
+  parallel: number | null;
+}
+
 export interface ModelResidencyLoadError {
   /** When it failed (ISO); `null` when the source carries no time (the stt-worker gauge). */
   at: string | null;
@@ -4951,6 +4970,8 @@ export interface ModelResidencyLoadError {
 }
 
 export interface ModelResidencyLoadPreviewResponse {
+  /** TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`. */
+  candidates: ModelResidencyPlacementCandidate[];
   /** Where the load would land (`gpu0`, `multi`, `cpu:<service>`); `null` when the service`s device is unknown. */
   device: string | null;
   /** ON_DEMAND resident models on the same device that could be unloaded to make room, largest first. */
@@ -4970,6 +4991,9 @@ export interface ModelResidencyLoadPreviewResponse {
   service: string;
   /** `max(0, needBytes − (freeBytes − headroomBytes))`; 0 when it fits. */
   shortfallBytes: number;
+  /** TASK-1055 — the most suitable device: one that fits with the most remaining memory (ties: fewer live-path models, then lower index); if none fits, the smallest shortfall. Advice only — a load is never re-targeted (D-2). `null` only when no device is known. When the chosen device`s need exceeds its free memory outright, `refusal` is `OVER_BUDGET` and that candidate`s `exceedsDevice` is true (a load answers 409 `EXCEEDS_DEVICE`). */
+  suggestedDevice: string | null;
+  suggestionReason: string | null;
   unattributedBytes: number | null;
 }
 
@@ -5033,16 +5057,38 @@ export interface ModelResidencyPinResponse {
 
 export interface ModelResidencyPlacement {
   bytes: number | null;
-  bytesSource: 'measured' | 'unknown';
+  bytesSource: 'measured' | 'estimated' | 'unknown';
   /** `gpu<N>`, `multi` (LM Studio spans every card), `cpu:<service>`, or the service`s own id when it cannot be mapped. */
   device: string;
+  /** TASK-1055 — bytes this instance holds per card, as the service measured them (LM Studio splits one model over several). */
+  deviceBytes?: ModelResidencyDeviceShare[];
   inFlight: number | null;
   /** Pod name, or the LM Studio instance id. */
   instance: string;
   lastUsedAt: string | null;
+  /** TASK-1055 — LM Studio only: the config the instance was ACTUALLY loaded with (prefills Reload with options). */
+  loadConfig?: ModelResidencyLoadConfig;
   loadedAt: string | null;
   p50LatencyMs: number | null;
   requestsPerMin: number | null;
+}
+
+export interface ModelResidencyPlacementCandidate {
+  device: string;
+  /** ON_DEMAND models on this card that could be unloaded to make room, largest first. */
+  evictable: ModelResidencyPreviewModel[];
+  /** Need > free memory: refused even with force. */
+  exceedsDevice: boolean;
+  fits: boolean;
+  freeBytes: number | null;
+  headroomBytes: number | null;
+  label: string;
+  /** Live-path models already resident on this card. */
+  livePathModels: number;
+  /** Free minus headroom minus the need; negative = short. */
+  remainingBytes: number | null;
+  shortfallBytes: number;
+  totalBytes: number | null;
 }
 
 export interface ModelResidencyPolicyResponse {
@@ -8252,10 +8298,12 @@ export interface UnloadLmStudioModelResponse {
 }
 
 export interface UnloadModelResidencyRequest {
+  /** TASK-1055 — unload only the copy on this device (`gpu<N>`); absent = every copy. */
+  device?: string | null;
   /** Unload even while the model serves requests (409 `IN_FLIGHT` otherwise). */
   force?: boolean;
   modelRef: string;
-  /** Why — recorded on the audit event. */
+  /** Why — recorded on the audit event. TASK-1055 (OD-2): REQUIRED to unload a live-path model (409 `LIVE_PATH_REASON_REQUIRED` with its `consumers` otherwise). */
   reason?: string | null;
   service: 'stt' | 'nlp' | 'lm-studio';
 }

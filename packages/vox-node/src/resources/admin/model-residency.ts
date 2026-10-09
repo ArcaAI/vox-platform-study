@@ -98,7 +98,7 @@ export class AdminModelResidencyResource extends AdminResource {
   /**
    * Load a model on stt, nlp or LM Studio (asynchronous)
    *
-   * ASYNCHRONOUS: answers 202 with an operation id as soon as the load is admitted, because a 5 GB LLM takes ~100 s — past the edge timeout of a browser request. Poll `GET operations/:operationId`, or watch the model`s `state` go `loading` → `loaded` in `GET`. A model already resident answers 200 `already_loaded` and creates no operation. Loads are serialised per PHYSICAL GPU across every service (an LM Studio load holds both cards) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that does not fit the measured free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty `reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation. `options` (LM Studio REST v1 documented keys only) are accepted for `lm-studio` alone (400 `OPTIONS_UNSUPPORTED`); `replace: true` unloads then reloads as ONE operation.
+   * ASYNCHRONOUS: answers 202 with an operation id as soon as the load is admitted, because a 5 GB LLM takes ~100 s — past the edge timeout of a browser request. Poll `GET operations/:operationId`, or watch the model`s `state` go `loading` → `loaded` in `GET`. A model already resident answers 200 `already_loaded` and creates no operation. `device` (`gpu<N>`, `multi` = LM Studio split across cards, `cpu`) picks where it goes; absent = the model`s `_metadata.residency.defaultDevice`, else the service default (LM Studio: its serving profile). `makeDefault: true` also stores `device` as that default. Loads are serialised per PHYSICAL GPU across every service (a load holds the cards it goes to) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that does not fit the chosen device`s free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty `reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation; a need larger than the device`s free memory outright is 409 `EXCEEDS_DEVICE` even when forced (OD-5). Both refusals carry `device`, `shortfallBytes`, the ranked `candidates` and the `suggestedDevice` (advice only — never an automatic re-target). LM Studio loads through its residency agent with the model`s full serving profile; `options` override only `contextLength` / `flashAttention` and are accepted for `lm-studio` alone (400 `OPTIONS_UNSUPPORTED`); `replace: true` unloads then reloads as ONE operation.
    *
    * `POST /api/v1/admin/model-residency/load` — `ModelResidencyController.load`.
    */
@@ -115,7 +115,7 @@ export class AdminModelResidencyResource extends AdminResource {
   /**
    * Preview a model load without doing it (dry-run admission)
    *
-   * Runs EXACTLY the admission arithmetic of `POST load` and changes nothing — no command is sent, no operation, recommendation or audit record is created. Answers where the model would land, what admission reserves for it (`needBytes`: the measured footprint, else the catalogue size × 1.2; `null` = no size known), the device`s free memory, the `residency.headroomPercent` reserve, the memory no resident model accounts for, the shortfall, and what an un-forced load would answer (`refusal`: `ALREADY_LOADED`, `NO_SIZE`, `OVER_BUDGET`, or `null` = admitted). `evictable` lists the idle, unpinned on-demand models on the same device, largest first; `pinned` the resident models that will not be offered, with the reason. Same body as `POST load`.
+   * Runs EXACTLY the admission arithmetic of `POST load` and changes nothing — no command is sent, no operation, recommendation or audit record is created. Answers where the model would land, what admission reserves for it (`needBytes`: the measured footprint, else the catalogue size × 1.2; `null` = no size known), the device`s free memory, the `residency.headroomPercent` reserve, the memory no resident model accounts for, the shortfall, and what an un-forced load would answer (`refusal`: `ALREADY_LOADED`, `NO_SIZE`, `OVER_BUDGET`, or `null` = admitted). `evictable` lists the idle, unpinned on-demand models on the same device, largest first; `pinned` the resident models that will not be offered, with the reason. TASK-1055: judged on the requested (or default) `device`, with every other device the service can use in `candidates` (free, headroom, remaining, shortfall, fits, exceedsDevice, live-path models, evictable — best first) and the `suggestedDevice` + a one-sentence `suggestionReason`. Same body as `POST load`.
    *
    * `POST /api/v1/admin/model-residency/load/preview` — `ModelResidencyController.previewLoad`.
    */
@@ -148,7 +148,7 @@ export class AdminModelResidencyResource extends AdminResource {
   /**
    * Pin or unpin a resident model (and set its idle TTL)
    *
-   * A pinned model survives its idle TTL and is never evicted by LRU or memory pressure. stt and nlp pin in the serving process itself; LM Studio has no pin, so the controller holds it (and enforces the TTL by unloading on idle).
+   * A pinned model survives its idle TTL and is never evicted by LRU or memory pressure. Every service pins in its own residency agent (stt, nlp, and since TASK-1055 LM Studio`s in-pod agent), so a pin survives a gateway restart.
    *
    * `PUT /api/v1/admin/model-residency/pins` — `ModelResidencyController.pin`.
    */
@@ -270,7 +270,7 @@ export class AdminModelResidencyResource extends AdminResource {
   /**
    * Unload a model from stt, nlp or LM Studio
    *
-   * Synchronous. Refused 409 `IN_FLIGHT` while the model serves requests unless `force: true`. Starts the reload cool-down (`residency.reloadCooldownSeconds`), so the controller will not immediately load it back; a live request still may. Audited with `reason`.
+   * Synchronous. Refused 409 `IN_FLIGHT` while the model serves requests unless `force: true`. Starts the reload cool-down (`residency.reloadCooldownSeconds`), so the controller will not immediately load it back; a live request still may. Audited with `reason`. TASK-1055 (OD-2): a live-path model (implicit, or a PINNED policy) may be unloaded only with a non-empty `reason` — 409 `LIVE_PATH_REASON_REQUIRED` with its `consumers` in plain words otherwise; the unload never creates or changes a policy row. `device` unloads only the copy on that card.
    *
    * `POST /api/v1/admin/model-residency/unload` — `ModelResidencyController.unload`.
    */
