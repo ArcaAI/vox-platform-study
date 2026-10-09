@@ -15,6 +15,8 @@ import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -22,7 +24,8 @@ export interface ConfirmDialogProps {
   title: ReactNode;
   description: ReactNode;
   confirmLabel: string;
-  onConfirm: () => void | Promise<void>;
+  /** Receives the reason typed into the policy-driven field (when `reasonActionId` is set). */
+  onConfirm: (input: { reason?: string }) => void | Promise<void>;
   /**
    * Detail the confirmation needs but the one-line `description` cannot hold —
    * a consumer list, a diff, a warning block. Rendered between the description
@@ -39,6 +42,18 @@ export interface ConfirmDialogProps {
   destructive?: boolean;
   /** Exact string the user must type to arm the confirm button. */
   typeToConfirm?: string;
+  /**
+   * TASK-1057 — catalogue action id governing `typeToConfirm` (a `typeToConfirm` row). When the
+   * platform switches that row to `not-required`, the typed name is not asked for.
+   */
+  typeToConfirmActionId?: string;
+  /**
+   * TASK-1057 — catalogue action id of a `reason` row: renders the shared reason field, arms the
+   * button only once the policy is satisfied, and passes the text to `onConfirm`.
+   */
+  reasonActionId?: string;
+  /** Evaluates a `when-risky` reason row. */
+  reasonRisky?: boolean;
   isPending?: boolean;
 }
 
@@ -61,14 +76,23 @@ export function ConfirmDialog({
   body,
   acknowledgement,
   destructive = false,
-  typeToConfirm,
+  typeToConfirm: typeToConfirmProp,
+  typeToConfirmActionId,
+  reasonActionId,
+  reasonRisky,
   isPending = false,
 }: ConfirmDialogProps) {
   const [typed, setTyped] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
+  const [reason, setReason] = useState('');
   const inputId = useId();
   const acknowledgeId = useId();
-  const armed = (!typeToConfirm || typed === typeToConfirm) && (!acknowledgement || acknowledged);
+  // Hooks run unconditionally; an absent id resolves to a policy we never read.
+  const typedPolicy = useActionConfirmation(typeToConfirmActionId ?? 'tenant.delete', { enabled: Boolean(typeToConfirmActionId) });
+  const reasonPolicy = useActionConfirmation(reasonActionId ?? 'promptTemplate.update', { enabled: Boolean(reasonActionId) });
+  const typeToConfirm = typeToConfirmActionId && !typedPolicy.isRequired() ? undefined : typeToConfirmProp;
+  const reasonOk = !reasonActionId || reasonPolicy.isSatisfied(reason, reasonRisky);
+  const armed = (!typeToConfirm || typed === typeToConfirm) && (!acknowledgement || acknowledged) && reasonOk;
 
   // Disarm on every open/close transition — adjusted DURING RENDER (React's
   // "adjusting state when a prop changes" pattern) rather than in the
@@ -81,6 +105,7 @@ export function ConfirmDialog({
     setWasOpen(open);
     setTyped('');
     setAcknowledged(false);
+    setReason('');
   }
 
   return (
@@ -99,6 +124,7 @@ export function ConfirmDialog({
             </Label>
           </div>
         ) : null}
+        {reasonActionId ? <ReasonField actionId={reasonActionId} value={reason} onChange={setReason} risky={reasonRisky} disabled={isPending} /> : null}
         {typeToConfirm ? (
           <div className="flex flex-col gap-2">
             <Label htmlFor={inputId}>
@@ -109,7 +135,7 @@ export function ConfirmDialog({
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-          <Button variant={destructive ? 'destructive' : 'default'} disabled={!armed || isPending} onClick={() => void onConfirm()}>
+          <Button variant={destructive ? 'destructive' : 'default'} disabled={!armed || isPending} onClick={() => void onConfirm(reasonActionId && reason.trim() ? { reason: reason.trim() } : {})}>
             {isPending ? <Spinner /> : null}
             {confirmLabel}
           </Button>
