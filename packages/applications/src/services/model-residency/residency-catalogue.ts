@@ -438,6 +438,7 @@ function modelRow(
   else size = { bytes: null, source: 'unknown' };
 
   const inFlight = entries.some((e) => e.inFlight !== null) ? entries.reduce((sum, e) => sum + (e.inFlight ?? 0), 0) : null;
+  const deviceBytes = copiesDeviceBytes(input, service, model, entries);
   const residency = primary
     ? {
         device: primary.device,
@@ -449,7 +450,7 @@ function modelRow(
         p50LatencyMs: primary.p50LatencyMs,
         loadedAt: primary.loadedAt,
         lastUsedAt: primary.lastUsedAt,
-        ...(primary.deviceBytes ? { deviceBytes: primary.deviceBytes.map((d) => ({ ...d })) } : {}),
+        ...(deviceBytes ? { deviceBytes } : {}),
         ...(primary.loadConfig !== undefined ? { loadConfig: primary.loadConfig ? { ...primary.loadConfig } : null } : {}),
       }
     : null;
@@ -509,6 +510,33 @@ function modelRow(
     ),
     actions: actionsFor(service, status, modelRef, aiModelId),
   };
+}
+
+/**
+ * `residency.deviceBytes` for a row (TASK-1055 §8b D4). One instance: the per-card bytes it
+ * reported (an LM Studio split), else none. SEPARATE copies on several devices (stt / nlp keep one
+ * per device): every copy's device (`gpu<N>`, `cpu:<service>`) with its bytes — the per-card bytes
+ * it reported, else its footprint (`footprintFor`); a copy with no size at all is left out. Device order.
+ */
+function copiesDeviceBytes(
+  input: CatalogueBuildInput,
+  service: ResidencyServiceName,
+  model: CatalogueModelRow | undefined,
+  entries: CatalogueResidentEntry[],
+): ModelResidencyDeviceShare[] | undefined {
+  if (entries.length <= 1) return entries[0]?.deviceBytes?.map((d) => ({ ...d }));
+  const byDevice = new Map<string, number>();
+  for (const e of entries) {
+    const shares = e.deviceBytes?.length
+      ? e.deviceBytes
+      : (() => {
+          const footprint = e.device === 'multi' ? null : footprintFor(e, input.observedBytes(service, e.modelRef, model), model?.memorySizeMb);
+          return footprint ? [{ device: e.device, bytes: footprint.bytes }] : [];
+        })();
+    for (const s of shares) byDevice.set(s.device, (byDevice.get(s.device) ?? 0) + s.bytes);
+  }
+  if (byDevice.size === 0) return undefined;
+  return [...byDevice.entries()].sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true })).map(([device, bytes]) => ({ device, bytes }));
 }
 
 /** Whether the reported instance is tied to a catalogue row, and if not, which rows it could be. */
