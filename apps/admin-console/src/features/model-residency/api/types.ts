@@ -221,6 +221,12 @@ export interface ResidencyCatalogueModel {
   keepPolicy: ResidencyKeepPolicy;
   /** What the UI may offer for this row right now (empty while loading/unloading). */
   actions: ResidencyAction[];
+  /**
+   * TASK-1055 — present only while `actions` offers `load` and the catalogue row alone says the load
+   * cannot succeed (an stt stage model, an unpublished or uncalibrated entailment scorer, a guard
+   * runtime nlp does not have). The gateway's own refusal words; render them, never re-derive.
+   */
+  loadBlockedReason?: string | null;
 }
 
 export interface ResidencyServiceGroup {

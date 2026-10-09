@@ -249,10 +249,21 @@ export function ModelDetailDrawer({
             Close
           </Button>
           {actions.includes('load') ? (
-            <Button disabled={actionPending} onClick={() => onLoad(service, model)}>
-              {actionPending ? <Spinner /> : null}
-              Load
-            </Button>
+            <>
+              {model.loadBlockedReason ? (
+                <span id="drawer-load-blocked" className="text-muted-foreground mr-auto text-xs">
+                  Can&rsquo;t be loaded from the console: {model.loadBlockedReason}
+                </span>
+              ) : null}
+              <Button
+                disabled={actionPending}
+                aria-describedby={model.loadBlockedReason ? 'drawer-load-blocked' : undefined}
+                onClick={() => onLoad(service, model)}
+              >
+                {actionPending ? <Spinner /> : null}
+                Load
+              </Button>
+            </>
           ) : null}
           {actions.includes('unload') ? (
             <>
