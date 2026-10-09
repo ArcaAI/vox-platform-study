@@ -4228,7 +4228,7 @@ export interface LinkModelResidencyRuntimeKeyRequest {
   aiModelId: string;
   /** The key EXACTLY as the service reports it. */
   runtimeKey: string;
-  service: 'stt' | 'nlp' | 'lm-studio';
+  service: 'stt' | 'nlp' | 'lm-studio' | 'tts';
 }
 
 export interface LinkModelResidencyRuntimeKeyResponse {
@@ -4492,7 +4492,7 @@ export interface LoadModelResidencyRequest {
   force?: boolean;
   /** TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write, audited (`model-residency.default-device`, with the previous value). Judged first and written only once the load has landed (a model already loaded on that device: at once). Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise); already loaded on another device is 409 `ALREADY_LOADED_ELSEWHERE`; a load forced past the budget is never made the default (409 `MAKE_DEFAULT_OVER_BUDGET`). */
   makeDefault?: boolean;
-  /** The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref. */
+  /** The key the service caches the model under: stt = the model slug (ASR or a pipeline stage), tts = the model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref. */
   modelRef: string;
   options?: LmStudioResidencyLoadOptions;
   /** Pin the model once loaded (never evicted by TTL or pressure). */
@@ -4502,7 +4502,7 @@ export interface LoadModelResidencyRequest {
   /** "Apply & reload": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation — stt / nlp: only the copy on the target device. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`, and 409 `LIVE_PATH_REASON_REQUIRED` for a live-path model without a `reason` (audited). A failed reload restores each unloaded instance where it was, as it was. */
   replace?: boolean;
   /** The serving workload. `stt-worker` has no control API and is read-only. */
-  service: 'stt' | 'nlp' | 'lm-studio';
+  service: 'stt' | 'nlp' | 'lm-studio' | 'tts';
 }
 
 export interface LocalModelFileResponse {
@@ -4860,7 +4860,7 @@ export interface ModelResidencyCatalogueResponse {
   freshness: ModelResidencyFreshness;
   mode: 'shadow' | 'enforce';
   reportedAt: string;
-  /** Always four groups, in this order: stt, stt-worker, lm-studio, nlp. */
+  /** Always five groups, in this order: stt, stt-worker, lm-studio, nlp, tts. */
   services: ModelResidencyCatalogueService[];
   /** TASK-1051 — STANDING recommendations: one per (action, service, model), most recently confirmed first, never one the current policy already satisfies, dismissed ones omitted; at most 20. */
   suggestions: ModelResidencySuggestion[];
@@ -4875,7 +4875,7 @@ export interface ModelResidencyCatalogueService {
   /** The service`s last report is fresh (stt-worker: Prometheus answered). */
   reachable: boolean;
   runsOn: 'gpu' | 'cpu';
-  service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
+  service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp' | 'tts';
 }
 
 export interface ModelResidencyConsumerCounts {
@@ -4913,7 +4913,7 @@ export interface ModelResidencyDeviceModel {
   modelRef: string;
   /** Catalogue name, or the modelRef when the catalogue does not know the model. */
   name: string;
-  service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
+  service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp' | 'tts';
 }
 
 export interface ModelResidencyDeviceShare {
@@ -4972,7 +4972,7 @@ export interface ModelResidencyLoadError {
 }
 
 export interface ModelResidencyLoadPreviewResponse {
-  /** TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`. */
+  /** TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; tts: its host memory only; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`. */
   candidates: ModelResidencyPlacementCandidate[];
   /** Where the load would land, in the request vocabulary (`gpu0`, `multi`, `cpu`); `null` when the service`s device is unknown. */
   device: string | null;
@@ -5969,7 +5969,7 @@ export interface PinModelResidencyRequest {
   modelRef: string;
   /** Pin (true) or unpin (false). A pinned model survives its idle TTL and is never evicted. */
   pinned: boolean;
-  service: 'stt' | 'nlp' | 'lm-studio';
+  service: 'stt' | 'nlp' | 'lm-studio' | 'tts';
   /** Idle TTL in seconds; `null` resets to the service default; omitted leaves it as it is. */
   ttlSeconds?: number | null;
 }
@@ -8307,7 +8307,7 @@ export interface UnloadModelResidencyRequest {
   modelRef: string;
   /** Why — recorded on the audit event. TASK-1055 (OD-2): REQUIRED to unload a live-path model (409 `LIVE_PATH_REASON_REQUIRED` with its `consumers` otherwise). */
   reason?: string | null;
-  service: 'stt' | 'nlp' | 'lm-studio';
+  service: 'stt' | 'nlp' | 'lm-studio' | 'tts';
 }
 
 export interface UnregisterModelRequest {

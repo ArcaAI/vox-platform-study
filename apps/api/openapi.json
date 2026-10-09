@@ -17311,7 +17311,8 @@
             "enum": [
               "stt",
               "nlp",
-              "lm-studio"
+              "lm-studio",
+              "tts"
             ],
             "type": "string"
           }
@@ -18041,7 +18042,7 @@
             "type": "boolean"
           },
           "modelRef": {
-            "description": "The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref.",
+            "description": "The key the service caches the model under: stt = the model slug (ASR or a pipeline stage), tts = the model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref.",
             "example": "gemma-4-e2b-it-qat",
             "type": "string"
           },
@@ -18075,7 +18076,8 @@
             "enum": [
               "stt",
               "nlp",
-              "lm-studio"
+              "lm-studio",
+              "tts"
             ],
             "type": "string"
           }
@@ -19318,7 +19320,7 @@
             "type": "string"
           },
           "services": {
-            "description": "Always four groups, in this order: stt, stt-worker, lm-studio, nlp.",
+            "description": "Always five groups, in this order: stt, stt-worker, lm-studio, nlp, tts.",
             "items": {
               "$ref": "#/components/schemas/ModelResidencyCatalogueService"
             },
@@ -19377,7 +19379,8 @@
               "stt",
               "stt-worker",
               "lm-studio",
-              "nlp"
+              "nlp",
+              "tts"
             ],
             "type": "string"
           }
@@ -19502,7 +19505,8 @@
               "stt",
               "stt-worker",
               "lm-studio",
-              "nlp"
+              "nlp",
+              "tts"
             ],
             "type": "string"
           }
@@ -19711,7 +19715,7 @@
       "ModelResidencyLoadPreviewResponse": {
         "properties": {
           "candidates": {
-            "description": "TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`.",
+            "description": "TASK-1055 — every device this service can place the model on (stt / nlp: the GPUs its agent reports, else its host memory; tts: its host memory only; lm-studio: every GPU plus `multi`), best first. `device` is in the request vocabulary (`gpu<N>`, `multi`, `cpu`), so it can be sent back as `device`.",
             "items": {
               "$ref": "#/components/schemas/ModelResidencyPlacementCandidate"
             },
@@ -23154,7 +23158,8 @@
             "enum": [
               "stt",
               "nlp",
-              "lm-studio"
+              "lm-studio",
+              "tts"
             ],
             "type": "string"
           },
@@ -31358,7 +31363,8 @@
             "enum": [
               "stt",
               "nlp",
-              "lm-studio"
+              "lm-studio",
+              "tts"
             ],
             "type": "string"
           }
