@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from hope_runtime_models import ModelCache
+from hope_runtime_models import ModelCache, torch_module_bytes
 
 from tts.core.audio import encode_pcm, pcm16_to_mp3, pcm16_to_wav
 from tts.core.config import KokoroConfig
@@ -30,6 +30,7 @@ from tts.providers.base import (
     CredentialPosture,
     SynthesisRequest,
 )
+from tts.residency.wiring import tts_cache_residency
 
 logger = get_logger(__name__)
 
@@ -221,6 +222,9 @@ class KokoroProvider:
             time_func=time_func,
             metrics=build_model_cache_metrics_sink(),
             name="tts_kokoro",
+            # TASK-1055 wave 3 — console control: reported and loaded by the residency agent.
+            residency=tts_cache_residency(slug or self.name),
+            measure=torch_module_bytes,
         )
 
     async def _load_pipeline(self, _key: str) -> Any:
@@ -289,6 +293,16 @@ class KokoroProvider:
         if self._injected is not None:
             return self._injected
         return await self._cache.get("kokoro")
+
+    @property
+    def model_slug(self) -> str | None:
+        """The AiModel slug this engine was built from (`from_spec`); None for a boot engine."""
+        return self._slug
+
+    @property
+    def model_cache(self) -> ModelCache[Any]:
+        """The weights' cache — what the residency agent reports on and acts through."""
+        return self._cache
 
     def configure_retention(self, retention: dict[str, int]) -> None:
         """Adopt control-plane retention; absent keys keep the current value."""
