@@ -60,6 +60,10 @@
 // gateway's `lmStudioServing.preload` (fetched at boot), else LMS_PRELOAD_PLAN,
 // else the legacy single LMS_LOAD. Each entry gets its own kvConfig, is pinned
 // (no TTL), and gets its own read-back; any failure fails the pod.
+//
+// TASK-1055 R2-F7: except ONE retry per entry, on a load failure, with the
+// placement reset to the env plan's (or the daemon default) — see
+// preloadEntryWithFallback in kvconfig.mjs. A drift is still fatal at once.
 // =============================================================================
 import { execFileSync } from 'node:child_process';
 import { writeSync } from 'node:fs';
@@ -68,8 +72,11 @@ import { LMStudioClient } from '@lmstudio/sdk';
 
 import {
   KvConfigError,
+  ReadBackError,
   diffAppliedConfig,
   parseGpuCount,
+  preloadEntryWithFallback,
+  preloadFallbackRequest,
   resolvePreloadRequests,
   selectModelKey,
 } from './kvconfig.mjs';
@@ -289,17 +296,29 @@ async function main() {
       // instance by the bare name on the OpenAI wire (TASK-858).
       const request = { ...planned, modelKey: await resolveModelKey(port, planned.modelKey) };
 
-      log(`preloading ${request.modelKey}${request.identifier ? ` as "${request.identifier}"` : ''}`);
-      for (const { key, value } of request.kvConfig.fields) {
-        log(`  kvConfig ${key} = ${JSON.stringify(value)}`);
-      }
-      if (request.kvConfig.fields.length === 0) {
-        log('  kvConfig <empty> — every knob is unset, the daemon will use its own defaults');
-      }
-
-      const info = await loadModel(client, request);
-      log(`loaded ${info.modelKey} as "${info.identifier}"`);
-      await verifyApplied(client, info, request.kvConfig.fields);
+      // R2-F7: a failed load is retried ONCE with only its placement reset to
+      // the env plan's for this slug (else the daemon's default split), so a
+      // bad admin "make default" placement cannot crash-loop the pod. A drift
+      // (ReadBackError) is not retried; a second failure still fails the pod.
+      const attempt = async (candidate) => {
+        log(`preloading ${candidate.modelKey}${candidate.identifier ? ` as "${candidate.identifier}"` : ''}`);
+        for (const { key, value } of candidate.kvConfig.fields) {
+          log(`  kvConfig ${key} = ${JSON.stringify(value)}`);
+        }
+        if (candidate.kvConfig.fields.length === 0) {
+          log('  kvConfig <empty> — every knob is unset, the daemon will use its own defaults');
+        }
+        const info = await loadModel(client, candidate);
+        log(`loaded ${info.modelKey} as "${info.identifier}"`);
+        await verifyApplied(client, info, candidate.kvConfig.fields);
+        return info;
+      };
+      await preloadEntryWithFallback({
+        request,
+        attempt,
+        fallbackFor: (failed) => preloadFallbackRequest(failed, { env: process.env, gpuCount }),
+        log,
+      });
     }
   } finally {
     // The websocket keeps the event loop alive, so without this the process
@@ -344,7 +363,9 @@ async function verifyApplied(client, info, sentFields) {
   const summary =
     `the daemon is NOT serving on the requested parameters:\n${problems.map((p) => `    ${p}`).join('\n')}`;
   if ((process.env.HOPE_KVCONFIG_ENFORCE ?? 'strict') === 'strict') {
-    die(
+    // Thrown, not die()d, so it passes through preloadEntryWithFallback — which
+    // never retries a drift — to the fatal handler at the bottom of this file.
+    throw new ReadBackError(
       `${summary}\n  A pod that silently serves on different parameters than were requested is worse ` +
         'than one that does not start. Set HOPE_KVCONFIG_ENFORCE=warn to serve anyway.',
     );
@@ -360,6 +381,7 @@ main()
     process.exit(0);
   })
   .catch((error) => {
+    if (error instanceof ReadBackError) die(error.message);
     die(
       'preload failed — refusing to serve a pod that would answer with an empty or partial ' +
         `loaded_instances[] forever. Cause: ${error?.stack ?? error}`,

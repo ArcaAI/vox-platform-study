@@ -30,6 +30,9 @@ const LOAD_SPEC_KEYS = new Set([
   'kv_cache_quant',
   'gpu_split',
   'ttl_seconds',
+  // R2-F10, optional: the bytes the gateway expects this load to take. Present
+  // = the agent refuses INSUFFICIENT_MEMORY when a target card has less free.
+  'expected_bytes',
 ]);
 const GPU_SPLIT_KEYS = new Set(['strategy', 'priority', 'disabled_gpus', 'custom_ratio']);
 const KV_QUANT_KEYS = new Set(['k', 'v']);
@@ -94,7 +97,7 @@ const deviceIndex = (device, gpuCount) => {
  * @param {{ modelRef: string, loadSpec: object, device?: string|null, pin: boolean,
  *           ttlSeconds?: number|null, gpuCount?: number, env: object }} input
  * @returns {{ identifier: string, ttlMs?: number, kvConfig: {fields: Array<{key, value}>},
- *             gpuSplit?: object }}
+ *             gpuSplit?: object, expectedBytes?: number }}
  * @throws {LoadSpecError}
  */
 export function buildLoadRequest({ modelRef, loadSpec, device, pin, ttlSeconds, gpuCount, env }) {
@@ -147,6 +150,15 @@ export function buildLoadRequest({ modelRef, loadSpec, device, pin, ttlSeconds, 
     });
   }
 
+  const expectedBytes = spec.expected_bytes;
+  if (!isAbsent(expectedBytes) && (!Number.isSafeInteger(expectedBytes) || expectedBytes < 1)) {
+    throw new LoadSpecError(
+      'LOAD_FAILED',
+      `invalid load_spec: expected_bytes must be a positive integer or null, got ${JSON.stringify(expectedBytes)}`,
+      { field: 'load_spec.expected_bytes' },
+    );
+  }
+
   let request;
   try {
     request = assemblePlanRequest(entry, 'load_spec', { env, gpuCount });
@@ -164,6 +176,7 @@ export function buildLoadRequest({ modelRef, loadSpec, device, pin, ttlSeconds, 
     ttlMs: pin || isAbsent(ttl) ? undefined : ttl * 1000,
     kvConfig: request.kvConfig,
     gpuSplit: split,
+    expectedBytes: isAbsent(expectedBytes) ? undefined : expectedBytes,
   };
 }
 

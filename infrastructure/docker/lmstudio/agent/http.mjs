@@ -14,7 +14,11 @@
 //
 // Auth: `X-Service-Token` must equal INTERNAL_ACCESS_TOKEN (constant-time);
 // an EMPTY token is the dev bypass, as on the python services. /health is
-// exempt so a kubelet probe needs no secret.
+// exempt so a kubelet probe needs no secret. In a DEPLOYED process
+// (`deployed`, see server.mjs isDeployed) an empty token is NOT a bypass: every
+// /internal route answers 503 AUTH_NOT_CONFIGURED (R2-F9, TASK-892 C3) — an
+// agent that loads and unloads models on anyone's say-so is the failure, and a
+// loud refusal is the only honest answer to a missing secret.
 //
 // Unlike LM Studio's own server (which answers 200 for unknown paths), every
 // status here means what it says, so an httpGet probe on /health is valid.
@@ -164,12 +168,21 @@ const routeOf = (path) => {
 
 const FALLBACK_CODE = { load: 'LOAD_FAILED', unload: 'UNLOAD_FAILED' };
 
+const AUTH_NOT_CONFIGURED_MESSAGE =
+  'INTERNAL_ACCESS_TOKEN is unset, empty or the CHANGE_ME placeholder in a deployed environment ' +
+  '(DEPLOYMENT_ENVIRONMENT / NODE_ENV=production): every /internal route is refused instead of ' +
+  'running unauthenticated. Set the shared internal token; an EMPTY value is not a dev bypass here.';
+
 /**
- * @param {{ agent: object, token: string, log: (level, event, fields) => void }} deps
+ * @param {{ agent: object, token: string, deployed?: boolean, log: (level, event, fields) => void }} deps
+ *   `token` is the REAL secret ('' when absent or the placeholder); `deployed`
+ *   turns an empty token from the dev bypass into a refusal.
  * @returns {(req, res) => void} a node:http request listener
  */
-export function createHandler({ agent, token, log = () => {} }) {
+export function createHandler({ agent, token, deployed = false, log = () => {} }) {
   const expected = typeof token === 'string' ? token : '';
+  const refuseAll = deployed === true && expected === '';
+  if (refuseAll) log('error', 'agent.auth_not_configured', { message: AUTH_NOT_CONFIGURED_MESSAGE });
 
   return async function handle(req, res) {
     const started = Date.now();
@@ -193,6 +206,9 @@ export function createHandler({ agent, token, log = () => {} }) {
         return reply(up ? 200 : 503, { status: up ? 'ok' : 'unavailable', daemon: up ? 'up' : 'down' });
       }
 
+      if (refuseAll) {
+        return reply(503, { error: { code: 'AUTH_NOT_CONFIGURED', message: AUTH_NOT_CONFIGURED_MESSAGE } });
+      }
       if (expected !== '' && !tokenMatches(req.headers['x-service-token'], expected)) {
         return reply(401, { detail: 'Invalid or missing service token' });
       }

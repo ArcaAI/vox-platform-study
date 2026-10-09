@@ -708,3 +708,120 @@ export function diffAppliedConfig(sentFields, appliedFields) {
   }
   return problems;
 }
+
+// =============================================================================
+// TASK-1055 R2-F7 — boot resilience: one retry on the env placement
+// =============================================================================
+// The gateway plan carries the admin's "make default" placement (OD-4). A bad
+// one — a card that is full, a split the engine refuses — used to be fatal at
+// A-6 (`node load.mjs || die`), so the pod crash-looped and took ALL LLM
+// traffic down with it, the very outcome the env floor exists to prevent.
+//
+// So a failed entry is retried EXACTLY ONCE with only its PLACEMENT reset: to
+// the env plan's (LMS_PRELOAD_PLAN) placement for the same slug, else to no
+// `load.gpuSplitConfig` at all (the daemon's default split). Every other knob
+// — context, parallel, flash attention, KV quantization — is the governed
+// value, unchanged: only the placement is suspected. If the fallback fails too
+// the pod still dies; if there is no DIFFERENT placement to try there is no
+// retry. A read-back drift (ReadBackError) is never retried: it is the daemon
+// ignoring a key, not a placement fault, and the strict posture stands.
+
+/** The applied configuration differs from what was sent. Never retried. */
+export class ReadBackError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ReadBackError';
+  }
+}
+
+const GPU_SPLIT_KEY = 'load.gpuSplitConfig';
+
+const splitFieldOf = (request) => request.kvConfig.fields.find((field) => field.key === GPU_SPLIT_KEY)?.value;
+
+/**
+ * The fallback request for a failed preload entry, or `null` when the fallback
+ * placement is the one that just failed.
+ *
+ * @param {{ identifier?: string, modelKey: string, kvConfig: {fields: Array} }} request
+ * @param {{ env: object, gpuCount?: number }} ctx
+ * @returns {{ request: object, placementSource: 'env-plan'|'daemon-default', note?: string } | null}
+ */
+export function preloadFallbackRequest(request, { env, gpuCount }) {
+  const slug = request.identifier ?? request.modelKey;
+  let split;
+  let placementSource = 'daemon-default';
+  let note;
+
+  const raw = read(env, 'LMS_PRELOAD_PLAN');
+  if (raw !== undefined) {
+    let entries;
+    try {
+      entries = JSON.parse(raw);
+    } catch {
+      note = 'LMS_PRELOAD_PLAN is not valid JSON';
+    }
+    if (Array.isArray(entries)) {
+      const at = entries.findIndex((entry) => typeof entry?.slug === 'string' && entry.slug.trim() === slug);
+      if (at >= 0) {
+        try {
+          split = splitFieldOf(assemblePlanRequest(entries[at], `LMS_PRELOAD_PLAN[${at}]`, { env, gpuCount }));
+          placementSource = 'env-plan';
+        } catch (error) {
+          if (!(error instanceof KvConfigError)) throw error;
+          note = error.message;
+        }
+      }
+    } else if (note === undefined) {
+      note = 'LMS_PRELOAD_PLAN is not an array';
+    }
+  }
+
+  if (stableStringify(split ?? null) === stableStringify(splitFieldOf(request) ?? null)) return null;
+
+  const fields = request.kvConfig.fields.filter((field) => field.key !== GPU_SPLIT_KEY);
+  if (split !== undefined) fields.push({ key: GPU_SPLIT_KEY, value: split });
+  return {
+    request: { ...request, kvConfig: { ...request.kvConfig, fields } },
+    placementSource,
+    ...(note === undefined ? {} : { note }),
+  };
+}
+
+const causeOf = (error) => String(error?.message ?? error);
+
+/**
+ * Preload one entry: `attempt(request)`, and on a load failure ONE retry with
+ * `fallbackFor(request)` (normally preloadFallbackRequest). I/O is injected.
+ *
+ * @returns {Promise<{ info: unknown, request: object, fellBack: boolean }>}
+ * @throws the original error (drift, or nothing different to try), or one naming both causes.
+ */
+export async function preloadEntryWithFallback({ request, attempt, fallbackFor, log }) {
+  try {
+    return { info: await attempt(request), request, fellBack: false };
+  } catch (error) {
+    if (error instanceof ReadBackError) throw error;
+    const slug = request.identifier ?? request.modelKey;
+    const fallback = fallbackFor(request);
+    if (!fallback) {
+      log(`loader.preload_fallback slug=${slug}: no different placement to try — not retrying. Cause: ${causeOf(error)}`);
+      throw error;
+    }
+    log(
+      `WARNING loader.preload_fallback slug=${slug}: preload FAILED on the planned placement ` +
+        `${JSON.stringify(splitFieldOf(request) ?? null)} (${causeOf(error)}); retrying ONCE on the ` +
+        `${fallback.placementSource} placement ${JSON.stringify(splitFieldOf(fallback.request) ?? null)}` +
+        `${fallback.note ? ` (${fallback.note})` : ''}. Fix the model's default placement in the console.`,
+    );
+    try {
+      return { info: await attempt(fallback.request), request: fallback.request, fellBack: true };
+    } catch (second) {
+      if (second instanceof ReadBackError) throw second;
+      throw new Error(
+        `${slug} failed to preload on the planned placement (${causeOf(error)}) AND on the ` +
+          `${fallback.placementSource} fallback placement (${causeOf(second)})`,
+        { cause: second },
+      );
+    }
+  }
+}

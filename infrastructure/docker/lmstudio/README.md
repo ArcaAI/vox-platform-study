@@ -105,6 +105,15 @@ Three properties are worth knowing before changing this:
   closed. A KV quantization without `flashAttention: true` is refused, as on the env path.
 - **A governed change applies on the next LM Studio restart** — parallel slots cannot change on a
   loaded model.
+- **One retry per entry on a bad placement (TASK-1055 R2-F7).** A failed preload is no longer fatal
+  at once: the entry is retried ONCE with only its placement (`load.gpuSplitConfig`) reset — to the
+  `LMS_PRELOAD_PLAN` entry with the same slug, else to no split at all (the daemon's default) —
+  and every other knob kept. The loader logs `WARNING loader.preload_fallback slug=…` with the
+  failed and the fallback placement and the cause. It exists because an admin "make default"
+  placement (OD-4) lands in the gateway plan, and a bad one used to crash-loop the pod and take
+  all LLM traffic down. If the fallback also fails, or there is no DIFFERENT placement to try, the
+  pod still dies (`node load.mjs || die`). A read-back drift is never retried — strict stays
+  strict.
 - **A-7 holds PID 1 on `lms daemon status`** (5 s poll, exit 1 after three consecutive misses).
   It used to `exec lms log stream`, which put every prompt and completion — PHI — into Loki.
 
@@ -123,23 +132,50 @@ the boot loader uses, so **a console load is a boot load** (AC-2).
 |---|---|
 | `GET /health` | 200 `{status:"ok",daemon:"up"}` only when `/lmstudio-greeting` answers `{"lmstudio":true}`, else 503. No token. This is the pod's readiness (OD-6) — it names no model, so unloading one can no longer take the pod out of its Service (E1). Its status codes are honest, so an `httpGet` probe works here (unlike port 1234) |
 | `GET /internal/residency` | The python agent's report shape. `devices[]` = every card nvidia-smi lists (`cuda:<index>`, `index`, `name`, `uuid`, `total_bytes`, `free_bytes`, `process_bytes: null`). `models[]` = every loaded instance (llm + embedding): `model_ref` = identifier (a JIT instance's identifier is its engine key), `engine_key`, `instance_id`, `load_config` read back with `getLoadConfig`, `device` = `cuda:<n>` when the split enables one card else `multi`, `device_bytes` measured by this agent's own load, or — for boot-plan / JIT instances — the GGUF size split by the configured gpuSplit (`bytes_source: estimated`). 503 `DAEMON_UNAVAILABLE` if the daemon does not answer |
-| `POST /internal/residency/load` | `model_ref` resolves to the exact key with the boot loader's `selectModelKey` (exact, else the unique `<ref>@<quant>`, never `@?`; several → 400 with `candidates`; none → 404 `MODEL_UNKNOWN`). `load_spec` (identifier, context_length, parallel, flash_attention, kv_cache_quant, gpu_split, ttl_seconds — any other key is refused) becomes the kvConfig; `device: cuda:<n>` overrides the split to `priorityOrder [n]` with every other card disabled (`cpu` / a card the pod lacks / an unknown card count → 400 `DEVICE_UNAVAILABLE`). One load at a time (a second → 409 `LOAD_IN_PROGRESS`). Per-card `memory.used` is read (settled) before and after; growth above 32 MiB is `device_bytes`. Strict read-back: drift → the instance is unloaded again and 500 `LOAD_FAILED` names the `fields` (`HOPE_KVCONFIG_ENFORCE=warn` keeps it). An identifier already loaded → `already_loaded`. A daemon failure → 500 `LOAD_FAILED` with the engine's message |
+| `POST /internal/residency/load` | Optional `load_spec.expected_bytes` (R2-F10, a positive integer the gateway may send): before touching the daemon, each target card's share of it — the bytes divided by the effective split (`device` pin = one card; `gpu_split`; none = every card evenly) — is compared with nvidia-smi `memory.free`; short → 503 `INSUFFICIENT_MEMORY` `{device, needed_bytes, free_bytes}` (the first short card). Absent = no check; no nvidia-smi reading = skipped with a `residency.memory_check_skipped` warning. `model_ref` resolves to the exact key with the boot loader's `selectModelKey` (exact, else the unique `<ref>@<quant>`, never `@?`; several → 400 with `candidates`; none → 404 `MODEL_UNKNOWN`). `load_spec` (identifier, context_length, parallel, flash_attention, kv_cache_quant, gpu_split, ttl_seconds — any other key is refused) becomes the kvConfig; `device: cuda:<n>` overrides the split to `priorityOrder [n]` with every other card disabled (`cpu` / a card the pod lacks / an unknown card count → 400 `DEVICE_UNAVAILABLE`). One load at a time (a second → 409 `LOAD_IN_PROGRESS`). Per-card `memory.used` is read (settled) before and after; growth above 32 MiB is `device_bytes`. Strict read-back: drift → the instance is unloaded again and 500 `LOAD_FAILED` names the `fields` (`HOPE_KVCONFIG_ENFORCE=warn` keeps it). An identifier already loaded → `already_loaded`. A daemon failure → 500 `LOAD_FAILED` with the engine's message |
 | `POST /internal/residency/unload` | By identifier, and by engine key / bare ref for JIT instances; `device` limits it to the copy on that card. Nothing matching (or a daemon "not found") → `not_loaded`. LM Studio has no in-flight count, so it is 0 and `force` never matters |
 | `PUT /internal/residency/models/{ref}/policy` | `admin_pinned` / `ttl_seconds` kept **in the agent's memory** and reported; an absent field is unchanged, `ttl_seconds: null` resets. Not loaded → 404. LM Studio cannot change a TTL after load, so the daemon's TTL is the one sent at load (none when `pin: true`); a policy TTL applies at the next load. A restart of the agent forgets policies — the gateway re-asserts them |
 
-Auth: `X-Service-Token` must equal `INTERNAL_ACCESS_TOKEN` (constant-time; empty = dev bypass;
-`/health` exempt); a miss is 401. Bodies are as strict as the python agent's pydantic models
+Auth: `X-Service-Token` must equal `INTERNAL_ACCESS_TOKEN` (constant-time; `/health` exempt); a
+miss is 401. An empty token — or the `CHANGE_ME` placeholder, which counts as empty exactly as
+`hope_env.real_secret` treats it — is the dev bypass ONLY on a developer machine. In a **deployed**
+process it FAILS CLOSED (R2-F9): every `/internal` route answers 503 `AUTH_NOT_CONFIGURED`, the
+agent logs `agent.auth_not_configured` at `error` when it starts, and `agent.gpus` reports
+`auth: REFUSING …`. "Deployed" is the python services' rule (`apps/nlp/.../internal_auth.py`
+`is_deployed`, TASK-892 C3): a non-blank `DEPLOYMENT_ENVIRONMENT` (base `production`, dev overlay
+`dev`) or `NODE_ENV=production`; `NODE_ENV=test` overrides both; `CI` alone is not a deployment. Bodies are as strict as the python agent's pydantic models
 (unknown field / wrong type → 422 `INVALID_REQUEST`, malformed JSON → 400, > 64 KiB → 413).
 Logs are JSON lines on stdout (`{"ts","level","logger":"lmstudio-agent","event",…}`, SDK
 console routed in); a failed load or unload is logged at `warn` with the engine's reason (E12).
 The agent never carries model I/O.
 
 Env: `LMS_AGENT_HOST`/`LMS_AGENT_PORT` (0.0.0.0 / 8869), `INTERNAL_ACCESS_TOKEN`,
+`DEPLOYMENT_ENVIRONMENT` / `NODE_ENV` (the deployed marker above),
 `LMS_GPU_COUNT` (override the nvidia-smi count), `LMS_AGENT_LOAD_TIMEOUT_SECONDS` (600),
 `HOPE_KVCONFIG_ENFORCE`, `HOPE_RESIDENCY_AGENT=0` (disable). The agent needs `nvidia-smi` in the
 container (the NVIDIA runtime mounts it into a `runtimeClassName: nvidia` pod) for device lists
 and measurement; without it devices are empty, bytes fall back to estimates, and a `device`
 pin is refused unless `LMS_GPU_COUNT` is set.
+
+#### Timeouts: the agent answers before the gateway gives up (R1-F5)
+
+`LMS_AGENT_LOAD_TIMEOUT_SECONDS` (default **600**) bounds the daemon's `loadModel` channel for one
+load. The gateway's timeout for one agent load is **≥ 900 s** (`GATEWAY_AGENT_LOAD_TIMEOUT_SECONDS`
+in `agent/server.mjs` mirrors the floor). The agent's ceiling must stay **strictly below** the
+gateway's, with margin for what surrounds the channel — the settled nvidia-smi reads before and
+after (up to 15 s each) and the read-back — so a slow load ends as a clean 500 `LOAD_FAILED` from
+the agent, never as a gateway abort while the daemon is still loading (a model that then lands
+unreported). Raising one means raising the other; the agent warns
+`agent.load_timeout_not_below_gateway` at startup if it is configured at or above 900 s.
+
+#### Agent state is memory-only (R2-F11)
+
+`admin_pinned`, a policy `ttl_seconds` and the `measured` per-card bytes live in the agent
+PROCESS. An agent restart (the supervisor's, or the pod's) forgets them: pins read
+`admin_pinned: false`, instances the agent had measured fall back to `bytes_source: estimated`.
+That is by design — the **gateway is the source of truth** and re-asserts its pins/TTLs on the
+agent (policy PUT) when it next reconciles; the agent never persists them. The daemon's own TTL is
+unaffected (it was fixed at load).
 
 #### GPU numbering (E13)
 

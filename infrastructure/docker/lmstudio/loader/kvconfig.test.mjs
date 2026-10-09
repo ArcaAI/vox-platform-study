@@ -632,3 +632,192 @@ test('diffAppliedConfig: a dropped key and a changed value are both named', () =
   assert.equal(problems[1].applied, undefined);
   assert.match(problems[1].message, /NOT APPLIED/);
 });
+
+// =============================================================================
+// R2-F7 — boot resilience: a failed entry is retried ONCE on the env placement
+// =============================================================================
+import { ReadBackError, preloadEntryWithFallback, preloadFallbackRequest } from './kvconfig.mjs';
+
+const splitOfRequest = (req) => req.kvConfig.fields.find((f) => f.key === 'load.gpuSplitConfig')?.value;
+
+/** A gateway request pinned to GPU 0 — the "make default" placement that may be bad. */
+const gatewayRequestPinned = (gpu = 0, gpuCount = 2) =>
+  resolvePreloadRequests({
+    effectiveConfig: { lmStudioServing: { preload: [{ slug: 'gemma', contextLength: 8192, parallel: 4, gpu }] } },
+    env: {},
+    gpuCount,
+  }).requests[0];
+
+test('preloadFallbackRequest: the env plan entry for the SAME slug supplies the placement; nothing else changes', () => {
+  const failed = gatewayRequestPinned(0);
+  const env = { LMS_PRELOAD_PLAN: JSON.stringify([{ slug: 'other', gpu: 0 }, { slug: 'gemma', contextLength: 1, gpu: 1 }]) };
+  const fallback = preloadFallbackRequest(failed, { env, gpuCount: 2 });
+  assert.equal(fallback.placementSource, 'env-plan');
+  assert.deepEqual(splitOfRequest(fallback.request), {
+    strategy: 'priorityOrder',
+    priority: [1],
+    disabledGpus: [0],
+    customRatio: [],
+  });
+  // Only the placement is reset — context/parallel stay what the gateway asked for.
+  const others = (req) => req.kvConfig.fields.filter((f) => f.key !== 'load.gpuSplitConfig');
+  assert.deepEqual(others(fallback.request), others(failed));
+  assert.equal(fallback.request.identifier, 'gemma');
+  assert.equal(fallback.request.modelKey, failed.modelKey);
+  assert.equal(fallback.request.ttlMs, undefined);
+  assert.notEqual(fallback.request, failed, 'a copy, never a mutation');
+  assert.ok(splitOfRequest(failed).priority[0] === 0, 'the failed request is untouched');
+});
+
+test('preloadFallbackRequest: no env entry for the slug -> the daemon default split (field removed)', () => {
+  const failed = gatewayRequestPinned(0);
+  for (const env of [{}, { LMS_PRELOAD_PLAN: JSON.stringify([{ slug: 'other', gpu: 1 }]) }]) {
+    const fallback = preloadFallbackRequest(failed, { env, gpuCount: 2 });
+    assert.equal(fallback.placementSource, 'daemon-default');
+    assert.equal(splitOfRequest(fallback.request), undefined);
+    assert.equal(fallback.request.kvConfig.fields.length, failed.kvConfig.fields.length - 1);
+  }
+});
+
+test('preloadFallbackRequest: an env entry with no placement of its own is the daemon default too', () => {
+  const failed = gatewayRequestPinned(0);
+  const env = { LMS_PRELOAD_PLAN: JSON.stringify([{ slug: 'gemma', contextLength: 8192 }]) };
+  const fallback = preloadFallbackRequest(failed, { env, gpuCount: 2 });
+  assert.equal(fallback.placementSource, 'env-plan');
+  assert.equal(splitOfRequest(fallback.request), undefined);
+});
+
+test('preloadFallbackRequest: null when the fallback placement is the one that just failed', () => {
+  // Env plan says gpu 0 too: retrying the identical placement buys a second cold load for nothing.
+  const failed = gatewayRequestPinned(0);
+  assert.equal(preloadFallbackRequest(failed, { env: { LMS_PRELOAD_PLAN: JSON.stringify([{ slug: 'gemma', gpu: 0 }]) }, gpuCount: 2 }), null);
+  // A request with no split already IS the daemon default.
+  const unplaced = resolvePreloadRequests({
+    effectiveConfig: { lmStudioServing: { preload: [{ slug: 'gemma', contextLength: 8192 }] } },
+    env: {},
+    gpuCount: 2,
+  }).requests[0];
+  assert.equal(preloadFallbackRequest(unplaced, { env: {}, gpuCount: 2 }), null);
+});
+
+test('preloadFallbackRequest: a malformed env plan (or an unbuildable entry) falls to the daemon default, naming why', () => {
+  const failed = gatewayRequestPinned(0);
+  const bad = preloadFallbackRequest(failed, { env: { LMS_PRELOAD_PLAN: '{nope' }, gpuCount: 2 });
+  assert.equal(bad.placementSource, 'daemon-default');
+  assert.match(bad.note, /LMS_PRELOAD_PLAN/);
+  const unbuildable = preloadFallbackRequest(failed, {
+    env: { LMS_PRELOAD_PLAN: JSON.stringify([{ slug: 'gemma', gpu: 7 }]) },
+    gpuCount: 2,
+  });
+  assert.equal(unbuildable.placementSource, 'daemon-default');
+  assert.match(unbuildable.note, /GPU 7 does not exist/);
+});
+
+const quietLog = () => {
+  const lines = [];
+  return { lines, log: (message) => lines.push(message) };
+};
+
+test('preloadEntryWithFallback: a first-attempt success is returned as is, no fallback', async () => {
+  const { lines, log } = quietLog();
+  const request = gatewayRequestPinned(0);
+  const seen = [];
+  const out = await preloadEntryWithFallback({
+    request,
+    attempt: async (r) => (seen.push(r), { identifier: 'gemma' }),
+    fallbackFor: () => assert.fail('no fallback on success'),
+    log,
+  });
+  assert.deepEqual(out, { info: { identifier: 'gemma' }, request, fellBack: false });
+  assert.equal(seen.length, 1);
+  assert.equal(lines.length, 0);
+});
+
+test('preloadEntryWithFallback: a failed load is retried ONCE on the fallback placement, logged loudly', async () => {
+  const { lines, log } = quietLog();
+  const request = gatewayRequestPinned(0);
+  const env = { LMS_PRELOAD_PLAN: JSON.stringify([{ slug: 'gemma', gpu: 1 }]) };
+  const seen = [];
+  const out = await preloadEntryWithFallback({
+    request,
+    attempt: async (r) => {
+      seen.push(r);
+      if (seen.length === 1) throw new Error('CUDA out of memory on device 0');
+      return { identifier: 'gemma' };
+    },
+    fallbackFor: (r) => preloadFallbackRequest(r, { env, gpuCount: 2 }),
+    log,
+  });
+  assert.equal(seen.length, 2);
+  assert.equal(out.fellBack, true);
+  assert.equal(out.request, seen[1]);
+  assert.deepEqual(splitOfRequest(seen[1]).priority, [1]);
+  const line = lines.find((l) => l.includes('loader.preload_fallback'));
+  assert.ok(line, `expected a loader.preload_fallback line, got ${JSON.stringify(lines)}`);
+  assert.match(line, /WARNING/);
+  assert.match(line, /gemma/);
+  assert.match(line, /CUDA out of memory on device 0/);
+  assert.match(line, /env-plan/);
+});
+
+test('preloadEntryWithFallback: if the fallback ALSO fails, it throws naming both causes (the pod still dies)', async () => {
+  const { log } = quietLog();
+  let n = 0;
+  await assert.rejects(
+    preloadEntryWithFallback({
+      request: gatewayRequestPinned(0),
+      attempt: async () => {
+        n += 1;
+        throw new Error(n === 1 ? 'first: OOM' : 'second: file missing');
+      },
+      fallbackFor: (r) => preloadFallbackRequest(r, { env: {}, gpuCount: 2 }),
+      log,
+    }),
+    (error) => {
+      assert.match(error.message, /first: OOM/);
+      assert.match(error.message, /second: file missing/);
+      assert.match(error.message, /daemon-default/);
+      return true;
+    },
+  );
+  assert.equal(n, 2, 'exactly one retry');
+});
+
+test('preloadEntryWithFallback: no different placement to try -> the original error, no retry', async () => {
+  const { lines, log } = quietLog();
+  let n = 0;
+  const original = new Error('OOM');
+  await assert.rejects(
+    preloadEntryWithFallback({
+      request: gatewayRequestPinned(0),
+      attempt: async () => {
+        n += 1;
+        throw original;
+      },
+      fallbackFor: () => null,
+      log,
+    }),
+    (error) => error === original,
+  );
+  assert.equal(n, 1);
+  assert.ok(lines.some((l) => l.includes('no different placement')));
+});
+
+test('preloadEntryWithFallback: a read-back drift is NOT retried — strict read-back semantics are kept', async () => {
+  const { log } = quietLog();
+  let n = 0;
+  const drift = new ReadBackError('llm.load.llama.flashAttention: NOT APPLIED');
+  await assert.rejects(
+    preloadEntryWithFallback({
+      request: gatewayRequestPinned(0),
+      attempt: async () => {
+        n += 1;
+        throw drift;
+      },
+      fallbackFor: () => assert.fail('a drift never reaches the fallback'),
+      log,
+    }),
+    (error) => error === drift,
+  );
+  assert.equal(n, 1);
+});
