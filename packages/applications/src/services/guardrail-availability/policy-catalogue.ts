@@ -114,6 +114,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
   {
     id: 'prompt_safety',
     ...CLASSIFIER,
+    // Owner 2026-10-09 (TASK-1053): warn by default — the classifier false-flags clinical notes; a hit must not block one.
+    platformDefaultAction: 'warn',
     defaultEnabled: true,
     ...CLASSIFIER_INBOUND,
     label: 'Prompt safety',
@@ -123,6 +125,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
   {
     id: 'prompt_toxicity',
     ...CLASSIFIER,
+    // Owner 2026-10-09 (TASK-1053): warn by default — the classifier false-flags clinical notes; a hit must not block one.
+    platformDefaultAction: 'warn',
     defaultEnabled: true,
     ...CLASSIFIER_INBOUND,
     label: 'Prompt toxicity',

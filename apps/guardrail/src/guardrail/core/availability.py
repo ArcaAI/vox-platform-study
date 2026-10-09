@@ -92,11 +92,13 @@ CATALOGUE_DEFAULTS: Final[dict[str, CheckDefault]] = {
     "jailbreak_detection": CheckDefault(
         ("inbound", "outbound"), _ALL, ACTION_BLOCK, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
     ),
+    # Owner 2026-10-09 (TASK-1053): warn by default — the classifier false-flags clinical notes.
     "prompt_safety": CheckDefault(
-        ("inbound",), _ALL, ACTION_BLOCK, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
+        ("inbound",), _ALL, ACTION_WARN, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
     ),
+    # Owner 2026-10-09 (TASK-1053): warn by default — the classifier false-flags clinical notes.
     "prompt_toxicity": CheckDefault(
-        ("inbound",), _ALL, ACTION_BLOCK, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
+        ("inbound",), _ALL, ACTION_WARN, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
     ),
     # Owner 2026-10-08: warn by default — the classifier false-flags clinical notes.
     "response_safety": CheckDefault(("outbound",), _ALL, ACTION_WARN, False, True),

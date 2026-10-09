@@ -59,7 +59,7 @@
         "warn",
         "block"
       ],
-      "platformDefaultAction": "block",
+      "platformDefaultAction": "warn",
       "locked": false,
       "defaultEnabled": true,
       "inboundRegions": [
@@ -78,7 +78,7 @@
         "warn",
         "block"
       ],
-      "platformDefaultAction": "block",
+      "platformDefaultAction": "warn",
       "locked": false,
       "defaultEnabled": true,
       "inboundRegions": [
