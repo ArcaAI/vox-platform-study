@@ -462,6 +462,12 @@ log "HTTP server is live on ${BIND}:${PORT}"
 # applied configuration back and refuses when a kvConfig key was silently
 # dropped, which `lms load` could not do because an unknown kvConfig key is
 # ignored rather than rejected.
+#
+# TASK-1055 R2-F7: before giving up on an entry the loader retries it ONCE with
+# only its placement reset (LMS_PRELOAD_PLAN's for that slug, else the daemon's
+# default split) and logs `loader.preload_fallback` — so a bad admin "make
+# default" GPU placement cannot crash-loop the pod. A second failure, or a
+# read-back drift, still exits non-zero and lands on this die.
 if [ -n "${LMS_LOAD:-}" ] || [ -n "${LMS_PRELOAD_PLAN:-}" ] \
    || { [ -n "${HOPE_API_URL:-}" ] && [ -n "${INTERNAL_ACCESS_TOKEN:-}" ]; }; then
   # Assert the two halves exist before use, in the spirit of the rest of this

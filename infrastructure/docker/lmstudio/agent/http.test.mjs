@@ -203,3 +203,52 @@ test('every request writes one access log line without the token', async () => {
     assert.ok(!JSON.stringify(logs).includes(TOKEN));
   });
 });
+
+// ── R2-F9: fail CLOSED when deployed with no usable token ─────────────────────
+
+async function withDeployedServer({ token }, fn) {
+  const agent = fakeAgent();
+  const logs = [];
+  const server = createServer(
+    createHandler({ agent, token, deployed: true, log: (level, event, fields) => logs.push({ level, event, ...fields }) }),
+  );
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await fn({ base: `http://127.0.0.1:${server.address().port}`, agent, logs });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+test('deployed + empty token: EVERY /internal route is refused 503 AUTH_NOT_CONFIGURED; /health stays open', async () => {
+  await withDeployedServer({ token: '' }, async ({ base, agent, logs }) => {
+    assert.ok(
+      logs.some((l) => l.level === 'error' && l.event === 'agent.auth_not_configured'),
+      'one loud line when the handler is built',
+    );
+    for (const [path, method, body] of [
+      ['/internal/residency', 'GET'],
+      ['/internal/residency/load', 'POST', { model_ref: 'x' }],
+      ['/internal/residency/unload', 'POST', { model_ref: 'x' }],
+      ['/internal/residency/models/x/policy', 'PUT', { admin_pinned: true }],
+    ]) {
+      for (const token of [null, '', 'CHANGE_ME', 'anything']) {
+        const { status, json } = await call(base, path, { method, body, token });
+        assert.equal(status, 503, `${method} ${path} with token ${JSON.stringify(token)}`);
+        assert.equal(json.error.code, 'AUTH_NOT_CONFIGURED');
+        assert.match(json.error.message, /INTERNAL_ACCESS_TOKEN/);
+      }
+    }
+    assert.equal(agent.calls.length, 0, 'nothing reaches the agent');
+    assert.equal((await call(base, '/health', { token: null })).status, 200);
+    assert.ok(logs.some((l) => l.event === 'http.request' && l.status === 503));
+  });
+});
+
+test('deployed + a real token: the normal gate (401 without it, 200 with it)', async () => {
+  await withDeployedServer({ token: TOKEN }, async ({ base, logs }) => {
+    assert.equal((await call(base, '/internal/residency', { token: null })).status, 401);
+    assert.equal((await call(base, '/internal/residency')).status, 200);
+    assert.ok(!logs.some((l) => l.event === 'agent.auth_not_configured'));
+  });
+});

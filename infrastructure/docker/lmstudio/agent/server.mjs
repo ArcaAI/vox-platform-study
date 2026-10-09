@@ -14,11 +14,14 @@
 // Env:
 //   LMS_AGENT_HOST / LMS_AGENT_PORT   bind address (0.0.0.0 / 8869)
 //   LMS_PORT                          the daemon's port (1234)
-//   INTERNAL_ACCESS_TOKEN             X-Service-Token; empty = dev bypass
+//   INTERNAL_ACCESS_TOKEN             X-Service-Token; empty (or CHANGE_ME) = dev bypass,
+//                                     REFUSED when deployed (see isDeployed, R2-F9)
+//   DEPLOYMENT_ENVIRONMENT / NODE_ENV the deployed-process marker (as the python services)
 //   LMS_GPU_COUNT                     override the nvidia-smi card count
 //   LMS_GPU                           offload ratio, as the boot loader (max)
 //   HOPE_KVCONFIG_ENFORCE             strict (default) | warn — read-back drift
-//   LMS_AGENT_LOAD_TIMEOUT_SECONDS    one load's ceiling (600)
+//   LMS_AGENT_LOAD_TIMEOUT_SECONDS    one load's ceiling (600); must stay below the
+//                                     gateway's agent-load timeout (>= 900 s, R1-F5)
 //   CUDA_DEVICE_ORDER                 must be PCI_BUS_ID for cuda:<n> == nvidia-smi index n (E13)
 // =============================================================================
 import { createServer } from 'node:http';
@@ -45,13 +48,41 @@ const positiveInt = (env, name, fallback) => {
   return value;
 };
 
+/** The unfilled-secret sentinel (hope_env PLACEHOLDER_SENTINEL): the ABSENCE of a value. */
+export const PLACEHOLDER_SENTINEL = 'CHANGE_ME';
+
+/**
+ * The gateway's timeout for one agent load (R1-F5: >= 900 s). The agent's own
+ * load ceiling must stay STRICTLY below it, so the agent answers a slow load
+ * with a clean LOAD_FAILED instead of the gateway aborting mid-load and
+ * reporting a timeout for a model that may still land.
+ */
+export const GATEWAY_AGENT_LOAD_TIMEOUT_SECONDS = 900;
+
+/**
+ * Is this a DEPLOYED process, i.e. one that must fail closed? Same rule as the
+ * python services (apps/nlp/src/nlp/core/internal_auth.py `is_deployed`,
+ * TASK-892 C3): `NODE_ENV=test` declares a test run and wins; otherwise a
+ * non-blank DEPLOYMENT_ENVIRONMENT (set in every deployed environment — base
+ * `production`, the dev overlay `dev`) or NODE_ENV=production. `CI` alone is
+ * not a deployment.
+ */
+export function isDeployed(env) {
+  const nodeEnv = String(env.NODE_ENV ?? '').trim().toLowerCase();
+  if (nodeEnv === 'test') return false;
+  if (String(env.DEPLOYMENT_ENVIRONMENT ?? '').trim() !== '') return true;
+  return nodeEnv === 'production';
+}
+
 /** The agent's configuration, from the environment. Throws naming the variable. */
 export function agentConfig(env) {
+  const token = read(env, 'INTERNAL_ACCESS_TOKEN') ?? '';
   return {
     host: read(env, 'LMS_AGENT_HOST') ?? '0.0.0.0',
     port: positiveInt(env, 'LMS_AGENT_PORT', 8869),
     daemonPort: positiveInt(env, 'LMS_PORT', 1234),
-    token: read(env, 'INTERNAL_ACCESS_TOKEN') ?? '',
+    // The sentinel is no token at all (hope_env.real_secret): dev bypass, or a refusal when deployed.
+    token: token === PLACEHOLDER_SENTINEL ? '' : token,
     instance: read(env, 'HOSTNAME') ?? 'hope-lmstudio',
     loadTimeoutMs: positiveInt(env, 'LMS_AGENT_LOAD_TIMEOUT_SECONDS', 600) * 1000,
   };
@@ -90,7 +121,8 @@ export function buildAgentServer({ env = process.env, daemon, gpus, write } = {}
   const gpuReader = gpus ?? { read: () => readGpus() };
 
   const agent = createResidencyAgent({ daemon: daemonAdapter, gpus: gpuReader, env, instance: config.instance, log });
-  const server = createServer(createHandler({ agent, token: config.token, log }));
+  const deployed = isDeployed(env);
+  const server = createServer(createHandler({ agent, token: config.token, deployed, log }));
   // A load can legitimately take minutes; the response must not be cut short.
   server.requestTimeout = 0;
 
@@ -110,11 +142,26 @@ export function buildAgentServer({ env = process.env, daemon, gpus, write } = {}
           'and a gpuSplit index n are not guaranteed to be the same card',
       });
     }
+    if (config.loadTimeoutMs >= GATEWAY_AGENT_LOAD_TIMEOUT_SECONDS * 1000) {
+      log('warn', 'agent.load_timeout_not_below_gateway', {
+        load_timeout_seconds: config.loadTimeoutMs / 1000,
+        gateway_timeout_seconds: GATEWAY_AGENT_LOAD_TIMEOUT_SECONDS,
+        message:
+          'LMS_AGENT_LOAD_TIMEOUT_SECONDS is not below the gateway agent-load timeout: the gateway may abort a ' +
+          'load the agent is still waiting on and report a timeout for a model that then lands',
+      });
+    }
     const readings = await gpuReader.read();
+    let auth = 'X-Service-Token';
+    if (config.token === '') {
+      auth = deployed
+        ? 'REFUSING every /internal route (no INTERNAL_ACCESS_TOKEN in a deployed environment)'
+        : 'disabled (empty INTERNAL_ACCESS_TOKEN, dev bypass)';
+    }
     log('info', 'agent.gpus', {
       cuda_device_order: order,
       gpus: readings ? readings.map(({ index, uuid, name }) => ({ index, uuid, name })) : null,
-      auth: config.token === '' ? 'disabled (empty INTERNAL_ACCESS_TOKEN)' : 'X-Service-Token',
+      auth,
     });
   };
 

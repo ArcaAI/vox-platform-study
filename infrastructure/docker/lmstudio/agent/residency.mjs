@@ -210,6 +210,49 @@ export function createResidencyAgent({
       maxWaitMs: knobs.maxWaitMs,
     });
 
+  /**
+   * R2-F10: when the load names `load_spec.expected_bytes`, refuse before
+   * touching the daemon if a target card has less free memory than its share
+   * (the bytes divided by the split, as estimateDeviceBytes books a boot
+   * instance — so a split is checked per card). Absent = no check. No reading
+   * (no nvidia-smi, or a card missing from it) = skipped with a warning: the
+   * gateway's admission has already run, and this is a second line, not the gate.
+   */
+  const assertRoomFor = (modelRef, request, readings, gpuCount) => {
+    if (request.expectedBytes === undefined) return;
+    const needs = estimateDeviceBytes(request.expectedBytes, request.gpuSplit, gpuCount);
+    const byDevice = new Map((Array.isArray(readings) ? readings : []).map((gpu) => [`cuda:${gpu.index}`, gpu]));
+    const entries = Object.entries(needs);
+    if (entries.length === 0 || byDevice.size === 0) {
+      log('warn', 'residency.memory_check_skipped', {
+        model_ref: modelRef,
+        expected_bytes: request.expectedBytes,
+        reason: 'no usable nvidia-smi reading',
+      });
+      return;
+    }
+    for (const [device, needed] of entries) {
+      const gpu = byDevice.get(device);
+      if (!gpu) {
+        log('warn', 'residency.memory_check_skipped', { model_ref: modelRef, device, reason: 'no reading for this card' });
+        continue;
+      }
+      if (gpu.freeBytes < needed) {
+        log('warn', 'residency.load_refused_memory', {
+          model_ref: modelRef,
+          device,
+          needed_bytes: needed,
+          free_bytes: gpu.freeBytes,
+        });
+        throw new ResidencyError(
+          'INSUFFICIENT_MEMORY',
+          `no room to load ${modelRef} on ${device}: needs ${needed} bytes, ${gpu.freeBytes} free`,
+          { status: 503, extra: { device, needed_bytes: needed, free_bytes: gpu.freeBytes } },
+        );
+      }
+    }
+  };
+
   // ── read side ─────────────────────────────────────────────────────────────
 
   async function report() {
@@ -287,6 +330,8 @@ export function createResidencyAgent({
       if (!choice.key) {
         throw new ResidencyError('MODEL_UNKNOWN', `LM Studio carries no loadable model '${modelRef}'`, { status: 404 });
       }
+
+      assertRoomFor(modelRef, request, readings, gpuCount);
 
       const sent = request.kvConfig.fields;
       log('info', 'residency.load_started', {

@@ -534,3 +534,98 @@ test('unload: a real unload failure is UNLOAD_FAILED and keeps the measurement a
   assert.equal(model.bytes_source, 'measured');
   assert.equal(model.admin_pinned, true);
 });
+
+// ── R2-F10: an optional load_spec.expected_bytes is checked against nvidia-smi free ──
+
+const withExpected = (expected, overrides = {}) => {
+  const body = loadBody(overrides);
+  body.load_spec = { ...body.load_spec, expected_bytes: expected };
+  return body;
+};
+
+test('load: expected_bytes above the target card\'s free memory -> 503 INSUFFICIENT_MEMORY, nothing loaded', async () => {
+  const world = fakeWorld(); // each card: 14 GiB free
+  const agent = agentFor(world);
+  await assert.rejects(agent.load(withExpected(20 * GIB)), (err) => {
+    assert.ok(err instanceof ResidencyError);
+    assert.equal(err.code, 'INSUFFICIENT_MEMORY');
+    assert.equal(err.status, 503);
+    assert.deepEqual(err.body().error.device, 'cuda:1');
+    assert.equal(err.body().error.needed_bytes, 20 * GIB);
+    assert.equal(err.body().error.free_bytes, 14 * GIB);
+    assert.match(err.message, /cuda:1/);
+    return true;
+  });
+  assert.equal(world.calls.loads.length, 0);
+  // The lock is released: a load that fits goes through next.
+  assert.equal((await agent.load(withExpected(4 * GIB))).outcome, 'loaded');
+});
+
+test('load: a split is checked PER CARD (expected_bytes divided by the split)', async () => {
+  const world = fakeWorld();
+  const evenly = (expected) => {
+    const body = withExpected(expected, { device: null });
+    body.load_spec.gpu_split = { strategy: 'evenly', priority: [], disabled_gpus: [], custom_ratio: [] };
+    return body;
+  };
+  // 20 GiB evenly = 10 GiB per card; 14 GiB free on each -> fits, though it fits on NO single card.
+  world.cards[0].freeBytes = 10 * GIB;
+  assert.equal((await agentFor(world).load(evenly(20 * GIB))).outcome, 'loaded');
+
+  const tight = fakeWorld();
+  tight.cards[0].freeBytes = 8 * GIB;
+  await assert.rejects(agentFor(tight).load(evenly(20 * GIB)), (err) => {
+    assert.equal(err.code, 'INSUFFICIENT_MEMORY');
+    assert.equal(err.body().error.device, 'cuda:0');
+    assert.equal(err.body().error.needed_bytes, 10 * GIB);
+    assert.equal(err.body().error.free_bytes, 8 * GIB);
+    return true;
+  });
+  assert.equal(tight.calls.loads.length, 0);
+});
+
+test('load: the daemon default split (no device, no gpu_split) is checked across every card', async () => {
+  const world = fakeWorld();
+  world.cards[1].freeBytes = 1 * GIB;
+  await assert.rejects(agentFor(world).load(withExpected(6 * GIB, { load_spec: {}, device: null })), (err) => {
+    assert.equal(err.code, 'INSUFFICIENT_MEMORY');
+    assert.equal(err.body().error.device, 'cuda:1');
+    assert.equal(err.body().error.needed_bytes, 3 * GIB);
+    return true;
+  });
+});
+
+test('load: expected_bytes absent = no memory check at all (TASK-1055 behaviour)', async () => {
+  const world = fakeWorld();
+  world.cards[1].freeBytes = 0;
+  assert.equal((await agentFor(world).load(loadBody())).outcome, 'loaded');
+});
+
+test('load: an instance already loaded answers already_loaded without a memory check', async () => {
+  const world = fakeWorld();
+  const agent = agentFor(world);
+  await agent.load(loadBody());
+  world.cards[1].freeBytes = 0;
+  assert.equal((await agent.load(withExpected(20 * GIB))).outcome, 'already_loaded');
+});
+
+test('load: no nvidia-smi reading -> the check is skipped with a warning, the load proceeds', async () => {
+  const world = fakeWorld();
+  const agent = agentFor(world, { gpus: { read: async () => null } });
+  const result = await agent.load(withExpected(20 * GIB, { load_spec: {}, device: null }));
+  assert.equal(result.outcome, 'loaded');
+  assert.ok(agent.logs.some((l) => l.level === 'warn' && l.event === 'residency.memory_check_skipped'));
+});
+
+test('load: a malformed expected_bytes is 400 LOAD_FAILED naming load_spec.expected_bytes', async () => {
+  for (const bad of [-1, 0, 1.5, '4096', true]) {
+    const world = fakeWorld();
+    await assert.rejects(agentFor(world).load(withExpected(bad)), (err) => {
+      assert.equal(err.code, 'LOAD_FAILED');
+      assert.equal(err.status, 400);
+      assert.equal(err.body().error.field, 'load_spec.expected_bytes');
+      return true;
+    });
+    assert.equal(world.calls.loads.length, 0);
+  }
+});
