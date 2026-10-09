@@ -4,9 +4,9 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { EmptyState } from '@/shared/state/empty-state';
 import { formatBytes, formatPercent } from '@/shared/format';
-import type { ResidencyDevice } from '../api/types';
+import type { ResidencyDevice, ResidencyServiceGroup } from '../api/types';
 import { GpuMemoryBar, HATCH_CLASS, SERVICE_LEGEND_LABEL, serviceSwatch, UNATTRIBUTED_SWATCH } from './gpu-memory-bar';
-import { splitDeviceLabel } from './residency-display';
+import { splitDeviceLabel, withMeasuredDeviceBytes } from './residency-display';
 
 function Swatch({ className }: { className: string }) {
   return <span aria-hidden className={cn('size-2.5 shrink-0 rounded-[2px]', className)} />;
@@ -103,6 +103,8 @@ function Legend({ devices }: { devices: ResidencyDevice[] }) {
 
 export interface GpuSummaryPanelProps {
   devices: ResidencyDevice[];
+  /** TASK-1055 — when given, a loaded model's measured per-card bytes (`residency.deviceBytes`) replace the server's estimate. */
+  services?: ResidencyServiceGroup[];
 }
 
 /**
@@ -110,7 +112,8 @@ export interface GpuSummaryPanelProps {
  * estimated vs measured, the unattributed remainder, the headroom line and an
  * over-headroom status. Freshness lives in the page header, not repeated here.
  */
-export function GpuSummaryPanel({ devices }: GpuSummaryPanelProps) {
+export function GpuSummaryPanel({ devices: reported, services }: GpuSummaryPanelProps) {
+  const devices = services ? withMeasuredDeviceBytes(reported, services) : reported;
   return (
     <section aria-labelledby="residency-gpu-heading" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -98,8 +98,36 @@ export interface ModelResidencyConflict {
   /** TASK-1055 — OVER_BUDGET / EXCEEDS_DEVICE: the device asked for and the best one instead. */
   device?: string;
   suggestedDevice?: string | null;
+  /** TASK-1055 — OVER_BUDGET: how far the chosen device is short. */
+  shortfallBytes?: number;
+  /** TASK-1055 — OVER_BUDGET / EXCEEDS_DEVICE: every device judged, best first (same shape as the preview's). */
+  candidates?: ResidencyConflictCandidate[];
   /** TASK-1055 — LIVE_PATH_REASON_REQUIRED: who uses the model, in plain words. */
   consumers?: string[];
+}
+
+/** A resident model a refusal names as unloadable on a device (same shape as the preview's `evictable[]`). */
+export interface ResidencyConflictEvictable {
+  service: string;
+  modelRef: string;
+  name: string;
+  bytes: number | null;
+  reason: string;
+}
+
+/** TASK-1055 — one device judged by a refused load; structurally the preview's `ResidencyPlacementCandidate`. */
+export interface ResidencyConflictCandidate {
+  device: string;
+  label: string;
+  totalBytes: number | null;
+  freeBytes: number | null;
+  headroomBytes: number | null;
+  remainingBytes: number | null;
+  shortfallBytes: number;
+  fits: boolean;
+  exceedsDevice: boolean;
+  livePathModels: number;
+  evictable: ResidencyConflictEvictable[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -120,6 +148,42 @@ const RESIDENCY_ERROR_CODES: ReadonlySet<string> = new Set<ModelResidencyErrorCo
   'SERVICE_UNREACHABLE',
 ]);
 
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function asEvictable(value: unknown): ResidencyConflictEvictable | null {
+  if (!isRecord(value) || typeof value['service'] !== 'string' || typeof value['modelRef'] !== 'string') return null;
+  return {
+    service: value['service'],
+    modelRef: value['modelRef'],
+    name: typeof value['name'] === 'string' ? value['name'] : value['modelRef'],
+    bytes: numberOrNull(value['bytes']),
+    reason: typeof value['reason'] === 'string' ? value['reason'] : '',
+  };
+}
+
+/** A candidate is kept only when it names a device and says whether it fits — anything else is dropped, never guessed. */
+function asCandidate(value: unknown): ResidencyConflictCandidate | null {
+  if (!isRecord(value) || typeof value['device'] !== 'string' || typeof value['fits'] !== 'boolean') return null;
+  const evictable = Array.isArray(value['evictable'])
+    ? value['evictable'].map(asEvictable).filter((e): e is ResidencyConflictEvictable => e !== null)
+    : [];
+  return {
+    device: value['device'],
+    label: typeof value['label'] === 'string' ? value['label'] : value['device'],
+    totalBytes: numberOrNull(value['totalBytes']),
+    freeBytes: numberOrNull(value['freeBytes']),
+    headroomBytes: numberOrNull(value['headroomBytes']),
+    remainingBytes: numberOrNull(value['remainingBytes']),
+    shortfallBytes: numberOrNull(value['shortfallBytes']) ?? 0,
+    fits: value['fits'],
+    exceedsDevice: value['exceedsDevice'] === true,
+    livePathModels: numberOrNull(value['livePathModels']) ?? 0,
+    evictable,
+  };
+}
+
 /**
  * The typed conflict carried by a refused load/unload, or null for any other
  * failure. Reads `GatewayError.details` (the parsed error body), never the
@@ -136,12 +200,30 @@ export function asModelResidencyConflict(error: unknown): ModelResidencyConflict
   const suggestedDevice =
     typeof details['suggestedDevice'] === 'string' || details['suggestedDevice'] === null ? (details['suggestedDevice'] as string | null) : undefined;
   const consumers = Array.isArray(details['consumers']) ? details['consumers'].filter((c): c is string => typeof c === 'string') : undefined;
+  const shortfallBytes = numberOrNull(details['shortfallBytes']) ?? undefined;
+  const candidates = Array.isArray(details['candidates'])
+    ? details['candidates'].map(asCandidate).filter((c): c is ResidencyConflictCandidate => c !== null)
+    : undefined;
   return {
     code: code as ModelResidencyErrorCode,
     message,
     inFlight,
     ...(device !== undefined ? { device } : {}),
     ...(suggestedDevice !== undefined ? { suggestedDevice } : {}),
+    ...(shortfallBytes !== undefined ? { shortfallBytes } : {}),
+    ...(candidates !== undefined ? { candidates } : {}),
     ...(consumers !== undefined ? { consumers } : {}),
   };
+}
+
+/**
+ * The text a residency toast shows (TASK-1055 AC-6): the server's own message
+ * and its code for a typed refusal, else the gateway's message, and the
+ * caller's `fallback` only when the failure carried no words at all.
+ */
+export function residencyErrorMessage(error: unknown, fallback: string): string {
+  const conflict = asModelResidencyConflict(error);
+  if (conflict) return conflict.message ? `${conflict.message} (${conflict.code})` : conflict.code;
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  return typeof message === 'string' && message.trim() ? message : fallback;
 }

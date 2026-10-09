@@ -3,7 +3,7 @@
  * Platform-admin only (D-11); every call is a gateway route behind the BFF proxy.
  */
 
-import { getJson, patchWithEtag, postJson, putJson } from '@/shared/api';
+import { getJson, patchWithEtag, postJson, putJson, request } from '@/shared/api';
 import type { LoadModelResidencyRequest } from '@/shared/residency';
 import type {
   CreatePolicyRequest,
@@ -44,6 +44,17 @@ export function createResidencyPolicy(body: CreatePolicyRequest): Promise<Reside
  */
 export function updateResidencyPolicy(id: string, patch: UpdatePolicyRequest, expectedVersion: number): Promise<ResidencyPolicy> {
   return patchWithEtag<ResidencyPolicy>(`${BASE}/policies/${encodeURIComponent(id)}`, { ...patch, expectedVersion }, `"${expectedVersion}"`).then(
+    (result) => result.data,
+  );
+}
+
+/**
+ * TASK-1055 (E9) — "Reset to default": soft-deletes the explicit policy row, so
+ * the model falls back to its implicit class (PINNED when it backs the live
+ * path, ON_DEMAND otherwise). If-Match comes from the row's `policyVersion`.
+ */
+export function deleteResidencyPolicy(id: string, expectedVersion: number): Promise<ResidencyPolicy> {
+  return request<ResidencyPolicy>(`${BASE}/policies/${encodeURIComponent(id)}`, { method: 'DELETE', etag: `"${expectedVersion}"` }).then(
     (result) => result.data,
   );
 }

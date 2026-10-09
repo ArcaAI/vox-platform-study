@@ -22,9 +22,14 @@ import type {
 
 const EM_DASH = '—';
 
+/** TASK-1055 — LM Studio's "split the model across every card" placement id. */
+export const MULTI_DEVICE = 'multi';
+const SPLIT_LABEL = 'Split across cards';
+
 /** "GPU 0 — NVIDIA RTX 2000 Ada Generation" -> "GPU 0"; falls back to the raw id if a device is unknown. */
 export function deviceShortLabel(deviceId: string | null, devices: ResidencyDevice[]): string {
   if (!deviceId) return '';
+  if (deviceId === MULTI_DEVICE) return SPLIT_LABEL;
   const device = devices.find((candidate) => candidate.id === deviceId);
   if (!device) return deviceId;
   return splitDeviceLabel(device.label).title;
@@ -105,11 +110,22 @@ export function formatStateWhere(model: ResidencyCatalogueModel, devices: Reside
   return { state: 'Not loaded', tone: pinned ? 'warn' : 'neutral', where: needsText(model) };
 }
 
+/** TASK-1055 — the per-card bytes the service measured, when it reported any (a split LM Studio model has one per card). */
+function measuredDeviceBytes(model: ResidencyCatalogueModel): Array<{ device: string; bytes: number }> {
+  return model.residency?.deviceBytes?.filter((entry) => typeof entry.bytes === 'number') ?? [];
+}
+
 function residentWhere(model: ResidencyCatalogueModel, devices: ResidencyDevice[]): string {
   const residency = model.residency;
+  const perCard = measuredDeviceBytes(model);
+  if (perCard.length > 1 || (perCard.length === 1 && residency?.device === MULTI_DEVICE)) {
+    const cards = perCard.map((entry) => `${deviceShortLabel(entry.device, devices)} ${formatBytes(entry.bytes)}`).join(' · ');
+    return [`${cards} measured`, ...(model.identity.matched === false ? ['not in the catalogue'] : [])].join(' · ');
+  }
   const device = residency ? deviceShortLabel(residency.device, devices) : '';
-  const bytes = residency?.bytes ?? model.size.bytes;
-  const source = residency && residency.bytes !== null ? residency.bytesSource : model.size.source;
+  const single = perCard[0];
+  const bytes = single ? single.bytes : (residency?.bytes ?? model.size.bytes);
+  const source = single ? 'measured' : residency && residency.bytes !== null ? residency.bytesSource : model.size.source;
   const size = formatSizeWithSource(bytes, source);
   const parts = [device, size === 'size unknown' ? 'Size unknown' : size].filter(Boolean);
   if (model.identity.matched === false) parts.push('not in the catalogue');
@@ -220,6 +236,85 @@ export function rowActionFor(service: ResidencyServiceGroup, model: ResidencyCat
   if (!service.controllable || model.kind !== 'resident') return null;
   if (isUnmatchedInstance(model)) return 'link';
   return primaryRowAction(model.actions);
+}
+
+/**
+ * TASK-1055 (E10) — every action the DRAWER footer offers, in order. Unlike the
+ * row's single primary button, a loaded LM Studio model offers Reload (with
+ * options) next to Unload. Nothing for a service with no control API, or for
+ * a remote / built-in model.
+ */
+export function drawerActions(service: ResidencyServiceGroup, model: ResidencyCatalogueModel): Array<'load' | 'unload' | 'reload'> {
+  if (!service.controllable || model.kind !== 'resident') return [];
+  const out: Array<'load' | 'unload' | 'reload'> = [];
+  if (model.actions.includes('load')) out.push('load');
+  if (model.actions.includes('unload')) out.push('unload');
+  const loadedLmStudio = service.service === 'lm-studio' && model.status === 'loaded';
+  if (model.actions.includes('reload') ? service.service === 'lm-studio' : loadedLmStudio && model.actions.includes('unload')) out.push('reload');
+  return out;
+}
+
+/**
+ * TASK-1055 (E8) — GPU bars from the per-card bytes the services measured.
+ * Where a loaded model reports `residency.deviceBytes`, its share on each card
+ * replaces the server's estimate (a split LM Studio model shows its real share
+ * per card), and the unattributed remainder is recomputed with the ONE formula
+ * (`used − Σ per-model bytes`). Devices are returned untouched (same array)
+ * when no model reports per-card bytes.
+ */
+export function withMeasuredDeviceBytes(devices: ResidencyDevice[], services: ResidencyServiceGroup[]): ResidencyDevice[] {
+  const reported = services.flatMap((service) =>
+    service.models
+      .filter((model) => model.status === 'loaded' && measuredDeviceBytes(model).length > 0)
+      .map((model) => ({ service: service.service, model, perCard: measuredDeviceBytes(model) })),
+  );
+  if (reported.length === 0) return devices;
+  return devices.map((device) => {
+    let changed = false;
+    const models = device.models.map((entry) => {
+      const match = reported.find((r) => r.service === entry.service && r.model.modelRef === entry.modelRef);
+      if (!match) return entry;
+      const share = match.perCard.find((card) => card.device === device.id);
+      changed = true;
+      return { ...entry, bytes: share ? share.bytes : 0, bytesSource: 'measured' as const };
+    });
+    for (const r of reported) {
+      const share = r.perCard.find((card) => card.device === device.id);
+      if (!share || models.some((entry) => entry.service === r.service && entry.modelRef === r.model.modelRef)) continue;
+      changed = true;
+      models.push({ service: r.service, modelRef: r.model.modelRef, name: r.model.name, bytes: share.bytes, bytesSource: 'measured' });
+    }
+    if (!changed) return device;
+    const kept = models.filter((entry) => entry.bytes !== 0);
+    const attributedBytes = kept.reduce((sum, entry) => sum + (entry.bytes ?? 0), 0);
+    return { ...device, models: kept, attributedBytes, unattributedBytes: Math.max(0, device.usedBytes - attributedBytes) };
+  });
+}
+
+/** TASK-1055 (OD-2) — a pinned or live-path model can be unloaded, but only with a reason (audited). */
+export function requiresUnloadReason(model: ResidencyCatalogueModel): boolean {
+  return model.keepPolicy.kind === 'always' || isLivePathModel(model);
+}
+
+/** TASK-1055 (OD-2) — who loses the model when it is unloaded, one plain line per kind of consumer. */
+export function liveConsumerLines(model: ResidencyCatalogueModel): string[] {
+  const usage = model.usage;
+  const lines: string[] = [];
+  if (usage.agentCount > 0) lines.push(`${plural(usage.agentCount, 'agent')} · ${plural(usage.tenantCount, 'tenant')}`);
+  const c = usage.consumers;
+  if (c?.workflowNodes) lines.push(plural(c.workflowNodes, 'workflow node'));
+  if (c?.pipelineStages) lines.push(`${plural(c.pipelineStages, 'ASR pipeline stage')}`);
+  if (c?.routingPolicies) lines.push(c.routingPolicies === 1 ? 'Routing policy' : `${c.routingPolicies} routing policies`);
+  if (c?.fallbacks) lines.push(`Fallback of ${plural(c.fallbacks, 'agent')}`);
+  if (usage.liveConsultation) lines.push('Live consultations');
+  return lines;
+}
+
+/** TASK-1055 — the devices a model holds SEPARATE copies on (unload one at a time); none for an LM Studio split. */
+export function unloadDeviceChoices(model: ResidencyCatalogueModel): string[] {
+  if (model.residency?.device === MULTI_DEVICE) return [];
+  const perCard = measuredDeviceBytes(model);
+  return perCard.length > 1 ? perCard.map((entry) => entry.device) : [];
 }
 
 /** "5.4 of 16 GB used" — both figures forced to the SAME unit (GiB) so they read as one comparison. */

@@ -410,6 +410,7 @@ export interface ResidencyPolicy {
 
 export {
   asModelResidencyConflict,
+  residencyErrorMessage,
   type LmStudioResidencyLoadOptions,
   type LoadModelResidencyRequest,
   type LoadModelResidencyResponse,
@@ -418,4 +419,5 @@ export {
   type ModelResidencyOperation,
   type ModelResidencyOperationError,
   type ModelResidencyOperationStatus,
+  type ResidencyConflictCandidate,
 } from '@/shared/residency';

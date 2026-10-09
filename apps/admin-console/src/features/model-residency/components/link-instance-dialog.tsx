@@ -9,6 +9,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { formatBytes } from '@/shared/format';
+import { residencyErrorMessage } from '@/shared/residency';
 import { useLinkRuntimeKey } from '../api';
 import type { LinkInstanceDialogProps } from './residency-dialog-contracts';
 
@@ -43,8 +44,9 @@ export function LinkInstanceDialog({ open, onOpenChange, service, model, onLinke
       toast.success(`Linked ${reportedKey} to ${picked?.name ?? 'the catalogue model'}.`);
       onLinked?.();
       onOpenChange(false);
-    } catch {
-      toast.error(`Couldn't link ${reportedKey}.`);
+    } catch (error) {
+      const reason = residencyErrorMessage(error, '');
+      toast.error(reason ? `Couldn't link ${reportedKey}: ${reason}` : `Couldn't link ${reportedKey}.`);
     } finally {
       setPending(false);
     }
