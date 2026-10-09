@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 
+from guardrail.core.availability import GuardrailAvailability
 from guardrail.services.notices import (
     NOTICE_DEFAULT_MESSAGES,
     GuardrailCorrelation,
@@ -325,7 +326,23 @@ async def test_the_route_raises_one_notice_for_every_flagged_item(monkeypatch: A
     from guardrail.api.endpoints.screen import InboundScreenRequest, screen_inbound
 
     async def _build(app_state: Any, tenant_id: str, **_: Any) -> Screener:
-        return Screener(analyzer=_Analyzer(), tenant_id=tenant_id, policy_version="pv-1")
+        # TASK-1053: inbound safety/toxicity warn by default; pin explicit stored blocks.
+        availability = GuardrailAvailability.from_tiers(
+            system_blob={
+                "checks": {
+                    "prompt_safety": {"enabled": True, "action": "block"},
+                    "prompt_toxicity": {"enabled": True, "action": "block"},
+                }
+            },
+            tenant_blob=None,
+            source_tenant_id=TENANT,
+        )
+        return Screener(
+            analyzer=_Analyzer(),
+            tenant_id=tenant_id,
+            policy_version="pv-1",
+            availability=availability,
+        )
 
     monkeypatch.setattr(screen_mod, "build_screener", _build)
     records: list[dict[str, Any]] = []

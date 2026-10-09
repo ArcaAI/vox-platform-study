@@ -107,7 +107,16 @@ async def test_a_flag_taken_at_ignore_is_recorded_as_a_finding() -> None:
 
 @pytest.mark.asyncio
 async def test_a_block_carries_no_reason() -> None:
-    checks = _record(await Screener(analyzer=_Analyzer(), tenant_id=TENANT).screen_inbound("BAD"))
+    # TASK-1053: prompt_safety warns by platform default; pin an explicit stored block.
+    screener = Screener(
+        analyzer=_Analyzer(),
+        tenant_id=TENANT,
+        availability=GuardrailAvailability.from_tiers(
+            system_blob={"checks": {"prompt_safety": {"enabled": True, "action": "block"}}},
+            tenant_blob=None,
+        ),
+    )
+    checks = _record(await screener.screen_inbound("BAD"))
     assert checks["prompt_safety"]["actionTaken"] == "block"
     assert "reason" not in checks["prompt_safety"]
 

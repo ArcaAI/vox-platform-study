@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from guardrail.core.availability import GuardrailAvailability
 from guardrail.core.tenant_config import TenantConfigResolver
 from guardrail.services.notices import (
     GuardrailCorrelation,
@@ -233,12 +234,25 @@ class _Analyzer:
         return "m"
 
 
+# TASK-1053: prompt_safety warns by platform default; the route cases pin an explicit stored block.
+_BLOCK_SAFETY = GuardrailAvailability.from_tiers(
+    system_blob={"checks": {"prompt_safety": {"enabled": True, "action": "block"}}},
+    tenant_blob=None,
+    source_tenant_id=TENANT,
+)
+
+
 async def _route(monkeypatch: Any, resolver: Any, headers: dict[str, str]) -> Any:
     import guardrail.api.endpoints.screen as screen_mod
     from guardrail.api.endpoints.screen import InboundScreenRequest, screen_inbound
 
     async def _build(app_state: Any, tenant_id: str, **_: Any) -> Screener:
-        return Screener(analyzer=_Analyzer(), tenant_id=tenant_id, policy_version="pv-1")
+        return Screener(
+            analyzer=_Analyzer(),
+            tenant_id=tenant_id,
+            policy_version="pv-1",
+            availability=_BLOCK_SAFETY,
+        )
 
     monkeypatch.setattr(screen_mod, "build_screener", _build)
 

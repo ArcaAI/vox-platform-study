@@ -22,6 +22,7 @@ from prometheus_client import REGISTRY
 
 import guardrail.services.screening as screening_mod
 from guardrail.api.endpoints.screen import InboundScreenRequest, ScreenRegion, screen_inbound
+from guardrail.core.availability import GuardrailAvailability
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.services.screening import Screener
 from guardrail.services.window_cache import WindowVerdictCache
@@ -31,6 +32,19 @@ TENANT = "11111111-1111-1111-1111-111111111111"
 SYSTEM = "00000000-0000-0000-0000-000000000000"
 GEOMETRY = WindowGeometry(size=4_000, overlap=256, concurrency=4)
 SECRET = "fc5b-test-secret"
+
+# TASK-1053: inbound prompt_safety / prompt_toxicity warn by platform default; this file pins an
+# explicit stored block so it keeps exercising the block path.
+_BLOCK_INBOUND = GuardrailAvailability.from_tiers(
+    system_blob={
+        "checks": {
+            "prompt_safety": {"enabled": True, "action": "block"},
+            "prompt_toxicity": {"enabled": True, "action": "block"},
+        }
+    },
+    tenant_blob=None,
+    source_tenant_id=TENANT,
+)
 
 #: Trigger text → the task it flags.
 TRIGGERS = {
@@ -120,6 +134,7 @@ def _wire(monkeypatch, analyzer, cache: WindowVerdictCache | None = None):
             analyzer=analyzer,
             tenant_id=tenant_id,
             policy_source_tenant_id=SYSTEM,
+            availability=_BLOCK_INBOUND,
             window_geometry=GEOMETRY,
             window_runner=WindowRunner(
                 tenant_id=tenant_id, policy_version="pv", cache=cache, concurrency=4
