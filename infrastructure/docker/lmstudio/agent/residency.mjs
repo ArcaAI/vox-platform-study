@@ -29,10 +29,22 @@
 //                                 when the instance is loaded (a pinned load is
 //                                 sent with no TTL), so a policy ttl takes
 //                                 effect at the next load.
+//
+// Wave 3 (G1) adds `ensure`: apps/text asks before every LM Studio request,
+// and a model that is not resident is loaded with its plan PROFILE (plan.mjs)
+// through the same single-flight `load` a console Load uses, instead of
+// LM Studio JIT-loading it on its own defaults.
 // =============================================================================
 import { diffAppliedConfig, selectModelKey } from '../loader/kvconfig.mjs';
 import { deviceDeltas, measureSettled } from './gpus.mjs';
-import { LoadSpecError, buildLoadRequest, deviceOfSplit, estimateDeviceBytes, loadConfigFromFields } from './loadspec.mjs';
+import {
+  LoadSpecError,
+  buildLoadRequest,
+  deviceOfSplit,
+  estimateDeviceBytes,
+  loadConfigFromFields,
+  loadSpecFromProfile,
+} from './loadspec.mjs';
 import { createMetrics } from './metrics.mjs';
 
 /** A refused verb: contract error `code`, HTTP `status`, extra body fields. */
@@ -47,6 +59,11 @@ export class ResidencyError extends Error {
 
   body() {
     return { error: { code: this.code, message: this.message, ...this.extra } };
+  }
+
+  /** The wave-3 `ensure` contract answers errors flat: `{ code, message }`. */
+  flatBody() {
+    return { code: this.code, message: this.message, ...this.extra };
   }
 }
 
@@ -79,6 +96,7 @@ export const DEFAULT_MEASURE = Object.freeze({
  *   log?: (level: string, event: string, fields?: object) => void,
  *   measure?: Partial<typeof DEFAULT_MEASURE>,
  *   metrics?: ReturnType<typeof createMetrics>,
+ *   plan?: { profileFor: (slug: string) => ({ profile: object, defaults?: object } | undefined) },
  * }} deps
  */
 export function createResidencyAgent({
@@ -91,13 +109,15 @@ export function createResidencyAgent({
   log = () => {},
   measure = {},
   metrics = createMetrics(),
+  plan = { profileFor: () => undefined },
 }) {
   const knobs = { ...DEFAULT_MEASURE, ...measure };
   /** identifier -> what THIS agent measured when it loaded that instance. */
   const records = new Map();
   /** model_ref -> { admin_pinned?, ttl_seconds? } (policy PUT / load `pin`). */
   const policies = new Map();
-  let loading = false;
+  /** The one load in flight on this daemon (console or ensure), or null. */
+  let inflight = null;
   let unloadsSeen = 0;
 
   const gpuCountFrom = (readings) => {
@@ -290,151 +310,224 @@ export function createResidencyAgent({
 
   // ── verbs ─────────────────────────────────────────────────────────────────
 
-  async function load({ model_ref: modelRef, load_spec: loadSpec, pin = false, ttl_seconds: ttlSeconds = null, device = null }) {
+  function load(body) {
     // Taken BEFORE the first await: one load at a time per daemon, both because
     // the per-card delta is only meaningful with one load in flight and because
     // two callers could otherwise both see "not loaded" and load two copies.
-    if (loading) {
-      throw new ResidencyError('LOAD_IN_PROGRESS', 'LM Studio is loading another model; loads are serialised', {
-        status: 409,
-      });
+    // `ensure` waits on `inflight` instead of being refused.
+    if (inflight) {
+      return Promise.reject(
+        new ResidencyError('LOAD_IN_PROGRESS', 'LM Studio is loading another model; loads are serialised', {
+          status: 409,
+        }),
+      );
     }
-    loading = true;
+    const run = loadNow(body).finally(() => {
+      inflight = null;
+    });
+    inflight = run;
+    return run;
+  }
+
+  async function loadNow({ model_ref: modelRef, load_spec: loadSpec, pin = false, ttl_seconds: ttlSeconds = null, device = null }) {
+    const readings = await gpus.read();
+    const gpuCount = gpuCountFrom(readings);
+
+    let request;
     try {
-      const readings = await gpus.read();
-      const gpuCount = gpuCountFrom(readings);
+      request = buildLoadRequest({ modelRef, loadSpec, device, pin, ttlSeconds, gpuCount, env });
+    } catch (error) {
+      if (!(error instanceof LoadSpecError)) throw error;
+      const extra = error.code === 'DEVICE_UNAVAILABLE' ? { device: error.device } : { field: error.field };
+      throw new ResidencyError(error.code, error.message, { status: 400, extra });
+    }
 
-      let request;
-      try {
-        request = buildLoadRequest({ modelRef, loadSpec, device, pin, ttlSeconds, gpuCount, env });
-      } catch (error) {
-        if (!(error instanceof LoadSpecError)) throw error;
-        const extra = error.code === 'DEVICE_UNAVAILABLE' ? { device: error.device } : { field: error.field };
-        throw new ResidencyError(error.code, error.message, { status: 400, extra });
-      }
+    const loaded = await daemonCall('listLoaded', () => daemon.listLoaded());
+    const existing = loaded.find((inst) => inst.identifier === request.identifier);
+    if (existing) {
+      applyLoadPolicy(existing.identifier, { pin, ttlSeconds });
+      return { outcome: 'already_loaded', model: modelJson(existing, await appliedOf(existing), gpuCount) };
+    }
 
-      const loaded = await daemonCall('listLoaded', () => daemon.listLoaded());
-      const existing = loaded.find((inst) => inst.identifier === request.identifier);
-      if (existing) {
-        applyLoadPolicy(existing.identifier, { pin, ttlSeconds });
-        return { outcome: 'already_loaded', model: modelJson(existing, await appliedOf(existing), gpuCount) };
-      }
+    const catalogue = await daemonCall('listModels', () => daemon.listModels());
+    const choice = selectModelKey(catalogue, modelRef);
+    if (choice.ambiguous) {
+      throw new ResidencyError(
+        'LOAD_FAILED',
+        `'${modelRef}' is ambiguous — ${choice.ambiguous.length} loadable models match (${choice.ambiguous.join(', ')}); ` +
+          'name one exact key. Refusing to guess between quantizations.',
+        { status: 400, extra: { candidates: choice.ambiguous } },
+      );
+    }
+    if (!choice.key) {
+      throw new ResidencyError('MODEL_UNKNOWN', `LM Studio carries no loadable model '${modelRef}'`, { status: 404 });
+    }
 
-      const catalogue = await daemonCall('listModels', () => daemon.listModels());
-      const choice = selectModelKey(catalogue, modelRef);
-      if (choice.ambiguous) {
+    assertRoomFor(modelRef, request, readings, gpuCount);
+
+    const sent = request.kvConfig.fields;
+    log('info', 'residency.load_started', {
+      model_ref: modelRef,
+      engine_key: choice.key,
+      identifier: request.identifier,
+      device: device ?? null,
+      kv_config: Object.fromEntries(sent.map(({ key, value }) => [key, value])),
+    });
+
+    const unloadsBefore = unloadsSeen;
+    const before = await readSettled();
+    const startedAt = clock();
+    let info;
+    try {
+      info = await daemon.load({
+        modelKey: choice.key,
+        identifier: request.identifier,
+        ttlMs: request.ttlMs,
+        kvConfig: request.kvConfig,
+      });
+    } catch (error) {
+      log('warn', 'residency.load_failed', { model_ref: modelRef, engine_key: choice.key, reason: errorMessage(error) });
+      throw new ResidencyError('LOAD_FAILED', `${modelRef} failed to load: ${errorMessage(error)}`, { status: 500 });
+    }
+    const loadSeconds = Math.round((clock() - startedAt) / 10) / 100;
+
+    // Fail CLOSED when the read-back itself fails: an unverified load is
+    // exactly what the read-back exists to refuse (same posture as A-6).
+    let applied = [];
+    let problems;
+    try {
+      applied = await daemon.appliedFields(info);
+      problems = diffAppliedConfig(sent, applied);
+    } catch (error) {
+      problems = [{ key: 'getLoadConfig', message: `the applied configuration could not be verified: ${errorMessage(error)}` }];
+    }
+    if (problems.length > 0) {
+      const summary = problems.map((problem) => problem.message).join('; ');
+      if ((env.HOPE_KVCONFIG_ENFORCE ?? 'strict') === 'strict') {
+        log('warn', 'residency.load_config_drift', { model_ref: modelRef, problems: summary, action: 'unloaded' });
+        try {
+          await daemon.unload(info);
+        } catch (error) {
+          log('warn', 'residency.drift_unload_failed', { model_ref: modelRef, reason: errorMessage(error) });
+        }
         throw new ResidencyError(
           'LOAD_FAILED',
-          `'${modelRef}' is ambiguous — ${choice.ambiguous.length} loadable models match (${choice.ambiguous.join(', ')}); ` +
-            'name one exact key. Refusing to guess between quantizations.',
-          { status: 400, extra: { candidates: choice.ambiguous } },
+          `${modelRef} loaded on different parameters than requested, so it was unloaded again: ${summary}`,
+          { status: 500, extra: { fields: problems.map((problem) => problem.key) } },
         );
       }
-      if (!choice.key) {
-        throw new ResidencyError('MODEL_UNKNOWN', `LM Studio carries no loadable model '${modelRef}'`, { status: 404 });
-      }
+      log('warn', 'residency.load_config_drift', { model_ref: modelRef, problems: summary, action: 'kept' });
+    }
 
-      assertRoomFor(modelRef, request, readings, gpuCount);
+    const after = await readSettled();
+    const deviceBytes = deviceDeltas(before, after, knobs.noiseBytes);
 
-      const sent = request.kvConfig.fields;
-      log('info', 'residency.load_started', {
+    // E13: the daemon numbers GPUs with the CUDA runtime, nvidia-smi with
+    // NVML (PCI order). They agree only under CUDA_DEVICE_ORDER=PCI_BUS_ID.
+    // A single-card load whose memory grew mostly on ANOTHER card is that
+    // disagreement, caught in the act.
+    const requestedDevice = deviceOfSplit(request.gpuSplit, gpuCount);
+    const grown = Object.entries(deviceBytes).sort((a, b) => b[1] - a[1]);
+    if (requestedDevice.startsWith('cuda:') && grown.length > 0 && grown[0][0] !== requestedDevice) {
+      log('warn', 'residency.device_order_mismatch', {
         model_ref: modelRef,
-        engine_key: choice.key,
-        identifier: request.identifier,
-        device: device ?? null,
-        kv_config: Object.fromEntries(sent.map(({ key, value }) => [key, value])),
+        requested: requestedDevice,
+        measured: grown[0][0],
+        device_bytes: deviceBytes,
+        cuda_device_order: env.CUDA_DEVICE_ORDER ?? null,
+        message:
+          'the load was pinned to one card but its memory appeared on another: the daemon and nvidia-smi number ' +
+          'GPUs differently (is CUDA_DEVICE_ORDER=PCI_BUS_ID set on the daemon?) — or a card-mate allocated at the same time',
       });
+    }
 
-      const unloadsBefore = unloadsSeen;
-      const before = await readSettled();
-      const startedAt = clock();
-      let info;
-      try {
-        info = await daemon.load({
-          modelKey: choice.key,
-          identifier: request.identifier,
-          ttlMs: request.ttlMs,
-          kvConfig: request.kvConfig,
-        });
-      } catch (error) {
-        log('warn', 'residency.load_failed', { model_ref: modelRef, engine_key: choice.key, reason: errorMessage(error) });
-        throw new ResidencyError('LOAD_FAILED', `${modelRef} failed to load: ${errorMessage(error)}`, { status: 500 });
-      }
-      const loadSeconds = Math.round((clock() - startedAt) / 10) / 100;
+    records.set(info.identifier, {
+      instanceReference: info.instanceReference,
+      deviceBytes,
+      // An unload during the window frees memory the delta then cannot see.
+      bytesSource: unloadsSeen === unloadsBefore ? 'measured' : 'estimated',
+      loadedAt: startedAt,
+      loadSeconds,
+      ttlSeconds: request.ttlMs === undefined ? null : request.ttlMs / 1000,
+    });
+    applyLoadPolicy(info.identifier, { pin, ttlSeconds });
+    metrics.observeLoad(info.identifier, loadSeconds);
 
-      // Fail CLOSED when the read-back itself fails: an unverified load is
-      // exactly what the read-back exists to refuse (same posture as A-6).
-      let applied = [];
-      let problems;
-      try {
-        applied = await daemon.appliedFields(info);
-        problems = diffAppliedConfig(sent, applied);
-      } catch (error) {
-        problems = [{ key: 'getLoadConfig', message: `the applied configuration could not be verified: ${errorMessage(error)}` }];
-      }
-      if (problems.length > 0) {
-        const summary = problems.map((problem) => problem.message).join('; ');
-        if ((env.HOPE_KVCONFIG_ENFORCE ?? 'strict') === 'strict') {
-          log('warn', 'residency.load_config_drift', { model_ref: modelRef, problems: summary, action: 'unloaded' });
-          try {
-            await daemon.unload(info);
-          } catch (error) {
-            log('warn', 'residency.drift_unload_failed', { model_ref: modelRef, reason: errorMessage(error) });
-          }
-          throw new ResidencyError(
-            'LOAD_FAILED',
-            `${modelRef} loaded on different parameters than requested, so it was unloaded again: ${summary}`,
-            { status: 500, extra: { fields: problems.map((problem) => problem.key) } },
-          );
+    const model = modelJson({ type: 'llm', ...info }, applied, gpuCount);
+    log('info', 'residency.loaded', {
+      model_ref: modelRef,
+      engine_key: info.modelKey,
+      device: model.device,
+      device_bytes: model.device_bytes,
+      load_seconds: loadSeconds,
+    });
+    return { outcome: 'loaded', model };
+  }
+
+  /** Resident as `ref` for ensure: by identifier, by exact model key, or a JIT instance of it. */
+  const residentAs = (inst, ref) => inst.identifier === ref || inst.modelKey === ref || matches(inst, ref);
+
+  /**
+   * Wave 3 (G1): make `model_ref` resident with its plan profile. Already
+   * resident (identifier or model key) -> `already_loaded`; another load in
+   * flight (a console Load, another ensure) -> wait for it and look again, so a
+   * concurrent console load and ensure of one model produce ONE instance; else
+   * load through `load` -> `loaded`. No profile -> 404 MODEL_UNKNOWN (the
+   * caller then proceeds on LM Studio JIT); a load that was attempted and
+   * failed -> 503 LOAD_FAILED with the cause (the caller fails the request:
+   * never a silent second JIT copy on daemon defaults).
+   */
+  async function ensure({ model_ref: modelRef }) {
+    const started = clock();
+    const done = (level, outcome, fields = {}) => log(level, 'agent.ensure', { model_ref: modelRef, outcome, ...fields });
+    let noProfile = null;
+    try {
+      for (;;) {
+        const loaded = await daemonCall('listLoaded', () => daemon.listLoaded());
+        const resident = loaded.find((inst) => inst.identifier === modelRef) ?? loaded.find((inst) => residentAs(inst, modelRef));
+        if (resident) {
+          done('info', 'already_loaded', { identifier: resident.identifier });
+          return { outcome: 'already_loaded', model_ref: modelRef, identifier: resident.identifier };
         }
-        log('warn', 'residency.load_config_drift', { model_ref: modelRef, problems: summary, action: 'kept' });
+        if (inflight) {
+          await inflight.catch(() => {});
+          continue;
+        }
+
+        const entry = plan.profileFor(modelRef);
+        if (!entry) {
+          done('warn', 'model_unknown');
+          noProfile = new ResidencyError('MODEL_UNKNOWN', `no serving profile for '${modelRef}' in the LM Studio plan`, {
+            status: 404,
+          });
+          throw noProfile;
+        }
+        const { loadSpec, device } = loadSpecFromProfile(entry.profile, entry.defaults);
+        let result;
+        try {
+          result = await load({ model_ref: modelRef, load_spec: loadSpec, pin: false, ttl_seconds: null, device });
+        } catch (error) {
+          // Lost the race to another caller between the look and the load: look again.
+          if (error instanceof ResidencyError && error.code === 'LOAD_IN_PROGRESS') continue;
+          throw error;
+        }
+        const identifier = result.model.instance_id;
+        if (result.outcome === 'already_loaded') {
+          done('info', 'already_loaded', { identifier });
+          return { outcome: 'already_loaded', model_ref: modelRef, identifier };
+        }
+        done('info', 'loaded', { identifier, load_seconds: result.model.load_seconds, device: result.model.device });
+        return { outcome: 'loaded', model_ref: modelRef, identifier, load_seconds: result.model.load_seconds };
       }
-
-      const after = await readSettled();
-      const deviceBytes = deviceDeltas(before, after, knobs.noiseBytes);
-
-      // E13: the daemon numbers GPUs with the CUDA runtime, nvidia-smi with
-      // NVML (PCI order). They agree only under CUDA_DEVICE_ORDER=PCI_BUS_ID.
-      // A single-card load whose memory grew mostly on ANOTHER card is that
-      // disagreement, caught in the act.
-      const requestedDevice = deviceOfSplit(request.gpuSplit, gpuCount);
-      const grown = Object.entries(deviceBytes).sort((a, b) => b[1] - a[1]);
-      if (requestedDevice.startsWith('cuda:') && grown.length > 0 && grown[0][0] !== requestedDevice) {
-        log('warn', 'residency.device_order_mismatch', {
-          model_ref: modelRef,
-          requested: requestedDevice,
-          measured: grown[0][0],
-          device_bytes: deviceBytes,
-          cuda_device_order: env.CUDA_DEVICE_ORDER ?? null,
-          message:
-            'the load was pinned to one card but its memory appeared on another: the daemon and nvidia-smi number ' +
-            'GPUs differently (is CUDA_DEVICE_ORDER=PCI_BUS_ID set on the daemon?) — or a card-mate allocated at the same time',
-        });
-      }
-
-      records.set(info.identifier, {
-        instanceReference: info.instanceReference,
-        deviceBytes,
-        // An unload during the window frees memory the delta then cannot see.
-        bytesSource: unloadsSeen === unloadsBefore ? 'measured' : 'estimated',
-        loadedAt: startedAt,
-        loadSeconds,
-        ttlSeconds: request.ttlMs === undefined ? null : request.ttlMs / 1000,
-      });
-      applyLoadPolicy(info.identifier, { pin, ttlSeconds });
-      metrics.observeLoad(info.identifier, loadSeconds);
-
-      const model = modelJson({ type: 'llm', ...info }, applied, gpuCount);
-      log('info', 'residency.loaded', {
-        model_ref: modelRef,
-        engine_key: info.modelKey,
-        device: model.device,
-        device_bytes: model.device_bytes,
-        load_seconds: loadSeconds,
-      });
-      return { outcome: 'loaded', model };
-    } finally {
-      loading = false;
+    } catch (error) {
+      // Only "no profile" lets the caller fall back to JIT. Everything else — a
+      // profile the loader rules refuse, weights the daemon does not carry, an
+      // LM Studio load error, a daemon that does not answer — is a load that
+      // cannot happen on the governed profile, answered 503 with its cause.
+      if (error === noProfile) throw error;
+      const message = errorMessage(error);
+      done('warn', 'load_failed', { reason: message, waited_ms: clock() - started });
+      throw new ResidencyError('LOAD_FAILED', message, { status: 503 });
     }
   }
 
@@ -502,5 +595,5 @@ export function createResidencyAgent({
     return metrics.render(current);
   }
 
-  return { report, healthy, load, unload, setPolicy, metrics: metricsText };
+  return { report, healthy, load, ensure, unload, setPolicy, metrics: metricsText };
 }

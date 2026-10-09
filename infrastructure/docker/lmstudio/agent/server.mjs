@@ -23,6 +23,8 @@
 //   LMS_AGENT_LOAD_TIMEOUT_SECONDS    one load's ceiling (600); must stay below the
 //                                     gateway's agent-load timeout (>= 900 s, R1-F5)
 //   CUDA_DEVICE_ORDER                 must be PCI_BUS_ID for cuda:<n> == nvidia-smi index n (E13)
+//   HOPE_API_URL                      the gateway, for the plan `ensure` loads from (wave 3; unset = no profiles)
+//   HOPE_PLAN_FETCH_SECONDS           plan refresh cadence (60, the boot loader's value)
 // =============================================================================
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
@@ -31,6 +33,7 @@ import { createLmStudioClient } from '../loader/sdk-channel.mjs';
 import { createDaemon } from './daemon.mjs';
 import { readGpus } from './gpus.mjs';
 import { createHandler } from './http.mjs';
+import { createPlanCache } from './plan.mjs';
 import { createResidencyAgent } from './residency.mjs';
 
 const read = (env, name) => {
@@ -104,10 +107,11 @@ export function sdkLogger(log) {
 }
 
 /**
- * Build (not start) the agent server. `daemon` / `gpus` / `write` are injected
- * in tests; production uses the real daemon adapter and nvidia-smi.
+ * Build (not start) the agent server. `daemon` / `gpus` / `write` / `fetchImpl`
+ * are injected in tests; production uses the real daemon adapter, nvidia-smi
+ * and the gateway. The plan cache is built here and started by `main`.
  */
-export function buildAgentServer({ env = process.env, daemon, gpus, write } = {}) {
+export function buildAgentServer({ env = process.env, daemon, gpus, write, fetchImpl } = {}) {
   const config = agentConfig(env);
   const log = createJsonLogger(write);
   const daemonAdapter =
@@ -120,7 +124,8 @@ export function buildAgentServer({ env = process.env, daemon, gpus, write } = {}
     });
   const gpuReader = gpus ?? { read: () => readGpus() };
 
-  const agent = createResidencyAgent({ daemon: daemonAdapter, gpus: gpuReader, env, instance: config.instance, log });
+  const plan = createPlanCache({ env, token: config.token, log, ...(fetchImpl ? { fetchImpl } : {}) });
+  const agent = createResidencyAgent({ daemon: daemonAdapter, gpus: gpuReader, env, instance: config.instance, log, plan });
   const deployed = isDeployed(env);
   const server = createServer(createHandler({ agent, token: config.token, deployed, log }));
   // A load can legitimately take minutes; the response must not be cut short.
@@ -165,7 +170,7 @@ export function buildAgentServer({ env = process.env, daemon, gpus, write } = {}
     });
   };
 
-  return { server, startup, config, log };
+  return { server, startup, config, log, plan };
 }
 
 async function main() {
@@ -176,7 +181,7 @@ async function main() {
     createJsonLogger()('error', 'agent.config_invalid', { reason: String(error?.message ?? error) });
     process.exit(78); // EX_CONFIG, as the rest of the image
   }
-  const { server, startup, config, log } = built;
+  const { server, startup, config, log, plan } = built;
 
   process.on('uncaughtException', (error) => {
     log('error', 'agent.crashed', { reason: String(error?.stack ?? error) });
@@ -189,6 +194,7 @@ async function main() {
   for (const signal of ['SIGTERM', 'SIGINT']) {
     process.on(signal, () => {
       log('info', 'agent.stopping', { signal });
+      plan.stop();
       server.close(() => process.exit(0));
       setTimeout(() => process.exit(0), 5_000).unref();
     });
@@ -197,6 +203,8 @@ async function main() {
   server.listen(config.port, config.host, () => {
     log('info', 'agent.listening', { host: config.host, port: config.port, daemon_port: config.daemonPort });
     startup().catch((error) => log('warn', 'agent.startup_check_failed', { reason: String(error?.message ?? error) }));
+    // Off the request path: ensure reads only the cache this keeps fresh.
+    plan.start();
   });
 }
 

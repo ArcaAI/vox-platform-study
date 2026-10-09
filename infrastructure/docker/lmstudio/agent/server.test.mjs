@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { CONTRACT_LMSTUDIO_SERVING } from './fixtures.mjs';
 import { agentConfig, buildAgentServer, createJsonLogger, sdkLogger } from './server.mjs';
 
 test('agentConfig: contract defaults — :8869 on all interfaces, daemon on loopback :1234', () => {
@@ -229,5 +230,65 @@ test('R1-F5: a configured load timeout at or above the gateway timeout is warned
     const warn = lines.find((l) => l.event === 'agent.load_timeout_not_below_gateway');
     assert.equal(Boolean(warn), warned, seconds);
     if (warn) assert.equal(warn.level, 'warn');
+  }
+});
+
+// ── wave 3: the plan refresh is wired, and ensure answers off it ────────────
+
+test('buildAgentServer: the plan cache fetches the gateway plan with the agent token; ensure loads from it', async () => {
+  const lines = [];
+  const fetched = [];
+  const loaded = [];
+  const sentFields = new Map();
+  const daemon = {
+    greet: async () => true,
+    listModels: async () => [{ key: 'granite-guardian-4.1-8b@q8_0', type: 'llm', size_bytes: 1 }],
+    listLoaded: async () => loaded.map((i) => ({ ...i })),
+    appliedFields: async (inst) => sentFields.get(inst.instanceReference) ?? [],
+    load: async (request) => {
+      const info = { type: 'llm', identifier: request.identifier, modelKey: request.modelKey, instanceReference: 'r1', sizeBytes: 1 };
+      loaded.push(info);
+      sentFields.set('r1', request.kvConfig.fields);
+      return { ...info };
+    },
+    unload: async () => {},
+  };
+  const built = buildAgentServer({
+    env: { INTERNAL_ACCESS_TOKEN: 'tok', HOPE_API_URL: 'http://hope-api:8868', CUDA_DEVICE_ORDER: 'PCI_BUS_ID' },
+    daemon,
+    gpus: { read: async () => null },
+    fetchImpl: async (url, init) => {
+      fetched.push({ url, token: init.headers['X-Service-Token'] });
+      return { ok: true, status: 200, json: async () => ({ lmStudioServing: CONTRACT_LMSTUDIO_SERVING }) };
+    },
+    write: (text) => lines.push(JSON.parse(text)),
+  });
+  await built.plan.refresh();
+  assert.deepEqual(fetched, [{ url: 'http://hope-api:8868/api/v1/internal/effective-config?service=lmstudio', token: 'tok' }]);
+
+  await new Promise((resolve) => built.server.listen(0, '127.0.0.1', resolve));
+  try {
+    const base = `http://127.0.0.1:${built.server.address().port}`;
+    const ensure = (model_ref) =>
+      fetch(`${base}/internal/residency/ensure`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-service-token': 'tok' },
+        body: JSON.stringify({ model_ref }),
+      });
+    // gpus.read() gives nothing here, so the profile's split (not a `gpu` pin) is what loads
+    const first = await ensure('granite-guardian-4.1-8b');
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).outcome, 'loaded');
+    assert.equal((await (await ensure('granite-guardian-4.1-8b')).json()).outcome, 'already_loaded');
+    const unknown = await ensure('not-in-plan');
+    assert.equal(unknown.status, 404);
+    assert.equal((await unknown.json()).code, 'MODEL_UNKNOWN');
+    assert.deepEqual(
+      lines.filter((l) => l.event === 'agent.ensure').map((l) => l.outcome),
+      ['loaded', 'already_loaded', 'model_unknown'],
+    );
+  } finally {
+    built.plan.stop();
+    await new Promise((resolve) => built.server.close(resolve));
   }
 });
