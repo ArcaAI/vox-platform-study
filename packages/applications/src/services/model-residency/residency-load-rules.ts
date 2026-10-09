@@ -1,4 +1,5 @@
 import { ModelTaskType } from '@arcaai/domains';
+import { ASR_SPEC_ROLE_TASK_TYPE, type AsrSpecModelRole } from '@arcaai/types';
 import { derivedLocalPath } from '../ai-model/constants';
 
 /**
@@ -6,7 +7,7 @@ import { derivedLocalPath } from '../ai-model/constants';
  * loads into, and why a row cannot be loaded at all. Pure (no repository, no Nest), so the catalogue
  * view states the same refusal the load-spec builder throws (`residency-load-spec.builder.ts` holds the
  * full derivation order and the run-time halves: reported slots, the `nlp.diagnosis` / `nlp.ner`
- * elections, the stt agent lookup).
+ * elections).
  */
 
 export const SEQ_CLS_GUARD = 'nlp_seq_cls_guard';
@@ -21,7 +22,15 @@ export const NLP_CACHES = new Set([...SIMPLE_NLP_CACHES, SUGGESTER, ENTAILMENT])
 const NLP_JUDGE_PROTOCOL = 'qwen3guard_native';
 /** `/guard/classify` runtimes by `libraryName` (guardrail `external_nlp_client.py`); `gliner2` is matched first. */
 const GUARD_CLASSIFY_LIBRARIES: Record<string, string> = { transformers: SEQ_CLS_GUARD };
-const ASR_TASK_TYPE = 'AUTOMATIC_SPEECH_RECOGNITION';
+/**
+ * TASK-1055 wave 3 — the `ResolvedAsrSpec` role an stt row loads in, from its `taskType`: the spec's own
+ * role → taskType map inverted, plus `SPEAKER_DIARIZATION` → `embedding` (the diarization stage loads its
+ * speaker-embedding model).
+ */
+const STT_ROLE_BY_TASK_TYPE: Readonly<Record<string, AsrSpecModelRole>> = Object.freeze({
+  ...Object.fromEntries(Object.entries(ASR_SPEC_ROLE_TASK_TYPE).map(([role, taskType]) => [taskType, role as AsrSpecModelRole])),
+  SPEAKER_DIARIZATION: 'embedding',
+});
 
 export type NlpRow = {
   id: string;
@@ -83,11 +92,20 @@ export function staticNlpSlot(row: LoadSpecRow): StaticNlpSlot {
   };
 }
 
+/** TASK-1055 wave 3 — the spec role an stt row loads in, or why no pipeline role loads it. */
+export function sttSpecRoleFor(row: LoadSpecRow & { taskType?: unknown }): { role: AsrSpecModelRole } | { refusal: string } {
+  const role = STT_ROLE_BY_TASK_TYPE[String(row.taskType)];
+  if (role) return { role };
+  return {
+    refusal: `'${row.slug ?? row.sourceUri}' is a ${String(row.taskType)} model, and no speech-to-text pipeline role (${[...new Set(Object.values(STT_ROLE_BY_TASK_TYPE))].join(', ')}) loads that kind; stt cannot hold it.`,
+  };
+}
+
 /**
  * TASK-1055 — why a catalogue model cannot be loaded from the console, when the ROW alone says so
- * (`null` = nothing static stands in the way; the load may still be refused at run time, e.g. an ASR
- * model no published agent names, or a suggester with no `nlp.ner` election). The same words the
- * builder throws.
+ * (`null` = nothing static stands in the way; the load may still be refused at run time, e.g. a
+ * suggester with no `nlp.ner` election). The same words the builder throws. Wave 3: an stt stage row
+ * (VAD, denoise, diarization, embedding) loads on its own, so only a kind no pipeline role takes is refused.
  */
 export function loadBlockedReasonFor(service: string, row: LoadSpecRow & { taskType?: unknown }): string | null {
   if (service === 'nlp') {
@@ -96,8 +114,9 @@ export function loadBlockedReasonFor(service: string, row: LoadSpecRow & { taskT
     if ('underivable' in slot && row.taskType === undefined) return null;
     return 'refusal' in slot ? slot.refusal : null;
   }
-  if (service === 'stt' && row.taskType !== undefined && row.taskType !== null && row.taskType !== ASR_TASK_TYPE) {
-    return `'${row.slug ?? row.sourceUri}' is a ${String(row.taskType)} stage, not a speech recognition model: stt loads it with the pipeline of the speech-to-text agent that uses it, never on its own. Load that agent's ASR model instead.`;
+  if (service === 'stt' && row.taskType !== undefined && row.taskType !== null) {
+    const role = sttSpecRoleFor(row);
+    return 'refusal' in role ? role.refusal : null;
   }
   return null;
 }

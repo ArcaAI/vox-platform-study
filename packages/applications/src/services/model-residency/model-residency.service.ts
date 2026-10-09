@@ -1377,11 +1377,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    * Every device a service can place a model on (the candidates): the GPUs its
    * agent reports, mapped to DCGM's ids; a service with no GPU offers its host
    * memory; LM Studio adds `multi` (split across every card). A service that has
-   * not reported yet falls back to DCGM's cards (index mapping), and nlp to host memory.
+   * not reported yet falls back to DCGM's cards (index mapping), and nlp / tts to host memory
+   * (TASK-1055 wave 3: tts is CPU only — it never offers a GPU).
    */
   private placementOptions(service: ResidencyControlledService, ledger: Ledger): PlacementOption[] {
     let gpus = (ledger.serviceDevices.get(service) ?? []).filter((d) => d.kind === 'gpu' && /^gpu\d+$/.test(d.id));
-    if (gpus.length === 0 && service !== 'nlp') {
+    if (service === 'tts') gpus = [];
+    if (gpus.length === 0 && !HOST_MEMORY_DEFAULT.has(service)) {
       gpus = ledger.devices
         .filter((d) => d.kind === 'gpu')
         .map((d) => ({ agentId: `cuda:${d.id.slice(3)}`, id: d.id, kind: 'gpu' as const, index: Number(d.id.slice(3)) }));
@@ -1407,7 +1409,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     }
     if (options.length === 0) {
       const cpu = (ledger.serviceDevices.get(service) ?? []).find((d) => d.kind === 'cpu');
-      if (cpu || service === 'nlp') options.push({ device: 'cpu', physical: [`cpu:${service}`], agentDevice: cpu?.agentId ?? 'cpu', order: 2_000 });
+      if (cpu || HOST_MEMORY_DEFAULT.has(service)) options.push({ device: 'cpu', physical: [`cpu:${service}`], agentDevice: cpu?.agentId ?? 'cpu', order: 2_000 });
     }
     return options;
   }
@@ -2294,7 +2296,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   /**
-   * Step 1 of §5.3: rebuild the ledger. Cost: 2 agent GETs + 1 LM Studio GET +
+   * Step 1 of §5.3: rebuild the ledger. Cost: 3 agent GETs (stt, nlp, tts) + 1 LM Studio GET +
    * 9 Prometheus instant queries + 2 DB reads (policies, catalogue) — the
    * implicit live path (3 DB reads) is cached for 60 s by its reader.
    */
@@ -2312,6 +2314,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       this.refreshReport('stt', () => this.agents.report('stt'), now),
       this.refreshReport('nlp', () => this.agents.report('nlp'), now),
       this.refreshReport('lm-studio', () => this.agents.report('lm-studio'), now),
+      this.refreshReport('tts', () => this.agents.report('tts'), now),
     ]);
 
     this.settleTimedOutLoads(now);
@@ -2941,7 +2944,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     }
     const [first] = options.sort((a, b) => a.order - b.order);
     if (first) return first.physical;
-    return service === 'nlp' ? ['cpu:nlp'] : allGpus;
+    return HOST_MEMORY_DEFAULT.has(service) ? [`cpu:${service}`] : allGpus;
   }
 
   /** A MEASURED footprint for a model, or `undefined`: the catalogue's observed size (every agent measures its own loads). */
@@ -3218,6 +3221,9 @@ function assertOptionsSupported(request: LoadModelResidencyRequest): void {
 }
 
 /** The catalogue read for every row a residency service may run (F1 matches reported keys against them in memory). */
+/** Services whose placement falls back to host memory when no device is reported (nlp; tts runs on CPU only — TASK-1055 wave 3). */
+const HOST_MEMORY_DEFAULT: ReadonlySet<string> = new Set(['nlp', 'tts']);
+
 function serviceRowsFilter(service: string): Record<string, unknown> {
   if (service === 'lm-studio') {
     return { tenantId: SYSTEM_TENANT_ID, OR: [{ servedBy: { in: LM_STUDIO_SPELLINGS } }, { provider: { in: LM_STUDIO_SPELLINGS } }] };
@@ -3237,6 +3243,7 @@ function catalogueRowFor<T extends AiModelEntity>(service: string, rows: readonl
   const match = (pool: readonly T[]) => resolveRuntimeKey(service, key, pool)?.row;
   if (service === 'lm-studio') return match(rows.filter((r) => residencyServiceOf(r) === 'lm-studio'));
   if (service === 'nlp') return match(rows.filter((r) => r.servedBy === 'nlp'));
+  if (service === 'tts') return match(rows.filter((r) => r.servedBy === 'tts'));
   return match(rows.filter((r) => r.servedBy === 'stt')) ?? match(rows);
 }
 

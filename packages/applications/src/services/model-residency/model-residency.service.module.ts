@@ -1,9 +1,9 @@
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
+import { AgentServiceModule } from '../agent/agent.service.module';
 import { CommonServiceModule } from '../baseServices/common.service.module';
 import { PlatformMetricsServiceModule } from '../platform-metrics/platform-metrics.service.module';
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
-import { AsrAgentResolverServiceModule } from '../stt/agent-resolver/asr-agent-resolver.service.module';
 import { ImplicitLivePathReader } from './implicit-live-path';
 import { IModelResidencyService } from './IModelResidencyService';
 import { ModelResidencyService } from './model-residency.service';
@@ -20,14 +20,15 @@ import { ResidencyLoadSpecBuilder } from './residency-load-spec.builder';
  *  - `PlatformMetricsServiceModule` — `IPrometheusQueryService` (DCGM per-device
  *    memory, the per-model request series).
  *  - `EffectiveSettingsModule` — the `residency.*` SYSTEM knobs.
- *  - `AsrAgentResolverServiceModule` — the one producer of `ResolvedAsrSpec`,
- *    which an stt load sends as its `load_spec`.
+ *  - `AgentServiceModule` — `AgentResolverService`, the row → `ResolvedAgentModel`
+ *    half of the stt / tts `load_spec` projections (TASK-1055 wave 3: an stt load is
+ *    the model-only spec, never an agent's `ResolvedAsrSpec`).
  *  - `CoreDatabaseModule` — `ModelResidencyPolicyRepository`, the catalogue,
  *    the agent/assignment reads of the implicit live path, and the agent /
  *    fallback / routing-policy / tenant reads of the usage index (§13).
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, PlatformMetricsServiceModule, EffectiveSettingsModule, AsrAgentResolverServiceModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, PlatformMetricsServiceModule, EffectiveSettingsModule, AgentServiceModule],
   providers: [
     ResidencyAgentClient,
     ImplicitLivePathReader,

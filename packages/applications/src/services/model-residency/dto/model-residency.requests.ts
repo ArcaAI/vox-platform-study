@@ -69,7 +69,7 @@ export class LoadModelResidencyRequest {
 
   @ApiProperty({
     description:
-      'The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref.',
+      'The key the service caches the model under: stt = the model slug (ASR or a pipeline stage), tts = the model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref.',
     example: 'gemma-4-e2b-it-qat',
   })
   @IsString()
