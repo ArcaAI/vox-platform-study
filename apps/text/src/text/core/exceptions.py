@@ -29,6 +29,14 @@ class ProviderError(TextError):
         super().__init__(message, error_code="PROVIDER_ERROR")
 
 
+class ProviderUnavailableError(ProviderError):
+    """The provider's backing engine could not be made ready (e.g. a model load failed).
+
+    Mapped to 503, unlike the plain ``ProviderError`` (502: the engine WAS reached and
+    answered badly) — here the request was never sent to it.
+    """
+
+
 class ProviderTimeoutError(ProviderError):
     """Provider call timed out."""
 

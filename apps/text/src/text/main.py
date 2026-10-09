@@ -65,7 +65,9 @@ def _build_observability_config(settings: Settings) -> ObservabilityConfig:
 
 
 def _register_provider_factories(
-    registry: ProviderRegistry, http_client: httpx.AsyncClient
+    registry: ProviderRegistry,
+    http_client: httpx.AsyncClient,
+    settings: Settings | None = None,
 ) -> None:
     """Register LAZY provider factories — one per adapter, unconditionally.
 
@@ -125,7 +127,16 @@ def _register_provider_factories(
     # adapter for any other OpenAI-wire server (TGI, Groq, a `llama-server` on
     # its `/v1` surface), and it must never be handed LM Studio's non-standard
     # body fields.
-    _register(("lm-studio",), _shared(LMStudioProvider))
+    def _lm_studio() -> LMStudioProvider:
+        provider = LMStudioProvider()
+        if settings is not None:
+            provider.configure_residency_ensure(
+                agent_url=settings.lmstudio_agent_url,
+                service_token=settings.peer_service_token(),
+            )
+        return provider
+
+    _register(("lm-studio",), _shared(_lm_studio))
     _register(("openai_compat",), _shared(OpenAICompatProvider))
     _register(("ollama",), lambda: OllamaProvider(http_client))
     _register(("bedrock",), _shared(BedrockProvider))
@@ -197,7 +208,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # request that selects it; the companion state below is keyed on the set of
     # AVAILABLE providers (factory-registered), so a request-driven build slots
     # straight into its rate limiter / queue / breaker / semaphore.
-    _register_provider_factories(registry, http_client)
+    _register_provider_factories(registry, http_client, settings)
 
     # Translate capability: a SEPARATE registry (its providers are not LLMs and
     # carry no rate-limit/circuit-breaker/queue companion state). Sarvam is
