@@ -38,6 +38,7 @@ from tts.core.usage import compute_audio_seconds
 from tts.providers.base import (
     AudioChunk,
     AudioFormat,
+    CredentialPosture,
     DuplexTTSEngine,
     ProviderNotFoundError,
     ProviderRegistry,
@@ -48,7 +49,15 @@ from tts.providers.base import (
 from tts.routing.chunking import chunk_text
 from tts.routing.circuit_breaker import CircuitBreaker
 from tts.routing.sentence_adapter import SentenceAdapter
-from tts.spec import ResolvedTtsCandidate, ResolvedTtsSpec, candidate_chain
+from tts.spec import (
+    ResolvedTtsCandidate,
+    ResolvedTtsSpec,
+    TtsSpecAgent,
+    TtsSpecConnection,
+    TtsSpecModel,
+    TtsSpecParameters,
+    candidate_chain,
+)
 
 CB_FAILURE_THRESHOLD = 5
 CB_RECOVERY_TIMEOUT_S = 30.0
@@ -254,6 +263,53 @@ class TTSRouter:
         # Request-scoped engines built from a resolved candidate, cached by what they load and
         # authenticate to (`_engine_cache_key`).
         self._spec_engines: dict[str, TTSEngine] = {}
+
+    def spec_engines(self) -> list[TTSEngine]:
+        """The request-scoped engines built so far (TASK-1055: the residency agent's view)."""
+        return list(self._spec_engines.values())
+
+    def engine_for_model(self, model: TtsSpecModel) -> TTSEngine | None:
+        """The engine a PLATFORM-tier request for ``model`` is served by, built if absent.
+
+        TASK-1055 wave 3 — a console load on a fresh pod. The candidate is the one the gateway
+        resolves for a platform-default agent binding ``model`` on its engine's connection row
+        (no endpoint fields, no credential); the key and the builder are the request path's own
+        (`_engine_cache_key`, `_build_spec_engine`), so the next request for that model reuses
+        this instance. Agent fields are placeholders: neither the key nor a local engine's
+        ``from_spec`` reads them. No voice is selected, so a voice-conditioned engine (IndicF5)
+        refuses here (``None``) rather than clone every later request against a console choice.
+        """
+        engine_name = model.provider or ""
+        adapter = _spec_adapters().get(engine_name)
+        if getattr(adapter, "credential_posture", None) is not CredentialPosture.SELF_HOST:
+            return None  # a cloud engine holds no weights; nothing to build or load
+        candidate = ResolvedTtsCandidate(
+            kind="platform-default",
+            runtime_key=f"residency:{model.slug}",
+            agent=TtsSpecAgent(
+                slug="residency",
+                version_id=f"residency:{model.slug}",
+                version_number=0,
+                tenant_id=model.tenant_id,
+                source="residency",
+            ),
+            model=model,
+            parameters=TtsSpecParameters(
+                voice=None, language=None, speed=None, format=None, sample_rate=None, ssml=False
+            ),
+            voice=None,
+            connection=TtsSpecConnection(
+                provider=engine_name, base_url=None, region=None, timeout_s=None, funding="platform"
+            ),
+            funding_tier="platform",
+        )
+        key = _engine_cache_key(candidate, {})
+        engine = self._spec_engines.get(key)
+        if engine is None:
+            engine = _build_spec_engine(self._settings, candidate, {})
+            if engine is not None:
+                self._spec_engines[key] = engine
+        return engine
 
     def breaker(self, name: str) -> CircuitBreaker:
         if name not in self._breakers:

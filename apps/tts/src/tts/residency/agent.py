@@ -10,10 +10,14 @@ A cloud engine (Azure, Sarvam) holds nothing in memory and never appears.
 * ``model_ref`` = the AiModel slug the engine was built from (`from_spec`); a boot-registered
   engine carries no row, so it is reported under its engine name;
 * ``cache`` = ``tts_<engine>``; ``device`` = ``cpu``;
-* ``load_spec`` = ``{"engine": "<registered name>"}``. A load warms the cache of the engine
-  built for ``(engine, model_ref)`` through `ModelCache.get` — the same call synthesis makes —
-  so the next request is a hit. tts keeps no catalogue (the weights' location arrives only on
-  a resolved spec), so an engine no request has built yet cannot be loaded: MODEL_UNKNOWN.
+* ``load_spec`` = ``{"engine": "<registered name>", "model": <TtsSpecModel wire>}``. A load
+  warms the cache of the engine built for ``(engine, model_ref)`` through `ModelCache.get` —
+  the same call synthesis makes — so the next request is a hit. When no request has built it
+  yet (a fresh pod), ``model`` — the gateway's projection of the row, exactly
+  ``ResolvedTtsCandidate.model`` — builds it through the router's own builder and engine-cache
+  key (`TTSRouter.engine_for_model`), so the next request reuses that instance. Without
+  ``model`` (the pre-amendment shape) such a load is MODEL_UNKNOWN; so is a cloud engine, and a
+  voice-clone engine (IndicF5), which cannot be built without a request's voice.
 * An unload evicts the cache entry; the engine stays, and the next request reloads it.
 """
 
@@ -34,6 +38,7 @@ from hope_runtime_models.residency_agent import (
 from hope_runtime_models.residency_api import build_residency_router
 
 from tts.providers.base import CredentialPosture
+from tts.spec import TtsSpecModel
 
 from .wiring import SERVICE, tts_device
 
@@ -45,9 +50,8 @@ def _model_ref(engine: Any) -> str:
 def _local_engines(state: Any) -> list[Any]:
     """Every distinct LOCAL engine this process holds: spec-built first, then registered."""
     router = getattr(state, "router", None)
-    # `TTSRouter` exposes no accessor for its request-scoped engines; they are read here,
-    # not copied, so a console load warms the very instance synthesis is served by.
-    built = list(getattr(router, "_spec_engines", {}).values())
+    # The very instances synthesis is served by, so a console load warms the one requests use.
+    built = router.spec_engines() if router is not None else []
     registry = getattr(state, "provider_registry", None)
     registered = (
         [registry.get(name) for name in registry.list_providers()] if registry is not None else []
@@ -71,6 +75,26 @@ def _binding(engine: Any) -> CacheBinding:
     )
 
 
+def _read_load_spec(model_ref: str, load_spec: dict[str, Any]) -> tuple[str, TtsSpecModel | None]:
+    """``(engine, model)`` from ``{"engine", "model"?}``; `InvalidLoadSpec` when unreadable."""
+    engine_name = load_spec.get("engine")
+    if not isinstance(engine_name, str) or not set(load_spec) <= {"engine", "model"}:
+        raise InvalidLoadSpec(
+            'tts expects {"engine": "<registered engine name>", "model": <TtsSpecModel>?}'
+        )
+    if "model" not in load_spec:
+        return engine_name, None
+    try:
+        model = TtsSpecModel.model_validate(load_spec["model"])
+    except Exception as exc:  # noqa: BLE001 — a pydantic ValidationError
+        raise InvalidLoadSpec(f"model: {exc}") from exc
+    if model.slug != model_ref:
+        raise InvalidLoadSpec(f"model.slug {model.slug!r} is not model_ref {model_ref!r}")
+    if model.provider != engine_name:
+        raise InvalidLoadSpec(f"model.provider {model.provider!r} is not engine {engine_name!r}")
+    return engine_name, model
+
+
 def build_tts_residency_agent(state: Any) -> ResidencyAgent:
     """The agent over ``state`` (the app's `app.state`: provider registry + router)."""
 
@@ -84,9 +108,7 @@ def build_tts_residency_agent(state: Any) -> ResidencyAgent:
             raise DeviceUnavailable(f"{SERVICE} places models on cpu only, not {device}")
         if not load_spec:
             return None
-        engine_name = load_spec.get("engine")
-        if set(load_spec) != {"engine"} or not isinstance(engine_name, str):
-            raise InvalidLoadSpec('tts expects {"engine": "<registered engine name>"}')
+        engine_name, model = _read_load_spec(model_ref, load_spec)
         # Only an engine built FROM a row may be loaded: a boot-registered one carries no
         # weights location of its own and would fetch whatever its settings default to.
         engine = next(
@@ -97,16 +119,25 @@ def build_tts_residency_agent(state: Any) -> ResidencyAgent:
             ),
             None,
         )
-        if engine is not None:
-            cache = engine.model_cache
-            # Every local engine keys its one cache entry by its engine name.
-            return LoadPlan(cache=cache, key=engine_name, load=lambda: cache.get(engine_name))
-        raise ResidencyError(
-            "MODEL_UNKNOWN",
-            f"no local {engine_name!r} engine built from {model_ref} in this process "
-            "(a remote engine, or no synthesis has used this model yet)",
-            status=404,
-        )
+        if engine is None and model is not None:
+            try:
+                engine = state.router.engine_for_model(model)
+            except Exception as exc:  # noqa: BLE001 — e.g. Kokoro's unpublished-weights refusal
+                raise ResidencyError(
+                    "LOAD_FAILED",
+                    f"{model_ref}: the {engine_name} engine failed to build: {exc}",
+                    status=500,
+                ) from exc
+        if engine is None:
+            raise ResidencyError(
+                "MODEL_UNKNOWN",
+                f"no local {engine_name!r} engine for {model_ref} in this process (a remote "
+                "engine, a voice-clone engine, or no synthesis has used it and no model was given)",
+                status=404,
+            )
+        cache = engine.model_cache
+        # Every local engine keys its one cache entry by its engine name.
+        return LoadPlan(cache=cache, key=engine_name, load=lambda: cache.get(engine_name))
 
     return ResidencyAgent(
         service=SERVICE, bindings=bindings, planner=plan, devices=lambda: [tts_device()]

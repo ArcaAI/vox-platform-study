@@ -45,12 +45,16 @@ class _Factory:
         return self.product
 
 
-def _build_fakes(factories: dict[str, _Factory]):
-    """A stand-in for `router._build_spec_engine`: the REAL providers, fake weights."""
+def _build_fakes(factories: dict[str, _Factory], builds: dict[str, int]):
+    """A stand-in for `router._build_spec_engine`: the REAL providers, fake weights.
+
+    ``builds`` counts engine constructions per slug (a second one would be a duplicate copy).
+    """
 
     def build(_settings: Any, cand: Any, _override: dict[str, str]) -> Any:
         engine = cand.model.provider
         slug = cand.model.slug
+        builds[slug] = builds.get(slug, 0) + 1
         if engine == "kokoro":
             return KokoroProvider(
                 KokoroConfig(),
@@ -61,6 +65,8 @@ def _build_fakes(factories: dict[str, _Factory]):
             gen = factories.setdefault(slug, _Factory(lambda _t, _d: np.zeros(10, np.float32)))
             return IndicParlerProvider(IndicParlerConfig(), generate_factory=gen, slug=slug)
         if engine == "indic_f5":
+            if cand.voice is None or not cand.voice.ref_audio_path:
+                return None  # as the real `from_spec`: a clone engine needs a voice reference
             gen = factories.setdefault(slug, _Factory(lambda _t: np.zeros(10, np.float32)))
             return IndicF5Provider(IndicF5Config(), generate_factory=gen, slug=slug)
         return None
@@ -73,11 +79,16 @@ def factories() -> dict[str, _Factory]:
     return {}
 
 
+@pytest.fixture
+def builds() -> dict[str, int]:
+    return {}
+
+
 @pytest_asyncio.fixture
-async def app(monkeypatch, factories):
+async def app(monkeypatch, factories, builds):
     import tts.routing.router as router_mod
 
-    monkeypatch.setattr(router_mod, "_build_spec_engine", _build_fakes(factories))
+    monkeypatch.setattr(router_mod, "_build_spec_engine", _build_fakes(factories, builds))
     return create_app(settings_override=Settings(debug=True))
 
 
@@ -348,3 +359,110 @@ def test_from_spec_carries_the_row_slug(engine, cls):
 
     assert built.model_slug == f"{engine}-row"
     assert built.model_cache.name == f"tts_{engine}"
+
+
+# ── cold load (contract amendment: load_spec carries the spec `model`) ─────────
+
+
+def _wire_model(engine: str = "kokoro", slug: str = "kokoro-82m", **kw: Any) -> dict[str, Any]:
+    """`ResolvedTtsCandidate.model` exactly as the gateway sends it (camelCase)."""
+    return candidate(engine, slug=slug, **kw).model_dump(by_alias=True, mode="json")["model"]
+
+
+@pytest.mark.asyncio
+async def test_a_cold_load_builds_the_engine_the_next_request_reuses(client, factories, builds):
+    resp = await _load(
+        client, "kokoro-82m", {"engine": "kokoro", "model": _wire_model(local_path="/m/k")}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["outcome"] == "loaded"
+    assert resp.json()["model"]["model_ref"] == "kokoro-82m"
+    assert resp.json()["model"]["cache"] == "tts_kokoro"
+    request = spec_json(
+        candidate(
+            "kokoro",
+            slug="kokoro-82m",
+            local_path="/m/k",
+            voices=[voice_binding("en-female-1", locale="en-IN")],
+            voice="en-female-1",
+        )
+    )
+    await _synth(client, request)
+    assert builds["kokoro-82m"] == 1  # the request reused the console-built engine
+    assert factories["kokoro-82m"].calls == 1  # ...and its loaded weights
+
+
+@pytest.mark.asyncio
+async def test_a_cold_load_of_a_model_already_built_by_a_request_reuses_it(client, builds):
+    await _synth(client, _kokoro_spec())
+
+    resp = await _load(client, "kokoro-82m", {"engine": "kokoro", "model": _wire_model()})
+
+    assert resp.json()["outcome"] == "already_loaded"
+    assert builds["kokoro-82m"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_cold_load_of_indic_parler_is_loaded(client):
+    model = _wire_model("indic_parler", "indic-parler-tts", artifacts={"descEncoderPath": "/d"})
+
+    resp = await _load(client, "indic-parler-tts", {"engine": "indic_parler", "model": model})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["model"]["cache"] == "tts_indic_parler"
+
+
+@pytest.mark.asyncio
+async def test_a_cold_load_of_a_voice_clone_engine_is_refused(client, builds):
+    voice = voice_binding("ml-female-1", locale="ml-IN", ref_audio_path="/ref.wav")
+    model = _wire_model("indic_f5", "indic-f5", voices=[voice], voice="ml-female-1")
+
+    resp = await _load(client, "indic-f5", {"engine": "indic_f5", "model": model})
+
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "MODEL_UNKNOWN"
+    assert (await client.get(RESIDENCY)).json()["models"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_ref", "load_spec"),
+    [
+        ("other-slug", {"engine": "kokoro", "model": _wire_model()}),
+        ("kokoro-82m", {"engine": "indic_parler", "model": _wire_model()}),
+        ("kokoro-82m", {"engine": "kokoro", "model": {**_wire_model(), "extra": 1}}),
+        ("kokoro-82m", {"engine": "kokoro", "model": "kokoro-82m"}),
+    ],
+)
+async def test_a_cold_load_spec_that_disagrees_or_is_malformed_is_refused(
+    client, builds, model_ref, load_spec
+):
+    resp = await _load(client, model_ref, load_spec)
+
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "LOAD_FAILED"
+    assert builds == {}
+
+
+@pytest.mark.asyncio
+async def test_a_cold_load_of_a_remote_engine_is_model_unknown(client):
+    model = _wire_model("azure", "azure-neural")
+
+    resp = await _load(client, "azure-neural", {"engine": "azure", "model": model})
+
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "MODEL_UNKNOWN"
+
+
+@pytest.mark.asyncio
+async def test_a_cold_load_whose_engine_cannot_be_built_is_load_failed(monkeypatch):
+    # The REAL builder: Kokoro refuses at construction when the published weights are absent.
+    app = create_app(settings_override=Settings(debug=True))
+    model = _wire_model(local_path="/nonexistent/kokoro-82m")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await _load(c, "kokoro-82m", {"engine": "kokoro", "model": model})
+
+    assert resp.status_code == 500
+    assert resp.json()["error"]["code"] == "LOAD_FAILED"
+    assert "kokoro-82m" in resp.json()["error"]["message"]
