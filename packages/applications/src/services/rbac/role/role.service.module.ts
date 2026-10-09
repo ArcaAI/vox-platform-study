@@ -3,6 +3,7 @@ import { CoreDatabaseModule, PolicyRepository, RbacRoleRepository, RolePolicyRep
 import { CommonServiceModule } from '../../baseServices';
 import { AuthorizationModule } from '../../../authorization/authorization.module';
 import { CryptoServiceModule } from '../../crypto/crypto.service.module';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { IRbacRoleService } from './IRoleService';
 import { RbacRoleService } from './role.service';
 
@@ -27,7 +28,8 @@ import { RbacRoleService } from './role.service';
  * in the owning module).
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule, CryptoServiceModule],
+  // TASK-1057 — `EffectiveSettingsModule` supplies `ActionConfirmationService` (the break-glass audit stamp).
+  imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule, CryptoServiceModule, EffectiveSettingsModule],
   providers: [
     RbacRoleRepository,
     RolePolicyRepository,

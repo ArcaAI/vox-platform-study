@@ -18,6 +18,7 @@ import { vi, describe, beforeEach, it, expect } from 'vitest';
 import { BadRequestException, ForbiddenException, HttpException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { SysEventType } from '@arcaai/domains';
 import { RbacRoleService } from '../role.service';
+import { ActionConfirmationService } from '../../../settings-registry/action-confirmation.service';
 import { RBAC_BREAK_GLASS_AUDIT_ACTION } from '../../breakGlass';
 
 const ADMIN_USER = { id: 'admin-001', firstName: 'Su', lastName: 'Admin', email: 'admin@arcaai.com' };
@@ -64,7 +65,7 @@ function makeMocks() {
   return { cls, eventEmitter, roleRepo, rolePolicyRepo, policyRepo, userRepo, crypto, engine };
 }
 
-function buildService(m: ReturnType<typeof makeMocks>) {
+function buildService(m: ReturnType<typeof makeMocks>, confirmations?: ActionConfirmationService) {
   return new RbacRoleService(
     m.roleRepo as never,
     m.rolePolicyRepo as never,
@@ -74,6 +75,7 @@ function buildService(m: ReturnType<typeof makeMocks>) {
     m.engine as never,
     m.eventEmitter as never,
     m.cls as never,
+    confirmations,
   );
 }
 
@@ -205,5 +207,26 @@ describe('RbacRoleService break-glass on detach (removePolicy)', () => {
     await expect(service.removePolicy('role-sys', 'policy-1', GOOD_CREDS('team-policy'))).rejects.toThrow(ForbiddenException);
     expect(mocks.crypto.verify).not.toHaveBeenCalled();
     expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).not.toHaveBeenCalled();
+  });
+});
+
+describe('TASK-1057 — the locked rbac.breakGlass stamp', () => {
+  it('stamps every break-glass audit (confirmed and rejected) with the locked confirmation', async () => {
+    const mocks = makeMocks();
+    mocks.roleRepo.findByIdGuardSelect.mockResolvedValue(PLAIN_ROLE);
+    const service = buildService(mocks, new ActionConfirmationService({} as never));
+    await service.softDelete('role-1', GOOD_CREDS('Care Team'));
+    await expectStatus(service.softDelete('role-1'), 428);
+    const [confirmed, missing] = breakGlassAudits(mocks);
+    expect(confirmed.data.confirmation).toEqual({
+      actionId: 'rbac.breakGlass',
+      kind: 'breakGlass',
+      mode: 'required',
+      locked: true,
+      required: true,
+      provided: true,
+      note: 'break-glass confirmation required',
+    });
+    expect(missing.data.confirmation).toMatchObject({ actionId: 'rbac.breakGlass', required: true, provided: false });
   });
 });

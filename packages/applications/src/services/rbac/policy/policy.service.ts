@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -15,7 +15,15 @@ import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PolicyEngine, type PolicyRule } from '../../../authorization/policy.engine';
 import { ICryptoService } from '../../crypto/ICryptoService';
-import { BreakGlassCredentials, BreakGlassOutcome, checkBreakGlass, RBAC_BREAK_GLASS_AUDIT_ACTION } from '../breakGlass';
+import {
+  BreakGlassCredentials,
+  BreakGlassOutcome,
+  breakGlassCredentialsProvided,
+  checkBreakGlass,
+  RBAC_BREAK_GLASS_AUDIT_ACTION,
+  RBAC_BREAK_GLASS_CONFIRMATION,
+} from '../breakGlass';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
 import {
   CreatePolicyRequest,
   IPolicyService,
@@ -103,6 +111,9 @@ export class PolicyService extends BaseService implements IPolicyService {
     @Inject(ICryptoService) private readonly cryptoService: ICryptoService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1057 — stamps the locked `rbac.breakGlass` confirmation on every break-glass audit row.
+    // Optional + trailing so positional fixtures keep their arity; the module always wires it.
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     // `BaseService` is initialised with `ResourceType.Permission`, NOT
     // `ResourceType.Policy`. The original `PoliciesController` emitted
@@ -518,6 +529,9 @@ export class PolicyService extends BaseService implements IPolicyService {
         targetName: target.policyName,
         actorId: this.requestUser?.id,
         at: new Date().toISOString(),
+        ...(this.confirmations && {
+          confirmation: this.confirmations.decide(RBAC_BREAK_GLASS_CONFIRMATION, { value: breakGlassCredentialsProvided(outcome) }),
+        }),
       },
     });
   }
