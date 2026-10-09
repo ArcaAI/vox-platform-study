@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import {
+  EffectiveSettingsModule,
   EvalServiceModule,
   GateEditMiningServiceModule,
   HarnessObservabilityServiceModule,
@@ -33,6 +34,8 @@ import { HarnessOpsClient } from './harness-ops.client';
     // Backs `/admin/harness/gate-edit-exemplars` (SME-gated
     // eval regression-corpus export from the gate-edit learning loop).
     GateEditMiningServiceModule,
+    // TASK-1057 — `ActionConfirmationService` for the workflow-cancel reason policy.
+    EffectiveSettingsModule,
   ],
   controllers: [HarnessAdminController],
   providers: [HarnessOpsClient],

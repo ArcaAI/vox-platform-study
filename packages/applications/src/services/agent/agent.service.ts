@@ -119,6 +119,7 @@ import type { CompiledModelRef } from './agent-wire-model';
 import { AgentDtoMapper } from './agent.dto.mapper';
 import { codeForConfigProblem, hasBlocking, type AgentFinding, type AgentValidationReport } from './agent-findings';
 import { agentReasoningProblems } from './agent-reasoning';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import {
   agentBundlePayloadProblems,
   buildAgentBundlePayload,
@@ -325,6 +326,10 @@ export class AgentService extends BaseService implements IAgentService {
     // read only by the advisory ASR prerequisite findings. TRAILING and @Optional(); absent (or a
     // read that throws) skips that one check with a warn — validate/publish never breaks on it.
     @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // TASK-1057 — the platform policy deciding whether this action demands a reason. TRAILING and
+    // @Optional() like every dependency above; the module always wires it, and only a hand-built
+    // fixture omits it (absent ⇒ no policy, no stamp).
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -1498,6 +1503,7 @@ export class AgentService extends BaseService implements IAgentService {
     const tenantId = this.requireTenant();
     const userId = this.requestUserId;
     if (!userId) throw new ForbiddenException('Syncing an agent requires an authenticated user.');
+    const confirmation = this.confirmations?.assert('agent.sync', { value: dto.reason });
 
     // TASK-889 — every step of a sync NAMES the tenant it acts on (`runInTenantContext`), so the
     // tenant-scope extension filters it as it would an ordinary single-tenant request. Here that
@@ -1550,6 +1556,7 @@ export class AgentService extends BaseService implements IAgentService {
           slug: result.slug,
           versionNumber: result.versionNumber,
           reason: dto.reason ?? null,
+          ...(confirmation ? { confirmation } : {}),
         },
       });
     }

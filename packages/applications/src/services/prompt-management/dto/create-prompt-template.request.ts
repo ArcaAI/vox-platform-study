@@ -46,6 +46,12 @@ export class CreatePromptTemplateRequest {
   @Type(() => PromptVariableDeclarationDto)
   variables?: PromptVariableDeclarationDto[];
 
+  @ApiPropertyOptional({ description: 'Why the template is being created (recorded on version 1 and the audit event). Required when the platform policy says so.', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  changeReason?: string;
+
   @ApiPropertyOptional({ description: 'Department ID to assign template to' })
   @IsOptional()
   @IsString()

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -9,6 +9,7 @@ import {
   WorkflowInvariantRuleRepository,
 } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { BaseService, FetchResponse, isSuperAdmin, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { KNOWN_PALETTE_KEYS } from '../workflow-exposure/exposure-palette-policy';
@@ -62,6 +63,9 @@ export class WorkflowInvariantRuleService extends BaseService implements IWorkfl
     private readonly workflowInvariantRuleRepository: WorkflowInvariantRuleRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1057 — the platform policy deciding whether saving a rule demands a rationale. TRAILING and
+    // @Optional() like the other services' policy dependency; the module always wires it.
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowInvariantRule);
   }
@@ -96,6 +100,7 @@ export class WorkflowInvariantRuleService extends BaseService implements IWorkfl
     }
 
     this.assertKnownPaletteKey(dto.paletteKey);
+    const confirmation = this.confirmations?.assert('workflowInvariantRule.save', { value: dto.rationale });
 
     const entity = WorkflowInvariantRuleFactory.CreateWorkflowInvariantRule({
       // From CLS, NEVER the body (rule 05 §S-3). A caller writing rules for another tenant — or
@@ -118,7 +123,13 @@ export class WorkflowInvariantRuleService extends BaseService implements IWorkfl
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
-      data: { ruleId: saved.ruleId, paletteKey: saved.paletteKey, severity: String(saved.severity), ruleVersion: saved.ruleVersion },
+      data: {
+        ruleId: saved.ruleId,
+        paletteKey: saved.paletteKey,
+        severity: String(saved.severity),
+        ruleVersion: saved.ruleVersion,
+        ...(confirmation ? { confirmation } : {}),
+      },
     });
 
     return WorkflowInvariantRuleDtoMapper.toResponse(saved);
@@ -127,6 +138,7 @@ export class WorkflowInvariantRuleService extends BaseService implements IWorkfl
   async update(id: string, dto: UpdateWorkflowInvariantRuleRequest): Promise<WorkflowInvariantRuleResponse> {
     const entity = await this.workflowInvariantRuleRepository.findById(id);
     this.assertWritable(entity);
+    const confirmation = this.confirmations?.assert('workflowInvariantRule.save', { value: dto.rationale });
 
     const { expectedVersion, ...editableChanges } = dto;
 
@@ -145,7 +157,7 @@ export class WorkflowInvariantRuleService extends BaseService implements IWorkfl
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: { ...entity.changes, previousVersion, newVersion: updated.version },
+      data: { ...entity.changes, previousVersion, newVersion: updated.version, ...(confirmation ? { confirmation } : {}) },
     });
 
     return WorkflowInvariantRuleDtoMapper.toResponse(updated);

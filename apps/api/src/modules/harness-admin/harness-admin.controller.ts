@@ -1,4 +1,5 @@
 import {
+  ActionConfirmationService,
   EditBurdenResponse,
   EvalRunDetailResponse,
   EvalRunListResponse,
@@ -29,7 +30,9 @@ import {
   UpdateHarnessPolicyRequest,
   UpdateLiveDocEngineConfigRequest,
 } from '@arcaai/applications';
-import { Body, Controller, ForbiddenException, Get, Header, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Header, NotFoundException, Optional, Param, Patch, Post, Query } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ResourceType, SysEventType } from '@arcaai/domains';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
@@ -90,6 +93,11 @@ export class HarnessAdminController {
     // APPENDED: backs
     // `POST gate-edit-exemplars/:id/promote-to-golden-set`.
     private readonly goldenCasePromotionService: GoldenCasePromotionService,
+    // TASK-1057 — APPENDED for the same reason: the platform policy that decides whether a cancel
+    // demands a reason, and the emitter the confirmation stamp is audited through. Optional so the
+    // positional unit fixtures keep their arity; HarnessAdminModule always wires both.
+    @Optional() private readonly confirmations?: ActionConfirmationService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   // ───────────────────────── Policy ─────────────────────────
@@ -566,7 +574,22 @@ export class HarnessAdminController {
   @ApiResponse({ status: 403, description: 'Forbidden — workflow belongs to another tenant.' })
   async cancelWorkflow(@Param('id') id: string, @Body() body: WorkflowActionRequest): Promise<HarnessWorkflowActionResult> {
     const ownerTenantId = await this.assertOwnershipForAction(id);
-    return this.opsClient.cancelWorkflow(id, { tenantId: ownerTenantId, reason: body.reason });
+    // TASK-1057 — after the ownership proof (a foreign workflow stays a 403 before any policy answer),
+    // before anything reaches the harness. The stamp is audited even when no reason was required.
+    const confirmation = this.confirmations?.assert('workflowRun.cancel', { value: body.reason });
+    const result = await this.opsClient.cancelWorkflow(id, { tenantId: ownerTenantId, reason: body.reason });
+    if (confirmation) {
+      const user = this.cls.get('user');
+      this.eventEmitter?.emit(SysEventType.ResourceUpdated, {
+        responsibleEntityId: user?.id,
+        resourceType: ResourceType.WorkflowRun,
+        resourceId: id,
+        tenantId: ownerTenantId,
+        forceAuditLog: true,
+        data: { action: 'workflowRunCancel', workflowId: id, reason: body.reason ?? null, confirmation },
+      });
+    }
+    return result;
   }
 
   @Post('workflows/:id/terminate')

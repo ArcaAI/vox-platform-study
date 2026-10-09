@@ -13,6 +13,7 @@ import { EntitlementsServiceModule } from '../entitlements/entitlements.service.
 import { EvalServiceModule } from '../eval/eval.service.module';
 import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
 import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.service.module';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 @Module({
   // HttpModule + ConfigModule wire the TEXT/text-generation client
@@ -40,6 +41,8 @@ import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.
     UsageLedgerServiceModule,
     // TASK-1047 D2 — approve screens the template body (IGovernedPromptRegistry).
     GovernedPromptServiceModule,
+    // TASK-1057 — `ActionConfirmationService`: the platform reason policy for create/update/approve.
+    EffectiveSettingsModule,
   ],
   providers: [
     PromptManagementService,

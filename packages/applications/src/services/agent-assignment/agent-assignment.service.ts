@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { fallbackOnNotFound } from '../../common/swallow-policy';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
@@ -23,6 +23,7 @@ import { isPlatformHiddenAgentSlug } from '../agent/platform-hidden-agents';
 import { AgentAssignmentResponse, UpsertAgentAssignmentRequest } from './dto';
 import { AgentAssignmentSource, IAgentAssignmentService, ResolvedAgentAssignment } from './IAgentAssignmentService';
 import { AgentAssignmentDtoMapper } from './agent-assignment.dto.mapper';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 
 /** The tiers this ticket exposes (DOCTOR is expressible but rejected — the WorkflowAssignment call). */
 const WRITABLE_SCOPES: ReadonlySet<PipelinePolicyScope> = new Set([PipelinePolicyScope.TENANT, PipelinePolicyScope.DEPARTMENT]);
@@ -51,6 +52,10 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1057 — the platform policy deciding whether this action demands a reason. TRAILING and
+    // @Optional() like every dependency above; the module always wires it, and only a hand-built
+    // fixture omits it (absent ⇒ no policy, no stamp).
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.AgentAssignment);
   }
@@ -179,6 +184,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
 
     const changedBy = this.requestUserId ?? null;
     const reason = dto.reason ?? null;
+    const confirmation = this.confirmations?.assert('agentAssignment.set', { value: dto.reason });
     const existing = await this.assignmentRepository.findForScopeSelector(tenantId, scope, scopeId, dto.task, selectorKey);
 
     if (existing) {
@@ -204,7 +210,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
 
       this.broadcastSysEvent(SysEventType.ResourceUpdated, {
         resourceId: updated.id,
-        data: { previousVersion: casVersion, newVersion: updated.version, beforeSlug, afterSlug: updated.agentSlug },
+        data: { previousVersion: casVersion, newVersion: updated.version, beforeSlug, afterSlug: updated.agentSlug, ...(confirmation ? { confirmation } : {}) },
       });
       return AgentAssignmentDtoMapper.toResponse(updated);
     }
@@ -232,13 +238,14 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: created.id,
-      data: { scope, scopeId, task: created.task, agentSlug: created.agentSlug, selectorKey },
+      data: { scope, scopeId, task: created.task, agentSlug: created.agentSlug, selectorKey, ...(confirmation ? { confirmation } : {}) },
     });
     return AgentAssignmentDtoMapper.toResponse(created);
   }
 
   async remove(id: string, expectedVersion?: number, reason?: string | null): Promise<AgentAssignmentResponse> {
     const entity = await this.loadOwned(id);
+    const confirmation = this.confirmations?.assert('agentAssignment.remove', { value: reason });
     const changedBy = this.requestUserId ?? null;
 
     const removed = await this.databaseService.baseClient.$transaction(async (tx) => {
@@ -261,7 +268,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: entity.id,
-      data: { expectedVersion: expectedVersion ?? null, beforeSlug: entity.agentSlug },
+      data: { expectedVersion: expectedVersion ?? null, beforeSlug: entity.agentSlug, ...(confirmation ? { confirmation } : {}) },
     });
     return AgentAssignmentDtoMapper.toResponse(removed);
   }

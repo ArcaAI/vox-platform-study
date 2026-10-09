@@ -22,6 +22,7 @@ import { idempotencyCanonicalJson } from '../consultation/jobs/job-idempotency.s
 import { WORKFLOW_EXPOSURE_ENABLED_KEY } from '../settings-registry/descriptors/feature-availability.descriptors';
 import { WORKFLOW_RUNS_DEFAULTS, WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY } from '../settings-registry/descriptors/workflow-runs.descriptors';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { WebhookService } from '../webhook/webhook.service';
 import { IBlobStorageService, IS3Service } from '../baseServices/storage';
 import { IConsultationService } from '../consultation/consultation/IConsultationService';
@@ -212,6 +213,10 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // TASK-1042 — binds a live STT session named in a standalone run's `input` (C3/C8). Optional for
     // the positional fixtures; absent, a start that names a session is refused (503), never unchecked.
     @Optional() private readonly runAudio?: RunAudioBindingService,
+    // TASK-1057 — the platform policy deciding whether this action demands a reason. TRAILING and
+    // @Optional() like every dependency above; the module always wires it, and only a hand-built
+    // fixture omits it (absent ⇒ no policy, no stamp).
+    @Optional() private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -794,6 +799,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // the global pipe (`forbidNonWhitelisted`) has already refused a body that carried one —
     // this line is what makes that refusal safe to rely on rather than merely tidy.
     const reviewerId = this.requestUserId ?? null;
+    const confirmation = this.confirmations?.assert('workflowReview.decide', { value: dto.comment });
 
     const result = await this.harnessGateway.decideWorkflowRunReview(
       runId,
@@ -804,7 +810,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: run.workflowVersionId,
-      data: { action: 'decideReview', slug, runId, nodeId, decision: dto.decision, reviewerId },
+      data: { action: 'decideReview', slug, runId, nodeId, decision: dto.decision, reviewerId, ...(confirmation ? { confirmation } : {}) },
     });
 
     return { runId, nodeId, decision: dto.decision, signaled: result?.signaled === true, reviewerId };
