@@ -28,6 +28,7 @@
 // substituted — when they do not match.
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { IConfigService } from '../baseServices/_meta/config';
 import { type AiModelEntity, AiModelRepository, ResourceStatusType } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import type { AiModelServingProfile } from '@arcaai/types';
@@ -170,6 +171,9 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     // repository, not `AiModelService`, whose reads are super-admin-gated and this route has no
     // human caller. Optional: unwired = an empty preload, never a failed pull.
     @Optional() private readonly aiModelRepository?: AiModelRepository,
+    // TASK-1055 wave 3 — the gateway's own `LMSTUDIO_AGENT_URL`, served to text as
+    // `lmStudioServing.agentUrl` so text needs no env var for it. Optional: unwired = omitted.
+    @Optional() @Inject(IConfigService) private readonly config?: IConfigService,
   ) {}
 
   async resolveForService(service: string): Promise<EffectiveConfigResponse> {
@@ -469,7 +473,9 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     service: EffectiveConfigServiceName,
   ): Promise<EffectiveLmStudioServingPlan | EffectiveLmStudioServingConcurrency | undefined> {
     if (service === 'text') {
-      return { parallel: (await this.lmStudioValue('lmStudio.serving.parallel')) as number };
+      const parallel = (await this.lmStudioValue('lmStudio.serving.parallel')) as number;
+      const agentUrl = this.lmStudioAgentUrl();
+      return agentUrl ? { parallel, agentUrl } : { parallel };
     }
     if (service !== 'lmstudio') return undefined;
 
@@ -526,6 +532,18 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       if (!bySlug.has(entry.slug)) bySlug.set(entry.slug, entry);
     }
     return [...bySlug.values()].sort((a, b) => a.slug.localeCompare(b.slug));
+  }
+
+  /** TASK-1055 wave 3 — the LM Studio residency agent text asks to ensure a model is loaded; null when unset. */
+  private lmStudioAgentUrl(): string | null {
+    // The key set is wider than the shared `IAppConfig` typing knows (same read as residency-agent.client.ts).
+    const read = this.config?.getConfigValue as ((key: string) => unknown) | undefined;
+    const url = read
+      ? String(read.call(this.config, 'LMSTUDIO_AGENT_URL') ?? '')
+          .trim()
+          .replace(/\/+$/, '')
+      : '';
+    return url || null;
   }
 
   /** One `lmStudio.serving.*` key, falling back to its declared default when unresolved. */

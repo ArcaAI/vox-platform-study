@@ -209,6 +209,19 @@ class EffectiveConfigSnapshot:
             return None
         return _positive_int(group.get("parallel"))
 
+    def lm_studio_agent_url(self) -> str | None:
+        """The LM Studio residency agent, ``lmStudioServing.agentUrl`` (TASK-1055 wave 3).
+
+        Served by the gateway from its own ``LMSTUDIO_AGENT_URL`` so this service needs no
+        env var of its own; the lmstudio provider asks it to ensure a model is loaded (with
+        the model's serving profile) before each request. Absent / empty -> None (feature off).
+        """
+        group = self.raw.get("lmStudioServing")
+        if not isinstance(group, dict):
+            return None
+        url = group.get("agentUrl")
+        return url.strip() if isinstance(url, str) and url.strip() else None
+
     def generation_defaults(self) -> dict[str, float | int]:
         """The platform generation profile (`core/defaults.py`).
 

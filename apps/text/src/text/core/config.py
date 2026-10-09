@@ -166,10 +166,6 @@ class Settings(BaseSettings):
     # not config authority: everything the route serves is itself control-plane
     # owned. Env var: TEXT_GATEWAY_URL.
     gateway_url: str = "http://localhost:8868/api/v1"
-    # Env var: TEXT_LMSTUDIO_AGENT_URL. The LM Studio residency agent that is asked
-    # to ensure a model is loaded before Text sends it a request (TASK-1055 wave 3).
-    # Empty = feature off (LM Studio JIT-loads as before).
-    lmstudio_agent_url: str = "http://localhost:8869"
     # Env var: TEXT_REDIS_URL. Task state + the config-invalidation channel.
     redis_url: str = "redis://localhost:6379/0"
     # Env var: TEXT_OTEL_EXPORTER_ENDPOINT. The presence of a collector address

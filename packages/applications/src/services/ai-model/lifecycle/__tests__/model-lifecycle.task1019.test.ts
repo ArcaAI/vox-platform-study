@@ -184,10 +184,14 @@ describe('deriveModelLifecycle — D-9 table', () => {
     expect(deriveModelLifecycle(row(), idx([{ service: 'nlp', status: 'not_loaded' }]), OPTS).status).toBe('DOWNLOADED');
   });
 
-  it('NOT_OBSERVED for a tts-served row (outside the residency ledger)', () => {
-    const lc = deriveModelLifecycle(row({ servedBy: 'tts', slug: 'kokoro', id: 'm-9' }), idx([]), OPTS);
+  it('NOT_OBSERVED for a vLLM-served row (outside the residency ledger)', () => {
+    const lc = deriveModelLifecycle(row({ servedBy: 'vllm', slug: 'whisper-vllm', id: 'm-9' }), idx([]), OPTS);
     expect(lc.status).toBe('NOT_OBSERVED');
     expect(lc.services).toEqual([]);
+  });
+
+  it('a tts-served row is OBSERVED since TASK-1055 wave 3 put tts under residency control', () => {
+    expect(deriveModelLifecycle(row({ servedBy: 'tts', slug: 'kokoro', id: 'm-9' }), idx([]), OPTS).status).toBe('DOWNLOADED');
   });
 
   it('with no residency view the row still gets a status, observedAt null', () => {

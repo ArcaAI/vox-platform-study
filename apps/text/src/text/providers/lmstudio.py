@@ -47,7 +47,7 @@ authentication.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -136,17 +136,32 @@ class LMStudioProvider(OpenAICompatProvider):
         """No configuration — the engine endpoint arrives per request, exactly as
         for the base OpenAI-compatible adapter."""
         super().__init__(provider_name=_ENGINE, display_name="LM Studio")
-        self._ensure_url = ""
+        self._ensure_url_source: Callable[[], Awaitable[str | None]] | None = None
         self._ensure_token = ""
 
-    def configure_residency_ensure(self, *, agent_url: str, service_token: str) -> None:
+    def configure_residency_ensure(
+        self, *, agent_url_source: Callable[[], Awaitable[str | None]], service_token: str
+    ) -> None:
         """Point the pre-request ensure at the LM Studio residency agent (TASK-1055 wave 3).
 
-        The agent is a HOPE peer (unlike LM Studio itself), so it — and only it — gets
-        ``X-Service-Token``. An empty URL leaves the feature off.
+        The agent URL is read per request from ``agent_url_source`` — the gateway's effective
+        config (``lmStudioServing.agentUrl``), so it is no env var here. The agent is a HOPE peer
+        (unlike LM Studio itself), so it — and only it — gets ``X-Service-Token``. No URL leaves
+        the feature off.
         """
-        self._ensure_url = agent_url.strip().rstrip("/")
+        self._ensure_url_source = agent_url_source
         self._ensure_token = service_token
+
+    async def _ensure_url(self) -> str:
+        source = getattr(self, "_ensure_url_source", None)
+        if source is None:
+            return ""
+        try:
+            url = await source()
+        except Exception as exc:  # noqa: BLE001 — a config read never blocks a request
+            logger.warning("text.lmstudio.ensure_skipped", reason="no_agent_url", error=str(exc))
+            return ""
+        return (url or "").strip().rstrip("/")
 
     async def _ensure_resident(self, request: GenerateRequest) -> None:
         """Ask the agent to make sure the request's model is loaded, before sending to LM Studio.
@@ -156,8 +171,8 @@ class LMStudioProvider(OpenAICompatProvider):
         401, 404 ``MODEL_UNKNOWN``, an unrelated 503 — is logged and skipped: LM Studio's own JIT
         load is the behaviour before this existed.
         """
-        url = getattr(self, "_ensure_url", "")
         model = self._resolve_model(request)
+        url = await self._ensure_url() if model else ""
         if not url or not model:
             return
         try:

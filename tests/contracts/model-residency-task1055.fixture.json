@@ -431,10 +431,14 @@
         }
       },
       "textCaller": {
-        "$comment": "apps/text lmstudio provider: before EVERY request to an LM Studio model, POST ensure {model_ref: <the request's model id>}. 200 → proceed. 503 LOAD_FAILED → fail the request (503, cause kept). Unreachable / timeout / 404 MODEL_UNKNOWN / 401 → log `text.lmstudio.ensure_skipped` (warning) and proceed (LM Studio JIT, today's behaviour). Agent URL: env `TEXT_LMSTUDIO_AGENT_URL` (bootstrap transport address; empty = feature off, proceed). Ensure timeout: the request's own timeout budget (a cold load can take minutes).",
-        "env": "TEXT_LMSTUDIO_AGENT_URL",
-        "devDefault": "http://localhost:8869",
-        "clusterValue": "http://hope-lmstudio:8869"
+        "$comment": "apps/text lmstudio provider: before EVERY request to an LM Studio model, POST ensure {model_ref: <the request's model id>}. 200 → proceed. 503 LOAD_FAILED → fail the request (503, cause kept). Unreachable / timeout / 404 MODEL_UNKNOWN / 401 → log `text.lmstudio.ensure_skipped` (warning) and proceed (LM Studio JIT, today's behaviour). Agent URL: the gateway's effective config for text, `lmStudioServing.agentUrl` (= the gateway's own LMSTUDIO_AGENT_URL; omitted = feature off, proceed) — NOT an env var on text: its env surface is the bootstrap floor only (test_task799_config_surface). Ensure timeout: the request's own timeout budget (a cold load can take minutes).",
+        "effectiveConfig": {
+          "service": "text",
+          "lmStudioServing": {
+            "parallel": 10,
+            "agentUrl": "http://hope-lmstudio:8869"
+          }
+        }
       }
     },
     "sttModelOnly": {

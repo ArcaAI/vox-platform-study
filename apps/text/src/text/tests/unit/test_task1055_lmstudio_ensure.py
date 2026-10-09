@@ -69,8 +69,11 @@ def _wire(monkeypatch, handler, *, url: str | None = AGENT_URL, order: list[str]
         lambda timeout_s: real(transport=httpx.MockTransport(_handler), timeout=timeout_s),
     )
     provider = LMStudioProvider()
-    if url is not None:
-        provider.configure_residency_ensure(agent_url=url, service_token="tok")
+
+    async def _source() -> str | None:
+        return url
+
+    provider.configure_residency_ensure(agent_url_source=_source, service_token="tok")
     client = AsyncMock()
 
     async def _create(**kwargs):
@@ -209,7 +212,35 @@ async def test_unconfigured_provider_never_calls_the_agent(monkeypatch):
     assert seen == []
 
 
-def test_settings_expose_the_agent_url_with_the_contract_default():
+def test_the_agent_url_is_not_an_env_setting():
+    """The URL is served by the gateway's effective config, never a new env var (bootstrap floor)."""
     from text.core.config import Settings
 
-    assert Settings.model_fields["lmstudio_agent_url"].default == "http://localhost:8869"
+    assert "lmstudio_agent_url" not in Settings.model_fields
+
+
+def test_the_effective_config_snapshot_serves_the_agent_url():
+    from text.core.effective_config import EffectiveConfigSnapshot
+
+    snapshot = EffectiveConfigSnapshot(
+        raw={"lmStudioServing": {"parallel": 10, "agentUrl": "http://hope-lmstudio:8869"}}
+    )
+    assert snapshot.lm_studio_agent_url() == "http://hope-lmstudio:8869"
+    assert (
+        EffectiveConfigSnapshot(raw={"lmStudioServing": {"parallel": 10}}).lm_studio_agent_url()
+        is None
+    )
+    assert EffectiveConfigSnapshot(raw={}).lm_studio_agent_url() is None
+
+
+@pytest.mark.asyncio
+async def test_a_failing_url_source_skips_the_ensure(monkeypatch):
+    provider, _client, seen = _wire(monkeypatch, lambda r: _OK)
+
+    async def _boom() -> str | None:
+        raise RuntimeError("gateway down")
+
+    provider.configure_residency_ensure(agent_url_source=_boom, service_token="tok")
+    await provider.generate(_req())
+
+    assert seen == []

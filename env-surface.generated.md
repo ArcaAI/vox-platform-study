@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 113 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
-| Python declared fields | 315 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 370 |
-| `turbo.json#globalEnv` entries | 526 |
+| Python declared fields | 314 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 369 |
+| `turbo.json#globalEnv` entries | 525 |
 
 ## Variables — the TypeScript platform surface
 
@@ -451,7 +451,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TEXT_CLASSIFIER_USE_GPU` | `apps/nlp` | no | no | `true` | commented | — |
 | `TEXT_EXTERNAL_GUARDRAIL_BASE_URL` | `apps/text` | no | no | `http://localhost:8863` | commented | — |
 | `TEXT_GATEWAY_URL` | `apps/text` | no | no | `http://localhost:8868/api/v1` | commented | — |
-| `TEXT_LMSTUDIO_AGENT_URL` | `apps/text` | no | no | `http://localhost:8869` | commented | — |
 | `TEXT_LOG_LEVEL` | `apps/text` | no | no | `info` | commented | — |
 | `TEXT_OTEL_EXPORTER_ENDPOINT` | `apps/text` | no | no | `` | commented | — |
 | `TEXT_PORT` | `apps/text` | no | no | `8862` | commented | — |

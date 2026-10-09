@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -68,6 +68,7 @@ def _register_provider_factories(
     registry: ProviderRegistry,
     http_client: httpx.AsyncClient,
     settings: Settings | None = None,
+    lmstudio_agent_url_source: Callable[[], Awaitable[str | None]] | None = None,
 ) -> None:
     """Register LAZY provider factories — one per adapter, unconditionally.
 
@@ -129,9 +130,9 @@ def _register_provider_factories(
     # body fields.
     def _lm_studio() -> LMStudioProvider:
         provider = LMStudioProvider()
-        if settings is not None:
+        if settings is not None and lmstudio_agent_url_source is not None:
             provider.configure_residency_ensure(
-                agent_url=settings.lmstudio_agent_url,
+                agent_url_source=lmstudio_agent_url_source,
                 service_token=settings.peer_service_token(),
             )
         return provider
@@ -203,12 +204,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.provider_registry = ProviderRegistry()
 
     registry = app.state.provider_registry
+
     # register LAZY, connection-gated provider factories (no ENABLE
     # flag, no eager instantiation). The named provider is built on the first
     # request that selects it; the companion state below is keyed on the set of
     # AVAILABLE providers (factory-registered), so a request-driven build slots
     # straight into its rate limiter / queue / breaker / semaphore.
-    _register_provider_factories(registry, http_client, settings)
+    async def _lmstudio_agent_url() -> str | None:
+        # TASK-1055 wave 3 — served by the gateway (`lmStudioServing.agentUrl`), read per
+        # request through the TTL-cached control-plane client created further down.
+        client = getattr(app.state, "effective_config_client", None)
+        return None if client is None else (await client.get()).lm_studio_agent_url()
+
+    _register_provider_factories(registry, http_client, settings, _lmstudio_agent_url)
 
     # Translate capability: a SEPARATE registry (its providers are not LLMs and
     # carry no rate-limit/circuit-breaker/queue companion state). Sarvam is

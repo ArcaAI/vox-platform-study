@@ -109,7 +109,7 @@ export function publishStatusOf(
  *   → NOT_DOWNLOADED (the bucket lacks the weights AND no service holds them)
  *   → LOAD_FAILED → LOADING → SERVING (resident on ≥ 1 observed service)
  *   → DOWNLOADED (idle, on a service the residency ledger observes)
- *   → NOT_OBSERVED (served by a workload outside the ledger — tts, asr-vllm, text, vLLM).
+ *   → NOT_OBSERVED (served by a workload outside the ledger — asr-vllm, text, vLLM).
  *
  * `residency` is `null` when the catalogue could not be read: the status then
  * rests on the registry alone and `observedAt` is `null`.

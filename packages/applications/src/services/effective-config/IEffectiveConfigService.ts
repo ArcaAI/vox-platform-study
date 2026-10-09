@@ -235,6 +235,12 @@ export interface EffectiveLmStudioServingPlan {
 /** Served to `text` — the one number its lm-studio lanes (user + judge) are sized by. */
 export interface EffectiveLmStudioServingConcurrency {
   parallel: number;
+  /**
+   * TASK-1055 wave 3 — the LM Studio residency agent (the gateway's `LMSTUDIO_AGENT_URL`). Text asks
+   * it to ensure a model is loaded, with the model's serving profile, before each request. Omitted
+   * when the gateway has none.
+   */
+  agentUrl?: string;
 }
 
 export interface EffectiveConfigResponse {
