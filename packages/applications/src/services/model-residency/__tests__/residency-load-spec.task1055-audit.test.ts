@@ -72,7 +72,8 @@ function builder() {
   const asrRow = CATALOGUE.find((m) => m.slug === SEEDED_ASR_PRIMARY)!;
   const agents = [{ tenantId: SYSTEM, slug: 'realtime-transcription', modelId: asrRow.id }];
   const agentRepo = {
-    findAll: async ({ filters }: { filters: Record<string, unknown> }) => agents.filter((a) => (filters.modelId as { in: string[] }).in.includes(a.modelId)),
+    findAll: async ({ filters }: { filters: Record<string, unknown> }) =>
+      agents.filter((a) => (filters.modelId as { in: string[] }).in.includes(a.modelId)),
   };
   const asr = { resolve: async () => ({ spec: { models: { asr: { slug: SEEDED_ASR_PRIMARY } } } }) };
   const policies = SYSTEM_TASK_DEFAULT_ROUTING.flatMap((p) => {
@@ -100,7 +101,9 @@ describe.each(['nlp', 'stt'] as const)('every seeded %s model: a load_spec or a 
     const blocked = loadBlockedReasonFor(service, row as never);
 
     if ('cache' in expected || 'resolvedSpec' in expected) {
-      expect('spec' in outcome ? outcome.spec : outcome).toMatchObject('cache' in expected ? { cache: expected.cache } : { resolved_spec: expect.anything() });
+      expect('spec' in outcome ? outcome.spec : outcome).toMatchObject(
+        'cache' in expected ? { cache: expected.cache } : { resolved_spec: expect.anything() },
+      );
       expect(blocked).toBeNull();
       return;
     }

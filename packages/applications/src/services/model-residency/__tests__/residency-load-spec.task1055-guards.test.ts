@@ -41,7 +41,8 @@ function build(rows: Row[], agents: Array<{ tenantId: string; slug: string; mode
     });
   const aiModels = { findAll: async ({ filters }: { filters: Record<string, unknown> }) => rows.filter((m) => matches(m, filters)) };
   const agentRepo = {
-    findAll: async ({ filters }: { filters: Record<string, unknown> }) => agents.filter((a) => (filters.modelId as { in: string[] }).in.includes(a.modelId)),
+    findAll: async ({ filters }: { filters: Record<string, unknown> }) =>
+      agents.filter((a) => (filters.modelId as { in: string[] }).in.includes(a.modelId)),
   };
   const asr = {
     resolve: async ({ agentSlug }: { agentSlug: string }) => {
@@ -61,7 +62,10 @@ const refusal = async (promise: Promise<unknown>): Promise<ResidencyLoadSpecErro
 
 describe('Prompt Guard 2 → nlp_seq_cls_guard (a guard-taxonomy row on the transformers runtime)', () => {
   it('derives nlp_seq_cls_guard, not nlp_text_classifier, after an nlp restart (nothing reported)', async () => {
-    await expect(build(ALL_NLP()).build('nlp', 'meta-llama/Llama-Prompt-Guard-2-86M')).resolves.toEqual({ cache: 'nlp_seq_cls_guard', model_path: null });
+    await expect(build(ALL_NLP()).build('nlp', 'meta-llama/Llama-Prompt-Guard-2-86M')).resolves.toEqual({
+      cache: 'nlp_seq_cls_guard',
+      model_path: null,
+    });
   });
 
   it('carries the derived local path once the row is published', async () => {
@@ -109,7 +113,10 @@ describe('generative judges → nlp_judge_guard (an nlp-served row declaring `_m
 
   it('a reported nlp_judge_guard slot is accepted as-is', async () => {
     const judge = seed('qwen3guard-gen-0.6b', { servedBy: 'nlp', sourceUri: 'Qwen/Qwen3Guard-Gen-0.6B' });
-    await expect(build([judge]).build('nlp', 'Qwen/Qwen3Guard-Gen-0.6B', 'nlp_judge_guard')).resolves.toEqual({ cache: 'nlp_judge_guard', model_path: null });
+    await expect(build([judge]).build('nlp', 'Qwen/Qwen3Guard-Gen-0.6B', 'nlp_judge_guard')).resolves.toEqual({
+      cache: 'nlp_judge_guard',
+      model_path: null,
+    });
   });
 
   it('an nlp-served judge on a protocol nlp has no runtime for (criteria_json) is refused by name', async () => {
