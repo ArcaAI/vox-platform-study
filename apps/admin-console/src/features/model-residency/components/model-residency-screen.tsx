@@ -10,9 +10,9 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import {
-  asModelResidencyConflict,
   isTerminalResidencyOperation,
   RESIDENCY_OPERATION_TIMEOUT_MS,
+  residencyErrorMessage,
   useModelResidencyOperation,
   type LmStudioResidencyLoadOptions,
   type LoadModelResidencyResponse,
@@ -190,7 +190,9 @@ export function ModelResidencyScreen() {
       if (toasted.current.has(operation.id)) return;
       toasted.current.add(operation.id);
       if (operation.status === 'succeeded') toast.success(`${name} loaded.`);
-      else toast.error(operation.error?.message || `Loading ${name} failed.`);
+      else if (operation.error?.message)
+        toast.error(`Loading ${name} failed: ${operation.error.message}${operation.error.code ? ` (${operation.error.code})` : ''}`);
+      else toast.error(operation.error?.code ? `Loading ${name} failed (${operation.error.code}).` : `Loading ${name} failed.`);
       setPending((current) => {
         if (current[key]?.operationId !== operation.id) return current;
         return Object.fromEntries(Object.entries(current).filter(([candidate]) => candidate !== key));
@@ -252,7 +254,7 @@ export function ModelResidencyScreen() {
           }
           if (response.operationId) track(service.service, model.modelRef, response.operationId, model.name);
         },
-        onError: (error) => toast.error(asModelResidencyConflict(error)?.message || `Couldn't reload ${model.name}.`),
+        onError: (error) => toast.error(residencyErrorMessage(error, `Couldn't reload ${model.name}.`)),
       },
     );
   }
@@ -338,7 +340,7 @@ export function ModelResidencyScreen() {
           <AttentionStrip items={deriveAttentionItems(data)} onLink={openLink} onLoad={openLoad} />
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="flex min-w-0 flex-col gap-4">
-              <GpuSummaryPanel devices={data.devices} />
+              <GpuSummaryPanel devices={data.devices} services={data.services} />
               <ModelsTable
                 services={data.services}
                 devices={data.devices}

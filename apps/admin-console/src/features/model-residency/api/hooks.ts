@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { loadModelResidency, type LoadModelResidencyRequest } from '@/shared/residency';
 import {
   createResidencyPolicy,
+  deleteResidencyPolicy,
   dismissResidencySuggestion,
   getModelResidencyCatalogue,
   getModelResidencyReadiness,
@@ -88,6 +89,20 @@ export function useSaveResidencyPolicy() {
             class: input.class,
             idleTtlSeconds: input.idleTtlSeconds,
           }),
+    onSuccess: invalidate,
+  });
+}
+
+export interface ResetResidencyPolicyInput {
+  policyId: string;
+  policyVersion: number;
+}
+
+/** TASK-1055 (E9) — delete the explicit keep-policy row: the model is back on its implicit default. */
+export function useResetResidencyPolicy() {
+  const invalidate = useInvalidateCatalogue();
+  return useMutation({
+    mutationFn: (input: ResetResidencyPolicyInput) => deleteResidencyPolicy(input.policyId, input.policyVersion),
     onSuccess: invalidate,
   });
 }

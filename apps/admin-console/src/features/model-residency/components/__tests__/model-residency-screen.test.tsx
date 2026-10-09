@@ -272,7 +272,7 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
     act(() => lastProps<LoadPreviewDialogProps>(spies.load).onAdmitted(accepted('op-2', 'second')));
 
     // op-2 fails at once; op-1 is still running and its row shows it.
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Second model did not fit.'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Loading Second model failed: Second model did not fit. (OVER_BUDGET)'));
     expect(within(row(/Whisper Large Code-Switch/)).getByText('Load in progress')).toBeDefined();
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Whisper Large Code-Switch loaded.'), { timeout: 4000 });
@@ -350,6 +350,34 @@ describe('ModelResidencyScreen — lost operations, readiness header', () => {
     );
     expect(await screen.findByRole('link', { name: 'Enforce readiness · 5 of 8' })).toBeDefined();
     expect(screen.getByText('Shadow review not recorded')).toBeDefined();
+  });
+});
+
+describe('ModelResidencyScreen — TASK-1055 errors and per-card bytes', () => {
+  it('a refused reload toasts the server’s message and code, never a generic line', async () => {
+    await renderScreen(makeCatalogue(), (call) =>
+      call.url === `${BASE}/load`
+        ? Response.json({ code: 'SERVICE_UNREACHABLE', message: 'lm-studio agent did not answer', statusCode: 502 }, { status: 502 })
+        : undefined,
+    );
+    fireEvent.click(within(row(/Granite Guardian/)).getByRole('button', { name: /Details/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'drawer reload' }));
+    const confirmDialog = await screen.findByRole('dialog', { name: /Reload Granite/ });
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Reload' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('lm-studio agent did not answer (SERVICE_UNREACHABLE)'));
+  });
+
+  it('feeds the GPU cards the measured per-card bytes of a split model', async () => {
+    const split = {
+      ...ROUTING_GUARD,
+      residency: { ...ROUTING_GUARD.residency!, device: 'multi', deviceBytes: [{ device: 'gpu0', bytes: 3 * GiB }] },
+    };
+    const device = makeDevice({
+      models: [{ service: 'lm-studio', modelRef: 'granite-guardian', name: 'Granite Guardian 4.1 8B', bytes: 0.1 * GiB, bytesSource: 'estimated' }],
+    });
+    await renderScreen(makeCatalogue({ devices: [device], services: [{ ...LMS, models: [split] }] }));
+    const card = within(screen.getByRole('list', { name: 'Memory on GPU 0' }));
+    expect(card.getByText('Granite Guardian 4.1 8B').parentElement!.textContent).toMatch(/3 GB/);
   });
 });
 

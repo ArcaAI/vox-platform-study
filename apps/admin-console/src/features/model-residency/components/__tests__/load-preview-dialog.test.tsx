@@ -20,6 +20,7 @@ vi.mock('../../api', async () => {
   const actual = await vi.importActual<typeof import('../../api/types')>('../../api/types');
   return {
     asModelResidencyConflict: actual.asModelResidencyConflict,
+    residencyErrorMessage: actual.residencyErrorMessage,
     useLoadPreview: () => ({ mutate: previewMutate, ...state }),
     useUnloadResidencyModel: () => ({ mutateAsync: unloadAsync, isPending: false }),
     useLoadResidencyModel: () => ({ mutateAsync: loadAsync, isPending: false }),
@@ -155,7 +156,7 @@ describe('LoadPreviewDialog', () => {
     loadAsync.mockRejectedValue({ details: { code: 'LOAD_IN_PROGRESS', message: 'Already loading it' } });
     const { onOpenChange } = renderDialog();
     fireEvent.click(screen.getByRole('button', { name: 'Load' }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Already loading it'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Already loading it (LOAD_IN_PROGRESS)'));
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 

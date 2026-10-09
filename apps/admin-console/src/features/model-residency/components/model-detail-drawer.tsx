@@ -21,15 +21,17 @@ import type {
   ResidencyServiceGroup,
   ResidencyUseRole,
 } from '../api/types';
-import { usePinResidencyModel, useSaveResidencyPolicy } from '../api/hooks';
+import { residencyErrorMessage } from '@/shared/residency';
+import { usePinResidencyModel, useResetResidencyPolicy, useSaveResidencyPolicy } from '../api/hooks';
 import { modelResidencyKeys } from '../api/keys';
 import {
   deviceShortLabel,
+  drawerActions,
   formatModelStatus,
   formatStateWhere,
   humanizeTaskLabel,
   keepPolicyKindToClass,
-  primaryRowAction,
+  requiresUnloadReason,
 } from './residency-display';
 
 const EM_DASH = '—';
@@ -56,6 +58,22 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dd className="text-sm">{value}</dd>
     </div>
   );
+}
+
+/** "Couldn't pin Granite: lm-studio agent did not answer (SERVICE_UNREACHABLE)" — the server's words after what failed (AC-6). */
+function failure(what: string, error: unknown): string {
+  const reason = residencyErrorMessage(error, '');
+  return reason ? `${what}: ${reason}` : `${what}.`;
+}
+
+/** The live load config's context length as the input's starting text ('' when the engine reported none). */
+function liveContext(model: ResidencyCatalogueModel): string {
+  const value = model.residency?.loadConfig?.contextLength;
+  return value === null || value === undefined ? '' : String(value);
+}
+
+function liveFlash(model: ResidencyCatalogueModel): boolean {
+  return model.residency?.loadConfig?.flashAttention === true;
 }
 
 function serverIdle(model: ResidencyCatalogueModel): string {
@@ -97,13 +115,25 @@ export function ModelDetailDrawer({
   onLink,
 }: ModelDetailDrawerProps) {
   const savePolicy = useSaveResidencyPolicy();
+  const resetPolicy = useResetResidencyPolicy();
   const pin = usePinResidencyModel();
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<ResidencyKeepPolicyKind>(model.keepPolicy.kind);
   const [idleMinutes, setIdleMinutes] = useState(serverIdle(model));
-  const [contextLength, setContextLength] = useState('');
-  const [flashAttention, setFlashAttention] = useState(false);
+  // TASK-1055 (E10) — Reload options start from what the instance is ACTUALLY loaded with.
+  const [contextLength, setContextLength] = useState(liveContext(model));
+  const [flashAttention, setFlashAttention] = useState(liveFlash(model));
   const [flashTouched, setFlashTouched] = useState(false);
+  const optionsSig = `${model.aiModelId}|${liveContext(model)}|${liveFlash(model)}`;
+  const [optionsSeed, setOptionsSeed] = useState({ sig: optionsSig, context: liveContext(model), flash: liveFlash(model) });
+  if (open && optionsSeed.sig !== optionsSig) {
+    const edited = contextLength !== optionsSeed.context || flashTouched;
+    setOptionsSeed({ sig: optionsSig, context: liveContext(model), flash: liveFlash(model) });
+    if (!edited) {
+      setContextLength(liveContext(model));
+      setFlashAttention(liveFlash(model));
+    }
+  }
 
   // Re-seed the draft when a different model opens, or when the server's policy moved under an UNEDITED draft.
   const serverSig = `${model.aiModelId}|${model.keepPolicy.policyVersion}|${model.keepPolicy.kind}|${model.keepPolicy.idleTtlSeconds}`;
@@ -150,18 +180,41 @@ export function ModelDetailDrawer({
             });
             return;
           }
-          const message = status === 400 ? (error as { message?: string } | null)?.message : undefined;
-          toast.error(message || `Couldn't save the keep policy for ${model.name}.`);
+          toast.error(failure(`Couldn't save the keep policy for ${model.name}`, error));
         },
       },
     );
   }
 
-  // Mirrors `service-section.tsx`: a service with no control API (e.g. stt-worker) never offers a
-  // primary action here either, regardless of what `model.actions` says.
+  /** TASK-1055 (E9) — delete the explicit row: back to the implicit live-path / on-demand default. */
+  function resetPolicyToDefault() {
+    const { policyId, policyVersion } = model.keepPolicy;
+    if (!policyId || policyVersion === null) return;
+    resetPolicy.mutate(
+      { policyId, policyVersion },
+      {
+        onSuccess: () => toast.success(`${model.name} is back to its default keep policy.`),
+        onError: (error) => {
+          const status = (error as { status?: number } | null)?.status;
+          if (status === 412) {
+            toast.error('This policy changed since you opened it — reload to see the latest.');
+            void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() });
+            return;
+          }
+          toast.error(failure(`Couldn't reset the keep policy for ${model.name}`, error));
+        },
+      },
+    );
+  }
+
+  // Mirrors `service-section.tsx`: a service with no control API (e.g. stt-worker) never offers an
+  // action here either, regardless of what `model.actions` says.
   const resident = model.kind === 'resident';
-  const action = service.controllable && resident ? primaryRowAction(model.actions) : null;
+  const actions = drawerActions(service, model);
   const pinnedByPolicy = model.keepPolicy.kind === 'always';
+  const unloadNeedsReason = requiresUnloadReason(model);
+  const explicitPolicy = model.keepPolicy.source === 'policy' && model.keepPolicy.policyId !== null && model.keepPolicy.policyVersion !== null;
+  const loadConfig = model.residency?.loadConfig ?? null;
   const canPin = service.controllable && resident && model.status === 'loaded';
 
   function togglePin() {
@@ -170,7 +223,7 @@ export function ModelDetailDrawer({
       { service: service.service, modelRef: model.modelRef, pinned },
       {
         onSuccess: () => toast.success(pinned ? `${model.name} pinned on ${service.label}.` : `${model.name} unpinned.`),
-        onError: () => toast.error(`Couldn't ${pinned ? 'pin' : 'unpin'} ${model.name}.`),
+        onError: (error) => toast.error(failure(`Couldn't ${pinned ? 'pin' : 'unpin'} ${model.name}`, error)),
       },
     );
   }
@@ -194,23 +247,23 @@ export function ModelDetailDrawer({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          {action === 'load' ? (
+          {actions.includes('load') ? (
             <Button disabled={actionPending} onClick={() => onLoad(service, model)}>
               {actionPending ? <Spinner /> : null}
               Load
             </Button>
           ) : null}
-          {action === 'unload' ? (
+          {actions.includes('unload') ? (
             <>
-              {pinnedByPolicy ? (
+              {unloadNeedsReason ? (
                 <span id="drawer-unload-why" className="text-muted-foreground mr-auto text-xs">
-                  {model.keepPolicy.reason || 'Pinned'} — unload is off while it is pinned.
+                  {model.keepPolicy.reason || 'On the live path'} — unloading it asks for a reason.
                 </span>
               ) : null}
               <Button
                 variant="destructive"
-                disabled={actionPending || pinnedByPolicy}
-                aria-describedby={pinnedByPolicy ? 'drawer-unload-why' : undefined}
+                disabled={actionPending}
+                aria-describedby={unloadNeedsReason ? 'drawer-unload-why' : undefined}
                 onClick={() => onUnload(service, model)}
               >
                 {actionPending ? <Spinner /> : null}
@@ -218,13 +271,13 @@ export function ModelDetailDrawer({
               </Button>
             </>
           ) : null}
-          {action === 'reload' && isLmStudio ? (
+          {actions.includes('reload') && isLmStudio ? (
             <Button
               disabled={actionPending}
               onClick={() =>
                 onReload(service, model, {
-                  ...(contextLength !== '' ? { contextLength: Number(contextLength) } : {}),
-                  ...(flashTouched ? { flashAttention } : {}),
+                  ...(contextLength.trim() !== '' && contextLength !== optionsSeed.context ? { contextLength: Number(contextLength) } : {}),
+                  ...(flashTouched && flashAttention !== optionsSeed.flash ? { flashAttention } : {}),
                 })
               }
             >
@@ -421,20 +474,39 @@ export function ModelDetailDrawer({
             <p className="text-muted-foreground text-xs">
               Currently: {model.keepPolicy.label} &mdash; {model.keepPolicy.reason}
             </p>
-            <div>
-              <Button size="sm" disabled={savePolicy.isPending || idleInvalid} onClick={savePolicyDraft}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" disabled={savePolicy.isPending || resetPolicy.isPending || idleInvalid} onClick={savePolicyDraft}>
                 {savePolicy.isPending ? <Spinner /> : null}
                 Save keep policy
               </Button>
+              {explicitPolicy ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={savePolicy.isPending || resetPolicy.isPending}
+                  aria-describedby="keep-policy-reset-hint"
+                  onClick={resetPolicyToDefault}
+                >
+                  {resetPolicy.isPending ? <Spinner /> : null}
+                  Reset to default
+                </Button>
+              ) : null}
+              {explicitPolicy ? (
+                <span id="keep-policy-reset-hint" className="text-muted-foreground text-xs">
+                  Removes this setting: always loaded when a live path uses it, loaded when needed otherwise.
+                </span>
+              ) : null}
             </div>
           </section>
         ) : null}
 
         {isLmStudio ? (
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium">Load options</h3>
+          <section className="flex flex-col gap-2" aria-labelledby="drawer-load-options-h">
+            <h3 id="drawer-load-options-h" className="text-sm font-medium">
+              Load options
+            </h3>
             <p className="text-muted-foreground text-xs">
-              Applied on the next Reload only &mdash; everything else about this deployment stays fixed at pod restart.
+              Applied on the next Reload; anything you leave unchanged is restored from the model&rsquo;s serving profile.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
@@ -463,6 +535,19 @@ export function ModelDetailDrawer({
                 </Label>
               </div>
             </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+              <Fact label="Parallel slots" value={loadConfig?.parallel != null ? formatNumber(loadConfig.parallel) : EM_DASH} />
+              <Fact
+                label="KV cache"
+                value={
+                  loadConfig?.kvCacheQuantK || loadConfig?.kvCacheQuantV
+                    ? `${loadConfig.kvCacheQuantK ?? EM_DASH} / ${loadConfig.kvCacheQuantV ?? EM_DASH}`
+                    : EM_DASH
+                }
+              />
+              <Fact label="Placement" value={deviceShortLabel(loadConfig?.device ?? model.residency?.device ?? null, devices) || EM_DASH} />
+            </dl>
+            <p className="text-muted-foreground text-xs">Parallel slots, KV cache and placement come from the model&rsquo;s serving profile.</p>
           </section>
         ) : null}
       </div>

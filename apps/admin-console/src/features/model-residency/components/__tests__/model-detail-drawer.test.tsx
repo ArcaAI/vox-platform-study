@@ -12,6 +12,7 @@ const pinMutate = vi.fn();
 vi.mock('../../api/hooks', () => ({
   useSaveResidencyPolicy: () => ({ mutate: saveMutate, isPending: false }),
   usePinResidencyModel: () => ({ mutate: pinMutate, isPending: false }),
+  useResetResidencyPolicy: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { ModelDetailDrawer } from '../model-detail-drawer';
@@ -111,7 +112,7 @@ describe('ModelDetailDrawer', () => {
     expect(String(vi.mocked(toast.error).mock.calls[0]![0])).toMatch(/couldn.t save/i);
   });
 
-  it('pinned row: Unload disabled with a visible reason', () => {
+  it('pinned row: Unload stays available and says a reason will be asked for (OD-2)', () => {
     const model = makeLoaded({
       keepPolicy: {
         kind: 'always',
@@ -123,10 +124,12 @@ describe('ModelDetailDrawer', () => {
         idleTtlSeconds: null,
       },
     });
-    renderDrawer(model);
+    const { onUnload } = renderDrawer(model);
     const unload = screen.getByRole('button', { name: /^unload/i }) as HTMLButtonElement;
-    expect(unload.disabled).toBe(true);
-    expect(screen.getAllByText(/pinned by a live path/i).length).toBeGreaterThan(0);
+    expect(unload.disabled).toBe(false);
+    expect(screen.getByText(/unloading it asks for a reason/i)).toBeTruthy();
+    fireEvent.click(unload);
+    expect(onUnload).toHaveBeenCalled();
   });
 
   it('re-seeds an unedited keep-policy draft when the server policy changes, but keeps an edited one', () => {

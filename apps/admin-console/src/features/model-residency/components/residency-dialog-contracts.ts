@@ -19,7 +19,9 @@ import type { LmStudioResidencyLoadOptions, ResidencyCatalogueModel, ResidencyDe
  * headroom / shortfall, lets the admin tick ON_DEMAND models to unload first,
  * and loads — un-forced when it fits, forced with a mandatory reason when not.
  * Every selected eviction is unloaded (with the reason "Make room for <name>")
- * BEFORE the load is sent. On admission it calls `onAdmitted` with the load
+ * BEFORE the load is sent. TASK-1055: a GPU picker over `candidates`
+ * (defaulting to `suggestedDevice`, every pick re-checked with `device`), the
+ * capacity callout with "Load on <GPU>", and an optional `makeDefault`. On admission it calls `onAdmitted` with the load
  * response (202 `accepted` + `operationId`, or 200 `already_loaded`) and closes;
  * the SCREEN tracks the operation and toasts its outcome.
  */
@@ -48,8 +50,10 @@ export interface LinkInstanceDialogProps {
 /**
  * Every unload goes through this one dialog: an optional reason when idle, a
  * MANDATORY reason (and `force: true`) when `residency.inFlight > 0` or the
- * gateway answers 409 `IN_FLIGHT`. Disabled with the reason shown when the
- * row is pinned (`keepPolicy.kind === 'always'`). Toasts its own outcome.
+ * gateway answers 409 `IN_FLIGHT`. TASK-1055 (OD-2): a pinned / live-path row
+ * is no longer blocked — the dialog names its consumers and the reason becomes
+ * mandatory (also on a 409 `LIVE_PATH_REASON_REQUIRED`); a model held as
+ * separate copies on several GPUs can be unloaded per `device`. Toasts its own outcome.
  */
 export interface UnloadDialogProps {
   open: boolean;

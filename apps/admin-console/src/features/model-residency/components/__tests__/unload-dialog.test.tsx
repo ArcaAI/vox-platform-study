@@ -10,6 +10,7 @@ vi.mock('../../api', async () => {
   const actual = await vi.importActual<typeof import('../../api/types')>('../../api/types');
   return {
     asModelResidencyConflict: actual.asModelResidencyConflict,
+    residencyErrorMessage: actual.residencyErrorMessage,
     useUnloadResidencyModel: () => ({ mutateAsync: unloadAsync, isPending: false }),
   };
 });
@@ -75,7 +76,7 @@ describe('UnloadDialog', () => {
     expect(screen.getByLabelText(/reason/i).getAttribute('aria-required')).toBe('true');
   });
 
-  it('a pinned row shows the reason and no destructive button', () => {
+  it('a pinned row can be unloaded, with a mandatory reason (OD-2)', async () => {
     const model = makeLoaded({
       keepPolicy: {
         kind: 'always',
@@ -88,8 +89,13 @@ describe('UnloadDialog', () => {
       },
     });
     renderDialog(model);
-    expect(screen.getByText(/Pinned by a live path/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /unload/i })).toBeNull();
+    const button = screen.getByRole('button', { name: /^unload/i }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByLabelText(/reason/i).getAttribute('aria-required')).toBe('true');
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'free GPU 0 for a trial' } });
+    fireEvent.click(button);
+    await waitFor(() => expect(unloadAsync).toHaveBeenCalled());
+    expect(unloadAsync).toHaveBeenCalledWith({ service: 'stt', modelRef: 'whisper-large-gguf', reason: 'free GPU 0 for a trial' });
   });
 
   it('has no axe violations', async () => {

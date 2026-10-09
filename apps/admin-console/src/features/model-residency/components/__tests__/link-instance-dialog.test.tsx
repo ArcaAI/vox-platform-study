@@ -79,11 +79,13 @@ describe('LinkInstanceDialog', () => {
     expect(toast.success).toHaveBeenCalledWith('Left unmatched');
   });
 
-  it('toasts a failure', async () => {
-    linkAsync.mockRejectedValue(new Error('boom'));
+  it('toasts a failure in the server’s words', async () => {
+    linkAsync.mockRejectedValue(new Error('runtime key already linked to another model'));
     renderDialog();
     fireEvent.click(screen.getByRole('button', { name: /link instance/i }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't link gemma-4-e2b-it-qat@q4_0: runtime key already linked to another model"),
+    );
   });
 
   it('has no axe violations', async () => {
