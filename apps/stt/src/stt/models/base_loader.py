@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from hope_runtime_models import release_accelerator_memory
+
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 
 logger = logging.getLogger(__name__)
@@ -88,6 +90,11 @@ class BaseModelLoader(ABC):
     #: The ``provider_overrides`` key a BYOK loader reads its credential from.
     #: Must stay ``None`` for a SELF_HOSTED loader.
     override_key: str | None = None
+    #: TASK-1055 — True when this loader loads ON ``AiModelConfig.device = "cuda:<i>"``
+    #: (the i-th GPU the process sees). False = its runtime cannot choose a GPU (or
+    #: holds no weights), so the residency planner refuses a non-default placement
+    #: instead of loading on the wrong card.
+    places_on_device_index: bool = False
 
     @property
     @abstractmethod
@@ -243,12 +250,30 @@ class BaseModelLoader(ABC):
             return None
 
 
-def cleanup_accelerator_memory() -> None:
+def cuda_index(device: str | None) -> int | None:
+    """The ordinal in an explicit ``cuda:<i>`` device string, else None (TASK-1055).
+
+    ``cuda`` / ``auto`` / ``cpu`` / ``mps`` / ``None`` carry no ordinal: the loader's own
+    default placement applies to them, exactly as before.
+    """
+    if not device or not device.startswith("cuda:"):
+        return None
+    ordinal = device.split(":", 1)[1]
+    return int(ordinal) if ordinal.isdigit() else None
+
+
+def cleanup_accelerator_memory(device: str | None = None) -> None:
     """Release GPU/accelerator memory pools after model unload.
 
     IMPORTANT: This must be called AFTER deleting model references and
     running gc.collect(). The empty_cache() calls only release memory
     that is no longer referenced by any tensor.
+
+    ``device`` (TASK-1055) is the device the unloaded model sat on. An explicit
+    ``cuda:<i>`` releases torch's cached blocks on THAT card
+    (`hope_runtime_models.release_accelerator_memory`) — a bare
+    ``torch.cuda.empty_cache()`` only releases the CURRENT device's, which on a
+    two-GPU process is ``cuda:0`` whatever card the model was on.
 
     Supports:
     - CUDA: ``torch.cuda.empty_cache()``
@@ -257,6 +282,9 @@ def cleanup_accelerator_memory() -> None:
 
     Safe to call on any platform — silently skips unsupported backends.
     """
+    if cuda_index(device) is not None:
+        release_accelerator_memory(device)
+        return
     try:
         import torch
 

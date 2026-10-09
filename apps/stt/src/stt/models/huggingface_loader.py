@@ -10,7 +10,7 @@ from stt.core.model_credentials import resolve_hf_token
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, ModelTaskType
-from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel, cuda_index
 from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,9 @@ class HuggingFaceLoader(BaseModelLoader):
     @property
     def supported_formats(self) -> list[AiModelFormat]:
         return [AiModelFormat.SAFETENSOR, AiModelFormat.PYTORCH]
+
+    #: TASK-1055 — ``cuda:<i>`` pins every layer to that card (``device_map={"": i}``).
+    places_on_device_index = True
 
     async def load(self, model_config: AiModelConfig) -> LoadedModel:
         """
@@ -213,7 +216,11 @@ class HuggingFaceLoader(BaseModelLoader):
         WhisperProcessor = transformers.WhisperProcessor
 
         _has_accelerate = self._has_accelerate()
-        _device_map_kwargs: dict[str, Any] = {"device_map": "auto"} if _has_accelerate else {}
+        # TASK-1055 — a placed load (`cuda:<i>`) maps the WHOLE model onto that card;
+        # "auto" would spread it over every GPU the process sees.
+        _index = cuda_index(device)
+        _device_map: Any = "auto" if _index is None else {"": _index}
+        _device_map_kwargs: dict[str, Any] = {"device_map": _device_map} if _has_accelerate else {}
 
         # ``model`` holds many different concrete classes across branches
         # (Whisper / Seq2Seq / CTC / audio-classification / multimodal LM) and
@@ -288,10 +295,12 @@ class HuggingFaceLoader(BaseModelLoader):
                 try:
                     import torch as _torch
 
-                    _use_device_map = _torch.cuda.is_available() and _has_accelerate
+                    _use_device_map = (
+                        _index is not None or _torch.cuda.is_available()
+                    ) and _has_accelerate
                     _multimodal_kwargs: dict[str, Any] = {"low_cpu_mem_usage": True}
                     if _use_device_map:
-                        _multimodal_kwargs["device_map"] = "auto"
+                        _multimodal_kwargs["device_map"] = _device_map
                     model = AutoModelForMultimodalLM.from_pretrained(
                         model_source,
                         dtype=torch_dtype,
@@ -553,8 +562,8 @@ class HuggingFaceLoader(BaseModelLoader):
             # Force garbage collection
             gc.collect()
 
-            # Release GPU/accelerator memory (CUDA, MPS, etc.)
-            cleanup_accelerator_memory()
+            # Release GPU/accelerator memory (CUDA, MPS, etc.) on the model's card
+            cleanup_accelerator_memory(loaded_model.device)
 
             logger.info(f"Unloaded model {loaded_model.model_slug}")
 
