@@ -27,6 +27,21 @@ export const MULTI_DEVICE = 'multi';
 const SPLIT_LABEL = 'Split across cards';
 
 /** "GPU 0 — NVIDIA RTX 2000 Ada Generation" -> "GPU 0"; falls back to the raw id if a device is unknown. */
+/**
+ * TASK-1055 R1-F8 — the catalogue names a CPU device `cpu:<service>` while the
+ * load/preview request vocabulary says `cpu`; both are the same device.
+ */
+export function normalizeDeviceId(device: string | null | undefined): string | null {
+  if (!device) return null;
+  return device === 'cpu' || device.startsWith('cpu:') ? 'cpu' : device;
+}
+
+/** True when both ids name the same device (`cpu:<service>` ≡ `cpu`); never true for a missing id. */
+export function sameDevice(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = normalizeDeviceId(a);
+  return left !== null && left === normalizeDeviceId(b);
+}
+
 export function deviceShortLabel(deviceId: string | null, devices: ResidencyDevice[]): string {
   if (!deviceId) return '';
   if (deviceId === MULTI_DEVICE) return SPLIT_LABEL;

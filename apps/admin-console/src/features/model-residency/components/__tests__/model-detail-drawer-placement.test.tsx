@@ -5,7 +5,7 @@
  * words (AC-6).
  */
 
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { toast } from 'sonner';
@@ -76,24 +76,40 @@ describe('ModelDetailDrawer — Reload with options (E10)', () => {
     expect(screen.getByRole('button', { name: /reload with options/i })).toBeTruthy();
   });
 
-  it('prefills the options from the live load config and shows parallel / KV quant / placement read-only', () => {
+  it('starts empty = "restore the serving profile", showing the live values as context (R3-1)', () => {
     renderDrawer(granite());
-    expect((screen.getByLabelText('Context length') as HTMLInputElement).value).toBe('16384');
-    expect(screen.getByRole('checkbox', { name: /flash attention/i }).getAttribute('aria-checked')).toBe('true');
-    const facts = screen.getByRole('region', { name: 'Load options' });
+    const context = screen.getByLabelText('Context length') as HTMLInputElement;
+    expect(context.value).toBe('');
+    expect(context.getAttribute('placeholder')).toBe('Serving profile');
+    expect(screen.getByText('Currently loaded with 16384. Leave empty to restore the serving profile.')).toBeTruthy();
+    const flash = screen.getByRole('radiogroup', { name: 'Flash attention' });
+    expect(within(flash).getByRole('radio', { name: 'Serving profile' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('Currently loaded with flash attention on.')).toBeTruthy();
+    const facts = screen.getByRole('region', { name: 'Currently loaded with' });
     expect(facts.textContent).toMatch(/Parallel slots\s*10/);
     expect(facts.textContent).toMatch(/KV cache\s*q8_0 \/ q8_0/);
     expect(facts.textContent).toMatch(/Placement\s*GPU 1/);
   });
 
-  it('a reload sends only what the admin changed (the profile restores the rest)', () => {
+  it('a reload sends only what the admin set (the profile restores the rest)', () => {
     const { onReload } = renderDrawer(granite());
     fireEvent.click(screen.getByRole('button', { name: /reload with options/i }));
     expect(onReload.mock.calls[0]![2]).toEqual({});
     fireEvent.change(screen.getByLabelText('Context length'), { target: { value: '32768' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /flash attention/i }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Off' }));
     fireEvent.click(screen.getByRole('button', { name: /reload with options/i }));
     expect(onReload.mock.calls[1]![2]).toEqual({ contextLength: 32768, flashAttention: false });
+  });
+
+  it('validates the context length as a positive whole number (R3-11)', () => {
+    const { onReload } = renderDrawer(granite());
+    for (const bad of ['0', '12.5', '-4', 'abc']) {
+      fireEvent.change(screen.getByLabelText('Context length'), { target: { value: bad } });
+      expect(screen.getByText('Enter a whole number of tokens greater than 0.')).toBeTruthy();
+      expect(screen.getByLabelText('Context length').getAttribute('aria-invalid')).toBe('true');
+      expect((screen.getByRole('button', { name: /reload with options/i }) as HTMLButtonElement).disabled).toBe(true);
+    }
+    expect(onReload).not.toHaveBeenCalled();
   });
 
   it('a split model names its placement in words', () => {
@@ -122,12 +138,39 @@ describe('ModelDetailDrawer — Reset to default (E9)', () => {
       },
     });
 
-  it('deletes the explicit policy row and says so', () => {
+  it('asks first, then deletes the explicit policy row and says so (R3-10)', async () => {
     resetMutate.mockImplementation((_vars, opts) => opts.onSuccess());
     renderDrawer(explicit('policy'));
     fireEvent.click(screen.getByRole('button', { name: /reset to default/i }));
-    expect(resetMutate).toHaveBeenCalledWith({ policyId: 'pol-1', policyVersion: 3 }, expect.any(Object));
+    expect(resetMutate).not.toHaveBeenCalled();
+    const confirm = await screen.findByRole('alertdialog', { name: /reset the keep policy/i });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(resetMutate).toHaveBeenCalledWith({ policyId: 'pol-1', policyVersion: 3 }, expect.any(Object)));
     expect(String(vi.mocked(toast.success).mock.calls[0]![0])).toMatch(/back to its default/i);
+  });
+
+  it('the confirmation has no axe violations', async () => {
+    renderDrawer(explicit('policy'));
+    fireEvent.click(screen.getByRole('button', { name: /reset to default/i }));
+    expect((await axe(await screen.findByRole('alertdialog'))).violations).toEqual([]);
+  });
+
+  it('cancelling the confirmation resets nothing', async () => {
+    renderDrawer(explicit('policy'));
+    fireEvent.click(screen.getByRole('button', { name: /reset to default/i }));
+    const confirm = await screen.findByRole('alertdialog', { name: /reset the keep policy/i });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    expect(resetMutate).not.toHaveBeenCalled();
+  });
+
+  it('a successful reset discards an unsaved keep-policy draft', async () => {
+    resetMutate.mockImplementation((_vars, opts) => opts.onSuccess());
+    renderDrawer(explicit('policy'));
+    fireEvent.click(screen.getByRole('radio', { name: /Keep warm/ }));
+    expect(screen.getByRole('radio', { name: /Keep warm/ }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /reset to default/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: /Always loaded/ }).getAttribute('aria-checked')).toBe('true'));
   });
 
   it('is hidden when there is no explicit row', () => {
@@ -135,24 +178,26 @@ describe('ModelDetailDrawer — Reset to default (E9)', () => {
     expect(screen.queryByRole('button', { name: /reset to default/i })).toBeNull();
   });
 
-  it('a failed reset toasts the server message', () => {
+  it('a failed reset toasts the server message', async () => {
     resetMutate.mockImplementation((_vars, opts) => opts.onError(new GatewayError(404, 'No such policy')));
     renderDrawer(explicit('policy'));
     fireEvent.click(screen.getByRole('button', { name: /reset to default/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(String(vi.mocked(toast.error).mock.calls[0]![0])).toMatch(/^Couldn.t reset .*: No such policy$/);
   });
 });
 
 describe('ModelDetailDrawer — errors in the server’s words (AC-6)', () => {
-  it('a failed pin toasts the server message and code', () => {
+  it('a failed pin toasts the model and the server message, the code in the description', () => {
     pinMutate.mockImplementation((_vars, opts) =>
       opts.onError({ details: { code: 'SERVICE_UNREACHABLE', message: 'lm-studio agent did not answer' } }),
     );
     renderDrawer(granite());
     fireEvent.click(screen.getByRole('button', { name: /pin on running service/i }));
-    expect(String(vi.mocked(toast.error).mock.calls[0]![0])).toMatch(
-      /^Couldn.t pin Granite Guardian: lm-studio agent did not answer \(SERVICE_UNREACHABLE\)$/,
-    );
+    expect(toast.error).toHaveBeenCalledWith("Couldn't pin Granite Guardian: lm-studio agent did not answer", {
+      description: 'Error code: SERVICE_UNREACHABLE',
+    });
   });
 
   it('has no axe violations', async () => {

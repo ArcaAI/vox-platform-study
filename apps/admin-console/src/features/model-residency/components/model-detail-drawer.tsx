@@ -5,7 +5,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
@@ -21,7 +20,8 @@ import type {
   ResidencyServiceGroup,
   ResidencyUseRole,
 } from '../api/types';
-import { residencyErrorMessage } from '@/shared/residency';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
+import { toastResidencyError } from '@/shared/residency';
 import { usePinResidencyModel, useResetResidencyPolicy, useSaveResidencyPolicy } from '../api/hooks';
 import { modelResidencyKeys } from '../api/keys';
 import {
@@ -60,21 +60,17 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** "Couldn't pin Granite: lm-studio agent did not answer (SERVICE_UNREACHABLE)" — the server's words after what failed (AC-6). */
-function failure(what: string, error: unknown): string {
-  const reason = residencyErrorMessage(error, '');
-  return reason ? `${what}: ${reason}` : `${what}.`;
-}
+/** R3-1 — a Reload option the admin did not set is restored from the serving profile; this is "not set". */
+type FlashChoice = 'profile' | 'on' | 'off';
 
-/** The live load config's context length as the input's starting text ('' when the engine reported none). */
-function liveContext(model: ResidencyCatalogueModel): string {
-  const value = model.residency?.loadConfig?.contextLength;
-  return value === null || value === undefined ? '' : String(value);
-}
+const FLASH_CHOICES: { value: FlashChoice; label: string }[] = [
+  { value: 'profile', label: 'Serving profile' },
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' },
+];
 
-function liveFlash(model: ResidencyCatalogueModel): boolean {
-  return model.residency?.loadConfig?.flashAttention === true;
-}
+/** A context length is a whole number of tokens above zero (R3-11). */
+const POSITIVE_INTEGER = /^[1-9]\d*$/;
 
 function serverIdle(model: ResidencyCatalogueModel): string {
   return model.keepPolicy.idleTtlSeconds === null ? '' : String(Math.round(model.keepPolicy.idleTtlSeconds / 60));
@@ -120,20 +116,17 @@ export function ModelDetailDrawer({
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<ResidencyKeepPolicyKind>(model.keepPolicy.kind);
   const [idleMinutes, setIdleMinutes] = useState(serverIdle(model));
-  // TASK-1055 (E10) — Reload options start from what the instance is ACTUALLY loaded with.
-  const [contextLength, setContextLength] = useState(liveContext(model));
-  const [flashAttention, setFlashAttention] = useState(liveFlash(model));
-  const [flashTouched, setFlashTouched] = useState(false);
-  const optionsSig = `${model.aiModelId}|${liveContext(model)}|${liveFlash(model)}`;
-  const [optionsSeed, setOptionsSeed] = useState({ sig: optionsSig, context: liveContext(model), flash: liveFlash(model) });
-  if (open && optionsSeed.sig !== optionsSig) {
-    const edited = contextLength !== optionsSeed.context || flashTouched;
-    setOptionsSeed({ sig: optionsSig, context: liveContext(model), flash: liveFlash(model) });
-    if (!edited) {
-      setContextLength(liveContext(model));
-      setFlashAttention(liveFlash(model));
-    }
+  // TASK-1055 (E10, R3-1) — Reload options start EMPTY (= restore the serving profile); the live values are shown as context.
+  const [contextLength, setContextLength] = useState('');
+  const [flashChoice, setFlashChoice] = useState<FlashChoice>('profile');
+  const [optionsFor, setOptionsFor] = useState(model.aiModelId);
+  if (optionsFor !== model.aiModelId) {
+    setOptionsFor(model.aiModelId);
+    setContextLength('');
+    setFlashChoice('profile');
   }
+  const contextInvalid = contextLength.trim() !== '' && !POSITIVE_INTEGER.test(contextLength.trim());
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Re-seed the draft when a different model opens, or when the server's policy moved under an UNEDITED draft.
   const serverSig = `${model.aiModelId}|${model.keepPolicy.policyVersion}|${model.keepPolicy.kind}|${model.keepPolicy.idleTtlSeconds}`;
@@ -180,28 +173,36 @@ export function ModelDetailDrawer({
             });
             return;
           }
-          toast.error(failure(`Couldn't save the keep policy for ${model.name}`, error));
+          toastResidencyError(error, `Couldn't save the keep policy for ${model.name}`);
         },
       },
     );
   }
 
-  /** TASK-1055 (E9) — delete the explicit row: back to the implicit live-path / on-demand default. */
+  /** TASK-1055 (E9, R3-10) — delete the explicit row (after a confirmation): back to the implicit live-path / on-demand default. */
   function resetPolicyToDefault() {
     const { policyId, policyVersion } = model.keepPolicy;
     if (!policyId || policyVersion === null) return;
     resetPolicy.mutate(
       { policyId, policyVersion },
       {
-        onSuccess: () => toast.success(`${model.name} is back to its default keep policy.`),
+        onSuccess: () => {
+          setConfirmReset(false);
+          // Discard any unsaved draft: the next catalogue read re-seeds it from the default policy.
+          setKind(model.keepPolicy.kind);
+          setIdleMinutes(serverIdle(model));
+          setSeeded({ sig: serverSig, model: model.aiModelId, kind: model.keepPolicy.kind, idle: serverIdle(model) });
+          toast.success(`${model.name} is back to its default keep policy.`);
+        },
         onError: (error) => {
           const status = (error as { status?: number } | null)?.status;
+          setConfirmReset(false);
           if (status === 412) {
             toast.error('This policy changed since you opened it — reload to see the latest.');
             void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() });
             return;
           }
-          toast.error(failure(`Couldn't reset the keep policy for ${model.name}`, error));
+          toastResidencyError(error, `Couldn't reset the keep policy for ${model.name}`);
         },
       },
     );
@@ -223,7 +224,7 @@ export function ModelDetailDrawer({
       { service: service.service, modelRef: model.modelRef, pinned },
       {
         onSuccess: () => toast.success(pinned ? `${model.name} pinned on ${service.label}.` : `${model.name} unpinned.`),
-        onError: (error) => toast.error(failure(`Couldn't ${pinned ? 'pin' : 'unpin'} ${model.name}`, error)),
+        onError: (error) => toastResidencyError(error, `Couldn't ${pinned ? 'pin' : 'unpin'} ${model.name}`),
       },
     );
   }
@@ -273,11 +274,12 @@ export function ModelDetailDrawer({
           ) : null}
           {actions.includes('reload') && isLmStudio ? (
             <Button
-              disabled={actionPending}
+              disabled={actionPending || contextInvalid}
+              aria-describedby={contextInvalid ? 'residency-drawer-context-error' : undefined}
               onClick={() =>
                 onReload(service, model, {
-                  ...(contextLength.trim() !== '' && contextLength !== optionsSeed.context ? { contextLength: Number(contextLength) } : {}),
-                  ...(flashTouched && flashAttention !== optionsSeed.flash ? { flashAttention } : {}),
+                  ...(contextLength.trim() !== '' ? { contextLength: Number(contextLength.trim()) } : {}),
+                  ...(flashChoice !== 'profile' ? { flashAttention: flashChoice === 'on' } : {}),
                 })
               }
             >
@@ -485,7 +487,7 @@ export function ModelDetailDrawer({
                   variant="outline"
                   disabled={savePolicy.isPending || resetPolicy.isPending}
                   aria-describedby="keep-policy-reset-hint"
-                  onClick={resetPolicyToDefault}
+                  onClick={() => setConfirmReset(true)}
                 >
                   {resetPolicy.isPending ? <Spinner /> : null}
                   Reset to default
@@ -506,51 +508,94 @@ export function ModelDetailDrawer({
               Load options
             </h3>
             <p className="text-muted-foreground text-xs">
-              Applied on the next Reload; anything you leave unchanged is restored from the model&rsquo;s serving profile.
+              Applied on the next Reload. Anything you leave unset is restored from the model&rsquo;s serving profile.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="residency-drawer-context">Context length</Label>
                 <Input
                   id="residency-drawer-context"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
-                  min={0}
+                  placeholder="Serving profile"
                   value={contextLength}
                   onChange={(event) => setContextLength(event.target.value)}
+                  aria-invalid={contextInvalid || undefined}
+                  aria-describedby={contextInvalid ? 'residency-drawer-context-error residency-drawer-context-hint' : 'residency-drawer-context-hint'}
                   className="font-mono"
                 />
+                {contextInvalid ? (
+                  <span id="residency-drawer-context-error" className="text-destructive text-sm">
+                    Enter a whole number of tokens greater than 0.
+                  </span>
+                ) : null}
+                <span id="residency-drawer-context-hint" className="text-muted-foreground text-xs">
+                  {loadConfig?.contextLength != null
+                    ? `Currently loaded with ${loadConfig.contextLength}. Leave empty to restore the serving profile.`
+                    : 'Leave empty to restore the serving profile.'}
+                </span>
               </div>
-              <div className="flex items-end gap-2 pb-1.5">
-                <Checkbox
-                  id="residency-drawer-flash"
-                  checked={flashAttention}
-                  onCheckedChange={(checked) => {
-                    setFlashTouched(true);
-                    setFlashAttention(checked === true);
-                  }}
-                />
-                <Label htmlFor="residency-drawer-flash" className="font-normal">
+              <div className="flex flex-col gap-1.5">
+                <span id="residency-drawer-flash-h" className="text-sm font-medium">
                   Flash attention
-                </Label>
+                </span>
+                <RadioGroup
+                  aria-labelledby="residency-drawer-flash-h"
+                  aria-describedby="residency-drawer-flash-hint"
+                  value={flashChoice}
+                  onValueChange={(value) => setFlashChoice(value as FlashChoice)}
+                  className="flex flex-wrap gap-3"
+                >
+                  {FLASH_CHOICES.map((choice) => (
+                    <div key={choice.value} className="flex items-center gap-1.5">
+                      <RadioGroupItem id={`residency-drawer-flash-${choice.value}`} value={choice.value} />
+                      <Label htmlFor={`residency-drawer-flash-${choice.value}`} className="font-normal">
+                        {choice.label}
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+                <span id="residency-drawer-flash-hint" className="text-muted-foreground text-xs">
+                  {loadConfig?.flashAttention != null
+                    ? `Currently loaded with flash attention ${loadConfig.flashAttention ? 'on' : 'off'}.`
+                    : 'Serving profile restores the profile’s setting.'}
+                </span>
               </div>
             </div>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-              <Fact label="Parallel slots" value={loadConfig?.parallel != null ? formatNumber(loadConfig.parallel) : EM_DASH} />
-              <Fact
-                label="KV cache"
-                value={
-                  loadConfig?.kvCacheQuantK || loadConfig?.kvCacheQuantV
-                    ? `${loadConfig.kvCacheQuantK ?? EM_DASH} / ${loadConfig.kvCacheQuantV ?? EM_DASH}`
-                    : EM_DASH
-                }
-              />
-              <Fact label="Placement" value={deviceShortLabel(loadConfig?.device ?? model.residency?.device ?? null, devices) || EM_DASH} />
-            </dl>
-            <p className="text-muted-foreground text-xs">Parallel slots, KV cache and placement come from the model&rsquo;s serving profile.</p>
+            <section className="flex flex-col gap-2" aria-labelledby="drawer-loaded-with-h">
+              <h4 id="drawer-loaded-with-h" className="text-muted-foreground text-xs font-medium">
+                Currently loaded with
+              </h4>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                <Fact label="Context length" value={loadConfig?.contextLength != null ? formatNumber(loadConfig.contextLength) : EM_DASH} />
+                <Fact label="Flash attention" value={loadConfig?.flashAttention != null ? (loadConfig.flashAttention ? 'On' : 'Off') : EM_DASH} />
+                <Fact label="Parallel slots" value={loadConfig?.parallel != null ? formatNumber(loadConfig.parallel) : EM_DASH} />
+                <Fact
+                  label="KV cache"
+                  value={
+                    loadConfig?.kvCacheQuantK || loadConfig?.kvCacheQuantV
+                      ? `${loadConfig.kvCacheQuantK ?? EM_DASH} / ${loadConfig.kvCacheQuantV ?? EM_DASH}`
+                      : EM_DASH
+                  }
+                />
+                <Fact label="Placement" value={deviceShortLabel(loadConfig?.device ?? model.residency?.device ?? null, devices) || EM_DASH} />
+              </dl>
+            </section>
+            <p className="text-muted-foreground text-xs">
+              Parallel slots, KV cache and placement always come from the model&rsquo;s serving profile.
+            </p>
           </section>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={(next) => (resetPolicy.isPending ? undefined : setConfirmReset(next))}
+        title={`Reset the keep policy for ${model.name}?`}
+        description="This removes the explicit setting: the model is always loaded when a live path uses it, and loaded when needed otherwise."
+        confirmLabel="Reset"
+        isPending={resetPolicy.isPending}
+        onConfirm={resetPolicyToDefault}
+      />
     </DetailDrawer>
   );
 }

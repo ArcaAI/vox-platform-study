@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { GatewayError } from '@/shared/api';
-import { asModelResidencyConflict, residencyErrorMessage } from '../api';
+import { asModelResidencyConflict, residencyErrorMessage, residencyErrorToast } from '../api';
 
 const GIB = 1024 ** 3;
 
@@ -72,11 +72,9 @@ describe('asModelResidencyConflict — TASK-1055 placement advice', () => {
   });
 });
 
-describe('residencyErrorMessage', () => {
-  it('uses the conflict message and names its code', () => {
-    expect(residencyErrorMessage({ details: { code: 'LOAD_FAILED', message: 'CUDA out of memory' } }, 'fallback')).toBe(
-      'CUDA out of memory (LOAD_FAILED)',
-    );
+describe('residencyErrorMessage — the server’s words, never a bare code (TASK-1055 R3-2)', () => {
+  it('uses the conflict message without a code suffix', () => {
+    expect(residencyErrorMessage({ details: { code: 'LOAD_FAILED', message: 'CUDA out of memory' } }, 'fallback')).toBe('CUDA out of memory');
   });
 
   it('falls back to the gateway message for an untyped failure', () => {
@@ -85,11 +83,49 @@ describe('residencyErrorMessage', () => {
     );
   });
 
-  it('uses a code-only conflict as the message', () => {
-    expect(residencyErrorMessage({ details: { code: 'SERVICE_UNREACHABLE', message: '' } }, 'fallback')).toBe('SERVICE_UNREACHABLE');
+  it('a code-only conflict yields the caller fallback, never the bare code', () => {
+    expect(residencyErrorMessage({ details: { code: 'SERVICE_UNREACHABLE', message: '' } }, 'fallback')).toBe('fallback');
   });
 
   it('only uses the caller fallback when nothing at all came back', () => {
     expect(residencyErrorMessage(undefined, "Couldn't load Gemma.")).toBe("Couldn't load Gemma.");
+  });
+});
+
+describe('residencyErrorToast — names the model, code only in the description (R3-3)', () => {
+  it('"<what>: <reason>" with the code as the description', () => {
+    expect(
+      residencyErrorToast({ details: { code: 'SERVICE_UNREACHABLE', message: 'nlp agent did not answer' } }, "Couldn't unload Medical NER"),
+    ).toEqual({
+      title: "Couldn't unload Medical NER: nlp agent did not answer",
+      description: 'Error code: SERVICE_UNREACHABLE',
+    });
+  });
+
+  it('a code-only conflict: the title is the action, the code stays in the description', () => {
+    expect(residencyErrorToast({ details: { code: 'SERVICE_UNREACHABLE', message: '' } }, "Couldn't load Gemma")).toEqual({
+      title: "Couldn't load Gemma.",
+      description: 'Error code: SERVICE_UNREACHABLE',
+    });
+  });
+
+  it('an operation error ({ code, message }) reads the same way', () => {
+    expect(residencyErrorToast({ code: 'ENGINE_ERROR', message: 'weights missing' }, "Couldn't load Granite")).toEqual({
+      title: "Couldn't load Granite: weights missing",
+      description: 'Error code: ENGINE_ERROR',
+    });
+  });
+
+  it('an untyped failure has no description', () => {
+    expect(residencyErrorToast(new GatewayError(502, 'Bad gateway'), "Couldn't reload Granite")).toEqual({
+      title: "Couldn't reload Granite: Bad gateway",
+    });
+  });
+
+  it('extra context joins the description', () => {
+    expect(residencyErrorToast(undefined, "Couldn't load Gemma", 'Already unloaded: NER.')).toEqual({
+      title: "Couldn't load Gemma.",
+      description: 'Already unloaded: NER.',
+    });
   });
 });

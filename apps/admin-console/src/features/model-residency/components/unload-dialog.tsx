@@ -8,7 +8,8 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
-import { asModelResidencyConflict, residencyErrorMessage, useUnloadResidencyModel } from '../api';
+import { asModelResidencyConflict, toastResidencyError } from '@/shared/residency';
+import { useUnloadResidencyModel } from '../api';
 import type { UnloadDialogProps } from './residency-dialog-contracts';
 import { liveConsumerLines, requiresUnloadReason, unloadDeviceChoices } from './residency-display';
 
@@ -78,7 +79,7 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
       } else if (conflict?.code === 'LIVE_PATH_REASON_REQUIRED' && !trimmed) {
         setServerLivePath({ message: conflict.message, consumers: conflict.consumers ?? [] });
       } else {
-        toast.error(residencyErrorMessage(error, `Couldn't unload ${model.name}.`));
+        toastResidencyError(error, `Couldn't unload ${model.name}`);
       }
     } finally {
       setPending(false);
@@ -89,7 +90,7 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
     ? `${model.name} is serving ${inFlight} request${inFlight === 1 ? '' : 's'}. Unloading it now will interrupt them.`
     : livePath
       ? null
-      : 'The model is unloaded from the service. It reloads on demand if something asks for it.';
+      : 'The model is unloaded from the service and its memory freed.';
 
   return (
     <Dialog open={open} onOpenChange={(next) => (pending ? undefined : onOpenChange(next))}>
@@ -118,16 +119,18 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
                   ))}
                 </ul>
               ) : null}
-              <p className="text-sm">
-                Requests that need it fail or wait for a cold load until it is loaded again. Its keep policy is not changed; the residency controller
-                reloads live-path models only in enforce mode.
-              </p>
+              <p className="text-sm">Requests that need it fail or wait for a cold load until it is loaded again. Its keep policy is not changed.</p>
             </section>
           ) : null}
           {summary ? <p className="text-sm">{summary}</p> : null}
+          <p className="text-sm">
+            {model.name} will not be reloaded automatically unless the residency controller is in enforce mode. A live request may load it on demand
+            with default settings, not its serving profile. Use Load to restore it with its serving profile.
+          </p>
           {serverInFlight !== null ? (
             <p role="alert" className="text-destructive text-sm">
-              The service reports {serverInFlight} request{serverInFlight === 1 ? '' : 's'} still in flight. Enter a reason to unload anyway.
+              The service reports {serverInFlight} request{serverInFlight === 1 ? '' : 's'} still in flight.{' '}
+              {trimmed ? 'Unload anyway interrupts them; your reason is recorded.' : 'Enter a reason to unload anyway.'}
             </p>
           ) : null}
           {copies.length > 0 ? (

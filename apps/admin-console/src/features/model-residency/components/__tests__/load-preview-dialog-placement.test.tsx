@@ -178,10 +178,10 @@ describe('LoadPreviewDialog — GPU choice', () => {
     expect(screen.getByRole('radio', { name: /GPU 0/ }).closest('[data-slot="placement-candidate"]')!.textContent).toMatch(/Exceeds the card/);
   });
 
-  it('sends makeDefault with the device when "make this the default GPU" is ticked', async () => {
+  it('sends makeDefault with the device when "make GPU 1 the default placement" is ticked', async () => {
     renderDialog();
     await waitFor(() => expect(previewMutate).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole('checkbox', { name: /make this the model.s default GPU/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /make GPU 1 the default placement for Whisper Large/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Load' }));
     await waitFor(() => expect(loadAsync).toHaveBeenCalled());
     expect(loadAsync).toHaveBeenCalledWith({ service: 'nlp', modelRef: 'whisper-large-gguf', device: 'gpu1', makeDefault: true });
@@ -224,12 +224,16 @@ describe('LoadPreviewDialog — GPU choice', () => {
     await waitFor(() => expect(loadAsync).toHaveBeenLastCalledWith({ service: 'nlp', modelRef: 'whisper-large-gguf', device: 'gpu1' }));
   });
 
-  it('a failed load toasts the server’s message and code', async () => {
+  it('a failed load toasts the model, the server’s message, and the code in the description', async () => {
     loadAsync.mockRejectedValueOnce({ details: { code: 'SERVICE_UNREACHABLE', message: 'nlp agent did not answer' } });
     renderDialog();
     await waitFor(() => expect(previewMutate).toHaveBeenCalledTimes(2));
     fireEvent.click(screen.getByRole('button', { name: 'Load' }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('nlp agent did not answer (SERVICE_UNREACHABLE)'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't load Whisper Large: nlp agent did not answer", {
+        description: 'Error code: SERVICE_UNREACHABLE',
+      }),
+    );
   });
 
   it('the picker is keyboard operable: arrow keys move the pick and re-check', async () => {

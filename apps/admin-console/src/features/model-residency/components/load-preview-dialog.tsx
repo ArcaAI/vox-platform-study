@@ -13,16 +13,11 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { formatBytes } from '@/shared/format';
-import {
-  asModelResidencyConflict,
-  residencyErrorMessage,
-  useLoadPreview,
-  useLoadResidencyModel,
-  useModelResidencyCatalogue,
-  useUnloadResidencyModel,
-} from '../api';
+import { asModelResidencyConflict, residencyErrorMessage, toastResidencyError } from '@/shared/residency';
+import { useLoadPreview, useLoadResidencyModel, useModelResidencyCatalogue, useUnloadResidencyModel } from '../api';
 import type { LoadModelResidencyRequest, ModelResidencyConflict, ModelResidencyLoadPreview, ResidencyPlacementCandidate } from '../api';
 import type { LoadPreviewDialogProps } from './residency-dialog-contracts';
+import { MULTI_DEVICE, sameDevice } from './residency-display';
 
 function PreviewSkeleton() {
   return (
@@ -117,6 +112,22 @@ function freeAboveHeadroom(candidate: ResidencyPlacementCandidate): number {
 
 const CAPACITY_CODES = new Set(['OVER_BUDGET', 'EXCEEDS_DEVICE']);
 
+/** The candidate a server-named device refers to (`cpu:<service>` ≡ `cpu`, R1-F8). */
+function findCandidate(candidates: ResidencyPlacementCandidate[], device: string | null | undefined): ResidencyPlacementCandidate | undefined {
+  return candidates.find((c) => sameDevice(c.device, device));
+}
+
+/** "GPU 1 has room" / "Splitting across both cards has room" (R3-9). */
+function roomLine(candidate: ResidencyPlacementCandidate): string {
+  return candidate.device === MULTI_DEVICE ? 'Splitting across both cards has room' : `${candidateTitle(candidate, candidate.device)} has room`;
+}
+
+function loadOnLabel(candidate: ResidencyPlacementCandidate): string {
+  return candidate.device === MULTI_DEVICE ? 'Load split across cards' : `Load on ${candidateTitle(candidate, candidate.device)}`;
+}
+
+type BusyPhase = 'making-room' | 'loading';
+
 /**
  * TASK-1055 (AC-3) — one radio card per device the model could go to: name,
  * free memory and the need, and a fits / does-not-fit badge in WORDS with an
@@ -204,10 +215,15 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
   const catalogue = useModelResidencyCatalogue();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
+  /** R3-7 — what the dialog is doing; the callout, figures and selection hold still until it is done. */
+  const [busyPhase, setBusyPhase] = useState<BusyPhase | null>(null);
+  const busy = busyPhase !== null;
+  /** The preview the admin confirmed against — shown while busy, so the re-checks a confirm sends never reshuffle the dialog. */
+  const [frozen, setFrozen] = useState<ModelResidencyLoadPreview | undefined>(undefined);
   /** TASK-1055 — the GPU the admin is placing the model on; null until the first preview names the candidates. */
   const [picked, setPicked] = useState<string | null>(null);
-  const [makeDefault, setMakeDefault] = useState(false);
+  /** R3-8 — the device "make default" was ticked FOR; a different pick is never made default by accident. */
+  const [makeDefaultFor, setMakeDefaultFor] = useState<string | null>(null);
   /** TASK-1055 — a 409 OVER_BUDGET / EXCEEDS_DEVICE from the load itself: its advice is shown like the preview's. */
   const [conflict, setConflict] = useState<ModelResidencyConflict | null>(null);
   /** The last preview answered — kept while a re-check for a new pick is in flight, so the picker never blinks out. */
@@ -223,21 +239,23 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
       setSelected(new Set());
       setReason('');
       setPicked(null);
-      setMakeDefault(false);
+      setMakeDefaultFor(null);
       setConflict(null);
       setLastData(undefined);
+      setFrozen(undefined);
     }
   }
   if (preview.data && preview.data !== lastData) setLastData(preview.data);
-  const data: ModelResidencyLoadPreview | undefined = preview.data ?? lastData;
+  const data: ModelResidencyLoadPreview | undefined = busy && frozen ? frozen : (preview.data ?? lastData);
 
   const conflictCandidates = conflict?.candidates && conflict.candidates.length > 0 ? conflict.candidates : null;
   const candidates: ResidencyPlacementCandidate[] = conflictCandidates ?? data?.candidates ?? [];
   const hasPicker = candidates.length > 0;
-  // Default the pick to the suggested GPU the first time the candidates are known.
+  // R1-F1 — default the pick to the model's own target placement when it fits there; else the suggested GPU.
   if (hasPicker && picked === null && data) {
-    const suggested = data.suggestedDevice && candidates.some((c) => c.device === data.suggestedDevice) ? data.suggestedDevice : null;
-    setPicked(suggested ?? (data.device && candidates.some((c) => c.device === data.device) ? data.device : candidates[0]!.device));
+    const target = findCandidate(candidates, data.device);
+    const suggested = findCandidate(candidates, data.suggestedDevice);
+    setPicked((target?.fits ? target : (suggested ?? target ?? candidates[0]!)).device);
   }
 
   const requestedFor = useRef<string | null>(null);
@@ -247,19 +265,31 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
     requestPreview({ service: service.service, modelRef: model.modelRef });
   }, [open, service.service, model.modelRef, requestPreview]);
   // Every pick is re-checked with the same admission arithmetic (once per pick — a server that answers for another device cannot loop this).
-  const previewPending = preview.isPending && !!data;
+  const previewPending = preview.isPending && !!data && !busy;
   useEffect(() => {
-    if (!open || picked === null || !data || previewPending) return;
-    if (data.device === picked || requestedFor.current === picked) return;
+    if (!open || busy || picked === null || !data || previewPending) return;
+    if (sameDevice(data.device, picked) || requestedFor.current === picked) return;
     requestedFor.current = picked;
     requestPreview({ service: service.service, modelRef: model.modelRef, device: picked });
-  }, [open, picked, data, previewPending, service.service, model.modelRef, requestPreview]);
+  }, [open, busy, picked, data, previewPending, service.service, model.modelRef, requestPreview]);
+
+  /** R3-4 — re-ask after a failure: the first dry run, or the re-check of the picked GPU (clears the once-per-pick guard). */
+  function retryPreview() {
+    if (!data || !hasPicker || picked === null) {
+      requestedFor.current = null;
+      requestPreview({ service: service.service, modelRef: model.modelRef });
+      return;
+    }
+    requestedFor.current = picked;
+    requestPreview({ service: service.service, modelRef: model.modelRef, device: picked });
+  }
 
   const pickedCandidate = hasPicker ? candidates.find((c) => c.device === picked) : undefined;
-  const previewMatchesPick = !hasPicker || (!!data && data.device === picked);
-  const conflictForPick = conflict !== null && CAPACITY_CODES.has(conflict.code) && (conflict.device ?? picked) === picked ? conflict : null;
+  const previewMatchesPick = !hasPicker || (!!data && sameDevice(data.device, picked));
+  const recheckFailed = preview.isError && !!data && !busy && !previewMatchesPick;
+  const conflictForPick = conflict !== null && CAPACITY_CODES.has(conflict.code) && sameDevice(conflict.device ?? picked, picked) ? conflict : null;
   const suggestedId = conflictForPick ? (conflict?.suggestedDevice ?? null) : (data?.suggestedDevice ?? null);
-  const suggestedCandidate = candidates.find((c) => c.device === suggestedId);
+  const suggestedCandidate = findCandidate(candidates, suggestedId);
 
   const evictKey = (e: { service: string; modelRef: string }) => `${e.service}::${e.modelRef}`;
   const evictable = conflictForPick && pickedCandidate ? pickedCandidate.evictable : previewMatchesPick && data ? data.evictable : [];
@@ -284,9 +314,16 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
   /** OD-5 — need > the card's free memory outright: refused even with force (would OOM its card-mates). */
   const exceedsDevice = (conflictForPick?.code === 'EXCEEDS_DEVICE' || pickedCandidate?.exceedsDevice === true) && !fitsAfter;
   const forceBlocked = needsReason && exceedsDevice;
-  const device = previewMatchesPick && data?.device ? catalogue.data?.devices.find((d) => d.id === data.device) : undefined;
+  const device = previewMatchesPick && data?.device ? catalogue.data?.devices.find((d) => sameDevice(d.id, data.device)) : undefined;
   const armed = !needsReason || (!forceBlocked && reason.trim().length > 0);
+  /** R3-4 — a pick is loaded only on a preview that judged THAT device (or a refusal that did). */
+  const awaitingPreview = hasPicker && !previewMatchesPick && !conflictForPick;
   const pickedTitle = candidateTitle(pickedCandidate, picked ?? 'the device');
+  const pickedIsMulti = picked === MULTI_DEVICE;
+  const makeDefaultChecked = makeDefaultFor !== null && makeDefaultFor === picked && !needsReason;
+  const makeDefaultLabel = pickedIsMulti
+    ? `Make “split across cards” the default placement for ${model.name} (used at boot)`
+    : `Make ${pickedTitle} the default placement for ${model.name} (used at boot)`;
 
   function pick(next: string) {
     setPicked(next);
@@ -294,44 +331,49 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
     setSelected(new Set());
   }
 
-  function placement(deviceId: string | null): Pick<LoadModelResidencyRequest, 'device' | 'makeDefault'> {
+  /** `makeDefault` rides along only for the device it was ticked for, and never on a forced load (R3-8). */
+  function placement(deviceId: string | null, forced: boolean): Pick<LoadModelResidencyRequest, 'device' | 'makeDefault'> {
     if (!hasPicker || !deviceId) return {};
+    const makeDefault = !forced && makeDefaultFor !== null && makeDefaultFor === deviceId && deviceId === picked;
     return { device: deviceId, ...(makeDefault ? { makeDefault: true } : {}) };
   }
 
   /** A refusal with placement advice is shown as the capacity callout; anything else toasts the server's words. */
   function handleLoadError(error: unknown, unloaded: string[]) {
     const refused = asModelResidencyConflict(error);
-    const done = unloaded.length > 0 ? ` Already unloaded: ${unloaded.join(', ')}.` : '';
+    const done = unloaded.length > 0 ? `Already unloaded: ${unloaded.join(', ')}.` : undefined;
     if (refused && CAPACITY_CODES.has(refused.code)) {
       setConflict(refused);
-      if (refused.device && refused.device !== picked) setPicked(refused.device);
+      if (refused.device && !sameDevice(refused.device, picked)) {
+        setPicked(findCandidate(refused.candidates ?? candidates, refused.device)?.device ?? refused.device);
+      }
       setSelected(new Set());
-      if (done) toast.error(`${refused.message || refused.code}${done}`);
+      if (done) toastResidencyError(error, `Couldn't load ${model.name}`, done);
       return;
     }
-    toast.error(`${residencyErrorMessage(error, `Couldn't load ${model.name}.`)}${done}`);
+    toastResidencyError(error, `Couldn't load ${model.name}`, done);
   }
 
   async function confirm() {
     if (!data) return;
-    setBusy(true);
+    const evictions = evictable.filter((candidate) => selected.has(evictKey(candidate)));
+    const forced = needsReason;
+    setFrozen(data);
+    setBusyPhase(evictions.length > 0 ? 'making-room' : 'loading');
     const unloaded: string[] = [];
+    const unloadedKeys: string[] = [];
     try {
-      for (const e of evictable.filter((candidate) => selected.has(evictKey(candidate)))) {
+      for (const e of evictions) {
         await unload.mutateAsync({ service: e.service, modelRef: e.modelRef, reason: `Make room for ${model.name}` });
         unloaded.push(e.name);
+        unloadedKeys.push(evictKey(e));
         toast.success(`Unloaded ${e.name}`);
-        setSelected((current) => {
-          const next = new Set(current);
-          next.delete(evictKey(e));
-          return next;
-        });
-        // The card changed under us: refresh the numbers before the load is sent.
+        // The card changed under us: refresh the numbers (shown once the dialog is no longer busy).
         requestPreview({ service: service.service, modelRef: model.modelRef, ...(hasPicker && picked ? { device: picked } : {}) });
       }
-      const body: LoadModelResidencyRequest = { service: service.service, modelRef: model.modelRef, ...placement(picked) };
-      if (needsReason) {
+      setBusyPhase('loading');
+      const body: LoadModelResidencyRequest = { service: service.service, modelRef: model.modelRef, ...placement(picked, forced) };
+      if (forced) {
         body.force = true;
         body.reason = reason.trim();
       }
@@ -341,23 +383,33 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
     } catch (error) {
       handleLoadError(error, unloaded);
     } finally {
-      setBusy(false);
+      setBusyPhase(null);
+      setFrozen(undefined);
+      if (unloadedKeys.length > 0)
+        setSelected((current) => {
+          const next = new Set(current);
+          for (const key of unloadedKeys) next.delete(key);
+          return next;
+        });
     }
   }
 
   /** "Load on <suggested GPU>" — un-forced, on the GPU the server said has room. */
   async function loadOn(deviceId: string) {
-    setBusy(true);
+    const body = { service: service.service, modelRef: model.modelRef, ...placement(deviceId, false) };
+    setFrozen(data);
+    setBusyPhase('loading');
     setPicked(deviceId);
     setConflict(null);
     try {
-      const response = await load.mutateAsync({ service: service.service, modelRef: model.modelRef, ...placement(deviceId) });
+      const response = await load.mutateAsync(body);
       onAdmitted(response);
       onOpenChange(false);
     } catch (error) {
       handleLoadError(error, []);
     } finally {
-      setBusy(false);
+      setBusyPhase(null);
+      setFrozen(undefined);
     }
   }
 
@@ -365,34 +417,47 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
   function capacityCallout() {
     const need = formatBytes(data?.needBytes ?? null);
     const others = candidates.filter((c) => c.device !== picked);
-    let advice: React.ReactNode = null;
+    const noneFits = !candidates.some((c) => c.fits);
+    let advice = '';
+    let action: React.ReactNode = null;
     if (suggestedCandidate && suggestedCandidate.device !== picked && suggestedCandidate.fits) {
-      const title = candidateTitle(suggestedCandidate, suggestedCandidate.device);
-      advice = (
-        <>
-          {` ${title} has room.`}
-          <span className="block pt-2">
-            <Button size="sm" disabled={busy} onClick={() => void loadOn(suggestedCandidate.device)}>
-              {busy ? <Spinner /> : null}
-              Load on {title}
-            </Button>
-          </span>
-        </>
+      advice = ` ${roomLine(suggestedCandidate)}.`;
+      action = (
+        <Button size="sm" disabled={busy} onClick={() => void loadOn(suggestedCandidate.device)}>
+          {busyPhase === 'loading' ? <Spinner /> : null}
+          {loadOnLabel(suggestedCandidate)}
+        </Button>
       );
     } else if (suggestedCandidate && suggestedCandidate.device !== picked) {
-      advice = ` No GPU has room; ${candidateTitle(suggestedCandidate, suggestedCandidate.device)} is the closest (short ${formatBytes(suggestedCandidate.shortfallBytes)}).`;
-    } else if (others.length > 0 && !others.some((c) => c.fits)) {
+      const title = candidateTitle(suggestedCandidate, suggestedCandidate.device);
+      advice = ` No GPU has room; ${title} is the closest (short ${formatBytes(suggestedCandidate.shortfallBytes)}).`;
+      action = (
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => pick(suggestedCandidate.device)}>
+          Select {title}
+        </Button>
+      );
+    } else if (others.length > 0 && noneFits) {
       advice = ' No other GPU has room either.';
     }
-    const detail = pickedCandidate
-      ? `${pickedTitle} cannot hold this model — needs ${need}, ${formatBytes(freeAboveHeadroom(pickedCandidate))} free above headroom (short ${formatBytes(remainingShortfall || pickedCandidate.shortfallBytes)}).`
-      : conflictForPick?.message || `${pickedTitle} cannot hold this model.`;
+    // R3-6 — when nothing fits anywhere, say what CAN be done here.
+    const makeRoom = !noneFits
+      ? ''
+      : forceBlocked
+        ? ` To load it here, unload models ${evictable.length > 0 ? 'below' : 'on this GPU'} to make room.`
+        : ` To load it here, unload models ${evictable.length > 0 ? 'below' : 'on this GPU'} to make room, or load anyway with a reason.`;
+    const detail = !pickedCandidate
+      ? conflictForPick?.message || `${pickedTitle} cannot hold this model.`
+      : exceedsDevice
+        ? `${pickedTitle} cannot hold this model — it needs more than ${pickedTitle} has free at all (needs ${need}, ${formatBytes(pickedCandidate.freeBytes)} free).`
+        : `${pickedTitle} cannot hold this model — needs ${need}, ${formatBytes(freeAboveHeadroom(pickedCandidate))} free above headroom (short ${formatBytes(remainingShortfall || pickedCandidate.shortfallBytes)}).`;
     return (
       <Callout tone="warn" role="alert" title={`${pickedTitle} does not have room`}>
         <p>
           {detail}
           {advice}
+          {makeRoom}
         </p>
+        {action ? <span className="block">{action}</span> : null}
       </Callout>
     );
   }
@@ -414,20 +479,28 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
         return (
           <Callout tone="warn" title={d.refusal === 'IN_FLIGHT' ? 'Serving requests right now' : 'Another load is in progress'}>
             {d.refusal === 'IN_FLIGHT'
-              ? 'Replacing it would drop requests in flight; loading anyway needs a reason.'
+              ? reason.trim()
+                ? 'Load anyway interrupts the requests in flight; your reason is recorded.'
+                : 'Replacing it would drop requests in flight; loading anyway needs a reason.'
               : 'Wait for the running load on this device to finish, or load anyway with a reason.'}
           </Callout>
         );
     }
-    if (fitsAfter)
+    if (fitsAfter) {
+      const title =
+        selected.size > 0
+          ? 'Fits once the selected models are unloaded'
+          : !hasPicker
+            ? 'Fits'
+            : pickedIsMulti
+              ? 'Splitting across both cards has room'
+              : `Fits on ${pickedTitle}`;
       return (
-        <Callout
-          tone="ok"
-          title={`${selected.size > 0 ? 'Fits once the selected models are unloaded' : 'Fits'}${hasPicker && selected.size === 0 ? ` on ${pickedTitle}` : ''}`}
-        >
+        <Callout tone="ok" title={title}>
           Within the card and its headroom.
         </Callout>
       );
+    }
     if (hasPicker || conflictForPick) return capacityCallout();
     return (
       <Callout tone="warn" title={`Does not fit — short by ${formatBytes(remainingShortfall)}`}>
@@ -449,8 +522,13 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
           {(preview.isPending || preview.isIdle) && !data ? (
             <PreviewSkeleton />
           ) : !data ? (
-            <Callout tone="warn" title="Couldn't check placement">
-              The dry run failed. Close this dialog and try again.
+            <Callout tone="warn" role="alert" title="Couldn&rsquo;t check placement">
+              <p>{residencyErrorMessage(preview.error, 'The dry run failed.')}</p>
+              <span className="block">
+                <Button size="sm" variant="outline" onClick={retryPreview}>
+                  Retry
+                </Button>
+              </span>
             </Callout>
           ) : (
             <div className="flex flex-col gap-5">
@@ -466,27 +544,40 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
                 />
               ) : null}
               {hasPicker && picked ? (
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id="lp-make-default"
-                    checked={makeDefault}
-                    disabled={busy}
-                    onCheckedChange={(checked) => setMakeDefault(checked === true)}
-                  />
-                  <Label htmlFor="lp-make-default" className="flex flex-col gap-0.5 font-normal">
-                    <span>Make this the model&rsquo;s default GPU</span>
-                    <span className="text-muted-foreground text-xs">Used at boot and by the residency controller, not just for this load.</span>
-                  </Label>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      id="lp-make-default"
+                      checked={makeDefaultChecked}
+                      disabled={busy || needsReason}
+                      aria-describedby="lp-make-default-hint"
+                      onCheckedChange={(checked) => setMakeDefaultFor(checked === true ? picked : null)}
+                    />
+                    <Label htmlFor="lp-make-default" className="font-normal">
+                      {makeDefaultLabel}
+                    </Label>
+                  </div>
+                  <p id="lp-make-default-hint" className="text-muted-foreground pl-6 text-xs">
+                    {needsReason
+                      ? 'Not available for a forced load.'
+                      : 'Also used by the residency controller; written only after the load succeeds.'}
+                  </p>
                 </div>
               ) : null}
               {previewPending ? (
-                <p className="text-muted-foreground text-sm" aria-live="polite">
+                <p className="text-muted-foreground flex items-center gap-2 text-sm" aria-live="polite">
+                  <Spinner />
                   Checking {pickedTitle}…
                 </p>
-              ) : preview.isError ? (
-                <p className="text-destructive text-sm" role="alert">
-                  Couldn&rsquo;t re-check {pickedTitle}; the figures below may be out of date.
-                </p>
+              ) : recheckFailed ? (
+                <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-destructive">
+                    Couldn&rsquo;t re-check {pickedTitle}: {residencyErrorMessage(preview.error, 'the dry run failed')}. Load waits for a fresh check.
+                  </span>
+                  <Button size="sm" variant="outline" onClick={retryPreview}>
+                    Retry
+                  </Button>
+                </div>
               ) : null}
               {calloutFor(data)}
 
@@ -585,8 +676,8 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
                   </h3>
                   {forceBlocked ? (
                     <p id="lp-force-blocked" className="text-sm">
-                      Not possible on {pickedTitle}: the model needs more than the card has free at all, so a forced load would run its card-mates out
-                      of memory. Pick another GPU or unload something there first.
+                      Not possible on {pickedTitle}: the model needs more than {pickedTitle} has free at all, so a forced load would run its
+                      card-mates out of memory. Pick another GPU or unload something there first.
                     </p>
                   ) : (
                     <>
@@ -613,7 +704,11 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
           )}
         </div>
         <DialogFooter className="shrink-0 items-center border-t p-4 sm:justify-end">
-          {needsReason && !armed ? (
+          {busyPhase === 'making-room' ? (
+            <span className="text-muted-foreground mr-auto text-xs" aria-live="polite">
+              Making room…
+            </span>
+          ) : needsReason && !armed ? (
             <span className="text-muted-foreground mr-auto text-xs">
               {forceBlocked ? `Load anyway is refused on ${pickedTitle}` : 'Enter a reason to enable Load anyway'}
             </span>
@@ -624,7 +719,7 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
           {data && !alreadyLoaded ? (
             <Button
               variant={needsReason ? 'destructive' : 'default'}
-              disabled={!armed || busy || previewPending}
+              disabled={!armed || busy || previewPending || awaitingPreview}
               aria-describedby={forceBlocked ? 'lp-force-blocked' : undefined}
               onClick={() => void confirm()}
             >

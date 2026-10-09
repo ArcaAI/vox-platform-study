@@ -272,7 +272,9 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
     act(() => lastProps<LoadPreviewDialogProps>(spies.load).onAdmitted(accepted('op-2', 'second')));
 
     // op-2 fails at once; op-1 is still running and its row shows it.
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Loading Second model failed: Second model did not fit. (OVER_BUDGET)'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't load Second model: Second model did not fit.", { description: 'Error code: OVER_BUDGET' }),
+    );
     expect(within(row(/Whisper Large Code-Switch/)).getByText('Load in progress')).toBeDefined();
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Whisper Large Code-Switch loaded.'), { timeout: 4000 });
@@ -312,7 +314,7 @@ describe('ModelResidencyScreen — load operations are tracked per model (C-a) a
     fireEvent.click(screen.getByRole('button', { name: 'drawer reload' }));
     const confirmDialog = await screen.findByRole('dialog', { name: /Reload Granite/ });
     fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Reload' }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Granite Guardian 4.1 8B loaded.'));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Granite Guardian 4.1 8B reloaded.'));
     expect(calls.find((call) => call.url === `${BASE}/load`)?.body).toEqual({
       service: 'lm-studio',
       modelRef: 'granite-guardian',
@@ -354,7 +356,7 @@ describe('ModelResidencyScreen — lost operations, readiness header', () => {
 });
 
 describe('ModelResidencyScreen — TASK-1055 errors and per-card bytes', () => {
-  it('a refused reload toasts the server’s message and code, never a generic line', async () => {
+  it('a refused reload toasts the model and the server’s message, the code in the description', async () => {
     await renderScreen(makeCatalogue(), (call) =>
       call.url === `${BASE}/load`
         ? Response.json({ code: 'SERVICE_UNREACHABLE', message: 'lm-studio agent did not answer', statusCode: 502 }, { status: 502 })
@@ -364,7 +366,11 @@ describe('ModelResidencyScreen — TASK-1055 errors and per-card bytes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'drawer reload' }));
     const confirmDialog = await screen.findByRole('dialog', { name: /Reload Granite/ });
     fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Reload' }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('lm-studio agent did not answer (SERVICE_UNREACHABLE)'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't reload Granite Guardian 4.1 8B: lm-studio agent did not answer", {
+        description: 'Error code: SERVICE_UNREACHABLE',
+      }),
+    );
   });
 
   it('feeds the GPU cards the measured per-card bytes of a split model', async () => {

@@ -116,7 +116,7 @@ describe('LoadPreviewDialog', () => {
     expect(toast.success).toHaveBeenCalledWith('Unloaded Medical NER');
     expect(toast.success).toHaveBeenCalledWith('Unloaded Big One');
     expect(previewMutate).toHaveBeenCalledTimes(2);
-    expect(String(vi.mocked(toast.error).mock.calls[0]![0])).toMatch(/Already unloaded: Medical NER, Big One/);
+    expect(toast.error).toHaveBeenCalledWith("Couldn't load Whisper Large: boom", { description: 'Already unloaded: Medical NER, Big One.' });
   });
 
   it('marks the force reason as required', () => {
@@ -156,7 +156,9 @@ describe('LoadPreviewDialog', () => {
     loadAsync.mockRejectedValue({ details: { code: 'LOAD_IN_PROGRESS', message: 'Already loading it' } });
     const { onOpenChange } = renderDialog();
     fireEvent.click(screen.getByRole('button', { name: 'Load' }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Already loading it (LOAD_IN_PROGRESS)'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't load Whisper Large: Already loading it", { description: 'Error code: LOAD_IN_PROGRESS' }),
+    );
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
