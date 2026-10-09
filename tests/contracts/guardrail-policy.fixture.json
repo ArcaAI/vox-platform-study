@@ -15,8 +15,8 @@
   ],
   "defaults": {
     "jailbreak_detection": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
-    "prompt_safety": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
-    "prompt_toxicity": { "enabled": true, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "prompt_safety": { "enabled": true, "action": "warn", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
+    "prompt_toxicity": { "enabled": true, "action": "warn", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
     "response_safety": { "enabled": true, "action": "warn", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
     "response_toxicity": { "enabled": true, "action": "warn", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
     "response_refusal": { "enabled": false, "action": "block", "locked": false, "allowedActions": ["ignore", "warn", "block"] },
@@ -44,7 +44,7 @@
       "expected": {
         "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
         "checks": {
-          "prompt_safety": { "enabled": false, "action": "block" },
+          "prompt_safety": { "enabled": false, "action": "warn" },
           "pii_leak": { "enabled": true, "action": "block", "minScore": 0.3 }
         }
       }
@@ -103,7 +103,7 @@
       "expected": {
         "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
         "checks": {
-          "prompt_safety": { "enabled": true, "action": "block" },
+          "prompt_safety": { "enabled": true, "action": "warn" },
           "medical_validation": { "enabled": true, "action": "block" },
           "clinical_safety_judge": { "enabled": false, "action": "block" }
         }
@@ -127,7 +127,7 @@
       "name": "tenant toggles a check on/off",
       "caller": "tenant_admin",
       "before": null,
-      "after": { "checks": { "prompt_safety": { "enabled": false, "action": "block" } } },
+      "after": { "checks": { "prompt_safety": { "enabled": false, "action": "warn" } } },
       "forbidden": []
     },
     {
@@ -141,7 +141,7 @@
       "name": "tenant sends the platform default action unchanged on a new entry",
       "caller": "tenant_admin",
       "before": { "prompt_safety": { "enabled": true } },
-      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "block" }, "injection_judge": { "enabled": true, "action": "ignore" } } },
+      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "warn" }, "injection_judge": { "enabled": true, "action": "ignore" } } },
       "forbidden": []
     },
     {

@@ -150,6 +150,10 @@ def _availability(
     )
 
 
+# TASK-1053: prompt_safety warns by platform default; these cases pin an explicit stored block.
+_BLOCK_SAFETY = _availability({"prompt_safety": {"enabled": True, "action": "block"}})
+
+
 def _screener(
     analyzer: Any, availability: GuardrailAvailability | None = None, **kw: Any
 ) -> Screener:
@@ -178,9 +182,9 @@ def test_precedence_is_block_then_warn_then_unverified_then_allow() -> None:
 
 @pytest.mark.asyncio
 async def test_block_action_blocks_and_the_legacy_decision_says_block() -> None:
-    decision = await _screener(_Analyzer(triggers={"prompt_safety": "BAD"})).screen_inbound(
-        "a BAD prompt"
-    )
+    decision = await _screener(
+        _Analyzer(triggers={"prompt_safety": "BAD"}), _BLOCK_SAFETY
+    ).screen_inbound("a BAD prompt")
     check = _by_name(decision)["prompt_safety"]
     assert (check.verdict, check.action, check.action_taken) == ("flag", "block", "block")
     assert decision.guardrail_decision == "block"
@@ -283,7 +287,9 @@ async def test_a_platform_admin_may_raise_the_data_region_action() -> None:
 
 @pytest.mark.asyncio
 async def test_an_instruction_flag_beats_a_data_ignore() -> None:
-    decision = await _screener(_Analyzer(triggers={"prompt_safety": "BAD"})).screen_inbound_regions(
+    decision = await _screener(
+        _Analyzer(triggers={"prompt_safety": "BAD"}), _BLOCK_SAFETY
+    ).screen_inbound_regions(
         [("system", "BAD rules", "instruction"), ("transcript", "BAD words", "data")]
     )
     check = _by_name(decision)["prompt_safety"]
@@ -519,7 +525,7 @@ async def test_an_outbound_check_takes_its_configured_action() -> None:
 @pytest.mark.asyncio
 async def test_check_dicts_carry_the_new_fields() -> None:
     decision = await _screener(
-        _Analyzer(triggers={"prompt_safety": "BAD"}, scores={"prompt_safety": 0.8})
+        _Analyzer(triggers={"prompt_safety": "BAD"}, scores={"prompt_safety": 0.8}), _BLOCK_SAFETY
     ).screen_inbound("BAD")
     payload = next(c for c in decision.to_dict()["checks"] if c["name"] == "prompt_safety")
     assert payload["verdict"] == "flag"

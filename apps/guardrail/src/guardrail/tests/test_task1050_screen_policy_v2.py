@@ -124,7 +124,7 @@ def test_an_action_outside_allowed_actions_falls_back_to_the_default() -> None:
         system_blob={"checks": {"prompt_safety": {"enabled": True, "action": "explode"}}},
         tenant_blob=None,
     )
-    assert resolved.action_for("prompt_safety", "inbound") == "block"
+    assert resolved.action_for("prompt_safety", "inbound") == "warn"  # TASK-1053 default
 
 
 # ── the lock, direction off, data regions ─────────────────────────────────────
@@ -171,7 +171,9 @@ def test_a_tenant_direction_wins_over_the_system_direction() -> None:
 def test_data_region_action_defaults_to_ignore_and_a_platform_admin_may_raise_it() -> None:
     default = PLATFORM_DEFAULT_AVAILABILITY
     assert default.action_for("prompt_safety", "inbound", trust="data") == "ignore"
-    assert default.action_for("prompt_safety", "inbound", trust="instruction") == "block"
+    assert (
+        default.action_for("prompt_safety", "inbound", trust="instruction") == "warn"
+    )  # TASK-1053
     raised = GuardrailAvailability.from_tiers(
         system_blob={
             "checks": {

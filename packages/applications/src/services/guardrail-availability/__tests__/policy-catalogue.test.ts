@@ -84,10 +84,10 @@ describe('guardrail policy catalogue — the cross-language contract', () => {
     }
   });
 
-  it('classifier checks default to block, except the outbound safety/toxicity classifiers, which warn (owner 2026-10-08)', () => {
-    const blocking = ['jailbreak_detection', 'prompt_safety', 'prompt_toxicity', 'response_refusal', 'pii_leak', 'containment_echo'];
+  it('classifier checks default to block, except the safety/toxicity classifiers (inbound owner 2026-10-09, outbound 2026-10-08), which warn', () => {
+    const blocking = ['jailbreak_detection', 'response_refusal', 'pii_leak', 'containment_echo'];
     for (const id of blocking) expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)?.platformDefaultAction, id).toBe('block');
-    for (const id of ['response_safety', 'response_toxicity']) expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)?.platformDefaultAction, id).toBe('warn');
+    for (const id of ['prompt_safety', 'prompt_toxicity', 'response_safety', 'response_toxicity']) expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)?.platformDefaultAction, id).toBe('warn');
   });
 
   it('locks medical validation at block, and the judges default to the README actions', () => {

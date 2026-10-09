@@ -84,8 +84,9 @@ export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: PlatformGuardrailAvailabil
   directions: { inbound: { enabled: true }, outbound: { enabled: true } },
   checks: {
     jailbreak_detection: { enabled: true, action: 'block', dataRegionAction: 'ignore' },
-    prompt_safety: { enabled: true, action: 'block', dataRegionAction: 'ignore' },
-    prompt_toxicity: { enabled: true, action: 'block', dataRegionAction: 'ignore' },
+    // Owner 2026-10-09 (TASK-1053): the inbound classifiers warn by default (they false-flag clinical notes).
+    prompt_safety: { enabled: true, action: 'warn', dataRegionAction: 'ignore' },
+    prompt_toxicity: { enabled: true, action: 'warn', dataRegionAction: 'ignore' },
     // Owner 2026-10-08: the outbound classifiers warn by default (they false-flag clinical notes).
     response_safety: { enabled: true, action: 'warn' },
     response_toxicity: { enabled: true, action: 'warn' },
