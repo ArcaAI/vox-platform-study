@@ -15,6 +15,7 @@ import { ClsService } from 'nestjs-cls';
 import { BaseService, isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import type { GuardrailAvailabilityResponse, GuardrailPolicyCatalogueEntryResponse, UpdateGuardrailAvailabilityRequest } from './dto';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { GuardrailAvailabilityDtoMapper } from './guardrail-availability.dto.mapper';
 import { GuardrailPolicyChangePublisher } from './guardrail-policy-change.publisher';
 import type { IGuardrailAvailabilityService } from './IGuardrailAvailabilityService';
@@ -82,6 +83,8 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
     // @Optional and trailing so every positional fixture keeps its arity; unwired, a write still
     // converges on guardrail's TTL.
     @Optional() @Inject(GuardrailPolicyChangePublisher) private readonly changes?: GuardrailPolicyChangePublisher,
+    // TASK-1057 — the platform reason policy for `guardrailAvailability.update`. Optional + trailing.
+    @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantGuardrailPolicy);
   }
@@ -170,6 +173,9 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
       assertSelectionTightensOnly(statedThresholds(next), guardrailFlatSelection(effectiveGuardrailPolicy(systemRow?.policies ?? null, null)));
     }
 
+    // TASK-1057 — after every content check, before the first write.
+    const confirmation = this.confirmations?.assert('guardrailAvailability.update', { value: request.reason });
+
     if (!existing) {
       const created = await this.repository.create(
         TenantGuardrailPolicyFactory.CreateTenantGuardrailPolicy({
@@ -181,7 +187,7 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
       );
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: created.id,
-        data: { targetTenantId: tenantId, policies: next, reason: request.reason ?? null, plane: 'platform' },
+        data: { targetTenantId: tenantId, policies: next, reason: request.reason ?? null, plane: 'platform', confirmation },
       });
       await this.changes?.policyChanged(tenantId);
       return this.toResponse(tenantId, created, isSystem ? created : systemRow);
@@ -208,6 +214,7 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
         policies: next,
         reason: request.reason ?? existing.reason ?? null,
         plane: 'platform',
+        confirmation,
         previousVersion,
         newVersion: saved.version,
       },

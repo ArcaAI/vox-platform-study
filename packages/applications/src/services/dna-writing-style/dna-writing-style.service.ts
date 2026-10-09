@@ -1,3 +1,4 @@
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { createHash } from 'node:crypto';
 import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
@@ -191,6 +192,8 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // TASK-1034 — DNA memory (`DnaWritingSample`): every ingested item is persisted, encrypted and
     // deduped. Optional + trailing for fixture arity; absent ⇒ nothing is persisted (stored 0).
     @Optional() @Inject(DnaMemoryStore) private readonly memoryStore?: DnaMemoryStore,
+    // TASK-1057 — the platform reason policy for `dnaSettings.update`. Optional + trailing.
+    @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
   }
@@ -872,6 +875,8 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     const repository = this.requireUserSettingsRepository();
     const enabled = dto.enabled ?? null;
     const { namespace, key, name } = DNA_STYLE_PREFERENCE;
+    // TASK-1057 — the policy may demand a reason; refuse before the OCC read and any write.
+    const confirmation = this.confirmations?.assert('dnaSettings.update', { value: dto.reason });
 
     const existing = await repository.findByUserKeyNamespace(doctorId, key, namespace);
     // The OCC precondition, evaluated BEFORE any no-op short-circuit: a stale client must get
@@ -905,7 +910,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: doctorId,
-      data: { kind: 'dna-settings-updated', doctorId, enabled, reason: dto.reason ?? null },
+      data: { kind: 'dna-settings-updated', doctorId, enabled, reason: dto.reason ?? null, confirmation },
     });
 
     return this.getDnaSettings(doctorId);

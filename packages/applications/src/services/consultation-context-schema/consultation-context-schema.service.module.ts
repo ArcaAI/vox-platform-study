@@ -3,9 +3,10 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { IConsultationContextSchemaService } from './IConsultationContextSchemaService';
 import { ConsultationContextSchemaService } from './consultation-context-schema.service';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, EffectiveSettingsModule],
   providers: [
     ConsultationContextSchemaService,
     // useExisting, not useClass — useClass would construct a SECOND instance

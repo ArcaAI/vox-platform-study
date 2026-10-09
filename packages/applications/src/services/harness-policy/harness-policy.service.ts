@@ -22,6 +22,7 @@ import { TextAgentResolverService } from '../agent/text-agent-resolver.service';
 import type { ResolvedTextFallback } from '../agent/text-generation-spec';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { McpServerDtoMapper } from '../mcp-server/mcp-server.dto.mapper';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { AGENTIC_CONTEXT_KEY_PREFIX } from '../settings-registry/descriptors/agentic-context.descriptors';
 import type { McpServerResponse } from '../mcp-server/dto';
@@ -350,6 +351,9 @@ export class HarnessPolicyService {
     // Optional + trailing so existing fixtures keep their arity; absent ⇒ `resolveTextSelection`
     // FAILS CLOSED (selection is `failMode: closed`), never a substituted model.
     @Optional() @Inject(TextAgentResolverService) private readonly textAgents?: TextAgentResolverService,
+    // TASK-1057 — the platform reason policy for `harnessPolicy.update`. Optional + trailing so
+    // fixtures keep their arity; absent ⇒ no policy is consulted.
+    @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
   ) {}
 
   /**
@@ -843,6 +847,10 @@ export class HarnessPolicyService {
   ): Promise<HarnessPolicyResponse> {
     const changedBy = this.callerUserId;
     const reason = dto.reason ?? null;
+    // TASK-1057 — the policy may demand a reason; refuse BEFORE any read-modify-write. The WORM
+    // change row has no metadata column, so the stamp rides the structured audit log line.
+    const stamp = this.confirmations?.assert('harnessPolicy.update', { value: dto.reason });
+    if (stamp) this.logger.log({ message: 'harness.policy_update_confirmation', tenantId, source, changedBy, confirmation: stamp });
     const own = await this.policyRepository.findForExactTenant(tenantId);
 
     if (own) {

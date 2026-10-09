@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ActionConfirmationService } from '../settings-registry/action-confirmation.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { createHash } from 'node:crypto';
@@ -83,6 +84,10 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
     // optional planes.
     @Optional() private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
     @Optional() private readonly agentRepository?: AgentRepository,
+    // TASK-1057 — the platform policy for `contextSchema.publish` (reason) and
+    // `contextSchema.publishImpact` (acknowledgement). Optional + trailing; absent ⇒ no policy is
+    // consulted and the acknowledgement stays mandatory exactly as before.
+    @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ConsultationContextSchema);
   }
@@ -363,7 +368,12 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
     // Computed against the CANDIDATE definition and the version number this publish WOULD create,
     // and evaluated BEFORE any write, so a refusal persists nothing.
     const impact = await this.impactOf(tenantId, id, versionNumber, dto.definition);
-    if (dto.acknowledgeImpact !== true && ConsultationContextSchemaService.refusingConsumers(impact)) {
+    const refusing = ConsultationContextSchemaService.refusingConsumers(impact);
+    // TASK-1057 — the acknowledgement is a policy row: when the platform switched it off, an
+    // impactful publish proceeds without it (the stamp records that). Unwired ⇒ mandatory, as before.
+    const impactStamp = this.confirmations?.decide('contextSchema.publishImpact', { value: dto.acknowledgeImpact === true, risky: refusing });
+    const impactRequired = impactStamp ? impactStamp.required : true;
+    if (dto.acknowledgeImpact !== true && refusing && impactRequired) {
       throw new BadRequestException({
         message:
           'This version adds a kind that one or more ACTIVE workflows or agents pinned to an older version would ' +
@@ -372,6 +382,10 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
         impact,
       });
     }
+
+    // TASK-1057 — a version is about to be written; the policy may demand its change reason.
+    const reasonStamp = this.confirmations?.assert('contextSchema.publish', { value: dto.changeReason });
+    const confirmations = [reasonStamp, impactStamp].filter((stamp) => stamp !== undefined);
 
     const version = ConsultationContextSchemaVersionFactory.CreateConsultationContextSchemaVersion({
       tenantId,
@@ -409,6 +423,8 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
         breakingChanges: change.breakingChanges,
         additions: change.additions,
         impactAcknowledged: dto.acknowledgeImpact === true,
+        confirmation: reasonStamp,
+        confirmations,
       },
     });
 
