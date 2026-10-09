@@ -334,10 +334,28 @@ Gate after merge: applications 18,676 passed (1 flaky TASK-1038 test, `consultat
 - **New finding → owner decision:** the nlp HPA had scaled to 2 replicas; residency is per pod behind a load-balanced Service, so console actions landed on random pods and models were duplicated in VRAM. Owner chose to pin hope-nlp to 1 replica (deployment `2a9612c`; hope-stt was already 1). Per-pod residency is a follow-up if scale-out is ever wanted.
 - End state: GPU 0 Medical NER, GLiGuard, Whisper ML-EN, Granite; GPU 1 Gemma. GPU 1 carries ~1 GB more than before (nlp's CUDA context/allocator on cuda:1 persists for the process lifetime after it was used) — harmless.
 
+### 8f. Follow-up wave (owner, 2026-10-09; merged on `dev-2.2` `196e7dabd` + deployment local `main` `5962729`, not pushed)
+
+Owner asks: no duplicate after a live load; LM Studio in Grafana's per-model memory panel; console control of every model incl. Prompt Guard 2 and the judges; the `nlp.classification` seed skip; send `model_path` from NER callers; new default alignment (GPU 0: Medical NER, GLiGuard, Whisper; GPU 1: Gemma, Granite). Five app lanes + one deployment lane, in parallel worktrees.
+
+| Lane | Change |
+|---|---|
+| fu-nlp | `_SINGLE_MODEL_CACHES` gains `nlp_seq_cls_guard` (Prompt Guard 2) and `nlp_judge_guard`; `_plan` loads/unloads them with a device. Reverse alias: a `(name, P)` load or request is served by a resident or in-flight name-only copy when its weights are PROVEN to be `P` (hub `refs/main` snapshot or in-place local path) → the console load answers `already_loaded`; unprovable/different weights keep their own key. |
+| fu-callers | NER callers send `model_path`: gateway `resolveNerModelSelection` (`derivedLocalPath(model)`) and harness `_extract_clinical_entities` (`localPath`). |
+| fu-gateway | Load-spec builder derives the seq-cls and judge guard specs (refuses by name otherwise); catalogue rows carry `loadBlockedReason` (e.g. MiniCheck unpublished, ASR variant with no agent) and the console shows it instead of a dead Load button. |
+| fu-lmsmetrics | LM Studio agent `GET /metrics` emits `model_resident_bytes{service,model,device}` (+ reachability); fixture example updated. |
+| fu-seed | `nlp.classification` election removed (no doc-type classifier model exists) and listed in the exemptions → no seed warning. Defaults: Granite `serving.gpuSplit` priority `[1]` / disabled `[0]` + `residency.defaultDevice: gpu1`; Gemma `gpu1`; Medical NER, GLiGuard, Whisper ML-EN `gpu0`. `ADMIN_EDITABLE_METADATA_KEYS` includes `residency`. |
+| fu-deploy | Prometheus job `lmstudio-residency` (`hope-lmstudio:8869`, static `service="hope-lmstudio"` like hope-stt/hope-nlp — `honor_labels` dropped at merge); NetworkPolicy ingress from Prometheus on 8869; `LMS_PRELOAD_PLAN` puts Granite on GPU 1. |
+
+**Known gap (not fixed, needs a decision):** the 8 alternative ASR variants still cannot be loaded from the console — stt's planner needs a `ResolvedAsrSpec`, which only exists for a model a published speech-to-text agent names. The console now says so (`loadBlockedReason`). Fix option: the gateway synthesises a standalone spec for a bare model load.
+
+**Rollout note:** a deploy never reseeds, so the new defaults reach the live cluster only through a console Load with `makeDefault` (or a reset); a reseed overwrites `serving` but keeps `residency`.
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
+| 2026-10-09 | Follow-up wave §8f merged locally (6 lanes): guard + judge caches under console control, reverse-duplicate alias + NER callers send `model_path`, LM Studio residency metrics + scrape, `nlp.classification` seed skip removed, default alignment GPU 0 NER/GLiGuard/Whisper, GPU 1 Gemma/Granite. Not pushed. |
 | 2026-10-09 | Ticket opened from the live e2e; findings E1–E13; plan and owner decisions written (status Pending). |
 | 2026-10-09 | Migration audit (+ TASK-1050 partial-index migration), pushed `81f8eaf3`, dev reset + reseed, ArcaAI timezone restored, D1/D2/D4 verified on the cluster, hope-nlp pinned to 1 replica (owner). |
 | 2026-10-09 | Pushed by owner; CI #1414 green; cluster e2e (§8b): core flows pass, defects D1/D2/D4 fixed and merged (§8c), D3 retracted. Awaiting the next push for re-test. |

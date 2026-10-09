@@ -37,6 +37,8 @@ _FACTORIES = {
     "nlp_gliner2_guard": "_create_gliner2_guard",
     "nlp_medical_suggester": "_create_medical_suggester",
     "nlp_entailment_scorer": "_create_entailment_scorer",
+    "nlp_seq_cls_guard": "_create_seq_cls_guard",
+    "nlp_judge_guard": "_create_judge_guard",
 }
 
 
@@ -145,6 +147,8 @@ def test_each_load_spec_example_keys_the_slot_like_the_request_path(
         "nlp_entailment_scorer": lambda: deps._entailment_cache_key(
             name, spec["model_path"], EntailmentCalibration.model_validate(spec["calibration"])
         ),
+        "nlp_seq_cls_guard": lambda: deps._model_cache_key(name, spec["model_path"]),
+        "nlp_judge_guard": lambda: deps._model_cache_key(name, spec["model_path"]),
     }[cache_name]()
     assert loaded_keys[cache_name] == [expected_key]
 
