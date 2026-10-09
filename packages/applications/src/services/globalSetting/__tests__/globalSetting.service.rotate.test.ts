@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GlobalSettingService, GLOBAL_SETTING_SECRET_ROTATED } from '../globalSetting.service';
 import { SysEventType, ValueType } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
+import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
 
 const mockClsService = {
   get: vi.fn(),
@@ -330,5 +331,45 @@ describe('GlobalSettingService.rotateSecret', () => {
         tenantId: 'owning-tenant-9',
       }),
     );
+  });
+
+  describe('TASK-1057 — the locked globalSetting.secretStepUp stamp', () => {
+    const STAMP = {
+      actionId: 'globalSetting.secretStepUp',
+      kind: 'stepUp',
+      mode: 'required',
+      locked: true,
+      required: true,
+      provided: true,
+      note: 'password confirmation required',
+    };
+    const withConfirmations = () =>
+      new GlobalSettingService(
+        mockGlobalSettingRepository as any,
+        mockUserRepository as any,
+        mockCryptoService as any,
+        mockSecretsService as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        new ActionConfirmationService({} as never),
+      );
+
+    it('stamps the rotate audit once the step-up passed', async () => {
+      asSuperAdmin();
+      wireHappyPath();
+      await withConfirmations().rotateSecret('secret-1', { password: 'pw', newValue: NEW_SECRET, expectedVersion: 4 });
+      const emitted = mockEventEmitter.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceUpdated)?.[1] as { data: Record<string, unknown> };
+      expect(emitted.data.confirmation).toEqual(STAMP);
+    });
+
+    it('stamps the reveal audit once the step-up passed', async () => {
+      asSuperAdmin();
+      mockUserRepository.findById.mockResolvedValue({ id: 'super-1', password: 'bcrypt-hash' });
+      mockCryptoService.verify.mockResolvedValue(true);
+      mockGlobalSettingRepository.findByIdWithDecryptedValue.mockResolvedValue({ entity: createMockSecretEntity(), plaintext: OLD_SECRET });
+      await withConfirmations().revealSecret('secret-1', 'pw');
+      const emitted = mockEventEmitter.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceViewed)?.[1] as { data: Record<string, unknown> };
+      expect(emitted.data.confirmation).toEqual(STAMP);
+    });
   });
 });
