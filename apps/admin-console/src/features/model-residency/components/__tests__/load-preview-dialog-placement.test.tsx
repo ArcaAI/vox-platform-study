@@ -6,7 +6,8 @@
  * model exceeds the card (OD-5); "make default" is sent with the device (OD-4).
  */
 
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { renderWithProviders as render } from '@/test/render';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { toast } from 'sonner';

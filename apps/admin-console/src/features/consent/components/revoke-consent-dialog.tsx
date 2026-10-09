@@ -4,10 +4,10 @@ import { useId, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
-import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { PURPOSE_META, useRevokeConsentGrant } from '../api';
 import type { ConsentGrant } from '../api';
 
@@ -51,10 +51,12 @@ function RevokeForm({ grant, onCancel, onDone }: { grant: ConsentGrant; onCancel
   const [reason, setReason] = useState('');
   const [conflict, setConflict] = useState(false);
   const revokeMutation = useRevokeConsentGrant();
+  const reasonPolicy = useActionConfirmation('consent.revoke');
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setConflict(false);
+    if (!reasonPolicy.isSatisfied(reason)) return;
     revokeMutation.mutate(
       { id: grant.id, body: reason.trim() ? { reason: reason.trim() } : {}, expectedVersion: grant.version },
       {
@@ -84,17 +86,13 @@ function RevokeForm({ grant, onCancel, onDone }: { grant: ConsentGrant; onCancel
         </DialogDescription>
       </DialogHeader>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${uid}-reason`}>Reason (optional)</Label>
-        <Textarea
-          id={`${uid}-reason`}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          rows={3}
-          className="resize-none"
-          placeholder="e.g. Patient withdrew consent by phone on 25 Aug"
-        />
-      </div>
+      <ReasonField
+        actionId="consent.revoke"
+        value={reason}
+        onChange={setReason}
+        placeholder="e.g. Patient withdrew consent by phone on 25 Aug"
+        id={`${uid}-reason`}
+      />
 
       {conflict ? (
         <p role="alert" className="border-warning/40 bg-warning/10 rounded-md border px-3 py-2 text-sm">
@@ -107,7 +105,7 @@ function RevokeForm({ grant, onCancel, onDone }: { grant: ConsentGrant; onCancel
         <Button type="button" variant="outline" onClick={onCancel} disabled={revokeMutation.isPending}>
           Cancel
         </Button>
-        <Button type="submit" variant="destructive" disabled={revokeMutation.isPending || conflict}>
+        <Button type="submit" variant="destructive" disabled={revokeMutation.isPending || conflict || !reasonPolicy.isSatisfied(reason)}>
           {revokeMutation.isPending ? <Spinner aria-hidden data-icon="inline-start" /> : null}
           Withdraw consent
         </Button>

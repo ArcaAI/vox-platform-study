@@ -153,7 +153,7 @@ describe('AgenticPolicyScreen', () => {
     expect(screen.getByLabelText('Optimistic delivery')).toBeDefined();
     expect(screen.getByLabelText('Max edit re-runs')).toBeDefined();
     expect(screen.getByLabelText('Safety guardrail')).toBeDefined();
-    expect(screen.getByLabelText('Reason')).toBeDefined();
+    expect(screen.getByLabelText(/^Reason/)).toBeDefined();
     expect(screen.getByRole('button', { name: /Save · If-Match/ })).toBeDefined();
   });
 
@@ -170,7 +170,7 @@ describe('AgenticPolicyScreen', () => {
 
     const optimistic = await screen.findByLabelText('Optimistic delivery');
     fireEvent.change(optimistic, { target: { value: 'on' } });
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'enable optimistic delivery' } });
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: 'enable optimistic delivery' } });
     expect(screen.getByText('Unsaved changes')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /Save · If-Match/ }));
 

@@ -11,6 +11,8 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import type { HarnessPolicy, UpdateHarnessPolicyRequest } from '../api';
 import { buildSparsePatch, fieldDraftValue, LOCKED_FIELD_HINT, POLICY_FIELD_GROUPS, type PolicyField } from './policy-fields';
@@ -93,6 +95,7 @@ export function HarnessPolicyForm({
   const uid = useId();
   const [drafts, setDrafts] = useState<Record<string, string | boolean>>({});
   const [reason, setReason] = useState('');
+  const reasonPolicy = useActionConfirmation('harnessPolicy.update');
 
   const locked = new Set<string>(lockedKeys ?? []);
   const patch = buildSparsePatch(policy, drafts);
@@ -101,7 +104,7 @@ export function HarnessPolicyForm({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!dirty) return;
+    if (!dirty || !reasonPolicy.isSatisfied(reason)) return;
     const trimmedReason = reason.trim();
     mutation.mutate(
       { patch: trimmedReason ? { ...patch, reason: trimmedReason } : patch, etag },
@@ -154,19 +157,8 @@ export function HarnessPolicyForm({
         ))}
         <Card className="gap-3 p-4">
           <h3 className="text-sm font-medium">Change note</h3>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${uid}-reason`} className="text-muted-foreground text-xs font-medium">
-              Reason
-            </Label>
-            <Input
-              id={`${uid}-reason`}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              maxLength={500}
-              placeholder={'Why this edit\u2026'}
-            />
-            <p className="text-muted-foreground text-xs">Recorded on the HarnessPolicyChange WORM row with the before/after snapshot.</p>
-          </div>
+          <ReasonField actionId="harnessPolicy.update" value={reason} onChange={setReason} id={`${uid}-reason`} />
+          <p className="text-muted-foreground text-xs">Recorded on the HarnessPolicyChange WORM row with the before/after snapshot.</p>
         </Card>
       </div>
       <OccConflictAlert
@@ -180,7 +172,7 @@ export function HarnessPolicyForm({
       />
       <div className="flex flex-wrap items-center justify-end gap-3">
         {dirty ? <span className="text-muted-foreground text-sm">Unsaved changes</span> : null}
-        <Button type="submit" disabled={!dirty || mutation.isPending}>
+        <Button type="submit" disabled={!dirty || !reasonPolicy.isSatisfied(reason) || mutation.isPending}>
           {mutation.isPending ? <Spinner /> : null}
           Save &middot; If-Match
         </Button>

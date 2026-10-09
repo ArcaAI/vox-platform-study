@@ -17,9 +17,7 @@
  * the definition being edited.
  */
 
-import { useId } from 'react';
-import { Input } from '@arcaai/ui/components/shadcn/input';
-import { Label } from '@arcaai/ui/components/shadcn/label';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import type { ContextSchemaUsagesResponse } from '../api/types';
 import { publishCopy } from '../lib/publish-copy';
@@ -37,10 +35,8 @@ export interface PublishConfirmDialogProps {
   impact: ContextSchemaUsagesResponse | null;
   /** Set once the server has refused as breaking; drives the destructive variant. */
   breakingChanges: string[] | null;
-  changeReason: string;
-  onChangeReasonChange: (next: string) => void;
-  /** Receives the acknowledgement flags the current variant implies. */
-  onConfirm: (acknowledgements: { allowBreakingChange?: boolean; acknowledgeImpact?: boolean }) => void;
+  /** Receives the acknowledgement flags the current variant implies and the change reason typed into the policy field. */
+  onConfirm: (acknowledgements: { allowBreakingChange?: boolean; acknowledgeImpact?: boolean; changeReason?: string }) => void;
   isPending: boolean;
 }
 
@@ -52,12 +48,11 @@ export function PublishConfirmDialog({
   additions,
   impact,
   breakingChanges,
-  changeReason,
-  onChangeReasonChange,
   onConfirm,
   isPending,
 }: PublishConfirmDialogProps) {
-  const uid = useId();
+  // TASK-1057 — the platform decides whether the impact checkbox is demanded (the server still gets acknowledgeImpact:true).
+  const impactPolicy = useActionConfirmation('contextSchema.publishImpact');
   const copy = publishCopy({ nextVersion, currentVersion, additions, breakingChanges, impact });
 
   return (
@@ -84,24 +79,16 @@ export function PublishConfirmDialog({
               ))}
             </ul>
           ) : null}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${uid}-change-reason`}>Change reason (optional)</Label>
-            <Input
-              id={`${uid}-change-reason`}
-              value={changeReason}
-              onChange={(event) => onChangeReasonChange(event.target.value)}
-              placeholder="Add referral_letter kind for cardiology intake"
-              autoComplete="off"
-            />
-          </div>
         </div>
       }
-      acknowledgement={copy.acknowledgement}
+      acknowledgement={copy.variant === 'some-refuse' && !impactPolicy.isRequired() ? null : copy.acknowledgement}
+      reasonActionId="contextSchema.publish"
       confirmLabel={copy.confirmLabel}
       destructive={copy.destructive}
       isPending={isPending}
-      onConfirm={() =>
+      onConfirm={({ reason }) =>
         onConfirm({
+          ...(reason ? { changeReason: reason } : {}),
           allowBreakingChange: copy.variant === 'breaking' ? true : undefined,
           acknowledgeImpact: copy.variant === 'some-refuse' ? true : undefined,
         })

@@ -140,14 +140,14 @@ export function UserActionDialogs({
    * proxy): it stores the act-as token in the encrypted session cookie.
    * Every cached query belongs to the previous identity afterwards.
    */
-  async function handleImpersonate() {
+  async function handleImpersonate({ reason }: { reason?: string } = {}) {
     if (!request) return;
     setImpersonatePending(true);
     try {
       const response = await fetch('/api/auth/impersonate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ userId: request.user.id }),
+        body: JSON.stringify({ userId: request.user.id, ...(reason ? { reason } : {}) }),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { message?: string };
@@ -174,8 +174,10 @@ export function UserActionDialogs({
       confirmLabel: string;
       destructive: boolean;
       typeToConfirm?: string;
+      typeToConfirmActionId?: string;
+      reasonActionId?: string;
       isPending: boolean;
-      onConfirm: () => void | Promise<void>;
+      onConfirm: (input: { reason?: string }) => void | Promise<void>;
     }
   > = {
     enable: {
@@ -200,6 +202,7 @@ export function UserActionDialogs({
       confirmLabel: 'Delete user',
       destructive: true,
       typeToConfirm: username,
+      typeToConfirmActionId: 'user.delete',
       isPending: deleteUser.isPending,
       onConfirm: handleDelete,
     },
@@ -218,6 +221,7 @@ export function UserActionDialogs({
         'You will act as this user across the platform until you revoke it from the session banner. Every action taken while impersonating is audit-flagged.',
       confirmLabel: 'Impersonate',
       destructive: false,
+      reasonActionId: 'impersonation.start',
       isPending: impersonatePending,
       onConfirm: handleImpersonate,
     },

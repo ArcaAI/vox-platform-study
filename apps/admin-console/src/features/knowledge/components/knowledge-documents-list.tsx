@@ -195,6 +195,7 @@ export function KnowledgeDocumentsList() {
         confirmLabel="Delete document"
         destructive
         typeToConfirm={deleting?.title}
+        typeToConfirmActionId="knowledgeDocument.delete"
         onConfirm={handleDeleteConfirmed}
         isPending={deleteDocument.isPending}
       />

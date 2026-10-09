@@ -9,6 +9,8 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { useCreateConsentGrant } from '../api';
 import { CONSENT_GRANT_METHODS, CONSENT_PURPOSES, GRANT_METHOD_META, PURPOSE_META } from '../api';
 import type { ConsentGrantMethod, ConsentPurpose } from '../api';
@@ -69,6 +71,7 @@ function RecordConsentForm({
 }) {
   const uid = useId();
   const createMutation = useCreateConsentGrant();
+  const evidencePolicy = useActionConfirmation('consent.record');
 
   const patientLocked = Boolean(patientId);
   const [externalPatientId, setExternalPatientId] = useState(patientId ?? '');
@@ -87,6 +90,7 @@ function RecordConsentForm({
       return;
     }
     setPatientError(null);
+    if (!evidencePolicy.isSatisfied(evidenceRef)) return;
 
     createMutation.mutate(
       {
@@ -202,12 +206,12 @@ function RecordConsentForm({
           <p className="text-muted-foreground text-xs">Leave empty for consent with no end date.</p>
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`${uid}-evidence`}>Evidence reference (optional)</Label>
-          <Input
-            id={`${uid}-evidence`}
+          <ReasonField
+            actionId="consent.record"
             value={evidenceRef}
-            onChange={(event) => setEvidenceRef(event.target.value)}
+            onChange={setEvidenceRef}
             placeholder="e.g. s3://consents/2026/abc.pdf"
+            id={`${uid}-evidence`}
           />
           <p className="text-muted-foreground text-xs">Pointer to a signed form, if one exists.</p>
         </div>
@@ -230,7 +234,7 @@ function RecordConsentForm({
         <Button type="button" variant="outline" onClick={onCancel} disabled={createMutation.isPending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!attested || createMutation.isPending}>
+        <Button type="submit" disabled={!attested || !evidencePolicy.isSatisfied(evidenceRef) || createMutation.isPending}>
           {createMutation.isPending ? <Spinner aria-hidden data-icon="inline-start" /> : null}
           Record consent
         </Button>

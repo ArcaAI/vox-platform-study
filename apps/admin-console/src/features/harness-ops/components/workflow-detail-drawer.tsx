@@ -257,6 +257,7 @@ export function WorkflowDetailDrawer({ workflowId, onOpenChange }: { workflowId:
         confirmLabel="Terminate workflow"
         destructive
         typeToConfirm={workflowId ?? undefined}
+        typeToConfirmActionId="harnessWorkflow.action"
         isPending={terminate.isPending}
         onConfirm={handleTerminateConfirmed}
       />

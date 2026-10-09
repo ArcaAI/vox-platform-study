@@ -5,7 +5,8 @@
  * one device at a time.
  */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { renderWithProviders as render } from '@/test/render';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { toast } from 'sonner';
@@ -95,7 +96,7 @@ describe('UnloadDialog — live-path models', () => {
     });
     const plain = makeLoaded({ name: 'Medical NER', modelRef: 'medical-ner' });
     renderDialog(plain);
-    expect(screen.getByLabelText(/reason/i).getAttribute('aria-required')).toBeNull();
+    expect(screen.getByLabelText(/reason/i).getAttribute('aria-required')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: /^unload/i }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/live consultation path/);

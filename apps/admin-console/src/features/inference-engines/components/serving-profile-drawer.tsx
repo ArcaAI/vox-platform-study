@@ -19,7 +19,8 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/native-select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { asModelResidencyConflict, type ModelResidencyOperationStatus } from '@/shared/residency';
 import { formatBytes } from '@/shared/format';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
@@ -156,6 +157,7 @@ export function ServingProfileDrawer({
   const [draft, setDraft] = useState<Draft>(() => initialDraft(loaded?.effective ?? {}));
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [forceReason, setForceReason] = useState('');
+  const servingPolicy = useActionConfirmation('lmStudioServing.apply');
 
   const profile = useMemo(() => toProfile(draft), [draft]);
   const precheck = useMemo(() => projectServingFootprint({ loaded, draft: profile, devices }), [loaded, profile, devices]);
@@ -381,14 +383,20 @@ export function ServingProfileDrawer({
               </span>
               {canForceRetry ? (
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="serving-force-reason">Reason to force it anyway (required, audited)</Label>
-                  <Textarea id="serving-force-reason" value={forceReason} onChange={(event) => setForceReason(event.target.value)} />
+                  <ReasonField
+                    actionId="lmStudioServing.apply"
+                    value={forceReason}
+                    onChange={setForceReason}
+                    risky
+                    label="Reason to force it anyway"
+                    id="serving-force-reason"
+                  />
                   <Button
                     type="button"
                     variant="destructive"
                     size="sm"
                     className="self-start"
-                    disabled={forceReason.trim().length === 0 || isPending}
+                    disabled={!servingPolicy.isSatisfied(forceReason, true) || isPending}
                     onClick={() => onForceApply(profile, forceReason)}
                   >
                     Force reload

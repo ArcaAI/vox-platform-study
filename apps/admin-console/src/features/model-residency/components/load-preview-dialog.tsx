@@ -11,7 +11,8 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { formatBytes } from '@/shared/format';
 import { asModelResidencyConflict, residencyErrorMessage, toastResidencyError } from '@/shared/residency';
 import { useLoadPreview, useLoadResidencyModel, useModelResidencyCatalogue, useUnloadResidencyModel } from '../api';
@@ -215,6 +216,7 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
   const catalogue = useModelResidencyCatalogue();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [reason, setReason] = useState('');
+  const reasonPolicy = useActionConfirmation('modelResidency.load');
   /** R3-7 — what the dialog is doing; the callout, figures and selection hold still until it is done. */
   const [busyPhase, setBusyPhase] = useState<BusyPhase | null>(null);
   const busy = busyPhase !== null;
@@ -317,7 +319,7 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
   const exceedsDevice = (conflictForPick?.code === 'EXCEEDS_DEVICE' || pickedCandidate?.exceedsDevice === true) && !fitsAfter;
   const forceBlocked = needsReason && exceedsDevice;
   const device = previewMatchesPick && data?.device ? catalogue.data?.devices.find((d) => sameDevice(d.id, data.device)) : undefined;
-  const armed = !needsReason || (!forceBlocked && reason.trim().length > 0);
+  const armed = needsReason ? !forceBlocked && reasonPolicy.isSatisfied(reason, true) : reasonPolicy.isSatisfied(reason, false);
   /** R3-4 — a pick is loaded only on a preview that judged THAT device (or a refusal that did). */
   const awaitingPreview = hasPicker && !previewMatchesPick && !conflictForPick;
   const pickedTitle = candidateTitle(pickedCandidate, picked ?? 'the device');
@@ -377,6 +379,8 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
       const body: LoadModelResidencyRequest = { service: service.service, modelRef: model.modelRef, ...placement(picked, forced) };
       if (forced) {
         body.force = true;
+        if (reason.trim()) body.reason = reason.trim();
+      } else if (reason.trim()) {
         body.reason = reason.trim();
       }
       const response = await load.mutateAsync(body);
@@ -690,21 +694,12 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
                       <p className="text-muted-foreground text-sm">
                         There is no memory isolation on time-sliced cards: an out-of-memory error can take down other models on the same GPU.
                       </p>
-                      <Label htmlFor="lp-force-reason">
-                        Reason <span aria-hidden>*</span>
-                        <span className="sr-only">(required, audited)</span>
-                      </Label>
-                      <Textarea
-                        id="lp-force-reason"
-                        aria-required="true"
-                        value={reason}
-                        onChange={(event) => setReason(event.target.value)}
-                        rows={2}
-                        disabled={busy}
-                      />
+                      <ReasonField actionId="modelResidency.load" value={reason} onChange={setReason} risky disabled={busy} id="lp-force-reason" />
                     </>
                   )}
                 </section>
+              ) : reasonPolicy.isRequired(false) && !alreadyLoaded ? (
+                <ReasonField actionId="modelResidency.load" value={reason} onChange={setReason} disabled={busy} id="lp-load-reason" />
               ) : null}
             </div>
           )}

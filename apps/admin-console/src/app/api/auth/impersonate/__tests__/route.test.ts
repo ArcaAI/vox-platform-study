@@ -197,6 +197,21 @@ describe('POST /api/auth/impersonate — TENANT_ADMIN (D-25, own-tenant via the 
     });
   });
 
+  it('forwards the typed reason on the legacy route (TASK-1057: impersonation.start is a locked reason)', async () => {
+    await seedSession(tenantAdminSession);
+    const calls = installFetchSpy(() =>
+      Response.json({
+        user: { id: 'doctor9-id', username: 'doctor9', email: 'doctor9@example.com', roles: ['DOCTOR'], permissions: [], tenantId: 'tenant-1' },
+        token: 'impersonation-token-4',
+        impersonatedBy: 'tenant-admin-1',
+      }),
+    );
+
+    await POST(impersonateRequest({ userId: 'doctor9-id', reason: 'support ticket 4412' }));
+
+    expect(calls[0]?.body).toEqual({ targetUserId: 'doctor9-id', reason: 'support ticket 4412' });
+  });
+
   it('does not re-implement the own-tenant check — a gateway 403 (cross-tenant target) passes through unchanged', async () => {
     await seedSession(tenantAdminSession);
     installFetchSpy(() => Response.json({ message: 'Tenant admin cannot impersonate users outside their own tenant' }, { status: 403 }));

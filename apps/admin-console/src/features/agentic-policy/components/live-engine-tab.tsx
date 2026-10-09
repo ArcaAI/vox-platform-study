@@ -5,11 +5,12 @@ import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
-import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { ReasonField } from '@/shared/action-confirmations/reason-field';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { formatRelativeTime } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { useLiveEngineConfig, useUpdateLiveEngineConfig } from '../api';
@@ -26,6 +27,7 @@ export function LiveEngineTab() {
   const updateMutation = useUpdateLiveEngineConfig();
   const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const [reason, setReason] = useState('');
+  const reasonPolicy = useActionConfirmation('harnessLiveConfig.update');
 
   if (configQuery.isPending) {
     return (
@@ -46,7 +48,7 @@ export function LiveEngineTab() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!dirty) return;
+    if (!dirty || !reasonPolicy.isSatisfied(reason)) return;
     const trimmedReason = reason.trim();
     updateMutation.mutate(
       { enabled, ...(trimmedReason ? { reason: trimmedReason } : {}) },
@@ -84,21 +86,10 @@ export function LiveEngineTab() {
           <Switch id={`${uid}-enabled`} checked={enabled} onCheckedChange={(next) => setEnabledDraft(next)} />
           <Label htmlFor={`${uid}-enabled`}>{enabled ? 'Engine enabled' : 'Engine disabled (kill-switch engaged)'}</Label>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${uid}-reason`} className="text-muted-foreground text-xs font-medium">
-            Audit reason
-          </Label>
-          <Input
-            id={`${uid}-reason`}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            maxLength={500}
-            placeholder={'Why toggle the engine\u2026'}
-          />
-        </div>
+        <ReasonField actionId="harnessLiveConfig.update" value={reason} onChange={setReason} label="Audit reason" id={`${uid}-reason`} />
         <div className="flex flex-wrap items-center justify-end gap-3">
           {dirty ? <span className="text-muted-foreground text-sm">Unsaved changes</span> : null}
-          <Button type="submit" disabled={!dirty || updateMutation.isPending}>
+          <Button type="submit" disabled={!dirty || !reasonPolicy.isSatisfied(reason) || updateMutation.isPending}>
             {updateMutation.isPending ? <Spinner /> : null}
             Save engine state
           </Button>
