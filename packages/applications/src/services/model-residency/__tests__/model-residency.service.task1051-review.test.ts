@@ -3,6 +3,7 @@ import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { confirmationsStub } from './confirmations.stub';
 import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { residencyAdmissionRejectionsTotal } from '../residency-metrics';
 
@@ -199,6 +200,7 @@ function build(opts: { enforce?: boolean } = {}) {
     { read: vi.fn(async () => new Map()) } as never,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(),
   );
   Object.assign(service, { measurementPollMs: 1, measurementMaxWaitMs: 20 });
   return { service, state, eventEmitter, aiModels, agents, lmStudio };

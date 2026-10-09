@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { confirmationsStub } from './confirmations.stub';
 import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { toReportedModel } from '../residency-agent.client';
 
@@ -175,6 +176,7 @@ function build() {
     usage as never,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(),
   );
   Object.assign(service, { measurementPollMs: 1, measurementMaxWaitMs: 50 });
   return { service, state, agents, lmStudio };

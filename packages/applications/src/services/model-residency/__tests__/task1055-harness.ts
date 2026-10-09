@@ -6,6 +6,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 import { vi } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 import { ModelResidencyService } from '../model-residency.service';
+import { confirmationsStub } from './confirmations.stub';
 
 /**
  * TASK-1055 — the gateway residency controller's test harness (shared by the lane-G suite and the
@@ -92,7 +93,7 @@ export const gpuDevices = () => [
   { id: 'cuda:1', kind: 'gpu', totalBytes: CARD, freeBytes: 0, index: 1, name: 'NVIDIA RTX 2000 Ada Generation', uuid: UUID1 },
 ];
 
-export function build(opts: { enforce?: boolean } = {}) {
+export function build(opts: { enforce?: boolean; confirmationModes?: Record<string, string> } = {}) {
   const state = {
     settings: { 'residency.enforce': opts.enforce ?? false } as Record<string, unknown>,
     // DCGM, in MiB (the exporter's unit). gpu0 holds the live path; gpu1 is nearly empty (fixture `gateway` numbers).
@@ -234,6 +235,7 @@ export function build(opts: { enforce?: boolean } = {}) {
     usage as never,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(opts.confirmationModes),
   );
   return { service, state, eventEmitter, aiModels, agents, policies, effectiveSettings };
 }

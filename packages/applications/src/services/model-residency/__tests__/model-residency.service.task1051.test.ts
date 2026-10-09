@@ -3,6 +3,7 @@ import { SYSTEM_TENANT_ID, SysEventType } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { confirmationsStub } from './confirmations.stub';
 import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { READINESS_CHECK_IDS } from '../model-residency.types';
 
@@ -186,6 +187,7 @@ function build(opts: { enforce?: boolean } = {}) {
     { read: vi.fn(async () => new Map()) } as never,
     eventEmitter as never,
     cls as never,
+    confirmationsStub(),
   );
   Object.assign(service, { measurementPollMs: 1, measurementMaxWaitMs: 20 });
   return { service, state, eventEmitter, aiModels, agents, lmStudio };
