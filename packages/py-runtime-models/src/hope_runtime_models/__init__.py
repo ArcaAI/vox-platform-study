@@ -8,6 +8,7 @@ here: `hope_runtime_models.residency_agent` (the report + verbs) and
 this package does not depend on).
 """
 
+from .accelerator import release_accelerator_memory, torch_module_bytes
 from .cache import (
     EVICTION_REASONS,
     UNSET,
@@ -23,8 +24,14 @@ from .cache import (
     SyncModelCache,
     clamp_cache_ttl_seconds,
 )
-from .accelerator import release_accelerator_memory, torch_module_bytes
-from .devices import Device, cpu_device, default_device, gpu_device
+from .devices import (
+    Device,
+    cpu_device,
+    default_device,
+    gpu_device,
+    gpu_devices,
+    visible_gpu_indices,
+)
 from .metrics import (
     EVICTIONS_TOTAL,
     LOAD_FAILURES_TOTAL,
@@ -116,6 +123,7 @@ __all__ = [
     "cpu_device",
     "default_device",
     "gpu_device",
+    "gpu_devices",
     "make_vram_info_probe",
     "make_vram_probe",
     "probe_state",
@@ -124,6 +132,7 @@ __all__ = [
     "reset_probe_state",
     "reset_warmup_state",
     "torch_module_bytes",
+    "visible_gpu_indices",
     "warm_cache_roots",
     "warmup_state",
 ]

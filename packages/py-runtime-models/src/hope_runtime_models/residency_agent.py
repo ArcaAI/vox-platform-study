@@ -80,7 +80,10 @@ class InvalidLoadSpec(ValueError):
 
 
 class DeviceUnavailable(ValueError):
-    """The requested device does not exist in this process or cannot host the model (HTTP 400 ``DEVICE_UNAVAILABLE``)."""
+    """The requested device does not exist here or cannot host the model.
+
+    HTTP 400 ``DEVICE_UNAVAILABLE``.
+    """
 
 
 class ResidencyError(Exception):

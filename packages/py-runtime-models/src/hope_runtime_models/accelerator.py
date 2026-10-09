@@ -31,7 +31,9 @@ def _torch() -> Any | None:
 
 
 def release_accelerator_memory(device_id: str | None = None) -> None:
-    """``gc.collect()``, then return torch's cached blocks on ``device_id`` (``cuda:<n>``) to the driver.
+    """``gc.collect()``, then hand torch's cached blocks on ``device_id`` back to the driver.
+
+    ``device_id`` is ``cuda:<n>``.
 
     ``None`` or ``cpu`` only collects. Never raises: a failed release is logged and the
     unload still counts as done.
@@ -43,7 +45,10 @@ def release_accelerator_memory(device_id: str | None = None) -> None:
     try:
         if not torch.cuda.is_available():
             return
-        index = int(device_id.split(":", 1)[1]) if ":" in device_id else torch.cuda.current_device()
+        if ":" in device_id:
+            index = int(device_id.split(":", 1)[1])
+        else:
+            index = torch.cuda.current_device()
         with torch.cuda.device(index):
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
@@ -64,7 +69,7 @@ def torch_module_bytes(obj: Any) -> int | None:
             tensors = list(candidate.parameters())
             if hasattr(candidate, "buffers"):
                 tensors += list(candidate.buffers())
-        except Exception:  # noqa: BLE001 — not a torch module after all
+        except Exception:  # noqa: BLE001, S112 — not a torch module after all
             continue
         for tensor in tensors:
             ident = id(tensor)
@@ -74,6 +79,6 @@ def torch_module_bytes(obj: Any) -> int | None:
             try:
                 total += int(tensor.numel()) * int(tensor.element_size())
                 found = True
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S112 — not a tensor
                 continue
     return total if found else None

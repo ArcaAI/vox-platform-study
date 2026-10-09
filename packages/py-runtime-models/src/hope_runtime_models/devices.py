@@ -24,7 +24,7 @@ import importlib
 import logging
 import os
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, TypeVar
 
@@ -171,6 +171,58 @@ def gpu_device(index: int = 0) -> Device | None:
         return reading.total_bytes - reading.free_bytes
 
     return Device(id=f"cuda:{index}", kind="gpu", memory=probe, usage=usage)
+
+
+def visible_gpu_indices(env: Mapping[str, str] | None = None) -> list[int] | None:
+    """NVML index of each GPU this process's CUDA sees, in CUDA order (TASK-1055).
+
+    NVML ignores ``CUDA_VISIBLE_DEVICES``; CUDA does not. With
+    ``CUDA_VISIBLE_DEVICES=1`` the process's ``cuda:0`` IS NVML index 1, so the
+    i-th entry here is the NVML index behind ``cuda:<i>``. ``None`` = the variable is
+    unset or not a plain index list (``all``, UUIDs): the caller probes NVML instead.
+    An empty list = CUDA was told to see no GPU.
+    """
+    raw = (env if env is not None else os.environ).get("CUDA_VISIBLE_DEVICES")
+    if raw is None:
+        return None
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if raw.strip() in ("", "-1", "none", "NoDevFiles"):
+        return []
+    if not all(part.isdigit() for part in parts):
+        return None
+    return [int(part) for part in parts]
+
+
+def gpu_devices(env: Mapping[str, str] | None = None, max_probe: int = 16) -> list[Device]:
+    """Every GPU this process can place a model on, as ``cuda:<i>`` in CUDA order (TASK-1055).
+
+    ``cuda:<i>`` reads its memory from the NVML index behind it (see
+    :func:`visible_gpu_indices`). Empty when NVML is unavailable (CPU host).
+    """
+    indices = visible_gpu_indices(env)
+    if indices is None:
+        indices = []
+        for nvml_index in range(max_probe):
+            probe = make_vram_info_probe(nvml_index)
+            if probe is None:
+                return []
+            try:
+                probe()
+            except Exception:  # noqa: BLE001 — past the last device
+                break
+            indices.append(nvml_index)
+    devices: list[Device] = []
+    for cuda_index, nvml_index in enumerate(indices):
+        probe = make_vram_info_probe(nvml_index)
+        if probe is None:
+            return []
+
+        def usage(reading_probe: Callable[[], DeviceMemory] = probe) -> int:
+            reading = reading_probe()
+            return reading.total_bytes - reading.free_bytes
+
+        devices.append(Device(id=f"cuda:{cuda_index}", kind="gpu", memory=probe, usage=usage))
+    return devices
 
 
 def cpu_device() -> Device:
