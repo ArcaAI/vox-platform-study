@@ -1305,13 +1305,17 @@ async def _extract_clinical_entities(
         else []
     )
     clinical_taxonomy = model.get("clinicalTaxonomy")
+    local_path = model.get("localPath")
     try:
         data = await _nlp_client(settings).classify_tokens_raw(
             text,
             tenant_id=tenant_id,
-            # `model_name` only, exactly like the gateway's clinical NER: NLP keys its model
-            # cache on (name, path), so also sending the path would load a second copy.
+            # NLP keys its model cache on (name, path), and the residency load, the agent
+            # NER path and `core.classify` all send the gateway-derived `localPath` as
+            # `model_path` — so this call sends it too, or a name-only load would sit beside
+            # theirs as a second copy (TASK-1055 D2). Omitted when the row has no published path.
             model_name=source_uri,
+            model_path=local_path if isinstance(local_path, str) and local_path else None,
             labels=labels or None,
             clinical_taxonomy=clinical_taxonomy if isinstance(clinical_taxonomy, dict) else None,
             language=language,

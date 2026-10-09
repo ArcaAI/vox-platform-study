@@ -419,7 +419,8 @@ class TestExtractEntitiesResolvesTheNerModel:
         assert call["text"] == "note"
         assert call["tenant_id"] == "t-1"
         assert call["model_name"] == "blaze999/Medical-NER"
-        assert call.get("model_path") is None
+        # TASK-1055 D2 — the gateway-derived path rides along, as on every other NER caller.
+        assert call["model_path"] == "/mnt/models-bucket/nlp/medical-ner/"
         assert call["labels"] == ["disease", "medication"]
         assert call["clinical_taxonomy"] == clinical
         assert call["language"] == "en"
@@ -541,7 +542,7 @@ class TestNlpExtractEntities:
 
         assert api.resolve_calls == [("nlp.ner", "t-1")]
         assert nlp.raw_calls[0]["model_name"] == "blaze999/Medical-NER"
-        assert nlp.raw_calls[0].get("model_path") is None
+        assert nlp.raw_calls[0]["model_path"] == "/mnt/models-bucket/nlp/medical-ner/"
         assert result.derived is True
         assert result.text == "hypertension"
 
