@@ -12,11 +12,15 @@ import { RESIDENCY_CONTROLLED_SERVICES, type ResidencyControlledService } from '
  */
 
 /**
- * LM Studio REST v1's DOCUMENTED load keys, camelCased — and nothing else. The
- * engine's schema is strict (`ttl`, `identifier`, `gpu` answer 400
- * `unrecognized_keys`, TASK-1005 §10.1), so parallel slots, KV quantization and
- * GPU split are not expressible here. Accepted ONLY for service `lm-studio`
- * (400 `OPTIONS_UNSUPPORTED` otherwise).
+ * Load-time overrides for an LM Studio load. Accepted ONLY for service
+ * `lm-studio` (400 `OPTIONS_UNSUPPORTED` otherwise).
+ *
+ * TASK-1055 — LM Studio loads through its residency agent with the model's FULL
+ * serving profile (context, parallel slots, KV quantization, GPU split,
+ * identifier — the boot plan's own resolution). Only `contextLength` and
+ * `flashAttention` override that profile; the three REST-era keys
+ * (`evalBatchSize`, `numExperts`, `offloadKvCacheToGpu`) are still declared so
+ * an old caller gets a named 400 `OPTIONS_UNSUPPORTED` rather than a whitelist error.
  */
 export class LmStudioResidencyLoadOptions {
   @ApiPropertyOptional({ description: 'Context window to load with (`context_length`).', minimum: 512, maximum: 1_048_576, nullable: true })
@@ -59,8 +63,8 @@ export class LoadModelResidencyRequest {
 
   @ApiProperty({
     description:
-      'The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the EXACT engine key (`AiModel.wireModelId`).',
-    example: 'gemma-4-e4b-it-qat@q4_0',
+      'The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the catalogue ref (`AiModel.wireModelId`, the identifier the LM Studio agent loads it as); an engine key `<ref>@<quant>` that resolves to a catalogue row is loaded under that row`s ref.',
+    example: 'gemma-4-e2b-it-qat',
   })
   @IsString()
   @IsNotEmpty()
@@ -74,7 +78,7 @@ export class LoadModelResidencyRequest {
 
   @ApiPropertyOptional({
     description:
-      'Proceed over the memory budget (409 `OVER_BUDGET` otherwise) — REQUIRES a non-empty `reason`, which is audited (owner OD-3). With `replace`, also unloads a model that is serving requests.',
+      'Proceed over the memory budget (409 `OVER_BUDGET` otherwise) — REQUIRES a non-empty `reason`, which is audited (owner OD-3). Never lifts 409 `EXCEEDS_DEVICE` (the need is larger than the device`s free memory outright, TASK-1055 OD-5). With `replace`, also unloads a model that is serving requests.',
     default: false,
   })
   @IsOptional()
@@ -104,7 +108,7 @@ export class LoadModelResidencyRequest {
 
   @ApiPropertyOptional({
     description:
-      'TASK-1055 — where to load: `gpu<N>`, `multi` (LM Studio only: split across cards) or `cpu`. Absent = the model`s default placement (its `_metadata.residency.defaultDevice`, else the service default). A device that cannot hold the model answers 409 `OVER_BUDGET` with `candidates` + `suggestedDevice`.',
+      'TASK-1055 — where to load: `gpu<N>`, `multi` (LM Studio only: split across cards) or `cpu`. Absent = the model`s default placement (its `_metadata.residency.defaultDevice`, else the service default — LM Studio: the serving profile`s split). A device the service does not have is 400 `DEVICE_UNAVAILABLE`; one that cannot hold the model answers 409 `OVER_BUDGET` (or `EXCEEDS_DEVICE`) with `candidates` + `suggestedDevice`.',
     nullable: true,
     example: 'gpu1',
   })
@@ -114,7 +118,8 @@ export class LoadModelResidencyRequest {
   device?: string | null;
 
   @ApiPropertyOptional({
-    description: 'TASK-1055 (OD-4) — also make `device` this model`s default placement (written to the catalogue row; used at boot and by the controller). Requires `device`.',
+    description:
+      'TASK-1055 (OD-4) — also make `device` this model`s default placement: `_metadata.residency.defaultDevice` (LM Studio: also `_metadata.serving.gpuSplit`, so the boot plan follows), a versioned write. Requires `device` (400 `DEVICE_UNAVAILABLE` otherwise).',
     default: false,
   })
   @IsOptional()

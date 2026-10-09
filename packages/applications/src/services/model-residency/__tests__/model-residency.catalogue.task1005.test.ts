@@ -4,6 +4,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ModelResidencyClass, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { ImplicitLivePathReader } from '../implicit-live-path';
 import { ModelUsageIndexReader } from '../model-usage-index';
 
@@ -283,11 +284,11 @@ function build() {
   );
   const usage = new ModelUsageIndexReader(repos.tenants as never, livePath);
 
+  routeLmStudioThroughAgent(agentsClient as never, lmStudio as never);
   const service = new ModelResidencyService(
     policies as never,
     aiModels as never,
     agentsClient as never,
-    lmStudio as never,
     prometheus as never,
     effectiveSettings as never,
     livePath as never,

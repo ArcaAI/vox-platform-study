@@ -168,6 +168,22 @@ export class ResidencyRecommendationStore {
       .map(strip);
   }
 
+  /**
+   * TASK-1055 (E11) — drop every standing row whose conclusion the CURRENT state already satisfies
+   * (a pin the agent now reports, a load that is now resident). Without it a satisfied row lingered
+   * until it went stale, and was re-confirmed meanwhile by any tick that still reached it.
+   */
+  withdraw(satisfied: (conclusion: ResidencyConclusion) => boolean): number {
+    let removed = 0;
+    for (const [key, row] of this.standing) {
+      if (!satisfied(row)) continue;
+      this.standing.delete(key);
+      if (this.dismissed.get(pairOf(row)) === conclusionOf(row)) this.dismissed.delete(pairOf(row));
+      removed += 1;
+    }
+    return removed;
+  }
+
   /** Hide a live STANDING recommendation; false when no such id is standing (an enforce-log event is not dismissable). */
   dismiss(id: string, now: number): boolean {
     this.prune(now);

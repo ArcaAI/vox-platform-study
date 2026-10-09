@@ -330,6 +330,18 @@ export class LmStudioEngineClient {
    * `infrastructure/docker/lmstudio/loader/load.mjs`).
    */
   async load(modelKey: string, options: LmStudioLoadOptions = {}): Promise<LmStudioLoadResult> {
+    try {
+      return await this.loadOnce(modelKey, options);
+    } catch (error) {
+      // TASK-1055 AC-6 — the engine's reason reaches the gateway log, not only the caller's response.
+      if (error instanceof LmStudioEngineError) {
+        this.logger.warn({ message: 'lmstudio.load.failed', modelKey, code: error.code, reason: error.message });
+      }
+      throw error;
+    }
+  }
+
+  private async loadOnce(modelKey: string, options: LmStudioLoadOptions): Promise<LmStudioLoadResult> {
     const baseUrl = await this.requireBaseUrl();
 
     if (this.loadsInFlight.has(baseUrl)) {
@@ -413,7 +425,9 @@ export class LmStudioEngineClient {
     const code = asRecord(asRecord(body)?.error)?.code;
     if (response.status === 404 || code === 'model_not_found') return { outcome: 'not_loaded', instanceId };
 
-    throw new LmStudioEngineError('UNLOAD_FAILED', `LM Studio refused to unload '${instanceId}' (HTTP ${response.status} ${engineReason(body)}).`);
+    const reason = engineReason(body);
+    this.logger.warn({ message: 'lmstudio.unload.failed', instanceId, code: 'UNLOAD_FAILED', status: response.status, reason });
+    throw new LmStudioEngineError('UNLOAD_FAILED', `LM Studio refused to unload '${instanceId}' (HTTP ${response.status} ${reason}).`);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────
@@ -514,12 +528,13 @@ export class LmStudioEngineClient {
     try {
       const response = await this.fetchWithTimeout(url, { method: 'GET', headers: await this.headers(false) }, REQUEST_TIMEOUT_MS);
       if (!response.ok) {
-        this.logger.debug({ message: 'LM Studio read returned non-200', url, status: response.status });
+        // TASK-1055 E12 — at warn, with the engine's own reason (it used to be `debug`, so a refusal left no trace).
+        this.logger.warn({ message: 'lmstudio.read.failed', url, status: response.status, reason: engineReason(await readBody(response)) });
         return null;
       }
       return asRecord(await response.json()) ?? null;
     } catch (error) {
-      this.logger.debug({ message: 'LM Studio read failed (reporting the engine as unreachable)', url, error: String(error) });
+      this.logger.warn({ message: 'lmstudio.read.failed', url, code: 'ENGINE_UNREACHABLE', reason: String(error) });
       return null;
     }
   }

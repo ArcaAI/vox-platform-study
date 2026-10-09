@@ -3,6 +3,7 @@ import { SYSTEM_TENANT_ID, SysEventType } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { READINESS_CHECK_IDS } from '../model-residency.types';
 
 /**
@@ -173,11 +174,11 @@ function build(opts: { enforce?: boolean } = {}) {
   };
   const specs = { build: vi.fn(async () => ({ resolved_spec: {} })) };
 
+  routeLmStudioThroughAgent(agents as never, lmStudio as never);
   const service = new ModelResidencyService(
     policies as never,
     aiModels as never,
     agents as never,
-    lmStudio as never,
     prometheus as never,
     effectiveSettings as never,
     livePath as never,
@@ -363,7 +364,8 @@ describe('ModelResidencyService — TASK-1051 lane B1', () => {
       });
       expect(preview.headroomBytes).toBeCloseTo(headroom, -1);
       expect(preview.shortfallBytes).toBeCloseTo(need - (free - headroom), -1);
-      expect(preview.unattributedBytes).toBe(4_000 * MiB - 1.5 * GiB);
+      // TASK-1055 — ONE unattributed formula with the catalogue (it also counts the split LM Studio instance's estimated share).
+      expect(preview.unattributedBytes).toBe((await h.service.getCatalogue()).devices.find((d) => d.id === 'gpu0')!.unattributedBytes);
       expect(preview.evictable).toEqual([
         { service: 'stt', modelRef: LIVE_ASR, name: 'ArcaAI Whisper ml-en', bytes: 1.5 * GiB, reason: 'On demand · idle 30 min' },
       ]);
@@ -405,8 +407,9 @@ describe('ModelResidencyService — TASK-1051 lane B1', () => {
       await h.service.drain();
 
       expect(h.lmStudio.load).toHaveBeenCalledTimes(2);
-      expect(h.lmStudio.load).toHaveBeenNthCalledWith(1, GEMMA_WIRE, { contextLength: 32_768 });
-      expect(h.lmStudio.load).toHaveBeenNthCalledWith(2, GEMMA_WIRE, {});
+      // TASK-1055 — the profile load_spec: the request's override first, the plain profile on the restore.
+      expect(h.lmStudio.load).toHaveBeenNthCalledWith(1, GEMMA_WIRE, expect.objectContaining({ context_length: 32_768 }));
+      expect(h.lmStudio.load).toHaveBeenNthCalledWith(2, GEMMA_WIRE, expect.objectContaining({ context_length: 65_536 }));
       const op = await h.service.getOperation(body.operationId!);
       expect(op.status).toBe('failed');
       expect(op.error?.message).toMatch(/previous instance was restored/);
@@ -489,16 +492,17 @@ describe('ModelResidencyService — TASK-1051 lane B1', () => {
       expect((await h.service.getView()).recommendations).toEqual([]);
       expect((await h.service.getCatalogue()).suggestions).toEqual([]);
 
-      // A different conclusion for the same model clears the dismissal…
+      // A different conclusion for the same model clears the dismissal… (TASK-1055: one the state does not already satisfy —
+      // a `load` of a resident model is withdrawn at once.)
       internals(h.service).record(
-        { action: 'load', service: 'nlp', modelRef: NER, reason: 'promotion_rate', devices: [], bytes: null },
+        { action: 'unload', service: 'nlp', modelRef: NER, reason: 'make_room', devices: [], bytes: null },
         'shadow',
         false,
       );
       await h.service.tick();
       // …so the original conclusion is visible again.
       expect((await h.service.getView()).recommendations.map((r) => r.reason)).toEqual(
-        expect.arrayContaining(['idle_ttl_expired', 'promotion_rate']),
+        expect.arrayContaining(['idle_ttl_expired', 'make_room']),
       );
     });
 

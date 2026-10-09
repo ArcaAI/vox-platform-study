@@ -28,7 +28,7 @@
 // substituted — when they do not match.
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { AiModelRepository } from '@arcaai/domains';
+import { type AiModelEntity, AiModelRepository } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import type { AiModelServingProfile } from '@arcaai/types';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
@@ -479,31 +479,19 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       unknown
     >;
 
-    // The platform profile WITHOUT its gpuSplit strategy: placement for a model that declares
-    // none is the single `gpu` index, never a platform-wide split.
-    const { gpuSplit: platformSplit, ...platform } = platformServingProfileFrom(values);
-    const platformStrategy = platformSplit?.strategy ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.gpuSplitStrategy'];
-    const gpu = values['lmStudio.serving.gpu'] as number;
-
-    const defaults = {
-      contextLength: platform.contextLength ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.contextLength'],
-      parallel: platform.parallel ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.parallel'],
-      gpu,
-      flashAttention: platform.flashAttention ?? null,
-      kvCacheQuant: platform.kvCacheQuant ?? null,
-    };
+    const context = lmStudioServingContextFrom(values);
 
     const preload: EffectiveLmStudioPreload[] = [];
     const seen = new Set<string>();
     for (const requested of values['lmStudio.serving.preload'] as string[]) {
-      const entry = await this.resolvePreload(requested, platform, defaults, gpu, platformStrategy);
+      const entry = await this.resolvePreload(requested, context);
       if (entry && !seen.has(entry.slug)) {
         seen.add(entry.slug);
         preload.push(entry);
       }
     }
 
-    return { defaults, preload };
+    return { defaults: context.defaults, preload };
   }
 
   /** One `lmStudio.serving.*` key, falling back to its declared default when unresolved. */
@@ -513,13 +501,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     return resolved.value === null ? (Array.isArray(fallback) ? [...fallback] : fallback) : resolved.value;
   }
 
-  private async resolvePreload(
-    requested: string,
-    platform: AiModelServingProfile,
-    defaults: { contextLength: number; parallel: number },
-    gpu: number,
-    platformStrategy: string,
-  ): Promise<EffectiveLmStudioPreload | null> {
+  private async resolvePreload(requested: string, context: LmStudioServingContext): Promise<EffectiveLmStudioPreload | null> {
     if (!this.aiModelRepository) return null;
     try {
       // By catalogue slug first, then by LM Studio model key (`sourceUri`) — the two differ
@@ -534,23 +516,11 @@ export class EffectiveConfigService implements IEffectiveConfigService {
         return null;
       }
 
-      const model = servingProfileOf(row);
-      const { profile, problems } = resolveServingProfile(model, platform, { declaredContextLength: declaredContextLengthOf(row) });
+      const { entry, problems } = lmStudioPreloadEntryFor(row, context);
       if (problems.length > 0) {
         this.logger.warn({ message: 'LM Studio preload profile is incoherent — served as resolved', slug: requested, problems });
       }
-
-      // A model-declared split that names no strategy takes the platform strategy.
-      const gpuSplit = model?.gpuSplit ? { ...structuredClone(model.gpuSplit), strategy: model.gpuSplit.strategy ?? platformStrategy } : null;
-      return {
-        slug: row.sourceUri,
-        contextLength: profile.contextLength ?? defaults.contextLength,
-        parallel: profile.parallel ?? defaults.parallel,
-        flashAttention: profile.flashAttention ?? null,
-        gpuSplit,
-        gpu: gpuSplit ? null : gpu,
-        kvCacheQuant: profile.kvCacheQuant ?? null,
-      };
+      return entry;
     } catch (error) {
       this.logger.warn({
         message: 'LM Studio preload resolution failed — the entry is skipped',
@@ -609,6 +579,76 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       return { value: null, source: 'env-fallback' };
     }
   }
+}
+
+/**
+ * TASK-1031 — the platform half of the LM Studio boot plan, from the resolved `lmStudio.serving.*`
+ * values: the platform profile WITHOUT its gpuSplit strategy (placement for a model that declares
+ * none is the single `gpu` index, never a platform-wide split), that strategy, the GPU index and
+ * the plan `defaults`.
+ *
+ * TASK-1055 — exported so the residency controller builds an LM Studio `load_spec` with EXACTLY
+ * the resolution the boot plan uses (a console reload must come back as the pod's own boot load did).
+ */
+export interface LmStudioServingContext {
+  platform: AiModelServingProfile;
+  platformStrategy: string;
+  gpu: number;
+  defaults: {
+    contextLength: number;
+    parallel: number;
+    gpu: number;
+    flashAttention: boolean | null;
+    kvCacheQuant: AiModelServingProfile['kvCacheQuant'] | null;
+  };
+}
+
+export function lmStudioServingContextFrom(values: Partial<Record<LmStudioServingKey, unknown>>): LmStudioServingContext {
+  const { gpuSplit: platformSplit, ...platform } = platformServingProfileFrom(values);
+  const platformStrategy = platformSplit?.strategy ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.gpuSplitStrategy'];
+  const gpu = (values['lmStudio.serving.gpu'] as number | undefined) ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.gpu'];
+  return {
+    platform,
+    platformStrategy,
+    gpu,
+    defaults: {
+      contextLength: platform.contextLength ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.contextLength'],
+      parallel: platform.parallel ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.parallel'],
+      gpu,
+      flashAttention: platform.flashAttention ?? null,
+      kvCacheQuant: platform.kvCacheQuant ?? null,
+    },
+  };
+}
+
+/**
+ * TASK-1031 — ONE model's boot-plan entry: its `_metadata.serving` resolved model -> platform
+ * (`resolveServingProfile`), a model-declared split taking the platform strategy when it names
+ * none, and the platform GPU for a model that declares no split. `problems` are the resolved
+ * profile's coherence violations (served as resolved; the caller decides whether to warn).
+ *
+ * TASK-1055 — shared by the boot plan and the residency controller's LM Studio `load_spec`.
+ */
+export function lmStudioPreloadEntryFor(
+  row: Pick<AiModelEntity, 'metaData' | 'sourceUri'>,
+  context: LmStudioServingContext,
+): { entry: EffectiveLmStudioPreload; problems: string[] } {
+  const model = servingProfileOf(row);
+  const { profile, problems } = resolveServingProfile(model, context.platform, { declaredContextLength: declaredContextLengthOf(row) });
+  // A model-declared split that names no strategy takes the platform strategy.
+  const gpuSplit = model?.gpuSplit ? { ...structuredClone(model.gpuSplit), strategy: model.gpuSplit.strategy ?? context.platformStrategy } : null;
+  return {
+    entry: {
+      slug: row.sourceUri,
+      contextLength: profile.contextLength ?? context.defaults.contextLength,
+      parallel: profile.parallel ?? context.defaults.parallel,
+      flashAttention: profile.flashAttention ?? null,
+      gpuSplit,
+      gpu: gpuSplit ? null : context.gpu,
+      kvCacheQuant: profile.kvCacheQuant ?? null,
+    },
+    problems,
+  };
 }
 
 /** The resolved map as it goes on the wire, carrying each key's declared type. */

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { toReportedModel } from '../residency-agent.client';
 
 /**
@@ -162,11 +163,11 @@ function build() {
   const specs = { build: vi.fn() };
   const usage = { read: vi.fn(async () => new Map()) };
 
+  routeLmStudioThroughAgent(agents as never, lmStudio as never);
   const service = new ModelResidencyService(
     policies as never,
     aiModels as never,
     agents as never,
-    lmStudio as never,
     prometheus as never,
     effectiveSettings as never,
     livePath as never,

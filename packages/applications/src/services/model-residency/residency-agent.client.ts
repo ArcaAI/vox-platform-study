@@ -1,8 +1,8 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common/internal-service-headers';
 import { IConfigService } from '../baseServices/_meta/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import type { ReportedDevice, ReportedResidentModel, ResidencyLoadError, ServiceResidencyReport } from './model-residency.types';
+import type { ReportedDevice, ReportedLoadConfig, ReportedResidentModel, ResidencyLoadError, ServiceResidencyReport } from './model-residency.types';
 
 /**
  * TASK-1005 — the gateway's client for the residency AGENT every model-serving
@@ -11,9 +11,17 @@ import type { ReportedDevice, ReportedResidentModel, ResidencyLoadError, Service
  * → `python` (snake_case); this client hands the controller the camelCase
  * `gateway` shape.
  *
+ * TASK-1055 — LM Studio is commanded through the SAME contract: an in-pod Node
+ * sidecar on :8869 (`tests/contracts/model-residency-task1055.fixture.json` →
+ * `lmStudioAgent`) reached at `LMSTUDIO_AGENT_URL`, an env-tier bootstrap
+ * TRANSPORT address. Unset = LM Studio is unreachable for residency; there is
+ * deliberately no fallback to its REST API, which cannot carry the serving
+ * profile (parallel slots, KV quant, GPU split, identifier — ticket E3).
+ * v2 adds an optional `device` (`cuda:<n>`) on load and unload.
+ *
  *   GET  /internal/residency
- *   POST /internal/residency/load     {model_ref, load_spec, pin, ttl_seconds}
- *   POST /internal/residency/unload   {model_ref, force, reason}
+ *   POST /internal/residency/load     {model_ref, load_spec, pin, ttl_seconds, device?}
+ *   POST /internal/residency/unload   {model_ref, force, reason, device?}
  *   PUT  /internal/residency/models/{model_ref}/policy {admin_pinned?, ttl_seconds?}
  *
  * Mounted at the service ROOT (not under `/api/v1`), behind each service's
@@ -26,31 +34,71 @@ import type { ReportedDevice, ReportedResidentModel, ResidencyLoadError, Service
  * commands it.
  */
 
-export type ResidencyAgentService = 'stt' | 'nlp';
+export type ResidencyAgentService = 'stt' | 'nlp' | 'lm-studio';
 
 export type ResidencyAgentErrorCode =
-  'MODEL_UNKNOWN' | 'IN_FLIGHT' | 'INSUFFICIENT_MEMORY' | 'LOAD_FAILED' | 'LOAD_IN_PROGRESS' | 'SERVICE_UNREACHABLE' | 'AGENT_ERROR';
+  | 'MODEL_UNKNOWN'
+  | 'IN_FLIGHT'
+  | 'INSUFFICIENT_MEMORY'
+  | 'LOAD_FAILED'
+  | 'LOAD_IN_PROGRESS'
+  // TASK-1055 — the agent sees no such device.
+  | 'DEVICE_UNAVAILABLE'
+  | 'SERVICE_UNREACHABLE'
+  | 'AGENT_ERROR';
+
+const KNOWN_CODES: readonly ResidencyAgentErrorCode[] = [
+  'MODEL_UNKNOWN',
+  'IN_FLIGHT',
+  'INSUFFICIENT_MEMORY',
+  'LOAD_FAILED',
+  'LOAD_IN_PROGRESS',
+  'DEVICE_UNAVAILABLE',
+];
+
+/** TASK-1055 — what an `INSUFFICIENT_MEMORY` / `DEVICE_UNAVAILABLE` refusal says about the device. */
+export interface ResidencyAgentErrorDetail {
+  device?: string;
+  neededBytes?: number;
+  freeBytes?: number;
+  headroomBytes?: number;
+}
 
 /** A refused or failed agent call. `status` is the agent's own HTTP status (0 when it never answered). */
 export class ResidencyAgentError extends Error {
+  readonly device?: string;
+  readonly neededBytes?: number;
+  readonly freeBytes?: number;
+  readonly headroomBytes?: number;
+
   constructor(
     readonly code: ResidencyAgentErrorCode,
     message: string,
     readonly status: number,
     readonly inFlight?: number,
     readonly retryAfterSeconds?: number,
+    detail: ResidencyAgentErrorDetail = {},
   ) {
     super(message);
     this.name = 'ResidencyAgentError';
+    if (detail.device !== undefined) this.device = detail.device;
+    if (detail.neededBytes !== undefined) this.neededBytes = detail.neededBytes;
+    if (detail.freeBytes !== undefined) this.freeBytes = detail.freeBytes;
+    if (detail.headroomBytes !== undefined) this.headroomBytes = detail.headroomBytes;
   }
 }
 
 export interface AgentLoadRequest {
   modelRef: string;
-  /** Service-specific: stt `{resolved_spec}`, nlp `{cache, model_path, …}` (fixture `loadSpecExamples`). Forwarded verbatim. */
+  /**
+   * Service-specific: stt `{resolved_spec}`, nlp `{cache, model_path, …}` (fixture `loadSpecExamples`), lm-studio the resolved serving
+   * profile (`identifier`, `context_length`, `parallel`, …). Forwarded verbatim.
+   */
   loadSpec: Record<string, unknown>;
   pin: boolean;
   ttlSeconds?: number | null;
+  /** TASK-1055 — the AGENT's device id (`cuda:<n>`, `cpu`); absent = the service's own placement. */
+  device?: string;
 }
 
 export interface AgentLoadResult {
@@ -63,6 +111,8 @@ export interface AgentUnloadRequest {
   force: boolean;
   /** Labels the agent's `model_evictions_total{reason}`. */
   reason: 'admin' | 'policy';
+  /** TASK-1055 — unload only the copy on this AGENT device; absent = every copy. */
+  device?: string;
 }
 
 export interface AgentUnloadResult {
@@ -76,7 +126,8 @@ export interface AgentPolicyRequest {
   ttlSeconds?: number | null;
 }
 
-const URL_KEYS: Record<ResidencyAgentService, 'STT_URL' | 'NLP_URL'> = { stt: 'STT_URL', nlp: 'NLP_URL' };
+/** Where each agent lives — env-tier bootstrap transport addresses (`IConfigService`). */
+const URL_KEYS: Record<ResidencyAgentService, string> = { stt: 'STT_URL', nlp: 'NLP_URL', 'lm-studio': 'LMSTUDIO_AGENT_URL' };
 
 /** A report is cheap; it must never hold up the 10 s decision tick. */
 const REPORT_TIMEOUT_MS = 3_000;
@@ -92,12 +143,55 @@ const num = (value: unknown): number | null => (typeof value === 'number' && Num
 
 function toDevice(raw: unknown): ReportedDevice {
   const d = asRecord(raw);
-  return {
+  const device: ReportedDevice = {
     id: str(d.id) ?? 'unknown',
     kind: d.kind === 'cpu' ? 'cpu' : 'gpu',
     totalBytes: num(d.total_bytes) ?? 0,
     freeBytes: num(d.free_bytes) ?? 0,
   };
+  // TASK-1055 v2 extras — present only when the agent sends them, so a TASK-1005 agent's report reads exactly as before.
+  const index = num(d.index);
+  if (index !== null) device.index = index;
+  const name = str(d.name);
+  if (name) device.name = name;
+  const uuid = str(d.uuid);
+  if (uuid) device.uuid = uuid;
+  if ('process_bytes' in d) device.processBytes = num(d.process_bytes);
+  return device;
+}
+
+const intList = (value: unknown): number[] | undefined =>
+  Array.isArray(value) ? value.filter((v): v is number => typeof v === 'number' && Number.isFinite(v)) : undefined;
+
+/** The agent's `load_config` (snake_case) → camelCase. Unknown keys are dropped. */
+function toLoadConfig(raw: unknown): ReportedLoadConfig | undefined {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const c = asRecord(raw);
+  const out: ReportedLoadConfig = {};
+  const contextLength = num(c.context_length);
+  if (contextLength !== null) out.contextLength = contextLength;
+  const parallel = num(c.parallel);
+  if (parallel !== null) out.parallel = parallel;
+  if (typeof c.flash_attention === 'boolean') out.flashAttention = c.flash_attention;
+  const kv = asRecord(c.kv_cache_quant);
+  if (str(kv.k) || str(kv.v)) out.kvCacheQuant = { ...(str(kv.k) ? { k: str(kv.k)! } : {}), ...(str(kv.v) ? { v: str(kv.v)! } : {}) };
+  if (c.gpu_split && typeof c.gpu_split === 'object') {
+    const g = asRecord(c.gpu_split);
+    out.gpuSplit = {
+      ...(str(g.strategy) ? { strategy: str(g.strategy)! } : {}),
+      ...(intList(g.priority) ? { priority: intList(g.priority) } : {}),
+      ...(intList(g.disabled_gpus) ? { disabledGpus: intList(g.disabled_gpus) } : {}),
+      ...(intList(g.custom_ratio) ? { customRatio: intList(g.custom_ratio) } : {}),
+    };
+  }
+  return out;
+}
+
+function toDeviceBytes(raw: unknown): Record<string, number> | undefined {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, number> = {};
+  for (const [device, bytes] of Object.entries(raw as Json)) if (num(bytes) !== null) out[device] = num(bytes)!;
+  return out;
 }
 
 function toLoadError(raw: unknown): ResidencyLoadError | null {
@@ -118,7 +212,7 @@ export function toReportedModel(raw: unknown): ReportedResidentModel {
     state,
     device: str(m.device) ?? 'unknown',
     bytes: num(m.bytes),
-    bytesSource: m.bytes_source === 'measured' ? 'measured' : 'unknown',
+    bytesSource: m.bytes_source === 'measured' || m.bytes_source === 'estimated' ? m.bytes_source : 'unknown',
     inFlight: num(m.in_flight),
     pinned: m.pinned === true,
     adminPinned: m.admin_pinned === true,
@@ -126,6 +220,11 @@ export function toReportedModel(raw: unknown): ReportedResidentModel {
     loadedAt: str(m.loaded_at),
     lastUsedAt: str(m.last_used_at),
     loadSeconds: num(m.load_seconds),
+    // TASK-1055 — LM Studio agent extras and per-device bytes; absent from a TASK-1005 report, and then not set at all.
+    ...(str(m.instance_id) ? { instanceId: str(m.instance_id)! } : {}),
+    ...(str(m.engine_key) ? { engineKey: str(m.engine_key)! } : {}),
+    ...(toDeviceBytes(m.device_bytes) ? { deviceBytes: toDeviceBytes(m.device_bytes) } : {}),
+    ...(toLoadConfig(m.load_config) ? { loadConfig: toLoadConfig(m.load_config) } : {}),
     // A `failed` model always carries an error, even from an agent that omitted it.
     ...(state === 'failed' ? { error: error ?? { code: 'LOAD_FAILED', message: '', at: null } } : error ? { error } : {}),
   };
@@ -133,6 +232,8 @@ export function toReportedModel(raw: unknown): ReportedResidentModel {
 
 @Injectable()
 export class ResidencyAgentClient {
+  private readonly logger = new Logger(ResidencyAgentClient.name);
+
   constructor(
     @Inject(IConfigService) private readonly config: IConfigService,
     // Optional: without it no token is presented, which is the local-dev bypass
@@ -157,7 +258,13 @@ export class ResidencyAgentClient {
         service,
         'POST',
         '/internal/residency/load',
-        { model_ref: request.modelRef, load_spec: request.loadSpec, pin: request.pin, ttl_seconds: request.ttlSeconds ?? null },
+        {
+          model_ref: request.modelRef,
+          load_spec: request.loadSpec,
+          pin: request.pin,
+          ttl_seconds: request.ttlSeconds ?? null,
+          ...(request.device ? { device: request.device } : {}),
+        },
         LOAD_TIMEOUT_MS,
       ),
     );
@@ -170,7 +277,7 @@ export class ResidencyAgentClient {
         service,
         'POST',
         '/internal/residency/unload',
-        { model_ref: request.modelRef, force: request.force, reason: request.reason },
+        { model_ref: request.modelRef, force: request.force, reason: request.reason, ...(request.device ? { device: request.device } : {}) },
         COMMAND_TIMEOUT_MS,
       ),
     );
@@ -189,8 +296,43 @@ export class ResidencyAgentClient {
 
   // ── transport ─────────────────────────────────────────────────────────────
 
+  /**
+   * One agent call. A refusal or failure of a COMMAND (anything but the 10 s report read, whose outage the
+   * controller logs once per outage) is logged at warn with the agent's code and reason (TASK-1055 AC-6) before
+   * it is thrown.
+   */
   private async call(service: ResidencyAgentService, method: string, path: string, payload: Json | undefined, timeoutMs: number): Promise<unknown> {
-    const base = String(this.config.getConfigValue(URL_KEYS[service]) ?? '').replace(/\/+$/, '');
+    try {
+      return await this.send(service, method, path, payload, timeoutMs);
+    } catch (error) {
+      if (error instanceof ResidencyAgentError && method !== 'GET') {
+        this.logger.warn({
+          message: 'residency.agent.call_failed',
+          service,
+          method,
+          path,
+          status: error.status,
+          code: error.code,
+          reason: error.message,
+          ...(error.device ? { device: error.device } : {}),
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async send(service: ResidencyAgentService, method: string, path: string, payload: Json | undefined, timeoutMs: number): Promise<unknown> {
+    const urlKey = URL_KEYS[service];
+    // The key set is wider than the shared `IAppConfig` typing knows until the domains build carries `LMSTUDIO_AGENT_URL`.
+    const read = this.config.getConfigValue as (key: string) => unknown;
+    const base = String(read.call(this.config, urlKey) ?? '').replace(/\/+$/, '');
+    if (!base) {
+      throw new ResidencyAgentError(
+        'SERVICE_UNREACHABLE',
+        `The ${service} residency agent has no address: ${urlKey} is not set, so ${method} ${path} was not sent.`,
+        0,
+      );
+    }
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secrets, service === 'nlp' ? 'NLP_SERVICE_TOKEN' : 'INTERNAL_ACCESS_TOKEN'),
       tenantId: null,
@@ -224,14 +366,19 @@ export class ResidencyAgentClient {
 
     const error = asRecord(asRecord(body).error);
     const code = str(error.code);
-    const known: ResidencyAgentErrorCode[] = ['MODEL_UNKNOWN', 'IN_FLIGHT', 'INSUFFICIENT_MEMORY', 'LOAD_FAILED', 'LOAD_IN_PROGRESS'];
     const retryAfter = Number(response.headers.get('Retry-After'));
     throw new ResidencyAgentError(
-      code && (known as string[]).includes(code) ? (code as ResidencyAgentErrorCode) : 'AGENT_ERROR',
+      code && (KNOWN_CODES as readonly string[]).includes(code) ? (code as ResidencyAgentErrorCode) : 'AGENT_ERROR',
       str(error.message)?.slice(0, 500) ?? `The ${service} residency agent answered HTTP ${response.status} to ${method} ${path}.`,
       response.status,
       num(error.in_flight) ?? undefined,
       Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+      {
+        ...(str(error.device) ? { device: str(error.device)! } : {}),
+        ...(num(error.needed_bytes) !== null ? { neededBytes: num(error.needed_bytes)! } : {}),
+        ...(num(error.free_bytes) !== null ? { freeBytes: num(error.free_bytes)! } : {}),
+        ...(num(error.headroom_bytes) !== null ? { headroomBytes: num(error.headroom_bytes)! } : {}),
+      },
     );
   }
 }

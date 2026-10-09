@@ -110,18 +110,31 @@ export class ModelResidencyController {
     description:
       'ASYNCHRONOUS: answers 202 with an operation id as soon as the load is admitted, because a 5 GB LLM takes ~100 s — past the edge ' +
       'timeout of a browser request. Poll `GET operations/:operationId`, or watch the model`s `state` go `loading` → `loaded` in `GET`. A model ' +
-      'already resident answers 200 `already_loaded` and creates no operation. Loads are serialised per PHYSICAL GPU across every service (an ' +
-      'LM Studio load holds both cards) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that ' +
-      'does not fit the measured free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty ' +
-      '`reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation. `options` (LM Studio REST v1 documented keys ' +
-      'only) are accepted for `lm-studio` alone (400 `OPTIONS_UNSUPPORTED`); `replace: true` unloads then reloads as ONE operation.',
+      'already resident answers 200 `already_loaded` and creates no operation. `device` (`gpu<N>`, `multi` = LM Studio split across cards, ' +
+      '`cpu`) picks where it goes; absent = the model`s `_metadata.residency.defaultDevice`, else the service default (LM Studio: its serving ' +
+      'profile). `makeDefault: true` also stores `device` as that default. Loads are serialised per PHYSICAL GPU across every service (a load ' +
+      'holds the cards it goes to) so every footprint is measurable: a second load on a busy card is 409 `LOAD_IN_PROGRESS`. A load that does ' +
+      'not fit the chosen device`s free memory minus `residency.headroomPercent` is 409 `OVER_BUDGET` unless `force: true` AND a non-empty ' +
+      '`reason` (owner OD-3; audited) — the cards are time-sliced and give no memory isolation; a need larger than the device`s free memory ' +
+      'outright is 409 `EXCEEDS_DEVICE` even when forced (OD-5). Both refusals carry `device`, `shortfallBytes`, the ranked `candidates` and ' +
+      'the `suggestedDevice` (advice only — never an automatic re-target). LM Studio loads through its residency agent with the model`s full ' +
+      'serving profile; `options` override only `contextLength` / `flashAttention` and are accepted for `lm-studio` alone (400 ' +
+      '`OPTIONS_UNSUPPORTED`); `replace: true` unloads then reloads as ONE operation.',
   })
   @ApiResponse({ status: 202, description: '`outcome: accepted` — the load runs in the background', type: ModelResidencyLoadResponse })
   @ApiResponse({ status: 200, description: '`outcome: already_loaded`', type: ModelResidencyLoadResponse })
-  @ApiResponse({ status: 400, description: '`OPTIONS_UNSUPPORTED`, an invalid body, or `LOAD_FAILED` (no load spec could be derived)' })
+  @ApiResponse({
+    status: 400,
+    description:
+      '`DEVICE_UNAVAILABLE` (the service has no such device, or `makeDefault` without `device`), `OPTIONS_UNSUPPORTED`, an invalid body, or `LOAD_FAILED` (no load spec could be derived)',
+  })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: '`MODEL_UNKNOWN` — nothing can load this model on that service' })
-  @ApiResponse({ status: 409, description: '`OVER_BUDGET`, `LOAD_IN_PROGRESS`, or `IN_FLIGHT` (replace of a model serving requests)' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`OVER_BUDGET` / `EXCEEDS_DEVICE` (with `device`, `shortfallBytes`, `candidates`, `suggestedDevice`), `NO_SIZE`, `LOAD_IN_PROGRESS`, or `IN_FLIGHT` (replace of a model serving requests)',
+  })
   async load(@Body() request: LoadModelResidencyRequest, @Res({ passthrough: true }) response: Response): Promise<ModelResidencyLoadResponse> {
     const result = await this.service.load(request);
     if (result.status !== HttpStatus.ACCEPTED) response.status(result.status);
@@ -140,10 +153,12 @@ export class ModelResidencyController {
       'catalogue size × 1.2; `null` = no size known), the device`s free memory, the `residency.headroomPercent` reserve, the memory no ' +
       'resident model accounts for, the shortfall, and what an un-forced load would answer (`refusal`: `ALREADY_LOADED`, `NO_SIZE`, ' +
       '`OVER_BUDGET`, or `null` = admitted). `evictable` lists the idle, unpinned on-demand models on the same device, largest first; `pinned` ' +
-      'the resident models that will not be offered, with the reason. Same body as `POST load`.',
+      'the resident models that will not be offered, with the reason. TASK-1055: judged on the requested (or default) `device`, with every ' +
+      'other device the service can use in `candidates` (free, headroom, remaining, shortfall, fits, exceedsDevice, live-path models, ' +
+      'evictable — best first) and the `suggestedDevice` + a one-sentence `suggestionReason`. Same body as `POST load`.',
   })
   @ApiResponse({ status: 200, type: ModelResidencyLoadPreviewResponse })
-  @ApiResponse({ status: 400, description: '`OPTIONS_UNSUPPORTED` or an invalid body' })
+  @ApiResponse({ status: 400, description: '`DEVICE_UNAVAILABLE`, `OPTIONS_UNSUPPORTED` or an invalid body' })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   async previewLoad(@Body() request: LoadModelResidencyRequest): Promise<ModelResidencyLoadPreviewResponse> {
     return this.service.previewLoad(request);
@@ -157,12 +172,16 @@ export class ModelResidencyController {
     summary: 'Unload a model from stt, nlp or LM Studio',
     description:
       'Synchronous. Refused 409 `IN_FLIGHT` while the model serves requests unless `force: true`. Starts the reload cool-down ' +
-      '(`residency.reloadCooldownSeconds`), so the controller will not immediately load it back; a live request still may. Audited with `reason`.',
+      '(`residency.reloadCooldownSeconds`), so the controller will not immediately load it back; a live request still may. Audited with `reason`. ' +
+      'TASK-1055 (OD-2): a live-path model (implicit, or a PINNED policy) may be unloaded only with a non-empty `reason` — 409 ' +
+      '`LIVE_PATH_REASON_REQUIRED` with its `consumers` in plain words otherwise; the unload never creates or changes a policy row. ' +
+      '`device` unloads only the copy on that card.',
   })
   @ApiResponse({ status: 200, type: ModelResidencyUnloadResponse })
+  @ApiResponse({ status: 400, description: '`DEVICE_UNAVAILABLE` — the service has no such device' })
   @ApiResponse({ status: 403, description: FORBIDDEN })
   @ApiResponse({ status: 404, description: '`MODEL_UNKNOWN`' })
-  @ApiResponse({ status: 409, description: '`IN_FLIGHT` (with `inFlight`) or `LOAD_IN_PROGRESS`' })
+  @ApiResponse({ status: 409, description: '`LIVE_PATH_REASON_REQUIRED` (with `consumers`), `IN_FLIGHT` (with `inFlight`) or `LOAD_IN_PROGRESS`' })
   @ApiResponse({ status: 503, description: '`SERVICE_UNREACHABLE` — the serving process did not answer' })
   async unload(@Body() request: UnloadModelResidencyRequest): Promise<ModelResidencyUnloadResponse> {
     return this.service.unload(request);
@@ -175,8 +194,8 @@ export class ModelResidencyController {
   @ApiOperation({
     summary: 'Pin or unpin a resident model (and set its idle TTL)',
     description:
-      'A pinned model survives its idle TTL and is never evicted by LRU or memory pressure. stt and nlp pin in the serving process itself; ' +
-      'LM Studio has no pin, so the controller holds it (and enforces the TTL by unloading on idle).',
+      'A pinned model survives its idle TTL and is never evicted by LRU or memory pressure. Every service pins in its own residency agent ' +
+      '(stt, nlp, and since TASK-1055 LM Studio`s in-pod agent), so a pin survives a gateway restart.',
   })
   @ApiResponse({ status: 200, type: ModelResidencyPinResponse })
   @ApiResponse({ status: 403, description: FORBIDDEN })

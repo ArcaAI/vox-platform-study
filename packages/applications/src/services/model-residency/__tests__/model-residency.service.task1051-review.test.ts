@@ -3,6 +3,7 @@ import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModelResidencyService } from '../model-residency.service';
+import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 import { residencyAdmissionRejectionsTotal } from '../residency-metrics';
 
 /**
@@ -186,11 +187,11 @@ function build(opts: { enforce?: boolean } = {}) {
   const livePath = { read: vi.fn(async () => state.livePath), status: vi.fn(() => state.liveStatus) };
   const specs = { build: vi.fn(async () => ({ resolved_spec: {} })) };
 
+  routeLmStudioThroughAgent(agents as never, lmStudio as never);
   const service = new ModelResidencyService(
     { findAll: vi.fn(async () => state.policies) } as never,
     aiModels as never,
     agents as never,
-    lmStudio as never,
     prometheus as never,
     effectiveSettings as never,
     livePath as never,
@@ -236,7 +237,7 @@ describe('finding 1/6 — a reported key resolves to ONE row; sibling variants a
     const result = await h.service.load({ service: 'lm-studio', modelRef: GEMMA });
     expect(result.status).toBe(202);
     await h.service.drain();
-    expect(h.lmStudio.load).toHaveBeenCalledWith(GEMMA, {});
+    expect(h.lmStudio.load).toHaveBeenCalledWith(GEMMA, expect.objectContaining({ identifier: GEMMA }));
   });
 
   it('unloading `foo` unloads foo`s instance only, never the `foo@q8_0` row`s', async () => {
@@ -390,14 +391,16 @@ describe('finding 6 — replace rollback', () => {
     const { body } = await h.service.load({ service: 'lm-studio', modelRef: GEMMA, replace: true, options: { contextLength: 32_768 } });
     await h.service.drain();
 
-    expect(h.lmStudio.load.mock.calls).toEqual([[GEMMA_Q4, {}]]);
+    // TASK-1055 — LM Studio restores the MODEL once, under its catalogue ref, with its profile (no request overrides).
+    expect(h.lmStudio.load.mock.calls).toEqual([[GEMMA, expect.objectContaining({ identifier: GEMMA, context_length: 65536 })]]);
     const op = await h.service.getOperation(body.operationId!);
     expect(op.status).toBe('failed');
     expect(op.error?.message).toMatch(/restored/);
 
-    h.state.lmsModels = [lmsInstance(GEMMA_Q4), lmsInstance(`${GEMMA_Q4}:2`)];
+    // The agent now lists the instance the restore loaded (under the catalogue identifier), pinned as before.
+    h.state.lmsModels = [lmsInstance(GEMMA), lmsInstance(`${GEMMA_Q4}:2`)];
     (h.service as unknown as { ledger: unknown }).ledger = null;
-    expect((await h.service.getView()).models.find((m) => m.modelRef === GEMMA_Q4)).toMatchObject({ adminPinned: true, ttlSeconds: 600 });
+    expect((await h.service.getView()).models.find((m) => m.modelRef === GEMMA)).toMatchObject({ adminPinned: true, ttlSeconds: 600 });
   });
 
   it('a failed replacement restores the previous agent instance with its pin and TTL', async () => {

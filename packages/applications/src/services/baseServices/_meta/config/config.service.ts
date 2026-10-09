@@ -150,6 +150,8 @@ export class ConfigService implements IConfigService, OnModuleInit {
       HARNESS_URL: process.env.HARNESS_URL || 'http://localhost:8866',
       TTS_PORT: process.env.TTS_PORT || '8865',
       TTS_URL: process.env.TTS_URL || 'http://localhost:8865',
+      // TASK-1055 — deliberately no default: unset = LM Studio is reported unreachable for residency.
+      LMSTUDIO_AGENT_URL: process.env.LMSTUDIO_AGENT_URL || undefined,
 
       // MQTT
       MQTT_HOST: process.env.MQTT_HOST || 'localhost',

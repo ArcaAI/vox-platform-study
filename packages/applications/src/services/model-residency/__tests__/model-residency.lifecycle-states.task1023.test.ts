@@ -2,6 +2,7 @@ import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import { ModelResidencyService } from '../model-residency.service';
+import { routeLmStudioThroughAgent } from './lmstudio-agent-route';
 
 /**
  * The status-only residency read behind the tenant-visible registry view: which
@@ -71,11 +72,11 @@ function build(caller: { roles: string[]; tenantId: string | null }) {
   const usage = { read: vi.fn(async () => new Map()) };
   const eventEmitter = { emit: vi.fn() };
 
+  routeLmStudioThroughAgent(agents as never, lmStudio as never);
   const service = new ModelResidencyService(
     { findAll: vi.fn(async () => []) } as never,
     { findAll: vi.fn(async () => catalogue), findById: vi.fn() } as never,
     agents as never,
-    lmStudio as never,
     prometheus as never,
     { resolveEffective: vi.fn(async () => null) } as never,
     { read: vi.fn(async () => []) } as never,
