@@ -8,7 +8,7 @@ here: `hope_runtime_models.residency_agent` (the report + verbs) and
 this package does not depend on).
 """
 
-from .accelerator import release_accelerator_memory, torch_module_bytes
+from .accelerator import release_accelerator_memory, torch_module_bytes, torch_reserved_bytes
 from .cache import (
     EVICTION_REASONS,
     UNSET,
@@ -26,10 +26,13 @@ from .cache import (
 )
 from .devices import (
     Device,
+    LoadReading,
     cpu_device,
+    cuda_index_of,
     default_device,
     gpu_device,
     gpu_devices,
+    nvml_index_for,
     visible_gpu_indices,
 )
 from .metrics import (
@@ -71,7 +74,14 @@ from .resolvable import (
     warm_cache_roots,
     warmup_state,
 )
-from .vram import DeviceMemory, make_vram_info_probe, make_vram_probe, reset_nvml_detection
+from .vram import (
+    DeviceMemory,
+    make_vram_info_probe,
+    make_vram_probe,
+    nvml_device_name,
+    nvml_device_uuid,
+    reset_nvml_detection,
+)
 
 __all__ = [
     "CACHE_TTL_SECONDS",
@@ -102,6 +112,7 @@ __all__ = [
     "Device",
     "DeviceMemory",
     "EvictionCount",
+    "LoadReading",
     "LoadFailure",
     "MetricsSink",
     "ModelCache",
@@ -121,17 +132,22 @@ __all__ = [
     "clamp_cache_ttl_seconds",
     "clear_resolvable_cache",
     "cpu_device",
+    "cuda_index_of",
     "default_device",
     "gpu_device",
     "gpu_devices",
     "make_vram_info_probe",
     "make_vram_probe",
+    "nvml_device_name",
+    "nvml_device_uuid",
+    "nvml_index_for",
     "probe_state",
     "release_accelerator_memory",
     "reset_nvml_detection",
     "reset_probe_state",
     "reset_warmup_state",
     "torch_module_bytes",
+    "torch_reserved_bytes",
     "visible_gpu_indices",
     "warm_cache_roots",
     "warmup_state",

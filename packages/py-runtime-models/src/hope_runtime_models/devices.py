@@ -47,6 +47,14 @@ class LoadToken:
     usage_before: int | None
 
 
+@dataclass(frozen=True)
+class LoadReading:
+    """A load's usage delta on its device, and whether nothing else moved memory meanwhile."""
+
+    bytes: int | None
+    clean: bool
+
+
 class Device:
     """One memory pool, its probes, and the loads/unloads in flight on it."""
 
@@ -92,6 +100,16 @@ class Device:
 
     def end_load(self, token: LoadToken, *, succeeded: bool) -> int | None:
         """Close a load; return its measured footprint in bytes, or None."""
+        reading = self.end_load_reading(token, succeeded=succeeded)
+        return reading.bytes if reading.clean else None
+
+    def end_load_reading(self, token: LoadToken, *, succeeded: bool) -> LoadReading:
+        """Close a load; return its usage delta and whether it is attributable (TASK-1055).
+
+        ``bytes`` is the positive usage delta around the load (None when the load failed,
+        a probe is missing, or the delta is not positive); ``clean`` is False when another
+        load or unload on this device overlapped it, i.e. the delta is polluted.
+        """
         usage_after = self.usage() if succeeded else None
         with self._lock:
             clean = token.clean_at_start and self._epoch == token.epoch
@@ -100,10 +118,10 @@ class Device:
                 self._active_loads[token.key] = remaining
             else:
                 self._active_loads.pop(token.key, None)
-        if not succeeded or not clean or token.usage_before is None or usage_after is None:
-            return None
+        if not succeeded or token.usage_before is None or usage_after is None:
+            return LoadReading(bytes=None, clean=clean)
         delta = usage_after - token.usage_before
-        return delta if delta > 0 else None
+        return LoadReading(bytes=delta if delta > 0 else None, clean=clean)
 
     def begin_unload(self) -> None:
         with self._lock:
@@ -191,6 +209,28 @@ def visible_gpu_indices(env: Mapping[str, str] | None = None) -> list[int] | Non
     if not all(part.isdigit() for part in parts):
         return None
     return [int(part) for part in parts]
+
+
+def cuda_index_of(device_id: str) -> int | None:
+    """``cuda:<i>`` → ``i``; None for ``cpu`` or anything else (TASK-1055)."""
+    prefix, _, index = device_id.partition(":")
+    if prefix != "cuda" or not index.isdigit():
+        return None
+    return int(index)
+
+
+def nvml_index_for(device_id: str, env: Mapping[str, str] | None = None) -> int | None:
+    """The NVML index behind ``cuda:<i>`` (see :func:`visible_gpu_indices`), else None.
+
+    Without a plain ``CUDA_VISIBLE_DEVICES`` index list, CUDA and NVML count alike.
+    """
+    cuda_index = cuda_index_of(device_id)
+    if cuda_index is None:
+        return None
+    visible = visible_gpu_indices(env)
+    if visible is None:
+        return cuda_index
+    return visible[cuda_index] if cuda_index < len(visible) else None
 
 
 def gpu_devices(env: Mapping[str, str] | None = None, max_probe: int = 16) -> list[Device]:

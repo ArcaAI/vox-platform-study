@@ -19,14 +19,16 @@ callables.
 |---|---|
 | `src/hope_runtime_models/cache.py` | `ModelCache` (asyncio) and `SyncModelCache` (threads), `CacheStats`, `ModelUnavailableError`, `clamp_cache_ttl_seconds` |
 | `src/hope_runtime_models/metrics.py` | `MetricsSink`, `NullMetricsSink`, `PrometheusMetricsSink`, `EvictionCount` |
-| `src/hope_runtime_models/vram.py` | `make_vram_probe`, `make_vram_info_probe`, `DeviceMemory`, `reset_nvml_detection` |
-| `src/hope_runtime_models/devices.py` | `Device` (memory + usage probes, load/unload overlap bookkeeping), `gpu_device`, `cpu_device`, `default_device` |
+| `src/hope_runtime_models/vram.py` | `make_vram_probe`, `make_vram_info_probe`, `DeviceMemory`, `reset_nvml_detection`, `nvml_device_name` / `nvml_device_uuid` (TASK-1055) |
+| `src/hope_runtime_models/devices.py` | `Device` (memory + usage probes, load/unload overlap bookkeeping, `LoadReading`), `gpu_device`, `gpu_devices`, `cpu_device`, `default_device`, `visible_gpu_indices` / `nvml_index_for` / `cuda_index_of` |
+| `src/hope_runtime_models/accelerator.py` | `release_accelerator_memory`, `torch_module_bytes`, `torch_reserved_bytes` (torch imported lazily, never required) |
 | `src/hope_runtime_models/residency.py` | `CacheResidency`, `AdmissionPolicy` — what a cache needs to take part in residency control |
 | `src/hope_runtime_models/residency_agent.py` | `ResidencyAgent` — the residency report and the load / unload / policy verbs |
 | `src/hope_runtime_models/residency_api.py` | `build_residency_router` — the `/internal/residency/*` FastAPI routes (imports FastAPI; not re-exported) |
 | `src/hope_runtime_models/resolvable.py` | `check_resolvable`/`check_resolvable_many` — network-free, filesystem-only readiness probes (see below) |
 | `tests/test_cache_contract.py` | The parameterized conformance suite (both cache classes, all clauses) |
 | `tests/test_residency_task1005.py` | The residency agent contract (pinned by `tests/contracts/model-residency-agent.fixture.json`) |
+| `tests/test_*_task1055.py` | Device placement, the `measure` hook / `bytes_source` / remeasure guard, unload release, device-report extras (pinned by `tests/contracts/model-residency-task1055.fixture.json`) |
 | `tests/test_resolvable_probes_task890.py` | Readiness-probe tests |
 
 ## Commands
@@ -96,11 +98,47 @@ implemented here and mounted by `apps/stt` and `apps/nlp`
 
 1. **`in_flight` is the request/session pin refcount**; an explicit `unload` refuses while it is above zero unless forced (409 `IN_FLIGHT`).
 2. **The operator pin (`admin_pinned`) is not a request pin**: it survives idle TTL and is never LRU/pressure-evicted, only `unload`/`clear` drop it. A per-model TTL override rides with it (`set_policy`).
-3. **Footprints are measured, never estimated**: with `residency=CacheResidency(...)`, a load's `bytes` is the device usage delta around the factory call (NVML free memory on a GPU — `pynvml` or, without it, the driver's `libnvidia-ml` through `ctypes`; process RSS on the CPU). An overlapping load or unload on the same device, a missing probe or a non-positive delta makes it `unknown`. Caches on one device must share one `Device`.
+3. **Footprints say how far to trust them** (amended by TASK-1055, see below): with `residency=CacheResidency(...)`, a load's `bytes` is the cache's `measure` hook when it answers, else the device usage delta around the factory call (NVML free memory on a GPU — `pynvml` or, without it, the driver's `libnvidia-ml` through `ctypes`; process RSS on the CPU). A missing probe or a non-positive delta makes it `unknown`; an overlapping load or unload on the same device makes it `estimated` (TASK-1005 reported that as `unknown`). Caches on one device must share one `Device`.
 4. **Explicit loads are serialised per device** (409 `LOAD_IN_PROGRESS` for a second model); a second load of the SAME model joins the cache's single-flight.
 5. **Admission is off by default.** When on, a load that would breach `headroom_percent` evicts idle unpinned models (`pressure`), then waits up to `max_wait_ms`, then raises `AdmissionRejected` (503 + `Retry-After`).
 6. **Metrics**: `model_resident{service,model,device,state}`, `model_resident_bytes`, `model_load_seconds`, `model_evictions_total{service,reason=ttl|lru|pressure|admin|policy}`, and (TASK-1019) `model_load_failures_total{service,model,code}` plus `state="failed"` on `model_resident`, emitted by every process that builds the cache. `model_cache_evictions_total` keeps its three legacy reasons.
 7. **Failed loads are state, not silence (TASK-1019 D-8)**: a factory call that raises an `Exception` (not a cancellation) is remembered per key as `LoadFailure{code,message(<=500),at}` and reported as residency state `failed` with `error` (`code` = the exception's own `code` or its class name). It is cleared by the next successful load of that key, `unload(key)` (even when nothing was resident; the agent answers `not_loaded`) or `clear()`; it is never persisted, so a restart re-observes.
+
+### Device placement and honest memory (TASK-1055)
+
+Shapes: the `python` block of `tests/contracts/model-residency-task1055.fixture.json` (all new
+fields optional; an absent `device` keeps TASK-1005 behaviour).
+
+1. **Device ids are `cuda:<i>` (the i-th GPU THIS process's CUDA sees) or `cpu`.** `gpu_devices()`
+   returns every placeable GPU in CUDA order; `visible_gpu_indices()` / `nvml_index_for()` map
+   `cuda:<i>` to the NVML index behind it through `CUDA_VISIBLE_DEVICES` (NVML ignores that
+   variable, CUDA does not). `load` / `unload` take an optional `device`; the service's `Planner`
+   answers with a cache bound to that device or raises `DeviceUnavailable` (400
+   `DEVICE_UNAVAILABLE`). The same model on two devices is two report entries.
+2. **`devices[]` carries `index` (NVML), `name`, `uuid` and `process_bytes`.** `name` / `uuid` come
+   from `nvml_device_name` / `nvml_device_uuid` (None on any failure — a report never fails on
+   them); the gateway matches `uuid` against DCGM's `UUID` label. `process_bytes` is
+   `torch.cuda.memory_reserved(<cuda index>)`, read ONLY when torch is already in `sys.modules`
+   and CUDA is initialised in this process (a report never imports torch); None otherwise and
+   always for `cpu`.
+3. **`measure=` sizes a loaded instance** (`ModelCache(..., measure=torch_module_bytes)`): a
+   positive int it returns is the footprint, `bytes_source` `measured`, and wins over the device
+   delta even when loads overlapped. `None`, a non-positive value or a raise falls back to the
+   delta. A hook that raises never fails the load (logged at warning).
+4. **`bytes_source` ∈ `measured | estimated | unknown`.** `measured` = the hook, or a clean,
+   serialised per-device delta; `estimated` = a polluted (overlapping) delta, or a distrusted
+   remeasure (5); `unknown` = nothing to report. Only `measured` readings become the admission
+   footprint and the `model_resident_bytes` gauge.
+5. **Remeasure guard.** A `measured` reading below 50 % of the last trusted footprint for that key
+   is logged at warning (`<cache>.measurement_distrusted`), reported `estimated`, and NOT stored:
+   admission keeps the larger, trusted value. A reading at or above 50 % replaces it.
+6. **Unloads hand the memory back before they close.** Per evicted entry, on every eviction path:
+   the service's `unload` hook → the cache drops its own references (and the agent holds none) →
+   on a `gpu` device `release_accelerator_memory(device.id)` (gc, then torch `synchronize` /
+   `empty_cache` / `ipc_collect` on that device; off the event loop in `ModelCache`) →
+   `Device.end_unload`. The next load therefore measures from a clean baseline. A `cpu` device or
+   a cache without residency never calls it. The hook still owns dropping the SERVICE's own
+   references (weight registries, `shutdown()`): the release cannot free what is still referenced.
 
 ### Model readiness probes (`resolvable.py`, TASK-890)
 
