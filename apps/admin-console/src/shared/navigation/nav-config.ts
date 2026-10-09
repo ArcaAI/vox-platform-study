@@ -52,6 +52,7 @@ import {
   IconServerCog,
   IconSettings,
   IconShieldBolt,
+  IconChecklist,
   IconShieldCheck,
   IconShieldCog,
   IconShieldHalf,
@@ -337,6 +338,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
     order: 1,
   },
+  // TASK-1057: the platform-wide policy for which admin actions demand a
+  // reason / evidence / acknowledgement / typed confirmation. Gated like
+  // /features: super admin only (the settings it edits are SYSTEM-tier).
+  {
+    route: '/action-confirmations',
+    domain: 'platform-ops',
+    label: 'Action confirmations',
+    tier: '10-19',
+    icon: IconChecklist,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 2,
+  },
   {
     route: '/rate-limits',
     domain: 'platform-ops',
@@ -345,7 +359,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconGauge,
     required: [['manage', 'all']],
     implemented: true,
-    order: 2,
+    order: 3,
   },
   // TASK-862 (README §3.4): the three `/ai-operations/*` dashboards are
   // OBSERVABILITY over runs, latency and spend — Platform Ops work, filed
@@ -359,7 +373,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconTimeline,
     required: [['manage', 'all']],
     implemented: true,
-    order: 3,
+    order: 4,
   },
   {
     route: '/ai-operations/metrics',
@@ -369,7 +383,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconChartHistogram,
     required: [['manage', 'all']],
     implemented: true,
-    order: 4,
+    order: 5,
   },
   {
     route: '/ai-operations/consumption',
@@ -379,7 +393,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconReportMoney,
     required: [['manage', 'all']],
     implemented: true,
-    order: 5,
+    order: 6,
   },
   {
     route: '/queues',
@@ -389,7 +403,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconStack2,
     required: [['manage', 'all']],
     implemented: true,
-    order: 6,
+    order: 7,
   },
   {
     route: '/schedulers',
@@ -399,7 +413,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconCalendarTime,
     required: [['manage', 'all']],
     implemented: true,
-    order: 7,
+    order: 8,
   },
   {
     route: '/audit-logs',
@@ -409,7 +423,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconHistory,
     required: [['read', 'AuditLog']],
     implemented: true,
-    order: 8,
+    order: 9,
   },
   // Renamed from `/pstudio` (read as a typo'd "prompt studio"). Console-only
   // rename — the gateway path stays `/admin/pstudio/*`.
@@ -421,7 +435,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconDatabaseSearch,
     required: [['manage', 'all']],
     implemented: true,
-    order: 9,
+    order: 10,
   },
   {
     // Phase 3B agentic super-admin console (all SUPER_ADMIN-only). TASK-932
@@ -435,7 +449,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconShieldBolt,
     required: [['manage', 'all']],
     implemented: true,
-    order: 10,
+    order: 11,
     gate: 'console.agenticPolicy.enabled',
   },
   {
@@ -451,7 +465,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconAtom,
     required: [['manage', 'all']],
     implemented: true,
-    order: 11,
+    order: 12,
     gate: 'console.mlflow.enabled',
   },
   //  — the descriptor-driven registry lane. 210
