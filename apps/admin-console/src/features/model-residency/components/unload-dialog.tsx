@@ -15,10 +15,16 @@ import { liveConsumerLines, requiresUnloadReason, unloadDeviceChoices } from './
 
 const ALL_COPIES = 'all';
 
-/** "gpu1" -> "GPU 1" (the copy picker names devices the way the GPU cards do). */
+/** "gpu1" -> "GPU 1", "cpu:nlp" -> "host memory" (the copy picker names devices the way the device cards do). */
 function gpuWords(device: string): string {
+  if (device.startsWith('cpu')) return 'host memory';
   const match = /^gpu(\d+)$/.exec(device);
   return match ? `GPU ${match[1]}` : device;
+}
+
+/** A copy's catalogue device in the request vocabulary: a host-memory pool (`cpu:<service>`) is `cpu`. */
+function requestDevice(device: string): string {
+  return device.startsWith('cpu') ? 'cpu' : device;
 }
 
 /**
@@ -67,7 +73,7 @@ export function UnloadDialog({ open, onOpenChange, service, model, onUnloaded }:
         modelRef: model.modelRef,
         ...(force ? { force: true } : {}),
         ...(trimmed ? { reason: trimmed } : {}),
-        ...(copies.length > 0 && copy !== ALL_COPIES ? { device: copy } : {}),
+        ...(copies.length > 0 && copy !== ALL_COPIES ? { device: requestDevice(copy) } : {}),
       });
       toast.success(`${model.name} unloaded.`);
       onUnloaded?.();
