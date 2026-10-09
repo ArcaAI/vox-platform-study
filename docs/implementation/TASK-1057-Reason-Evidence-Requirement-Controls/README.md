@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** (owner go 2026-10-09; contract frozen, lanes running) |
+| Status | **Review** — merged on local `dev-2.2`, gates green, local e2e passed; NOT pushed / NOT deployed (awaiting owner) |
 | Type | feature |
 | Branch | `dev-2.2` |
 | Rules | 00, 01, 04, 05, 09 (§Configuration Tiers), 13, 07/10/11 |
@@ -166,7 +166,20 @@ Actions with their own refusal shape (residency 409 `LIVE_PATH_REASON_REQUIRED`,
 
 ## 5. Implementation Summary
 
-_Not started._
+**What shipped (local `dev-2.2`, not pushed).**
+
+- **Catalogue + policy** — `packages/types/src/action-confirmations.ts` (48 rows: 27 switchable reason/evidence/ack rows, 16 console-only typed-name rows, 5 locked rows), one SYSTEM-only enum setting per unlocked row (`confirmation.<actionId>`, category "Action Confirmations"), `ActionConfirmationService` (`mode` / `effective` / `decide` / `assert` / `readPlatform` / `applyPlatform`). Defaults = today's behaviour.
+- **API** — `GET admin/settings/action-confirmations/effective` (every admin), `GET` / `PUT admin/settings/action-confirmations` (super admin, per-cell OCC, partial batch, `mode: null` = reset, idempotent).
+- **Enforcement** — every unlocked server row asserts the policy before mutating and writes `confirmation: <stamp>` (incl. `note: "reason not required"`) on its audit / sys-event. Residency + LM Studio rows keep today's 409 shapes under `when-risky`; restore keeps `RESTORE_REASON_INVALID`; schema ack keeps `SCHEMA_IMPACT_UNACKNOWLEDGED`.
+- **Locked** — impersonation reason is now REQUIRED on both routes (400 `CONFIRMATION_REQUIRED`); break-glass, secret step-up and billing reason code record a locked stamp.
+- **New audit types** — `ResourceType.HarnessPolicy` / `HarnessLiveConfig` (migration `20261009210000_task_1057_resource_type_harness_audit`, two `ADD VALUE`s) so harness policy and live-engine switches write a forced audit event.
+- **Console** — `/action-confirmations` (platform ops, tier 10–19, apply-to-all per kind, locked rows read-only); shared `useActionConfirmation` / `ReasonField` / policy-driven `ConfirmDialog`; ~40 dialogs wired; AI-ops cancel and agent assignments get a real field when required.
+
+**Post-merge defects found by the gates / e2e and fixed** — a module import cycle (`GateEditMiningServiceModule` held an undefined import: workflow-assignment now provides the policy locally; global settings use a pure `lockedConfirmationStamp`); `ActionConfirmationService` DI failure in `GlobalSettingServiceModule` (write lane made optional); reset impossible (`@IsDefined` rejected `null`); re-setting the stored mode answered 400 "No changes" (now a no-op); impersonation START audit dropped the stamp; e2e spec lacked `If-Match`.
+
+**Evidence (2026-10-10).** Gate pass after merge: types/domains/applications/api/console typecheck + lint green; tests — applications 18 858 passed, api 5 309, console 4 961, domains 2 093, types 240; `api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check` green. Migration replayed on a shadow DB: `prisma migrate diff` → empty migration. API e2e (isolated gateway :8968 on throwaway Postgres :5533 / Redis :6480 — the standard test ports were held by the ALaaS e2e session): `task-1057-action-confirmations` 4/4, `user-impersonation` + `auth-advanced` all green. Console (browser, :5276 → :8968): switch a row to Required and save → the prompt-template editor shows `Change reason *`, Save disabled until a reason is typed, save succeeds; audit rows carry `reason required` / `reason not required`; Reset returns the row to `not-required`; the impersonate dialog requires a reason; no console errors.
+
+**Known / out of scope.** `task-776-route-authz-matrix` A5b pins 42 public internal routes but the manifest has had 44 since before this ticket (`0af08501c`). After a reset the screen does not show the "Default" badge (the row persists with the default value). The local dev DB has unrelated `ConsultationStatus` drift, so the new enum values were applied there with `ALTER TYPE … ADD VALUE IF NOT EXISTS` rather than `db:push`. `AgentPromotion` entity still drops `metaData` (pre-existing; stamp is on the sys-event). Console surfaces absent for agent promote/sync, workflow promote/sync, review decide, invariant rules, DNA settings — server-enforced only.
 
 ## 6. Change History
 
@@ -174,6 +187,7 @@ _Not started._
 |---|---|
 | 2026-10-09 | Ticket opened; inventory scouted (backend + console); plan + OD round written |
 | 2026-10-09 | Owner decisions recorded; contract frozen (catalogue, descriptors, service, tests) |
+| 2026-10-10 | Lanes A, B1, B2, C, D, E1, E2, H merged; post-merge gate fixes; local e2e passed; status Review |
 
 ## 9. Appendix — TYPE_CONFIRM call sites
 
