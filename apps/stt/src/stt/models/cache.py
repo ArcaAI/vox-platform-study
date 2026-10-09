@@ -671,11 +671,21 @@ class ModelCache(SharedModelCache[LoadedModel]):
 
     def _resident_elsewhere(self, slug: str) -> "ModelCache | None":
         """The device cache holding ``slug`` when THIS (default) cache neither holds
-        nor is loading it — the only case session traffic leaves the default GPU."""
+        nor is loading it — the only case session traffic leaves the default GPU.
+
+        A sibling that has it LOADED wins; otherwise one that has it IN FLIGHT (an
+        admin's placed load still running), so the caller joins that single-flight
+        load instead of starting a second cold copy on the default GPU (review
+        R1-F6). ``None`` = no device has it loaded or loading: load here.
+        """
         if slug in self._entries or slug in self._inflight:
             return None
-        for sibling in self._siblings():
+        siblings = self._siblings()
+        for sibling in siblings:
             if slug in sibling._entries:
+                return sibling
+        for sibling in siblings:
+            if slug in sibling._inflight:
                 return sibling
         return None
 
