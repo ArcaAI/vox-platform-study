@@ -643,7 +643,7 @@ test('metrics: resident bytes per card from the report, load seconds observed, u
   let text = await agent.metrics();
   assert.match(text, /^model_resident_bytes\{service="lm-studio",model="boot-model",device="cuda:0"\} 4900000000$/m);
   assert.match(text, /^model_resident_bytes\{service="lm-studio",model="gemma-4-e2b-it-qat",device="cuda:1"\} \d+$/m);
-  assert.match(text, /^model_running_instances\{service="lm-studio",model="gemma-4-e2b-it-qat"\} 1$/m);
+  assert.ok(!/model_running_instances/.test(text));
   assert.match(text, /^model_load_seconds_count\{service="lm-studio",model="gemma-4-e2b-it-qat"\} 1$/m);
 
   await agent.unload({ model_ref: 'gemma-4-e2b-it-qat', force: false, reason: 'policy' });

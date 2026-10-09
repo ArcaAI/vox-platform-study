@@ -9,7 +9,11 @@
 //   model_resident_bytes{service,model,device}  gauge    the report's device_bytes (measured | estimated; 0 = unknown)
 //   model_load_seconds{service,model}           histogram one observation per load THIS agent performed
 //   model_evictions_total{service,reason}       counter  unloads, reason admin | policy
-//   model_running_instances{service,model}      gauge    1 per loaded instance
+//
+// NOT emitted: model_running_instances. Platform-wide it is IN-FLIGHT inference
+// (stt, nlp, text, guardrail, tts), which the gateway sums per model; the agent
+// has no in-flight count, so a "1 per loaded instance" series would mark every
+// loaded model permanently busy. LM Studio's in-flight comes from its callers.
 //
 // `service` is the residency service name, as stt ("stt") and nlp ("nlp") label
 // it — here "lm-studio", the name the report and the gateway already use.
@@ -31,7 +35,6 @@ const HELP = {
   model_resident_bytes: 'Measured device-memory footprint of a resident model (0 = not measured)',
   model_load_seconds: 'Wall-clock seconds of a successful model load',
   model_evictions_total: 'Model evictions by reason (ttl|lru|pressure|admin|policy)',
-  model_running_instances: 'Loaded LM Studio instances, by service and model.',
 };
 
 export const escapeLabel = (value) => String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
@@ -103,11 +106,6 @@ export function createMetrics({ service = SERVICE_LABEL } = {}) {
     header(out, 'model_evictions_total', 'counter');
     for (const [reason, count] of evictions) {
       out.push(`model_evictions_total${labels([['service', service], ['reason', reason]])} ${count}`);
-    }
-
-    header(out, 'model_running_instances', 'gauge');
-    for (const model of models) {
-      out.push(`model_running_instances${labels([['service', service], ['model', model.model_ref]])} 1`);
     }
 
     return `${out.join('\n')}\n`;

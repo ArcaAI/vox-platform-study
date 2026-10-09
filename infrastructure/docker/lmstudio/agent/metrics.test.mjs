@@ -46,18 +46,18 @@ test('model_resident_bytes: one series per instance per card, from device_bytes'
   ]);
 });
 
-test('model_resident: state="loaded" is 1 per instance per device; model_running_instances is 1 per instance', () => {
+test('model_resident: state="loaded" is 1 per instance per device', () => {
   const text = createMetrics().render(REPORT);
   assert.match(text, /^# TYPE model_resident gauge$/m);
   assert.ok(lines(text).includes('model_resident{service="lm-studio",model="gemma-4-e2b-it-qat",device="cuda:1",state="loaded"} 1'));
   assert.ok(lines(text).includes('model_resident{service="lm-studio",model="granite-guardian-3.3-8b",device="cuda:0",state="loaded"} 1'));
-  assert.match(text, /^# TYPE model_running_instances gauge$/m);
-  const running = lines(text).filter((line) => line.startsWith('model_running_instances{'));
-  assert.deepEqual(running, [
-    'model_running_instances{service="lm-studio",model="gemma-4-e2b-it-qat"} 1',
-    'model_running_instances{service="lm-studio",model="granite-guardian-3.3-8b"} 1',
-    'model_running_instances{service="lm-studio",model="qwen@q4"} 1',
-  ]);
+});
+
+test('no model_running_instances: that series is IN-FLIGHT inference platform-wide, and the agent has no in-flight count', () => {
+  // The gateway sums model_running_instances per model as callers' in-flight work; a "1 per loaded instance"
+  // series made every loaded LM Studio model look permanently busy (unload warned, idle TTL never fired).
+  const text = createMetrics().render(REPORT);
+  assert.ok(!/model_running_instances/.test(text));
 });
 
 test('model_load_seconds is a cumulative histogram with the python buckets', () => {
