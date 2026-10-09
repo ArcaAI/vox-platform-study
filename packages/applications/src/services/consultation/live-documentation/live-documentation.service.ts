@@ -39,6 +39,9 @@ import {
   generateId,
   PromptTemplateRepository,
   WorkflowDefinitionRepository,
+  ResourceType,
+  SYSTEM_TENANT_ID,
+  SysEventType,
 } from '@arcaai/domains';
 import { ConfigResolver } from '../../config-resolver';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -9068,6 +9071,16 @@ return 0`;
     await this.safeChannelPublish(this.CONFIG_CONTROL_CHANNEL, JSON.stringify(record));
 
     this.logger.warn({ message: 'Live documentation engine kill-switch updated', enabled, updatedBy, reason: actor?.reason ?? null, confirmation });
+
+    // TASK-1057 — forced audit row carrying the confirmation stamp even when no reason was required.
+    // Direct emit (this service is not a BaseService); a platform kill-switch with no CLS tenant is SYSTEM.
+    this.eventEmitter?.emit(SysEventType.ResourceUpdated, {
+      responsibleEntityId: updatedBy ?? undefined,
+      resourceType: ResourceType.HarnessLiveConfig,
+      tenantId: this.cls?.get('tenantId') || SYSTEM_TENANT_ID,
+      forceAuditLog: true,
+      data: { action: 'harnessLiveConfig.update', enabled, reason: actor?.reason ?? null, ...(confirmation ? { confirmation } : {}) },
+    });
 
     return {
       enabled,

@@ -1,7 +1,7 @@
 /** TASK-1057 — `harnessPolicy.update` consults the platform reason policy and records its stamp. */
 import { describe, expect, it, vi } from 'vitest';
 import { BadRequestException, Logger } from '@nestjs/common';
-import { HarnessPolicyFactory } from '@arcaai/domains';
+import { HarnessPolicyFactory, ResourceType, SysEventType } from '@arcaai/domains';
 import { ActionConfirmationService } from '../../settings-registry/action-confirmation.service';
 import { HarnessPolicyService } from '../harness-policy.service';
 
@@ -18,6 +18,7 @@ function build(mode: 'required' | 'not-required') {
   const policyChangeRepository = { create: vi.fn(async (e: unknown) => e) };
   const databaseService = { baseClient: { $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb({})) } };
   const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? TENANT : k === 'user' ? { id: 'u1' } : undefined)) };
+  const eventEmitter = { emit: vi.fn() };
   const confirmations = new ActionConfirmationService({ resolve: vi.fn(() => ({ value: mode })) } as never);
   const service = new HarnessPolicyService(
     policyRepository as never,
@@ -30,16 +31,29 @@ function build(mode: 'required' | 'not-required') {
     undefined,
     undefined,
     confirmations,
+    eventEmitter as never,
   );
-  return { service, policyRepository, policyChangeRepository };
+  return { service, policyRepository, policyChangeRepository, eventEmitter };
 }
 
 describe('HarnessPolicyService — action confirmation (TASK-1057)', () => {
   it('passes without a reason by default and records the "not required" stamp', async () => {
     const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    const { service, policyRepository } = build('not-required');
+    const { service, policyRepository, eventEmitter } = build('not-required');
     await service.updatePolicy({ gateSlaSeconds: 300 } as never);
     expect(policyRepository.updateWithVersion).toHaveBeenCalled();
+    // the audit log itself carries the stamp, not only the logger line
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      SysEventType.ResourceUpdated,
+      expect.objectContaining({
+        resourceType: ResourceType.HarnessPolicy,
+        tenantId: TENANT,
+        forceAuditLog: true,
+        data: expect.objectContaining({
+          confirmation: expect.objectContaining({ actionId: 'harnessPolicy.update', note: 'reason not required' }),
+        }),
+      }),
+    );
     const payload = JSON.stringify(log.mock.calls);
     expect(payload).toContain('reason not required');
     expect(payload).toContain('harnessPolicy.update');
@@ -47,7 +61,7 @@ describe('HarnessPolicyService — action confirmation (TASK-1057)', () => {
   });
 
   it('refuses 400 CONFIRMATION_REQUIRED before any write when required and missing', async () => {
-    const { service, policyRepository, policyChangeRepository } = build('required');
+    const { service, policyRepository, policyChangeRepository, eventEmitter } = build('required');
     await expect(service.updatePolicy({ gateSlaSeconds: 300 } as never)).rejects.toMatchObject({
       response: { code: 'CONFIRMATION_REQUIRED', actionId: 'harnessPolicy.update' },
     });
@@ -55,5 +69,6 @@ describe('HarnessPolicyService — action confirmation (TASK-1057)', () => {
     expect(policyRepository.updateWithVersion).not.toHaveBeenCalled();
     expect(policyRepository.create).not.toHaveBeenCalled();
     expect(policyChangeRepository.create).not.toHaveBeenCalled();
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
 });

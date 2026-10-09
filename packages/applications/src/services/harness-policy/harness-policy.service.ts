@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Op
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { assertExpectedVersion } from '../../common/assertExpectedVersion';
 import { ClsService } from 'nestjs-cls';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   CoreDatabaseService,
   HARNESS_POLICY_DEFAULTS,
@@ -13,6 +14,8 @@ import {
   JsonValue,
   McpServerRepository,
   SYSTEM_TENANT_ID,
+  ResourceType,
+  SysEventType,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
 import { NotFoundException } from '@nestjs/common';
@@ -354,6 +357,8 @@ export class HarnessPolicyService {
     // TASK-1057 — the platform reason policy for `harnessPolicy.update`. Optional + trailing so
     // fixtures keep their arity; absent ⇒ no policy is consulted.
     @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
+    // TASK-1057 — carries the confirmation stamp into the audit log. Optional + trailing.
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   /**
@@ -893,6 +898,7 @@ export class HarnessPolicyService {
         await this.policyChangeRepository.create(change, tx);
         return u;
       });
+      this.auditUpdate(tenantId, source, updated.id, stamp, casVersion, updated.version);
       return toResponse(updated, source);
     }
 
@@ -944,7 +950,31 @@ export class HarnessPolicyService {
       await this.policyChangeRepository.create(change, tx);
       return c;
     });
+    this.auditUpdate(tenantId, source, created.id, stamp, null, created.version);
     return toResponse(created, source);
+  }
+
+  /**
+   * TASK-1057 — forced audit row carrying the confirmation stamp, even when no reason was required.
+   * Direct emit (not `BaseService.broadcastSysEvent`; this service is not a BaseService): the SYSTEM
+   * lane has no CLS tenant, so attribution falls back to the written row's tenant.
+   */
+  private auditUpdate(
+    tenantId: string,
+    source: HarnessPolicySource,
+    resourceId: string,
+    confirmation: unknown,
+    previousVersion: number | null,
+    newVersion: number,
+  ): void {
+    this.eventEmitter?.emit(SysEventType.ResourceUpdated, {
+      responsibleEntityId: this.callerUserId ?? undefined,
+      resourceType: ResourceType.HarnessPolicy,
+      resourceId,
+      tenantId,
+      forceAuditLog: true,
+      data: { action: 'harnessPolicy.update', source, previousVersion, newVersion, ...(confirmation ? { confirmation } : {}) },
+    });
   }
 }
 
