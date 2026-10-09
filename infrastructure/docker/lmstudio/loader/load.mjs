@@ -66,7 +66,14 @@ import { writeSync } from 'node:fs';
 
 import { LMStudioClient } from '@lmstudio/sdk';
 
-import { KvConfigError, parseGpuCount, resolvePreloadRequests, selectModelKey } from './kvconfig.mjs';
+import {
+  KvConfigError,
+  diffAppliedConfig,
+  parseGpuCount,
+  resolvePreloadRequests,
+  selectModelKey,
+} from './kvconfig.mjs';
+import { loadOverChannel, readAppliedFields } from './sdk-channel.mjs';
 
 const EX_CONFIG = 78; // EX_CONFIG, so a misconfiguration is distinguishable from a crash
 
@@ -80,18 +87,6 @@ const log = (message) =>
 const die = (message) => {
   log(`FATAL: ${message}`);
   process.exit(EX_CONFIG);
-};
-
-/** Key-sorted JSON, so two structurally equal values compare equal regardless of key order. */
-const stable = (value) => {
-  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
-  if (value !== null && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${stable(value[k])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
 };
 
 /**
@@ -314,55 +309,20 @@ async function main() {
 }
 
 /**
- * Open the `loadModel` channel and resolve with the loaded instance info.
- * `loadConfigStack` is a single "apiOverride" layer — the same layer name the
- * SDK's own `load()` uses, which is what makes these values win over the
- * model's stored defaults.
+ * Open the `loadModel` channel (sdk-channel.mjs, shared with the residency
+ * agent) and log its resolution and progress.
  */
 function loadModel(client, request) {
-  return new Promise((resolve, reject) => {
-    let lastProgressLog = 0;
-    const channel = client.llm.port.createChannel(
-      'loadModel',
-      {
-        modelKey: request.modelKey,
-        identifier: request.identifier,
-        ttlMs: request.ttlMs,
-        loadConfigStack: { layers: [{ layerName: 'apiOverride', config: request.kvConfig }] },
-      },
-      (message) => {
-        switch (message.type) {
-          case 'resolved':
-            log(`resolved to ${message.info.modelKey}`);
-            if (message.ambiguous !== undefined) {
-              // Never a warning to shrug at here: A-3 already asserted that the
-              // key we intend to serve is visible, so an ambiguous match means
-              // the volume carries two models answering to one key.
-              reject(
-                new Error(
-                  `model key "${request.modelKey}" is AMBIGUOUS — it matches ${message.ambiguous.join(', ')}. ` +
-                    'Refusing to guess which one a clinical request would reach.',
-                ),
-              );
-            }
-            break;
-          case 'progress': {
-            const now = Date.now();
-            if (now - lastProgressLog > 5000 || message.progress === 1) {
-              log(`  loading ${(message.progress * 100).toFixed(1)}%`);
-              lastProgressLog = now;
-            }
-            break;
-          }
-          case 'success':
-            resolve(message.info);
-            break;
-          default:
-            break;
-        }
-      },
-    );
-    channel.onError.subscribeOnce(reject);
+  let lastProgressLog = 0;
+  return loadOverChannel(client.llm.port, request, {
+    onResolved: (info) => log(`resolved to ${info.modelKey}`),
+    onProgress: (progress) => {
+      const now = Date.now();
+      if (now - lastProgressLog > 5000 || progress === 1) {
+        log(`  loading ${(progress * 100).toFixed(1)}%`);
+        lastProgressLog = now;
+      }
+    },
   });
 }
 
@@ -373,22 +333,8 @@ function loadModel(client, request) {
 async function verifyApplied(client, info, sentFields) {
   if (sentFields.length === 0) return;
 
-  const applied = await client.llm.port.callRpc('getLoadConfig', {
-    specifier: { type: 'instanceReference', instanceReference: info.instanceReference },
-  });
-  const appliedByKey = new Map(applied.fields.map((field) => [field.key, field.value]));
-
-  const problems = [];
-  for (const { key, value } of sentFields) {
-    if (!appliedByKey.has(key)) {
-      problems.push(`${key}: NOT APPLIED — the daemon ignored this key (an unknown kvConfig key is dropped, not rejected)`);
-      continue;
-    }
-    const actual = appliedByKey.get(key);
-    if (stable(actual) !== stable(value)) {
-      problems.push(`${key}: requested ${JSON.stringify(value)} but the daemon applied ${JSON.stringify(actual)}`);
-    }
-  }
+  const applied = await readAppliedFields(client.llm.port, info.instanceReference);
+  const problems = diffAppliedConfig(sentFields, applied).map((problem) => problem.message);
 
   if (problems.length === 0) {
     log(`verified — all ${sentFields.length} requested kvConfig field(s) are in force`);

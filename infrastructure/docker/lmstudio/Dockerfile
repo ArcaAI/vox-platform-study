@@ -189,10 +189,14 @@ ENV LMS_PORT=1234 \
     HOPE_EXPECT_ACCEL=${HOPE_BUILD_ACCEL} \
     HOPE_MODELS_DIR=/data/models \
     HOPE_STAGING_DIR=/data/staging \
-    HOPE_LOADER_DIR=/opt/hope/lmstudio-loader
+    HOPE_LOADER_DIR=/opt/hope/lmstudio/loader \
+    HOPE_AGENT_DIR=/opt/hope/lmstudio/agent \
+    LMS_AGENT_PORT=8869
 
 VOLUME ["/data"]
-EXPOSE 1234
+# 1234: the OpenAI-compatible inference server (LM Studio).
+# 8869: the residency agent (TASK-1055) — /health + /internal/residency/*.
+EXPOSE 1234 8869
 
 COPY --chown=llmster:llmster entrypoint.sh /usr/local/bin/entrypoint.sh
 
@@ -244,13 +248,24 @@ RUN set -eu; cd /tmp; \
 
 # Manifests first, sources second: `npm ci` then re-runs only when a dependency
 # actually changes, not on every edit to the loader.
-RUN mkdir -p ${HOPE_LOADER_DIR} && chown 10001:10001 ${HOPE_LOADER_DIR}
+#
+# TASK-1055: the image MIRRORS the repo layout (/opt/hope/lmstudio/{loader,agent}),
+# because the residency agent imports the loader's modules by relative path
+# (../loader/kvconfig.mjs, ../loader/sdk-channel.mjs) and @lmstudio/sdk resolves
+# from loader/node_modules — one SDK install, one set of kvConfig rules, for
+# both the boot loader and the agent. The old path stays as a symlink so
+# anything that still names /opt/hope/lmstudio-loader keeps working.
+RUN mkdir -p ${HOPE_LOADER_DIR} ${HOPE_AGENT_DIR} \
+ && chown -R 10001:10001 /opt/hope/lmstudio \
+ && ln -s ${HOPE_LOADER_DIR} /opt/hope/lmstudio-loader
 USER llmster
 COPY --chown=llmster:llmster loader/package.json loader/package-lock.json ${HOPE_LOADER_DIR}/
 RUN cd ${HOPE_LOADER_DIR} \
  && npm ci --omit=dev --no-audit --no-fund \
  && npm cache clean --force
-COPY --chown=llmster:llmster loader/kvconfig.mjs loader/load.mjs loader/kvconfig.test.mjs ${HOPE_LOADER_DIR}/
+COPY --chown=llmster:llmster loader/kvconfig.mjs loader/load.mjs loader/sdk-channel.mjs \
+     loader/kvconfig.test.mjs loader/sdk-channel.test.mjs ${HOPE_LOADER_DIR}/
+COPY --chown=llmster:llmster agent/*.mjs ${HOPE_AGENT_DIR}/
 
 # Assert the loader actually works IN THE IMAGE, the same way the stage above
 # asserts the engines are baked in rather than trusting the bundle name. Both
@@ -258,8 +273,14 @@ COPY --chown=llmster:llmster loader/kvconfig.mjs loader/load.mjs loader/kvconfig
 # daemon, no websocket), and resolving the SDK proves `npm ci` produced a tree
 # this Node can import. A broken loader would otherwise surface as a pod that
 # passes every build gate and then refuses to serve on first boot.
-RUN set -eu; cd ${HOPE_LOADER_DIR}; \
-    node --test kvconfig.test.mjs; \
+#
+# TASK-1055: the residency agent's tests run here too (its contract-parity test
+# skips — the fixture is outside this build context — and the in-tree copies it
+# pins carry the shapes), and the agent's entry module must import cleanly.
+RUN set -eu; cd /opt/hope/lmstudio; \
+    node --test loader/kvconfig.test.mjs loader/sdk-channel.test.mjs 'agent/*.test.mjs'; \
+    node -e "import('./agent/server.mjs').then(() => console.log('OK: residency agent imports'))"; \
+    cd ${HOPE_LOADER_DIR}; \
     node -e "import('@lmstudio/sdk').then(m => { \
       if (typeof m.LMStudioClient !== 'function') { \
         console.error('FATAL: @lmstudio/sdk resolved but exports no LMStudioClient'); process.exit(1); \
