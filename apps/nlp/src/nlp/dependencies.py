@@ -493,14 +493,36 @@ def _route(slot: str, key: str) -> ModelCache[Any]:
     The default device's, unless the model is resident only on another device —
     an admin who loaded it on `cuda:1` gets it served from there instead of a
     second copy cold-loaded onto the default card.
+
+    Loaded wins over loading: the default copy, then another device's; then a load
+    IN FLIGHT — the default's, then another device's (review R1-F6: an admin's
+    placed load still running is joined through its single-flight future, never
+    raced by a second cold load here). Only when no device has the model loaded
+    or loading does the request load on the default cache.
     """
     default = _cache_for(slot)
     if key in default.cached_keys():
         return default
-    for (cache_slot, _device), cache in _device_caches.items():
-        if cache_slot == slot and key in cache.cached_keys():
+    siblings = [cache for (cache_slot, _d), cache in _device_caches.items() if cache_slot == slot]
+    for cache in siblings:
+        if key in cache.cached_keys():
+            return cache
+    if _in_flight(default, key):
+        return default
+    for cache in siblings:
+        if _in_flight(cache, key):
             return cache
     return default
+
+
+def _in_flight(cache: ModelCache[Any], key: str) -> bool:
+    """Whether ``cache`` has a load of ``key`` running (its single-flight future).
+
+    The shared cache exposes no public accessor for this; `_inflight` is set the
+    moment a load is claimed (before admission and the factory), which is exactly
+    the window a racing request must see.
+    """
+    return key in getattr(cache, "_inflight", {})
 
 
 def _live_caches() -> list[ModelCache[Any]]:
