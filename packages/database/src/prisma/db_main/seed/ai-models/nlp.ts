@@ -140,6 +140,8 @@ const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
     // absent section DISABLES the pass it governs (no ontology codes, no vitals,
     // no assertion labels) rather than substituting a literal.
     metaData: {
+      // TASK-1055 owner default alignment (2026-10-09): GPU 0, with GLiGuard and Whisper ML-EN.
+      residency: { defaultDevice: 'gpu0' },
       clinicalTaxonomy: {
         tokenClassifier: {
           aggregationStrategy: 'simple',
@@ -819,6 +821,8 @@ const NLP_AI_MODEL_ROWS: AiModelSeed[] = [
     computeType: 'float32',
     tags: ['guardrail', 'safety', 'moderation', 'gliner2'],
     metaData: {
+      // TASK-1055 owner default alignment (2026-10-09): GPU 0, with Medical NER and Whisper ML-EN.
+      residency: { defaultDevice: 'gpu0' },
       // Model card: English only. The two PII rows are 7-language, so a future
       // multilingual safety requirement CANNOT be met by this checkpoint — the
       // limit is recorded on the row rather than discovered in production.

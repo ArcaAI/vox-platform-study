@@ -81,7 +81,10 @@ describe('the JIT-loaded LM Studio rows', () => {
  * the TASK-996 one (summarization was GPU 0, guardrail GPU 1):
  *
  *   summarization  32768 ctx (was 65536, TASK-1045) · 10 concurrent · GPU 1 · q4_0 KV
- *   guardrail      16384 ctx · 10 concurrent · GPU 0 · q8_0 KV (fits beside STT)
+ *   guardrail      16384 ctx · 10 concurrent · GPU 1 · q8_0 KV
+ *
+ * TASK-1055 (owner, 2026-10-09) moved the guardrail role from GPU 0 to GPU 1, beside summarization:
+ * GPU 0 is Medical NER + GLiGuard + Whisper ML-EN (`task-1055-default-gpu-alignment.test.ts`).
  */
 describe('TASK-1031 — the owner serving layout', () => {
   const bySlug = (slug: string) => LLM_AI_MODELS.find((model) => model.slug === slug);
@@ -96,7 +99,7 @@ describe('TASK-1031 — the owner serving layout', () => {
     });
   });
 
-  it('serves every guardrail/safety LM Studio model at 16384 x 10 on GPU 0 only, with a q8_0 KV cache', () => {
+  it('serves every guardrail/safety LM Studio model at 16384 x 10 on GPU 1 only, with a q8_0 KV cache (TASK-1055)', () => {
     const guardrail = LLM_AI_MODELS.filter(
       (model) => model.provider === 'lm-studio' && (model.tags ?? []).some((tag) => tag === 'guardrail' || tag === 'safety'),
     );
@@ -107,7 +110,7 @@ describe('TASK-1031 — the owner serving layout', () => {
         parallel: 10,
         // A quantized V-cache REQUIRES flash attention; declared so the row is coherent alone.
         flashAttention: true,
-        gpuSplit: { strategy: 'priorityOrder', priority: [0], disabledGpus: [1] },
+        gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
         kvCacheQuant: { k: 'q8_0', v: 'q8_0' },
       });
     }

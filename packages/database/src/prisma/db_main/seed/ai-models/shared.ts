@@ -599,6 +599,14 @@ export interface AiModelSeed {
      * also by reference.
      */
     serving?: AiModelServingProfile & AiModelEngineServingFacts;
+    /**
+     * TASK-1055 (OD-4) — the model's DEFAULT placement: where a residency load with no `device` goes
+     * (`gpu<N>` / `multi` / `cpu`; read by `defaultDeviceOf` in the gateway's model-residency service,
+     * written there by `makeDefault`). The seed declares the owner's factory layout; a reseed never
+     * overwrites a stored value (`ADMIN_EDITABLE_METADATA_KEYS`). For an LM Studio row it names the same
+     * card as `serving.gpuSplit`, which is what the boot plan preloads on.
+     */
+    residency?: { defaultDevice?: `gpu${number}` | 'multi' | 'cpu' };
   };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;

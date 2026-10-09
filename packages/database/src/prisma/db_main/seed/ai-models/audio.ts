@@ -197,7 +197,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // Metal flash-attention build (640 collapsed the decode); `maxTokens` stays uncapped — a 32–64
     // cap deletes most of a Malayalam span. The en-medical rows below are unmeasured and keep the
     // engine default. Ticket README §6.3b / §6.6.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { audioCtx: 768, hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    // TASK-1055 owner default alignment (2026-10-09): `residency.defaultDevice` GPU 0, with Medical NER and GLiGuard.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { audioCtx: 768, hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } }, residency: { defaultDevice: 'gpu0' } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {

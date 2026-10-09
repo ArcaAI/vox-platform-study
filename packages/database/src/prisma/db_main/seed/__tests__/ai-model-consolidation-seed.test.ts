@@ -6,9 +6,9 @@
  * `src/__tests__/seed.test.ts`:
  *
  *   1. The SYSTEM routing elections (`16-ai-routing-policy.ts`) reference
- *      catalogue slugs with the compatible `taskType` (or a slug in the
- *      retirement ledger — a retired selection fails closed exactly as a
- *      DISABLED one did), and the seed step is CREATE-ONLY.
+ *      ENABLED catalogue slugs with the compatible `taskType` — never a
+ *      retired one (TASK-1055: a dangling election only produced a seed
+ *      warning) — and the seed step is CREATE-ONLY.
  *   2. Companion updates: the HarnessPolicy TEXT default is GONE (TASK-881);
  *      the six superseded GlobalSetting keys are gone from the seeded arrays
  *      and covered by the idempotent soft-retire sweep; the retired
@@ -22,6 +22,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { DEFAULT_AI_MODELS, RETIRED_AI_MODEL_SLUGS } from '../06-ai-models';
+import { SYSTEM_TASK_DEFAULT_EXEMPTIONS } from '../16-ai-routing-policy';
 import { ModelTaskType } from '../ai-models/shared';
 import * as globalSetting from '../11-global-setting';
 import { DEFAULT_POLICIES } from '../01-policy';
@@ -48,7 +49,6 @@ describe('SYSTEM routing-election seed', () => {
   const TASK_KEY_TO_TASK_TYPE: Record<string, string> = {
     'guardrail.validate': ModelTaskType.GUARDRAIL,
     'nlp.ner': 'TOKEN_CLASSIFICATION',
-    'nlp.classification': 'TEXT_CLASSIFICATION',
     // guardrail safety/groundedness, harness judge, diagnosis.
     // the safety plane split in two: moderation is a
     // multi-task TEXT classifier, PII spans are TOKEN classification.
@@ -86,16 +86,19 @@ describe('SYSTEM routing-election seed', () => {
       seedAiRoutingPolicy: (client: unknown) => Promise<{ created: number; skipped: number; unresolved: number }>;
     }>;
 
-  it('seeds exactly the sixteen SYSTEM elections with deterministic ids — no text.* key (TASK-881)', async () => {
+  it('seeds exactly the fifteen SYSTEM elections with deterministic ids — no text.* key (TASK-881), no nlp.classification (TASK-1055)', async () => {
     const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((r) => [r.taskKey, r]));
-    // Eleven, plus TASK-1050's `guardrail.injection` and four `guardrail.judge.*` lanes.
-    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(16);
+    // Ten, plus TASK-1050's `guardrail.injection` and four `guardrail.judge.*` lanes.
+    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(15);
     expect(byKey.get('guardrail.validate')?.modelSlug).toBe('granite-guardian-4.1-8b');
     expect(byKey.get('nlp.ner')?.modelSlug).toBe('medical-ner');
-    // nlp.classification is the doc-type classifier (fail-closed
-    // placeholder); the diagnosis suggester moved to nlp.diagnosis.
-    expect(byKey.get('nlp.classification')?.modelSlug).toBe('nlp-doc-type-classifier');
+    // TASK-1055 — `nlp.classification` named the retired `nlp-doc-type-classifier`
+    // placeholder (TASK-860), so every seed skipped it with a warning. No caller
+    // resolves the key and no seeded model is a document-type classifier, so it is
+    // an EXEMPTION now, not an election. The diagnosis suggester is nlp.diagnosis.
+    expect(byKey.has('nlp.classification')).toBe(false);
+    expect(SYSTEM_TASK_DEFAULT_EXEMPTIONS['nlp.classification']).toMatch(/document-type/);
     expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
     // TASK-881: no text.* election — text generation selects through the
     // assigned TEXT_GENERATION agent; a routing row for it served nothing.
@@ -127,24 +130,27 @@ describe('SYSTEM routing-election seed', () => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
-    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(16);
+    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(15);
   });
 
-  it('references catalog slugs whose taskType matches the task key', async () => {
+  it('references ENABLED catalog slugs whose taskType matches the task key — no dangling election (TASK-1055)', async () => {
     const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
+      // A slug the catalogue does not carry (or carries DISABLED) is skipped by the
+      // seed with a warning on every run: the election serves nothing. Never again.
+      expect(RETIRED_AI_MODEL_SLUGS, `routing election ${row.taskKey} names a retired slug`).not.toContain(row.modelSlug);
       const model = bySlug(row.modelSlug);
-      if (!model) {
-        // TASK-860 retired the DISABLED `nlp-doc-type-classifier` placeholder
-        // that `nlp.classification` pointed at. A retired selection resolves
-        // to no ENABLED model — the same fail-closed 503 the DISABLED row
-        // produced — so the reference is tolerated ONLY through the ledger.
-        // `16-ai-task-default.ts` itself is retired by TASK-862.
-        expect(RETIRED_AI_MODEL_SLUGS, `routing election ${row.taskKey} references unknown slug ${row.modelSlug}`).toContain(row.modelSlug);
-        return;
-      }
-      expect(model.taskType).toBe(TASK_KEY_TO_TASK_TYPE[row.taskKey]);
+      expect(model, `routing election ${row.taskKey} references unknown slug ${row.modelSlug}`).toBeDefined();
+      expect(model?.resourceStatus ?? 'ENABLED', `${row.modelSlug} is not seeded ENABLED`).toBe('ENABLED');
+      expect(model?.taskType).toBe(TASK_KEY_TO_TASK_TYPE[row.taskKey]);
     });
+  });
+
+  it('never both elects and exempts a task key', async () => {
+    const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
+    for (const row of SYSTEM_AI_TASK_DEFAULTS) {
+      expect(Object.keys(SYSTEM_TASK_DEFAULT_EXEMPTIONS), row.taskKey).not.toContain(row.taskKey);
+    }
   });
 
   it('is CREATE-ONLY: never overwrites an existing elected (tenant, taskKey) default', async () => {
@@ -159,7 +165,7 @@ describe('SYSTEM routing-election seed', () => {
     };
     const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(0);
-    expect(result.skipped).toBe(16);
+    expect(result.skipped).toBe(15);
     expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
     expect(client.aiRoutingPolicy.update).not.toHaveBeenCalled();
     expect(client.aiModel.findFirst).not.toHaveBeenCalled();
@@ -179,7 +185,7 @@ describe('SYSTEM routing-election seed', () => {
       aiModel: { findFirst: vi.fn(async ({ where }: { where: { slug: string } }) => ({ id: `model:${where.slug}`, slug: where.slug })) },
     };
     const result = await seedAiRoutingPolicy(client as never);
-    expect(result.created).toBe(16);
+    expect(result.created).toBe(15);
     expect(result.unresolved).toBe(0);
     created.forEach(({ data }) => {
       expect(data.tenantId).toBe(SYSTEM_TENANT_ID);
@@ -192,6 +198,28 @@ describe('SYSTEM routing-election seed', () => {
     });
   });
 
+  it('a cold seed against the seeded catalogue resolves EVERY election and warns nothing (TASK-1055)', async () => {
+    const { seedAiRoutingPolicy } = await loadModule();
+    const enabled = catalog.filter((m) => (m.resourceStatus ?? 'ENABLED') === 'ENABLED');
+    const client = {
+      aiRoutingPolicy: { findFirst: vi.fn(async () => null), create: vi.fn(async (args: { data: unknown }) => args.data) },
+      aiModel: {
+        findFirst: vi.fn(async ({ where }: { where: { slug: string } }) => {
+          const model = enabled.find((m) => m.slug === where.slug);
+          return model ? { id: model.id, slug: model.slug } : null;
+        }),
+      },
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const result = await seedAiRoutingPolicy(client as never);
+      expect(result.unresolved).toBe(0);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('skips (fails closed) a default whose slug resolves to no ENABLED SYSTEM model', async () => {
     const { seedAiRoutingPolicy } = await loadModule();
     const client = {
@@ -200,7 +228,7 @@ describe('SYSTEM routing-election seed', () => {
     };
     const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(0);
-    expect(result.unresolved).toBe(16);
+    expect(result.unresolved).toBe(15);
     expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
   });
 });

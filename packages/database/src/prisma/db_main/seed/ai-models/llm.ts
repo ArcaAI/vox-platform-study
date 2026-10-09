@@ -345,23 +345,29 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // its judge hyperparameters serve those lanes too.
     metaData: {
       hubArtifact: 'mradermacher/granite-guardian-4.1-8b-GGUF',
-      // ── TASK-1031 owner layout (2026-10-01) — the GUARDRAIL role: GPU 0 ──────
-      // REVERSES the TASK-996 layout (this row was pinned to GPU 1). Every
-      // guardrail/safety LM Studio model now carries this profile: 16384 ctx x 10
-      // concurrent on GPU 0, beside STT and NLP. It is PRELOADED
-      // (`lmStudio.serving.preload`), so context and parallel are real load values.
+      // ── TASK-1031 owner layout (2026-10-01) — the GUARDRAIL profile ──────────
+      // Every guardrail/safety LM Studio model carries this profile: 16384 ctx x 10
+      // concurrent. It is PRELOADED (`lmStudio.serving.preload`), so context and
+      // parallel are real load values.
       //
-      // q8_0 KV: at f16, 16384 x 10 is ~7.9 GB of KV on top of ~5.1 GB weights and
-      // the ~4 GB STT pair — over a 16 GB card. q8_0 roughly halves it (~4 GB).
+      // ── TASK-1055 owner default alignment (2026-10-09) — GPU 1 ───────────────
+      // MOVES this row from GPU 0 (TASK-1031) to GPU 1, beside Gemma: GPU 0 is now
+      // Medical NER + GLiGuard + Whisper ML-EN, GPU 1 the two LM Studio models.
+      // `residency.defaultDevice` below names the same card — the pair the gateway's
+      // makeDefault writes together.
+      //
+      // q8_0 KV: at f16, 16384 x 10 is ~7.9 GB of KV on top of ~5.1 GB weights —
+      // too much beside Gemma on a 16 GB card. q8_0 roughly halves it (~4 GB).
       // `flashAttention: true` is declared because a quantized V-cache requires it.
       // The row deliberately declares no catalogue `contextLength` (under-claim).
       serving: {
         contextLength: 16384,
         parallel: 10,
         flashAttention: true,
-        gpuSplit: { strategy: 'priorityOrder', priority: [0], disabledGpus: [1] },
+        gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
         kvCacheQuant: { k: 'q8_0', v: 'q8_0' },
       },
+      residency: { defaultDevice: 'gpu1' },
       policy: GRANITE_GUARDIAN_POLICY,
       // TASK-1050 (README §11.3 C) — the factory defaults Reset copies back; a separate equal object.
       policyDefaults: structuredClone(GRANITE_GUARDIAN_POLICY),
@@ -432,6 +438,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
         kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
       },
+      // TASK-1055 owner default alignment (2026-10-09): GPU 1, the same card as `gpuSplit`.
+      residency: { defaultDevice: 'gpu1' },
     },
   },
   {
