@@ -26,7 +26,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as bcrypt from 'bcryptjs';
 import { AuthController } from '../auth.controller';
 // TASK-1057 — the worktree source (the gateway build's `@arcaai/applications` dist may predate it).
-import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
+import { ActionConfirmationService } from '@arcaai/applications';
 
 const PLACEHOLDER = 'default-jwt-secret-key-change-in-production';
 const REAL_SECRET = 'a-real-32-byte-jwt-signing-secret-aaaa';

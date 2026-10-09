@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AuthController } from '../auth.controller';
 // TASK-1057 — the worktree source (the gateway build's `@arcaai/applications` dist may predate it).
-import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
+import { ActionConfirmationService } from '@arcaai/applications';
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN', 'admin', 'system-admin'];
 

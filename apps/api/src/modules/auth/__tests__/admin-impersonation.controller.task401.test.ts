@@ -11,7 +11,7 @@ import { EventTypes, SysEventType } from '@arcaai/domains';
 import { AdminImpersonationController, USER_IMPERSONATION_STARTED } from '../admin-impersonation.controller';
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
 // The worktree source (the gateway build's `@arcaai/applications` dist may predate it).
-import { ActionConfirmationService } from '../../../../../../packages/applications/src/services/settings-registry/action-confirmation.service';
+import { ActionConfirmationService } from '@arcaai/applications';
 
 const SUPER_ADMIN = 'SUPER_ADMIN';
 // Retired role literal, used only to prove it no longer elevates. Distinct

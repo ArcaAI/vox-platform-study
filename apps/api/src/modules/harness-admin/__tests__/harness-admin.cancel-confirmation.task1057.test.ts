@@ -43,7 +43,7 @@ function make(policy: ReturnType<typeof confirmations>) {
     {} as never,
     {} as never,
     {} as never,
-    policy,
+    policy as never,
     events as never,
   );
 }
