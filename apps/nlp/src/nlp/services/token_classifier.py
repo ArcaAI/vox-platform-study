@@ -8,6 +8,7 @@ import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from nlp.core.config import TokenClassificationConfig
+from nlp.core.device import device_label, pipeline_device
 from nlp.core.logging import get_logger
 from nlp.core.metrics import (
     MODEL_MEDICAL_NER,
@@ -49,6 +50,10 @@ class TokenClassifier(ABC):
         """Shutdown the token classification model"""
         pass
 
+    def torch_modules(self) -> list[Any]:
+        """The torch modules this instance holds, for residency sizing (TASK-1055)."""
+        return []
+
 
 # --------------------------------------------------------------------------
 # Per-taxonomy builders, memoized.
@@ -65,6 +70,42 @@ _BUILDER_CACHE_MAX = 8
 _T = TypeVar("_T")
 _linker_cache: OrderedDict[str, OntologyLinker] = OrderedDict()
 _assertion_cache: OrderedDict[str, NegExAssertionClassifier] = OrderedDict()
+
+
+def release_pipeline(pipe: Any) -> None:
+    """Drop the weights a transformers ``pipeline`` holds (TASK-1055 E6).
+
+    A pipeline keeps its own ``model`` / ``tokenizer`` references, so nulling only
+    the owner's attribute leaves the tensors alive for as long as anything — a
+    caller's local, a batch closure — still holds the pipeline object.
+    """
+    if pipe is None:
+        return
+    for attribute in ("model", "tokenizer"):
+        if hasattr(pipe, attribute):
+            try:
+                setattr(pipe, attribute, None)
+            except Exception:  # noqa: BLE001, S110 — a read-only stub; the owner's ref still goes
+                pass
+
+
+def place_model(
+    model: Any, placement: str | None, use_gpu: bool, cuda_available: bool
+) -> tuple[str, int]:
+    """Where a transformers pipeline runs: ``(device id, pipeline device=)``.
+
+    ``placement`` None keeps the pre-TASK-1055 rule (the first CUDA device when
+    ``use_gpu`` and CUDA is present, else CPU; MPS is never chosen). An explicit
+    ``cuda:<n>`` / ``cpu`` is honoured as given: the model is moved there BEFORE
+    the pipeline wraps it, and the pipeline is told the same ordinal.
+    """
+    if placement is None:
+        target = "cuda" if use_gpu and cuda_available else "cpu"
+    else:
+        target = placement if use_gpu else "cpu"
+        if target != "cpu" and model is not None and hasattr(model, "to"):
+            model.to(target)
+    return target, pipeline_device(target)
 
 
 def _cached(cache: OrderedDict[str, _T], key: str, build: Callable[[], _T]) -> _T:
@@ -100,6 +141,8 @@ class TransformerTokenClassifier(TokenClassifier):
         self,
         configs: TokenClassificationConfig,
         assertion_classifier: AssertionModel | None = None,
+        *,
+        device: str | None = None,
     ):
         # `configs` is REQUIRED: it carries the resolved model selection, and
         # there is no default to fall back to — building one here would put a
@@ -113,6 +156,10 @@ class TransformerTokenClassifier(TokenClassifier):
         # Resolved placement (TASK-959 metering). Set for real in `initialize()`;
         # this floor covers a caller that stubs `.pipeline` directly in tests.
         self._device: DeviceLabel = "cpu"
+        # TASK-1055 — the device id to load ON (`cuda:<n>` / `cpu`), resolved by
+        # the caller; None keeps the legacy auto rule (see `place_model`).
+        self._placement_request = device
+        self.placement: str | None = device
         # The linker and the assertion classifier are built PER REQUEST from the
         # gateway-injected taxonomy, NOT held on the instance: this object lives
         # in a model cache keyed on weight identity alone, so instance-level
@@ -134,17 +181,20 @@ class TransformerTokenClassifier(TokenClassifier):
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForTokenClassification.from_pretrained(self.model_name)
 
-            # `configs.use_gpu` (default True) gates GPU use; default preserves
-            # auto-detect-when-available behavior. This pipeline never checks
-            # MPS (unchanged), so the resolved placement (TASK-959) is honestly
-            # cuda-or-cpu, never mps.
-            use_accelerator = self.configs.use_gpu and torch.cuda.is_available()
-            self._device = "cuda" if use_accelerator else "cpu"
+            # `configs.use_gpu` (default True) gates GPU use. Without an explicit
+            # placement this is the auto-detect-when-available rule; with one
+            # (TASK-1055) the model goes to exactly that card. This pipeline never
+            # checks MPS, so the metered label (TASK-959) is cuda-or-cpu.
+            target, ordinal = place_model(
+                self.model, self._placement_request, self.configs.use_gpu, torch.cuda.is_available()
+            )
+            self.placement = target
+            self._device = device_label(target)
             self.pipeline = pipeline(
                 "token-classification",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                device=0 if use_accelerator else -1,
+                device=ordinal,
             )
 
             self.label_mapping = self.model.config.id2label
@@ -304,6 +354,14 @@ class TransformerTokenClassifier(TokenClassifier):
 
         return entities
 
+    def torch_modules(self) -> list[Any]:
+        """The torch modules this instance holds (residency sizing, TASK-1055)."""
+        return [self.model] if self.model is not None else []
+
     async def shutdown(self) -> None:
-        """Shutdown the token classification model"""
-        pass
+        """Drop every reference to the weights so an unload frees them (TASK-1055 E6)."""
+        release_pipeline(self.pipeline)
+        self.pipeline = None
+        self.model = None
+        self.tokenizer = None
+        self.is_initialized = False

@@ -47,6 +47,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -153,8 +154,11 @@ class LlamaCppMiniCheckScorer:
         logit_fn: LogitFn,
         calibration: EntailmentCalibration,
         device: str = "cpu",
+        close: Callable[[], None] | None = None,
     ) -> None:
-        self._logit_fn = logit_fn
+        self._logit_fn: LogitFn | None = logit_fn
+        #: Frees the llama.cpp handle (TASK-1055 E6); None for injected test fns.
+        self._close = close
         self._calibration = calibration
         # WHERE llama.cpp placed this model — resolved by the caller from
         # `n_gpu_layers` (TASK-959 metering: reported on every entailment
@@ -170,11 +174,21 @@ class LlamaCppMiniCheckScorer:
         """MiniCheck flan-t5 input: ``'predict: ' + source + '</s>' + claim``."""
         return f"{_PROMPT_PREFIX}{source}{_EOS}{claim}"
 
+    def shutdown(self) -> None:
+        """Drop the llama.cpp handle so an unload frees it (TASK-1055 E6). Idempotent."""
+        close, self._close = self._close, None
+        self._logit_fn = None
+        if close is not None:
+            close()
+
     def score_pairs(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
         """Return ``P(claim entailed by source)`` per pair, in order, in ``[0, 1]``."""
+        logit_fn = self._logit_fn
+        if logit_fn is None:
+            raise NliModelUnavailableError("MiniCheck scorer was unloaded")
         scores: list[float] = []
         for source, claim in pairs:
-            logit_no, logit_yes = self._logit_fn(self.build_prompt(source, claim))
+            logit_no, logit_yes = logit_fn(self.build_prompt(source, claim))
             scores.append(_support_prob(logit_no, logit_yes))
         return scores
 
@@ -270,6 +284,9 @@ class MiniCheckLoadSpec:
     n_ctx: int = 512
     n_threads: int | None = None
     n_gpu_layers: int = 0
+    #: TASK-1055 — the CUDA ordinal to place the whole model on (no layer split
+    #: across cards). None keeps llama.cpp's own default.
+    main_gpu: int | None = None
 
 
 def _supports_gpu_offload() -> bool:
@@ -331,6 +348,14 @@ def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
             "to enable the MiniCheck GGUF scorer (fail-closed to 'unverified')."
         ) from exc
 
+    placement: dict[str, Any] = {}
+    if config.main_gpu is not None:
+        import llama_cpp
+
+        placement = {
+            "main_gpu": config.main_gpu,
+            "split_mode": getattr(llama_cpp, "LLAMA_SPLIT_MODE_NONE", 0),
+        }
     try:
         llama = Llama(
             model_path=config.model_path,
@@ -339,6 +364,7 @@ def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
             n_gpu_layers=config.n_gpu_layers,
             logits_all=True,
             verbose=False,
+            **placement,
         )
     except Exception as exc:  # noqa: BLE001 — any load failure is fail-closed
         raise NliModelUnavailableError(
@@ -353,7 +379,9 @@ def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
     # TASK-1031: a CPU-only llama.cpp build silently ignores the knob, so the
     # metered device is "cuda" only when the build can actually offload.
     device = "cuda" if config.n_gpu_layers != 0 and _supports_gpu_offload() else "cpu"
-    scorer = LlamaCppMiniCheckScorer(_make_llama_logit_fn(llama), calibration, device=device)
+    scorer = LlamaCppMiniCheckScorer(
+        _make_llama_logit_fn(llama), calibration, device=device, close=getattr(llama, "close", None)
+    )
     try:
         scorer.verify_calibration()  # raises NliModelUnavailableError if mis-wired / too-lossy
     except NliModelUnavailableError:

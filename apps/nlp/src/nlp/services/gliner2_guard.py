@@ -96,6 +96,14 @@ class Gliner2GuardService:
 
     @property
     def device(self) -> str:
+        """The metering label (``cuda`` / ``mps`` / ``cpu``) — every response carries it."""
+        from nlp.core.device import device_label
+
+        return device_label(self._device)
+
+    @property
+    def placement(self) -> str:
+        """The device id the weights were placed on (``cuda:1``) — TASK-1055."""
         return self._device
 
     def load(self) -> None:
@@ -111,6 +119,18 @@ class Gliner2GuardService:
         self.runtime = GLiNER2.from_pretrained(self._weights_source)
         apply_device_placement(self.runtime, self._device, self._cpu_only_modules)
         logger.info(f"nlp.gliner2_guard.ready model_id={self.model_id} device={self._device}")
+
+    def torch_modules(self) -> list[Any]:
+        """The torch modules this instance holds (residency sizing, TASK-1055)."""
+        return [self.runtime] if self.runtime is not None else []
+
+    def shutdown(self) -> None:
+        """Drop the runtime so an unload frees its weights (TASK-1055 E6).
+
+        Called only by the LAST cache holding this runtime (the weight registry
+        counts holders) — the token-classifier cache may share it.
+        """
+        self.runtime = None
 
     # ── sync cores (thread-pool bound) ───────────────────────────────────
 

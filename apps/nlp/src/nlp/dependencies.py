@@ -1,11 +1,14 @@
 import asyncio
-from collections.abc import AsyncIterator
+import functools
+import inspect
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
 
 import structlog
 from fastapi import Request
+from hope_runtime_models import release_accelerator_memory
 
 from nlp.core.checkpoint_family import is_gliner_checkpoint, read_checkpoint_config
 from nlp.core.concurrency import (
@@ -170,7 +173,50 @@ async def _weights_source(model_name: str, model_path: str | None) -> str:
     return model_name
 
 
-async def _create_token_classifier(cache_key: str) -> TokenClassifier:
+def _weight_key(cache_key: str, device: str | None) -> tuple[Any, ...]:
+    """The weight registry key: the slot's weight identity, plus an explicit device.
+
+    A copy placed on `cuda:1` is a different resident copy from the default one,
+    so it never dedups against it (TASK-1055).
+    """
+    model_name, model_path = _split_cache_key(cache_key)
+    return (model_name, model_path) if device is None else (model_name, model_path, device)
+
+
+def _resolved_device(device: str | None) -> str:
+    """The device a guard-plane runtime loads on: the explicit one, else the configured one.
+
+    Both go through `resolve_inference_device`, so `cuda:<n>` past the last card
+    fails closed exactly like an absent `cuda`.
+    """
+    from nlp.core.config import settings
+    from nlp.core.device import resolve_inference_device
+
+    return resolve_inference_device(
+        device if device is not None else settings.service.inference_device
+    )
+
+
+def _transformers_placement(device: str | None) -> str | None:
+    """Where a transformers-pipeline model loads (token / text classifier, suggester).
+
+    Explicit (TASK-1055 planner) → that device, validated. Default → the configured
+    inference device when it is a CUDA device, so the residency report (which
+    accounts default caches to that device) and the weights agree; any other
+    configuration keeps the pipelines' pre-TASK-1055 auto rule (None).
+    """
+    from nlp.core.device import DevicePlacementError
+
+    if device is not None:
+        return _resolved_device(device)
+    try:
+        resolved = _resolved_device(None)
+    except DevicePlacementError:
+        return None
+    return resolved if resolved.startswith("cuda") else None
+
+
+async def _create_token_classifier(cache_key: str, device: str | None = None) -> TokenClassifier:
     """The token-level runtime THIS checkpoint needs.
 
     F14 — `/classify/tokens` serves both families this service hosts and the
@@ -186,16 +232,16 @@ async def _create_token_classifier(cache_key: str) -> TokenClassifier:
     # Blocking (filesystem / a small cached download) — never on the event loop.
     config = await asyncio.to_thread(read_checkpoint_config, source)
     if is_gliner_checkpoint(config):
-        return await _create_gliner_token_classifier(model_name, source, model_path)
+        return await _create_gliner_token_classifier(model_name, source, model_path, device=device)
 
     configs = TokenClassificationConfig(model_name=source, tokenizer_name=source)
-    instance = TransformerTokenClassifier(configs=configs)
+    instance = TransformerTokenClassifier(configs=configs, device=_transformers_placement(device))
     await instance.initialize()
     return instance
 
 
 async def _create_gliner_token_classifier(
-    model_name: str, source: str, model_path: str | None = None
+    model_name: str, source: str, model_path: str | None = None, device: str | None = None
 ) -> TokenClassifier:
     """The `gliner2` extractor behind the token-classification contract.
 
@@ -204,7 +250,7 @@ async def _create_gliner_token_classifier(
     op the accelerator does not support aborts the PROCESS rather than raising.
     """
     from nlp.core.config import settings
-    from nlp.core.device import parse_cpu_only_modules, resolve_inference_device
+    from nlp.core.device import parse_cpu_only_modules
     from nlp.services.gliner2_guard import Gliner2GuardService
     from nlp.services.gliner_token_classifier import Gliner2TokenClassifier
 
@@ -212,7 +258,7 @@ async def _create_gliner_token_classifier(
         runtime = Gliner2GuardService(
             weights_source=source,
             model_id=model_name,
-            device=resolve_inference_device(settings.service.inference_device),
+            device=_resolved_device(device),
             cpu_only_modules=parse_cpu_only_modules(
                 settings.service.inference_device_cpu_only_modules
             ),
@@ -220,18 +266,20 @@ async def _create_gliner_token_classifier(
         await asyncio.to_thread(runtime.load)
         return runtime
 
-    # TASK-1047 C8: the guard cache may already hold these exact weights.
-    runtime = await get_weight_registry().get_or_load((model_name, model_path), load)
+    # TASK-1047 C8: the guard cache may already hold these exact weights (on this device).
+    runtime = await get_weight_registry().get_or_load(
+        _weight_key(_model_cache_key(model_name, model_path), device), load
+    )
     instance = Gliner2TokenClassifier(model_name=model_name, runtime=runtime)
     await instance.initialize()
     return instance
 
 
-async def _create_text_classifier(cache_key: str) -> TextClassifier:
+async def _create_text_classifier(cache_key: str, device: str | None = None) -> TextClassifier:
     model_name, model_path = _split_cache_key(cache_key)
     model_name = await _weights_source(model_name, model_path)
     config = TextClassificationConfig(model_name=model_name, tokenizer_name=model_name)
-    instance = TransformerTextClassifier(config=config)
+    instance = TransformerTextClassifier(config=config, device=_transformers_placement(device))
     await instance.initialize()
     if not instance.is_initialized:
         # Only the placeholder sentinel initializes "successfully" without
@@ -256,7 +304,7 @@ def _split_suggester_cache_key(key: str) -> tuple[str, str | None, str, str | No
     return model_name, model_path or None, ner_model_name, ner_model_path or None
 
 
-async def _create_medical_suggester(cache_key: str) -> MedicalSuggester:
+async def _create_medical_suggester(cache_key: str, device: str | None = None) -> MedicalSuggester:
     model_name, model_path, ner_model_name, ner_model_path = _split_suggester_cache_key(cache_key)
     source = await _weights_source(model_name, model_path)
     config = MedicalSuggesterConfig(model_name=source, tokenizer_name=source)
@@ -267,11 +315,15 @@ async def _create_medical_suggester(cache_key: str) -> MedicalSuggester:
     # suggester's own eviction calls `shutdown()` on it, which would unload
     # weights that cache still believes it is serving.
     ner_source = await _weights_source(ner_model_name, ner_model_path)
+    # Both models of one slot live on ONE device — the slot's.
+    placement = _transformers_placement(device)
     instance = MedicalSuggester(
         config=config,
         token_classifier=TransformerTokenClassifier(
-            configs=TokenClassificationConfig(model_name=ner_source, tokenizer_name=ner_source)
+            configs=TokenClassificationConfig(model_name=ner_source, tokenizer_name=ner_source),
+            device=placement,
         ),
+        device=placement,
     )
     # `MedicalSuggester.initialize()` initializes its NER as well.
     await instance.initialize()
@@ -301,8 +353,12 @@ _CACHE_GLOBALS = (
 _current_retention: dict[str, int] = {}
 
 
-def _retention_kwargs() -> dict[str, Any]:
-    """Resolved retention: control-plane value when known, else settings."""
+def _retention_kwargs(placement: str | None = None) -> dict[str, Any]:
+    """Resolved retention: control-plane value when known, else settings.
+
+    ``placement`` binds the residency wiring to that device (TASK-1055); every
+    other value is the same for every device's cache.
+    """
     from nlp.core.config import settings
     from nlp.core.metrics import build_model_cache_metrics_sink
     from nlp.residency import nlp_cache_residency
@@ -314,13 +370,143 @@ def _retention_kwargs() -> dict[str, Any]:
         "max_size": _current_retention.get("max_models", settings.service.model_cache_max_models),
         "metrics": build_model_cache_metrics_sink(),
         # TASK-1005 — measured RSS footprints + residency metrics; admission off.
-        "residency": nlp_cache_residency(),
+        "residency": nlp_cache_residency(placement),
     }
 
 
+#: slot (= cache name on the residency report) → (default-device cache global,
+#: factory attribute). Factories are looked up when a cache is BUILT, so a test
+#: that replaces one before first use is honoured.
+_SLOTS: dict[str, tuple[str, str]] = {
+    "nlp_token_classifier": ("_token_classifier_cache_instance", "_create_token_classifier"),
+    "nlp_text_classifier": ("_text_classifier_cache_instance", "_create_text_classifier"),
+    "nlp_medical_suggester": ("_medical_suggester_cache_instance", "_create_medical_suggester"),
+    "nlp_gliner2_guard": ("_gliner2_guard_cache_instance", "_create_gliner2_guard"),
+    "nlp_entailment_scorer": ("_entailment_scorer_cache_instance", "_create_entailment_scorer"),
+    "nlp_seq_cls_guard": ("_seq_cls_guard_cache_instance", "_create_seq_cls_guard"),
+    "nlp_judge_guard": ("_judge_guard_cache_instance", "_create_judge_guard"),
+}
+
+#: llama.cpp holds no torch parameters: its footprint stays the device delta.
+_UNMEASURED_SLOTS = frozenset({"nlp_entailment_scorer"})
+
+#: TASK-1055 — (slot, explicit device) → its cache. The default device's caches
+#: stay in the `_CACHE_GLOBALS` singletons.
+_device_caches: dict[tuple[str, str], ModelCache[Any]] = {}
+
+
+async def _call_shutdown(obj: Any) -> None:
+    """``obj.shutdown()`` — awaited when async, off the event loop when sync."""
+    shutdown = getattr(obj, "shutdown", None)
+    if shutdown is None:
+        return
+    if inspect.iscoroutinefunction(shutdown):
+        await shutdown()
+        return
+    result = await asyncio.to_thread(shutdown)
+    if inspect.isawaitable(result):
+        await result
+
+
+async def _shutdown_instance(slot: str, key: str, instance: Any, placement: str | None) -> None:
+    """Drop every reference ``instance`` holds — the shared GLiNER2 runtime last.
+
+    The guard cache's instance IS the shared runtime; the token-classifier cache's
+    GLiNER adapter merely holds it. Either way the runtime is shut down only when
+    the weight registry says this was its LAST holder.
+    """
+    from nlp.services.gliner_token_classifier import Gliner2TokenClassifier
+
+    registry = get_weight_registry()
+    if slot == "nlp_gliner2_guard":
+        if registry.release(_weight_key(key, placement), instance):
+            await _call_shutdown(instance)
+        return
+    if isinstance(instance, Gliner2TokenClassifier):
+        runtime = instance.runtime
+        await _call_shutdown(instance)
+        if runtime is not None and registry.release(_weight_key(key, placement), runtime):
+            await _call_shutdown(runtime)
+        return
+    await _call_shutdown(instance)
+
+
+def _unload_hook(
+    slot: str, device_id: str, placement: str | None
+) -> Callable[[str, Any], Awaitable[None]]:
+    """The cache's ``unload=``: real shutdown, then the freed blocks back to the driver.
+
+    TASK-1055 E6: without the release, torch's caching allocator keeps the blocks
+    reserved and the card's free memory never rises — the unload "succeeded" and
+    the next load's measured footprint was wrong. The release runs even when the
+    shutdown raised (the cache logs that failure and still drops the entry).
+    """
+
+    async def unload(key: str, instance: Any) -> None:
+        try:
+            await _shutdown_instance(slot, key, instance, placement)
+        finally:
+            await asyncio.to_thread(release_accelerator_memory, device_id)
+
+    return unload
+
+
+def _build_cache(slot: str, placement: str | None) -> ModelCache[Any]:
+    from nlp.residency import measure_instance
+
+    factory = globals()[_SLOTS[slot][1]]
+    if placement is not None:
+        factory = functools.partial(factory, device=placement)
+    kwargs = _retention_kwargs(placement)
+    return ModelCache(
+        factory=factory,
+        name=slot,
+        unload=_unload_hook(slot, kwargs["residency"].device.id, placement),
+        measure=None if slot in _UNMEASURED_SLOTS else measure_instance,
+        **kwargs,
+    )
+
+
+def _cache_for(slot: str, device: str | None = None) -> ModelCache[Any]:
+    """The ``slot`` cache bound to ``device`` (None / the default id = the default cache).
+
+    One cache per (slot, device), built lazily; an unseen device raises
+    `DeviceUnavailable`.
+    """
+    from nlp.residency import resolve_placement
+
+    placement = resolve_placement(device)
+    if placement is None:
+        global_name = _SLOTS[slot][0]
+        if globals().get(global_name) is None:
+            globals()[global_name] = _build_cache(slot, None)
+        return cast("ModelCache[Any]", globals()[global_name])
+    cache = _device_caches.get((slot, placement))
+    if cache is None:
+        cache = _device_caches[(slot, placement)] = _build_cache(slot, placement)
+    return cache
+
+
+def _route(slot: str, key: str) -> ModelCache[Any]:
+    """The cache a REQUEST for ``key`` uses (TASK-1055).
+
+    The default device's, unless the model is resident only on another device —
+    an admin who loaded it on `cuda:1` gets it served from there instead of a
+    second copy cold-loaded onto the default card.
+    """
+    default = _cache_for(slot)
+    if key in default.cached_keys():
+        return default
+    for (cache_slot, _device), cache in _device_caches.items():
+        if cache_slot == slot and key in cache.cached_keys():
+            return cache
+    return default
+
+
 def _live_caches() -> list[ModelCache[Any]]:
-    """Every INSTANTIATED cache singleton (never forces construction)."""
-    return [cache for name in _CACHE_GLOBALS if (cache := globals().get(name)) is not None]
+    """Every INSTANTIATED cache, every device (never forces construction)."""
+    defaults = [cache for name in _CACHE_GLOBALS if (cache := globals().get(name)) is not None]
+    return defaults + list(_device_caches.values())
 
 
 # Health-check component name -> its backing cache global. These three
@@ -331,6 +517,11 @@ _COMPONENT_CACHE_GLOBALS = {
     "text_classifier": "_text_classifier_cache_instance",
     "token_classifier": "_token_classifier_cache_instance",
     "medical_suggester": "_medical_suggester_cache_instance",
+}
+_COMPONENT_SLOTS = {
+    "text_classifier": "nlp_text_classifier",
+    "token_classifier": "nlp_token_classifier",
+    "medical_suggester": "nlp_medical_suggester",
 }
 
 
@@ -344,7 +535,12 @@ def model_cache_snapshot() -> dict[str, list[str]]:
     snapshot: dict[str, list[str]] = {}
     for component, global_name in _COMPONENT_CACHE_GLOBALS.items():
         cache = globals().get(global_name)
-        snapshot[component] = cache.cached_models() if cache is not None else []
+        models = cache.cached_models() if cache is not None else []
+        # TASK-1055: a model loaded on another device is resident too.
+        for (slot, _device), placed in _device_caches.items():
+            if slot == _COMPONENT_SLOTS[component]:
+                models += [key for key in placed.cached_models() if key not in models]
+        snapshot[component] = models
     return snapshot
 
 
@@ -386,54 +582,50 @@ def reset_model_caches() -> None:
     """Drop the cache singletons (tests only — does not unload live models)."""
     for name in _CACHE_GLOBALS:
         globals()[name] = None
+    _device_caches.clear()
     _current_retention.clear()
+    from nlp.residency import reset_placement_devices
+
+    reset_placement_devices()
     # TASK-1049 F10: results derived from those models go with them.
     from nlp.services.ner_result_cache import reset_ner_result_cache
 
     reset_ner_result_cache()
 
 
-def _token_classifier_cache() -> ModelCache[TokenClassifier]:
-    if globals().get("_token_classifier_cache_instance") is None:
-        globals()["_token_classifier_cache_instance"] = ModelCache(
-            factory=_create_token_classifier, name="nlp_token_classifier", **_retention_kwargs()
-        )
-    return cast("ModelCache[TokenClassifier]", globals()["_token_classifier_cache_instance"])
+def _token_classifier_cache(device: str | None = None) -> ModelCache[TokenClassifier]:
+    return cast("ModelCache[TokenClassifier]", _cache_for("nlp_token_classifier", device))
 
 
-def _text_classifier_cache() -> ModelCache[TextClassifier]:
-    if globals().get("_text_classifier_cache_instance") is None:
-        globals()["_text_classifier_cache_instance"] = ModelCache(
-            factory=_create_text_classifier, name="nlp_text_classifier", **_retention_kwargs()
-        )
-    return cast("ModelCache[TextClassifier]", globals()["_text_classifier_cache_instance"])
+def _text_classifier_cache(device: str | None = None) -> ModelCache[TextClassifier]:
+    return cast("ModelCache[TextClassifier]", _cache_for("nlp_text_classifier", device))
 
 
-def _medical_suggester_cache() -> ModelCache[MedicalSuggester]:
-    if globals().get("_medical_suggester_cache_instance") is None:
-        globals()["_medical_suggester_cache_instance"] = ModelCache(
-            factory=_create_medical_suggester, name="nlp_medical_suggester", **_retention_kwargs()
-        )
-    return cast("ModelCache[MedicalSuggester]", globals()["_medical_suggester_cache_instance"])
+def _medical_suggester_cache(device: str | None = None) -> ModelCache[MedicalSuggester]:
+    return cast("ModelCache[MedicalSuggester]", _cache_for("nlp_medical_suggester", device))
 
 
-async def get_token_classifier_for(model_name: str) -> TokenClassifier:
+async def get_token_classifier_for(model_name: str, device: str | None = None) -> TokenClassifier:
     """Resolve (lazily loading) the token classifier for a required model name."""
-    return await _token_classifier_cache().get(model_name)
+    return await _token_classifier_cache(device).get(model_name)
 
 
-async def get_text_classifier_for(model_name: str) -> TextClassifier:
-    """Resolve (lazily loading) the doc-type text classifier for a required model name."""
+def _refuse_doc_type_sentinel(model_name: str) -> None:
     if model_name == UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL:
         # The placeholder sentinel is never a loadable model — the doc-type
         # classifier stays fail-closed until a real model is configured in DB.
         raise RuntimeError("the doc-type classifier placeholder sentinel is not a loadable model")
-    return await _text_classifier_cache().get(model_name)
 
 
-async def get_medical_suggester_for(model_name: str) -> MedicalSuggester:
+async def get_text_classifier_for(model_name: str, device: str | None = None) -> TextClassifier:
+    """Resolve (lazily loading) the doc-type text classifier for a required model name."""
+    _refuse_doc_type_sentinel(model_name)
+    return await _text_classifier_cache(device).get(model_name)
+
+
+async def get_medical_suggester_for(model_name: str, device: str | None = None) -> MedicalSuggester:
     """Resolve (lazily loading) the medical suggester for a required classification model."""
-    return await _medical_suggester_cache().get(model_name)
+    return await _medical_suggester_cache(device).get(model_name)
 
 
 # ---------------------------------------------------------------------------
@@ -453,11 +645,11 @@ async def pinned_token_classifier(
     # Pin the (model_name, model_path) slot; `model_path` defaults to
     # None so every existing caller keeps its exact slot and behaviour.
     key = _model_cache_key(model_name, model_path)
-    cache = _token_classifier_cache()
+    cache = cast("ModelCache[TokenClassifier]", _route("nlp_token_classifier", key))
     await cache.pin(key)
     try:
         try:
-            service = await get_token_classifier_for(key)
+            service = await cache.get(key)
         except Exception as e:
             raise ModelUnavailableError(str(e)) from e
         yield service
@@ -472,11 +664,12 @@ async def pinned_text_classifier(
     # Pin the (model_name, model_path) slot; `model_path` defaults to
     # None so every existing caller keeps its exact slot and behaviour.
     key = _model_cache_key(model_name, model_path)
-    cache = _text_classifier_cache()
+    cache = cast("ModelCache[TextClassifier]", _route("nlp_text_classifier", key))
     await cache.pin(key)
     try:
         try:
-            service = await get_text_classifier_for(key)
+            _refuse_doc_type_sentinel(key)
+            service = await cache.get(key)
         except Exception as e:
             raise ModelUnavailableError(str(e)) from e
         yield service
@@ -493,11 +686,11 @@ async def pinned_medical_suggester(
 ) -> AsyncIterator[MedicalSuggester]:
     # Pin the (disease model, NER model) slot — both selections are required.
     key = _suggester_cache_key(model_name, model_path, ner_model_name, ner_model_path)
-    cache = _medical_suggester_cache()
+    cache = cast("ModelCache[MedicalSuggester]", _route("nlp_medical_suggester", key))
     await cache.pin(key)
     try:
         try:
-            service = await get_medical_suggester_for(key)
+            service = await cache.get(key)
         except Exception as e:
             raise ModelUnavailableError(str(e)) from e
         yield service
@@ -516,9 +709,9 @@ async def pinned_medical_suggester(
 # ---------------------------------------------------------------------------
 
 
-async def _create_gliner2_guard(cache_key: str) -> Any:
+async def _create_gliner2_guard(cache_key: str, device: str | None = None) -> Any:
     from nlp.core.config import settings
-    from nlp.core.device import parse_cpu_only_modules, resolve_inference_device
+    from nlp.core.device import parse_cpu_only_modules
     from nlp.core.guard_model_reference import resolve_guard_weights_source
     from nlp.services.gliner2_guard import Gliner2GuardService
 
@@ -541,7 +734,7 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
         service = Gliner2GuardService(
             weights_source=weights_source,
             model_id=model_name,
-            device=resolve_inference_device(settings.service.inference_device),
+            device=_resolved_device(device),
             cpu_only_modules=parse_cpu_only_modules(
                 settings.service.inference_device_cpu_only_modules
             ),
@@ -550,12 +743,12 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
         await asyncio.to_thread(service.load)
         return service
 
-    # TASK-1047 C8: one resident copy per weight identity, shared with the
-    # token-classifier cache.
-    return await get_weight_registry().get_or_load((model_name, model_path), load)
+    # TASK-1047 C8: one resident copy per weight identity (and device), shared
+    # with the token-classifier cache.
+    return await get_weight_registry().get_or_load(_weight_key(cache_key, device), load)
 
 
-async def _create_seq_cls_guard(cache_key: str) -> Any:
+async def _create_seq_cls_guard(cache_key: str, device: str | None = None) -> Any:
     """The sequence-classification guard runtime (TASK-1049 R2).
 
     Same fail-closed reference resolution as `_create_gliner2_guard` — a staged
@@ -564,8 +757,6 @@ async def _create_seq_cls_guard(cache_key: str) -> Any:
     and a registry entry keyed only by `(model_name, model_path)` could hand a
     GLiNER2 slot this object (or the reverse) under a misconfigured row.
     """
-    from nlp.core.config import settings
-    from nlp.core.device import resolve_inference_device
     from nlp.core.guard_model_reference import resolve_guard_weights_source
     from nlp.services.seq_cls_guard import SeqClsGuardService
 
@@ -573,19 +764,17 @@ async def _create_seq_cls_guard(cache_key: str) -> Any:
     service = SeqClsGuardService(
         weights_source=resolve_guard_weights_source(model_name, model_path),
         model_id=model_name,
-        device=resolve_inference_device(settings.service.inference_device),
+        device=_resolved_device(device),
     )
     await asyncio.to_thread(service.load)
     return service
 
 
-async def _create_judge_guard(cache_key: str) -> Any:
+async def _create_judge_guard(cache_key: str, device: str | None = None) -> Any:
     """The generative guard judge (TASK-1050 §12, `qwen3guard_native`).
 
     Fail-closed reference resolution, exactly as the other guard runtimes.
     """
-    from nlp.core.config import settings
-    from nlp.core.device import resolve_inference_device
     from nlp.core.guard_model_reference import resolve_guard_weights_source
     from nlp.services.qwen3guard_judge import Qwen3GuardJudgeService
 
@@ -593,7 +782,7 @@ async def _create_judge_guard(cache_key: str) -> Any:
     service = Qwen3GuardJudgeService(
         weights_source=resolve_guard_weights_source(model_name, model_path),
         model_id=model_name,
-        device=resolve_inference_device(settings.service.inference_device),
+        device=_resolved_device(device),
     )
     await asyncio.to_thread(service.load)
     return service
@@ -607,8 +796,9 @@ async def _create_judge_guard(cache_key: str) -> Any:
 _pending_entailment_calibration: dict[str, Any] = {}
 
 
-async def _create_entailment_scorer(cache_key: str) -> Any:
+async def _create_entailment_scorer(cache_key: str, device: str | None = None) -> Any:
     from nlp.core.config import settings
+    from nlp.core.device import cuda_index
     from nlp.services.entailment_scorer import MiniCheckLoadSpec, load_minicheck_scorer
 
     model_name, model_path = _split_cache_key(cache_key)
@@ -616,46 +806,41 @@ async def _create_entailment_scorer(cache_key: str) -> Any:
     # path comes from the caller's registry row, not from an env var here. The
     # calibration comes from that same row — absent ⇒ `load_minicheck_scorer`
     # refuses (fail-closed), it does not substitute a MiniCheck default.
+    # Host fact, like `inference_device` (TASK-1031): 0 on the CPU image.
+    n_gpu_layers = settings.service.entailment_n_gpu_layers
+    main_gpu: int | None = None
+    if device is not None:
+        # TASK-1055: an explicit placement pins the WHOLE model to that card
+        # (llama.cpp would otherwise split layers across every visible GPU);
+        # an explicit `cpu` offloads nothing.
+        placed = _resolved_device(device)
+        main_gpu = cuda_index(placed)
+        if main_gpu is None:
+            n_gpu_layers = 0
     spec = MiniCheckLoadSpec(
         model_id=model_name,
         model_path=model_path,
         calibration=_pending_entailment_calibration.pop(cache_key, None),
-        # Host fact, like `inference_device` (TASK-1031): 0 on the CPU image.
-        n_gpu_layers=settings.service.entailment_n_gpu_layers,
+        n_gpu_layers=n_gpu_layers,
+        main_gpu=main_gpu,
     )
     return await asyncio.to_thread(load_minicheck_scorer, spec)
 
 
-def _gliner2_guard_cache() -> ModelCache[Any]:
-    if globals().get("_gliner2_guard_cache_instance") is None:
-        globals()["_gliner2_guard_cache_instance"] = ModelCache(
-            factory=_create_gliner2_guard, name="nlp_gliner2_guard", **_retention_kwargs()
-        )
-    return cast("ModelCache[Any]", globals()["_gliner2_guard_cache_instance"])
+def _gliner2_guard_cache(device: str | None = None) -> ModelCache[Any]:
+    return _cache_for("nlp_gliner2_guard", device)
 
 
-def _seq_cls_guard_cache() -> ModelCache[Any]:
-    if globals().get("_seq_cls_guard_cache_instance") is None:
-        globals()["_seq_cls_guard_cache_instance"] = ModelCache(
-            factory=_create_seq_cls_guard, name="nlp_seq_cls_guard", **_retention_kwargs()
-        )
-    return cast("ModelCache[Any]", globals()["_seq_cls_guard_cache_instance"])
+def _seq_cls_guard_cache(device: str | None = None) -> ModelCache[Any]:
+    return _cache_for("nlp_seq_cls_guard", device)
 
 
-def _judge_guard_cache() -> ModelCache[Any]:
-    if globals().get("_judge_guard_cache_instance") is None:
-        globals()["_judge_guard_cache_instance"] = ModelCache(
-            factory=_create_judge_guard, name="nlp_judge_guard", **_retention_kwargs()
-        )
-    return cast("ModelCache[Any]", globals()["_judge_guard_cache_instance"])
+def _judge_guard_cache(device: str | None = None) -> ModelCache[Any]:
+    return _cache_for("nlp_judge_guard", device)
 
 
-def _entailment_scorer_cache() -> ModelCache[Any]:
-    if globals().get("_entailment_scorer_cache_instance") is None:
-        globals()["_entailment_scorer_cache_instance"] = ModelCache(
-            factory=_create_entailment_scorer, name="nlp_entailment_scorer", **_retention_kwargs()
-        )
-    return cast("ModelCache[Any]", globals()["_entailment_scorer_cache_instance"])
+def _entailment_scorer_cache(device: str | None = None) -> ModelCache[Any]:
+    return _cache_for("nlp_entailment_scorer", device)
 
 
 @asynccontextmanager
@@ -664,7 +849,7 @@ async def pinned_gliner2_guard(
 ) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the GLiNER2 guard runtime for one request."""
     key = _model_cache_key(model_name, model_path)
-    cache = _gliner2_guard_cache()
+    cache = _route("nlp_gliner2_guard", key)
     await cache.pin(key)
     try:
         try:
@@ -682,7 +867,7 @@ async def pinned_seq_cls_guard(
 ) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the sequence-classification guard for one request."""
     key = _model_cache_key(model_name, model_path)
-    cache = _seq_cls_guard_cache()
+    cache = _route("nlp_seq_cls_guard", key)
     await cache.pin(key)
     try:
         try:
@@ -698,7 +883,7 @@ async def pinned_seq_cls_guard(
 async def pinned_judge_guard(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the generative guard judge for one request."""
     key = _model_cache_key(model_name, model_path)
-    cache = _judge_guard_cache()
+    cache = _route("nlp_judge_guard", key)
     await cache.pin(key)
     try:
         try:
@@ -730,7 +915,7 @@ async def pinned_entailment_scorer(
     key = _entailment_cache_key(model_name, model_path, calibration)
     if calibration is not None:
         _pending_entailment_calibration[key] = calibration
-    cache = _entailment_scorer_cache()
+    cache = _route("nlp_entailment_scorer", key)
     await cache.pin(key)
     try:
         try:
