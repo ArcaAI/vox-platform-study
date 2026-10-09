@@ -1,5 +1,6 @@
 import { EffectiveSettingsModule } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
+import { SettingsActionConfirmationsController } from './settings-action-confirmations.controller';
 import { SettingsCatalogController } from './settings-catalog.controller';
 import { SettingsFeaturesController } from './settings-features.controller';
 import { SettingsRegistryWriteController } from './settings-registry-write.controller';
@@ -20,6 +21,8 @@ import { SettingsRegistryWriteController } from './settings-registry-write.contr
   // `SettingsFeaturesController` adds the TASK-932 feature-availability plane
   // (`admin/settings/features/*`). Same registered-before-GlobalSettingModule
   // mechanism as the other two, so the static segment wins over `:id`.
-  controllers: [SettingsCatalogController, SettingsRegistryWriteController, SettingsFeaturesController],
+  // `SettingsActionConfirmationsController` adds the TASK-1057 action-confirmation policy
+  // (`admin/settings/action-confirmations*`), same mechanism.
+  controllers: [SettingsCatalogController, SettingsRegistryWriteController, SettingsFeaturesController, SettingsActionConfirmationsController],
 })
 export class SettingsCatalogModule {}
