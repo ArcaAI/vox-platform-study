@@ -289,6 +289,24 @@ def test_the_entailment_factory_pins_llama_cpp_to_the_requested_gpu(
     assert [spec.main_gpu for spec in specs] == [1, None]
 
 
+def test_an_unplaced_gpu_entailment_load_stays_on_the_first_gpu(
+    two_gpus: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With CUDA_VISIBLE_DEVICES=0,1 llama.cpp would split an unplaced load over both
+    # cards; a GPU-offloaded load nobody placed stays whole on cuda:0.
+    import nlp.dependencies as deps
+    from nlp.core.config import settings
+    from nlp.services import entailment_scorer
+
+    specs: list[Any] = []
+    monkeypatch.setattr(entailment_scorer, "load_minicheck_scorer", specs.append)
+    monkeypatch.setattr(settings.service, "entailment_n_gpu_layers", -1)
+
+    _run(deps._create_entailment_scorer("minicheck\x00/models/m.gguf"))
+
+    assert specs[0].main_gpu == 0
+
+
 def test_load_minicheck_passes_main_gpu_and_no_split(monkeypatch: pytest.MonkeyPatch) -> None:
     from nlp.services import entailment_scorer as module
 

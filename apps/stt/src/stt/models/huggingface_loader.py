@@ -219,6 +219,10 @@ class HuggingFaceLoader(BaseModelLoader):
         # TASK-1055 — a placed load (`cuda:<i>`) maps the WHOLE model onto that card;
         # "auto" would spread it over every GPU the process sees.
         _index = cuda_index(device)
+        if _index is None and str(device).startswith("cuda"):
+            # An unplaced GPU load stays whole on the first card: with both GPUs
+            # visible, "auto" would split it across them.
+            _index = 0
         _device_map: Any = "auto" if _index is None else {"": _index}
         _device_map_kwargs: dict[str, Any] = {"device_map": _device_map} if _has_accelerate else {}
 

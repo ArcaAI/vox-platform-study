@@ -817,6 +817,10 @@ async def _create_entailment_scorer(cache_key: str, device: str | None = None) -
         main_gpu = cuda_index(placed)
         if main_gpu is None:
             n_gpu_layers = 0
+    elif n_gpu_layers != 0:
+        # An unplaced GPU-offloaded load stays whole on the first card: with both
+        # GPUs visible, llama.cpp would otherwise split its layers across them.
+        main_gpu = 0
     spec = MiniCheckLoadSpec(
         model_id=model_name,
         model_path=model_path,

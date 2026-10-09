@@ -191,10 +191,21 @@ def test_transformers_on_a_named_gpu_maps_every_layer_to_it() -> None:
     assert kwargs["device_map"] == {"": 1}
 
 
-def test_transformers_without_a_named_gpu_keeps_device_map_auto() -> None:
+def test_transformers_on_bare_cuda_stays_on_the_first_gpu() -> None:
+    # With CUDA_VISIBLE_DEVICES=0,1 "auto" would spread a default load over both
+    # cards; a load nobody placed stays on cuda:0, as before GPU 1 was visible.
     tf = _fake_transformers()
 
     _load_by_task("cuda", tf)
+
+    kwargs = tf.WhisperForConditionalGeneration.from_pretrained.call_args.kwargs
+    assert kwargs["device_map"] == {"": 0}
+
+
+def test_transformers_on_cpu_keeps_device_map_auto() -> None:
+    tf = _fake_transformers()
+
+    _load_by_task("cpu", tf)
 
     kwargs = tf.WhisperForConditionalGeneration.from_pretrained.call_args.kwargs
     assert kwargs["device_map"] == "auto"
