@@ -539,9 +539,9 @@ def _serving_key(slot: str, key: str) -> str:
     keyed `name` cold-loaded a second one. Such a request is served by the resident
     (or in-flight) copy of the same `model_name` when exactly ONE path variant of it
     exists on any device; with none, or with two that disagree, it keeps its own
-    key. A request that names a path is never aliased: a different path is
-    different weights, and a name-only copy's weights are whatever the id resolved
-    to, which this service cannot prove equal to the named path.
+    key. A request that names a path is never aliased HERE: a different path is
+    different weights. The reverse direction — a name-only copy whose weights are
+    proven to be the named path — is `_reverse_alias` (follow-up), via `_request_key`.
     """
     if slot not in _WEIGHT_KEYED_SLOTS or _KEY_SEP in key:
         return key
@@ -566,6 +566,115 @@ def _in_flight(cache: ModelCache[Any], key: str) -> bool:
     the window a racing request must see.
     """
     return key in getattr(cache, "_inflight", {})
+
+
+def _slot_caches(slot: str) -> list[ModelCache[Any]]:
+    """Every cache of ``slot``: the default device's (built if needed), then the placed ones."""
+    return [_cache_for(slot)] + [c for (s, _d), c in _device_caches.items() if s == slot]
+
+
+def _holds(caches: list[ModelCache[Any]], key: str) -> bool:
+    return any(key in c.cached_keys() or _in_flight(c, key) for c in caches)
+
+
+#: Slots whose factory resolves weights fail-closed (`resolve_guard_weights_source`).
+_GUARD_SLOTS = frozenset({"nlp_gliner2_guard", "nlp_seq_cls_guard", "nlp_judge_guard"})
+
+
+def _hub_snapshot_dir(repo_id: str) -> Path | None:
+    """The local hub snapshot ``from_pretrained(repo_id)`` loads: `refs/main` in the hub cache.
+
+    The same cache the runtimes read (`huggingface_hub.constants.HF_HUB_CACHE`, which
+    honours `HF_HUB_CACHE` / `HF_HOME`). None when the repo has no resolved `main`
+    snapshot on disk — nothing is downloaded and nothing is guessed.
+    """
+    try:
+        from huggingface_hub import constants
+        from huggingface_hub.file_download import repo_folder_name
+
+        repo = Path(constants.HF_HUB_CACHE) / repo_folder_name(repo_id=repo_id, repo_type="model")
+        revision = (repo / "refs" / "main").read_text(encoding="utf-8").strip()
+    except Exception:  # noqa: BLE001 — an invalid id or no cache entry: unprovable
+        return None
+    snapshot = repo / "snapshots" / revision
+    return snapshot.resolve() if revision and snapshot.is_dir() else None
+
+
+def _as_weights_dir(source: str) -> Path | None:
+    """The real directory ``source`` (what a factory hands `from_pretrained`) names."""
+    from nlp.core.guard_model_reference import is_local_reference
+
+    if source.startswith("s3://"):
+        # Materialised into the service cache by the resolver; not provable from here.
+        return None
+    if source.startswith("file://"):
+        path = Path(source[len("file://") :])
+    elif is_local_reference(source):
+        path = Path(source).expanduser()
+    else:
+        return _hub_snapshot_dir(source)
+    resolved = path.resolve()
+    return resolved if resolved.is_dir() else None
+
+
+def _weights_dir(slot: str, model_name: str, model_path: str | None) -> Path | None:
+    """What the ``slot`` factory would load for ``(model_name, model_path)``, as a real dir.
+
+    The factories' own resolution: the guard slots go through the fail-closed
+    `resolve_guard_weights_source` (an unusable path raises → None); the others take
+    a staged path only when it exists (`_weights_source`). A pathed identity whose
+    path is missing is None, never the name's fallback: its weights are not that path.
+    """
+    if slot in _GUARD_SLOTS:
+        from nlp.core.guard_model_reference import resolve_guard_weights_source
+
+        try:
+            source = resolve_guard_weights_source(model_name, model_path)
+        except Exception:  # noqa: BLE001 — GuardModelReferenceError: unprovable
+            return None
+    elif model_path:
+        source = model_path if Path(model_path).exists() else ""
+    else:
+        source = (model_name or "").strip()
+    return _as_weights_dir(source) if source else None
+
+
+def _same_weights(slot: str, model_name: str, model_path: str) -> bool:
+    """Whether the name-only copy of ``model_name`` holds exactly the weights at ``model_path``."""
+    pathed = _weights_dir(slot, model_name, model_path)
+    return pathed is not None and pathed == _weights_dir(slot, model_name, None)
+
+
+async def _reverse_alias(slot: str, key: str, caches: list[ModelCache[Any]]) -> str:
+    """``name+P`` → ``name`` when a name-only copy in ``caches`` holds the weights at P.
+
+    TASK-1055 follow-up (owner): a live clinical request (name only) that loaded the
+    model first must not make the console's later `(name, path)` load a second copy.
+    The name-only copy (resident or in flight) serves it only when its weights are
+    PROVEN to be P (`_same_weights`); a resident or in-flight `name+P` copy always
+    wins, and every other case keeps its own key.
+    """
+    if slot not in _WEIGHT_KEYED_SLOTS or _KEY_SEP not in key or _holds(caches, key):
+        return key
+    model_name, model_path = _split_cache_key(key)
+    if not model_path or not _holds(caches, model_name):
+        return key
+    # Filesystem reads (a mounted bucket on the cluster) — off the event loop.
+    same = await asyncio.to_thread(_same_weights, slot, model_name, model_path)
+    return model_name if same else key
+
+
+async def _request_key(slot: str, key: str) -> str:
+    """The key a REQUEST for ``key`` is served under, in either direction.
+
+    Forward (`_serving_key`): a name-only request joins the one resident path variant.
+    Reverse (`_reverse_alias`): a pathed request joins a name-only copy of those
+    weights, on any device (the same reach `_route` has).
+    """
+    forward = _serving_key(slot, key)
+    if forward != key:
+        return forward
+    return await _reverse_alias(slot, key, _slot_caches(slot))
 
 
 def _live_caches() -> list[ModelCache[Any]]:
@@ -709,7 +818,7 @@ async def pinned_token_classifier(
 ) -> AsyncIterator[TokenClassifier]:
     # Pin the (model_name, model_path) slot; `model_path` defaults to
     # None so every existing caller keeps its exact slot and behaviour.
-    key = _serving_key("nlp_token_classifier", _model_cache_key(model_name, model_path))
+    key = await _request_key("nlp_token_classifier", _model_cache_key(model_name, model_path))
     cache = cast("ModelCache[TokenClassifier]", _route("nlp_token_classifier", key))
     await cache.pin(key)
     try:
@@ -728,7 +837,7 @@ async def pinned_text_classifier(
 ) -> AsyncIterator[TextClassifier]:
     # Pin the (model_name, model_path) slot; `model_path` defaults to
     # None so every existing caller keeps its exact slot and behaviour.
-    key = _serving_key("nlp_text_classifier", _model_cache_key(model_name, model_path))
+    key = await _request_key("nlp_text_classifier", _model_cache_key(model_name, model_path))
     cache = cast("ModelCache[TextClassifier]", _route("nlp_text_classifier", key))
     await cache.pin(key)
     try:
@@ -917,7 +1026,7 @@ async def pinned_gliner2_guard(
     model_name: str, model_path: str | None = None
 ) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the GLiNER2 guard runtime for one request."""
-    key = _serving_key("nlp_gliner2_guard", _model_cache_key(model_name, model_path))
+    key = await _request_key("nlp_gliner2_guard", _model_cache_key(model_name, model_path))
     cache = _route("nlp_gliner2_guard", key)
     await cache.pin(key)
     try:
@@ -935,7 +1044,7 @@ async def pinned_seq_cls_guard(
     model_name: str, model_path: str | None = None
 ) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the sequence-classification guard for one request."""
-    key = _serving_key("nlp_seq_cls_guard", _model_cache_key(model_name, model_path))
+    key = await _request_key("nlp_seq_cls_guard", _model_cache_key(model_name, model_path))
     cache = _route("nlp_seq_cls_guard", key)
     await cache.pin(key)
     try:
@@ -951,7 +1060,7 @@ async def pinned_seq_cls_guard(
 @asynccontextmanager
 async def pinned_judge_guard(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the generative guard judge for one request."""
-    key = _serving_key("nlp_judge_guard", _model_cache_key(model_name, model_path))
+    key = await _request_key("nlp_judge_guard", _model_cache_key(model_name, model_path))
     cache = _route("nlp_judge_guard", key)
     await cache.pin(key)
     try:
