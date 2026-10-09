@@ -28,7 +28,7 @@
 // substituted — when they do not match.
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { type AiModelEntity, AiModelRepository } from '@arcaai/domains';
+import { type AiModelEntity, AiModelRepository, ResourceStatusType } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import type { AiModelServingProfile } from '@arcaai/types';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
@@ -491,7 +491,41 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       }
     }
 
-    return { defaults: context.defaults, preload };
+    return { defaults: context.defaults, preload, profiles: await this.resolveProfiles(context) };
+  }
+
+  /**
+   * TASK-1055 wave 3 (G1) — a profile for EVERY enabled SYSTEM lm-studio row, resolved with
+   * `lmStudioPreloadEntryFor` like `preload`. Unlike `preload` (served as resolved), a row whose
+   * profile has problems is SKIPPED: an on-request load must not apply a profile nobody can
+   * vouch for, and the agent then answers `MODEL_UNKNOWN` and LM Studio JIT-loads as before.
+   * A failed read is an empty list, never a failed pull.
+   */
+  private async resolveProfiles(context: LmStudioServingContext): Promise<EffectiveLmStudioPreload[]> {
+    if (!this.aiModelRepository) return [];
+    let rows: AiModelEntity[];
+    try {
+      rows = await this.aiModelRepository.findAll({
+        filters: { tenantId: SYSTEM_TENANT_ID, provider: LM_STUDIO_PROVIDER, resourceStatus: ResourceStatusType.ENABLED } as never,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'LM Studio profile rows could not be read — no profiles served',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+
+    const bySlug = new Map<string, EffectiveLmStudioPreload>();
+    for (const row of rows) {
+      const { entry, problems } = lmStudioPreloadEntryFor(row, context);
+      if (problems.length > 0) {
+        this.logger.warn({ message: 'LM Studio profile is incoherent — skipped', slug: row.slug, problems });
+        continue;
+      }
+      if (!bySlug.has(entry.slug)) bySlug.set(entry.slug, entry);
+    }
+    return [...bySlug.values()].sort((a, b) => a.slug.localeCompare(b.slug));
   }
 
   /** One `lmStudio.serving.*` key, falling back to its declared default when unresolved. */

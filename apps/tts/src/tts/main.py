@@ -306,6 +306,12 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(speech_router, prefix="/api/v1")
     app.include_router(stream_ws_router, prefix="/api/v1")
 
+    # TASK-1055 wave 3 — the model-residency agent the gateway controller drives
+    # (`/internal/residency/*`, service-token gated like every non-exempt route).
+    from tts.residency.agent import residency_router
+
+    app.include_router(residency_router(app.state))
+
     # Logging, request-context/access-log middlewares and tracing (TASK-987).
     # Logging and the middlewares are ALWAYS configured; tracing activates
     # only when the resolved config carries an OTLP endpoint (never require a

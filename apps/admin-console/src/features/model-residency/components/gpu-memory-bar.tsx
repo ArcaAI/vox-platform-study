@@ -12,6 +12,7 @@ export const SERVICE_SWATCH: Record<string, string> = {
   'stt-worker': 'bg-chart-3',
   'lm-studio': 'bg-chart-2',
   nlp: 'bg-chart-4',
+  tts: 'bg-chart-5',
 };
 const FALLBACK_SWATCH = 'bg-chart-5';
 
@@ -20,6 +21,7 @@ export const SERVICE_LEGEND_LABEL: Record<string, string> = {
   'stt-worker': 'Batch speech-to-text',
   'lm-studio': 'LM Studio',
   nlp: 'Medical NLP',
+  tts: 'Text-to-speech',
 };
 
 /** Diagonal stripes over the swatch: the non-colour cue for an estimate / the unattributed remainder. */

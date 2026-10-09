@@ -224,6 +224,12 @@ export interface EffectiveLmStudioPreload {
 export interface EffectiveLmStudioServingPlan {
   defaults: EffectiveLmStudioServingDefaults;
   preload: EffectiveLmStudioPreload[];
+  /**
+   * TASK-1055 wave 3 (G1) — one entry per ENABLED SYSTEM lm-studio model, resolved exactly like
+   * `preload`. The agent loads an on-request (`ensure`) model with it instead of LM Studio's own
+   * JIT defaults. A row whose profile has coherence problems is left out (warned).
+   */
+  profiles: EffectiveLmStudioPreload[];
 }
 
 /** Served to `text` — the one number its lm-studio lanes (user + judge) are sized by. */

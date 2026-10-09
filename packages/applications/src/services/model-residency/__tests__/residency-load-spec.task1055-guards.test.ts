@@ -3,6 +3,7 @@ import { AUDIO_AI_MODELS } from '../../../../../database/src/prisma/db_main/seed
 import { NLP_AI_MODELS } from '../../../../../database/src/prisma/db_main/seed/ai-models/nlp';
 import { SYSTEM_TASK_DEFAULT_ROUTING } from '../../../../../database/src/prisma/db_main/seed/16-ai-routing-policy';
 import { derivedLocalPath } from '../../ai-model/constants';
+import { AgentResolverService } from '../../agent/agent-resolver.service';
 import { ResidencyLoadSpecBuilder, ResidencyLoadSpecError, loadBlockedReasonFor } from '../residency-load-spec.builder';
 
 /**
@@ -32,26 +33,20 @@ function policies(rows: Row[]) {
 }
 
 /** The repositories the builder reads, honouring every filter it sends (servedBy included: an LM Studio row is not nlp's). */
-function build(rows: Row[], agents: Array<{ tenantId: string; slug: string; modelId: string }> = []) {
+function build(rows: Row[]) {
   const matches = (m: Row, filters: Record<string, unknown>) =>
     Object.entries(filters).every(([key, want]) => {
       if (want && typeof want === 'object' && 'in' in (want as object)) return ((want as { in: unknown[] }).in ?? []).includes(m[key]);
       if (want && typeof want === 'object' && 'not' in (want as object)) return m[key] !== (want as { not: unknown }).not;
       return m[key] === want;
     });
-  const aiModels = { findAll: async ({ filters }: { filters: Record<string, unknown> }) => rows.filter((m) => matches(m, filters)) };
-  const agentRepo = {
-    findAll: async ({ filters }: { filters: Record<string, unknown> }) =>
-      agents.filter((a) => (filters.modelId as { in: string[] }).in.includes(a.modelId)),
-  };
-  const asr = {
-    resolve: async ({ agentSlug }: { agentSlug: string }) => {
-      const agent = agents.find((a) => a.slug === agentSlug)!;
-      return { spec: { models: { asr: { slug: rows.find((r) => r.id === agent.modelId)!.slug } } } };
-    },
+  const aiModels = {
+    findAll: async ({ filters }: { filters: Record<string, unknown> }) => rows.filter((m) => matches(m, filters)),
+    findBySlug: async (tenantId: string, slug: string) => rows.find((m) => m.tenantId === tenantId && m.slug === slug) ?? null,
   };
   const routing = { findCandidates: async (_t: string[], taskKey: string) => policies(rows).filter((p) => p.taskKey === taskKey) };
-  return new ResidencyLoadSpecBuilder({ read: async () => [] } as never, agentRepo as never, aiModels as never, asr as never, routing as never);
+  const agentModels = new AgentResolverService({} as never, {} as never, aiModels as never, {} as never);
+  return new ResidencyLoadSpecBuilder(aiModels as never, routing as never, agentModels);
 }
 
 const refusal = async (promise: Promise<unknown>): Promise<ResidencyLoadSpecError> => {
@@ -132,18 +127,16 @@ describe('generative judges → nlp_judge_guard (an nlp-served row declaring `_m
   });
 });
 
-describe('stt stage models are loaded with an ASR agent, never on their own', () => {
-  it('Silero VAD is refused by name (LOAD_FAILED), not reported as an unknown model', async () => {
-    const vad = seed('silero-vad');
-    const error = await refusal(build([vad]).build('stt', 'silero-vad'));
-    expect(error.code).toBe('LOAD_FAILED');
-    expect(error.message).toMatch(/speech-to-text agent/);
+describe('stt stage models load on their own — the model-only spec (TASK-1055 wave 3, W3-2)', () => {
+  it('Silero VAD builds {model} in the vad role, no agent consulted', async () => {
+    const spec = (await build([seed('silero-vad')]).build('stt', 'silero-vad')) as { model: Record<string, unknown> };
+    expect(spec.model).toMatchObject({ role: 'vad', slug: 'silero-vad', taskType: 'VOICE_ACTIVITY_DETECTION' });
   });
 
-  it('an ASR row a published agent names still builds its resolved spec', async () => {
+  it('an ASR row builds {model} in the asr role, whether or not a published agent names it', async () => {
     const asr = seed('arcaai-whisper-large-ml-en-gguf');
-    const spec = await build([asr], [{ tenantId: SYSTEM, slug: 'realtime-transcription', modelId: asr.id }]).build('stt', asr.slug);
-    expect(spec).toEqual({ resolved_spec: { models: { asr: { slug: asr.slug } } } });
+    const spec = (await build([asr]).build('stt', asr.slug)) as { model: Record<string, unknown> };
+    expect(spec.model).toMatchObject({ role: 'asr', slug: asr.slug, localPath: derivedLocalPath(asr as never) });
   });
 });
 
@@ -162,14 +155,17 @@ describe('loadBlockedReasonFor — the reasons the catalogue can state before a 
     expect(loadBlockedReasonFor('nlp', seed('minicheck-flan-t5-large', { bucketPrefix: 'nlp/m', primaryObject: 'm.gguf' }))).toBeNull();
   });
 
-  it('names the missing calibration, the unsupported judge protocol and the stage-model rule', () => {
+  it('stt stage rows are no longer refused (they load on their own)', () => {
+    expect(loadBlockedReasonFor('stt', seed('silero-vad'))).toBeNull();
+    expect(loadBlockedReasonFor('stt', seed('ecapa-tdnn-voxceleb'))).toBeNull();
+  });
+
+  it('names the missing calibration and the unsupported judge protocol', () => {
     expect(loadBlockedReasonFor('nlp', seed('minicheck-flan-t5-large', { bucketPrefix: 'nlp/m', metaData: { entailment: 'x' } }))).toMatch(
       /_metadata\.entailment/,
     );
     expect(loadBlockedReasonFor('nlp', seed('qwen3guard-gen-0.6b', { servedBy: 'nlp', metaData: { judge: { protocol: 'criteria_json' } } }))).toMatch(
       /qwen3guard_native/,
     );
-    expect(loadBlockedReasonFor('stt', seed('silero-vad'))).toMatch(/speech-to-text agent/);
-    expect(loadBlockedReasonFor('stt', seed('ecapa-tdnn-voxceleb'))).toMatch(/speech-to-text agent/);
   });
 });

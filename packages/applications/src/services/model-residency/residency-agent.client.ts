@@ -6,8 +6,8 @@ import type { ReportedDevice, ReportedLoadConfig, ReportedResidentModel, Residen
 
 /**
  * TASK-1005 — the gateway's client for the residency AGENT every model-serving
- * Python process mounts (`hope_runtime_models.residency_api`, today in `stt` and
- * `nlp`). Wire contract: `tests/contracts/model-residency-agent.fixture.json`
+ * Python process mounts (`hope_runtime_models.residency_api`, today in `stt`,
+ * `nlp` and — TASK-1055 wave 3 — `tts`, at `TTS_URL`). Wire contract: `tests/contracts/model-residency-agent.fixture.json`
  * → `python` (snake_case); this client hands the controller the camelCase
  * `gateway` shape.
  *
@@ -34,7 +34,7 @@ import type { ReportedDevice, ReportedLoadConfig, ReportedResidentModel, Residen
  * commands it.
  */
 
-export type ResidencyAgentService = 'stt' | 'nlp' | 'lm-studio';
+export type ResidencyAgentService = 'stt' | 'nlp' | 'lm-studio' | 'tts';
 
 export type ResidencyAgentErrorCode =
   | 'MODEL_UNKNOWN'
@@ -131,7 +131,7 @@ export interface AgentPolicyRequest {
 }
 
 /** Where each agent lives — env-tier bootstrap transport addresses (`IConfigService`). */
-const URL_KEYS: Record<ResidencyAgentService, string> = { stt: 'STT_URL', nlp: 'NLP_URL', 'lm-studio': 'LMSTUDIO_AGENT_URL' };
+const URL_KEYS: Record<ResidencyAgentService, string> = { stt: 'STT_URL', nlp: 'NLP_URL', 'lm-studio': 'LMSTUDIO_AGENT_URL', tts: 'TTS_URL' };
 
 /** A report is cheap; it must never hold up the 10 s decision tick. */
 const REPORT_TIMEOUT_MS = 3_000;

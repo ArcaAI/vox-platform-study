@@ -148,6 +148,7 @@ const SERVICE_META: Record<(typeof CATALOGUE_SERVICES)[number], { label: string;
   'stt-worker': { label: 'Speech-to-text — batch jobs', runsOn: 'gpu' },
   'lm-studio': { label: 'Language models (LM Studio)', runsOn: 'gpu' },
   nlp: { label: 'Medical NLP — entities and classification', runsOn: 'cpu' },
+  tts: { label: 'Text-to-speech', runsOn: 'cpu' },
 };
 
 const STATUS_ORDER: Record<CatalogueModelStatus, number> = { loaded: 0, loading: 1, unloading: 2, failed: 3, not_loaded: 4 };

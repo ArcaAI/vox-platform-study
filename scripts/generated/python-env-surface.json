@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 364,
+  "distinctNames": 370,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -213,6 +213,18 @@
           "dataType": "string",
           "default": "guardrail",
           "description": ""
+        },
+        {
+          "name": "GUARDRAIL_WINDOW_CACHE_KEY",
+          "aliases": [],
+          "class": "Settings",
+          "field": "window_cache_key",
+          "prefix": "GUARDRAIL_V2_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "Window-verdict cache key (TASK-1047 FC-7) A platform `vault-kv` secret: the HMAC root from which each tenant's cache key is derived (`services/window_cache.py`). Unprefixed on purpose, like the token above. ABSENT (or the unfilled sentinel) \u21d2 the cache is DISABLED and every window is computed \u2014 it is never a reason to skip a screen. Rotating it colds the cache; it can never produce a wrong verdict."
         },
         {
           "name": "INTERNAL_ACCESS_TOKEN",
@@ -2932,6 +2944,18 @@
           "description": "Maximum number of concurrent streaming sessions. 0 = auto-detect from ExecutionProfile based on hardware. Bootstrap fallback \u2014 the runtime value comes from the control plane (effective-config), applied after hardware detection."
         },
         {
+          "name": "STREAMING_PAUSE_MAX_S__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "streaming_pause_max_s",
+          "prefix": "",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 600,
+          "description": "Seconds a streaming session may stay capture-PAUSED before the reaper publishes `pause_expired` and finalizes it. A paused session is exempt from the audio-idle reap until then."
+        },
+        {
           "name": "STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
@@ -3368,6 +3392,18 @@
           "dataType": "string",
           "default": "http://localhost:8868/api/v1",
           "description": "bootstrap transport Where the control plane lives. This is the ADDRESS of the config source, not config authority: everything the route serves is itself control-plane owned. Env var: TEXT_GATEWAY_URL."
+        },
+        {
+          "name": "TEXT_LMSTUDIO_AGENT_URL",
+          "aliases": [],
+          "class": "Settings",
+          "field": "lmstudio_agent_url",
+          "prefix": "TEXT_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "http://localhost:8869",
+          "description": "Env var: TEXT_LMSTUDIO_AGENT_URL. The LM Studio residency agent that is asked to ensure a model is loaded before Text sends it a request (TASK-1055 wave 3). Empty = feature off (LM Studio JIT-loads as before)."
         },
         {
           "name": "TEXT_LOG_LEVEL",
@@ -3903,6 +3939,18 @@
     ],
     "HF_HUB_DISABLE_IMPLICIT_TOKEN": [
       "apps/vllm/src/hope_vllm/main.py"
+    ],
+    "HF_TOKEN": [
+      "apps/nlp/scripts/injection_eval/build_guardrail_sets.py",
+      "apps/nlp/scripts/injection_eval/build_public_sets.py"
+    ],
+    "HOPE_1049_ALLOW_MODEL_LOAD": [
+      "apps/nlp/scripts/pii_eval/detectors.py"
+    ],
+    "HOPE_PERF_TENANT_ID": [
+      "apps/nlp/scripts/bench_guard_memory.py",
+      "scripts/perf/screening-load/screening_load.py",
+      "scripts/perf/screening-replay/screening_replay.py"
     ],
     "HOPE_SECRETS_DIR": [
       "packages/py-env/src/hope_env/settings_sources.py"

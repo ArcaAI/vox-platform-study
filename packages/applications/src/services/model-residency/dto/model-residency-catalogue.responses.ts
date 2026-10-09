@@ -25,7 +25,7 @@ import { ModelResidencyFreshness } from './model-residency.responses';
  * or not, grouped by the workload that runs it.
  */
 
-const SERVICES = ['stt', 'stt-worker', 'lm-studio', 'nlp'];
+const SERVICES = ['stt', 'stt-worker', 'lm-studio', 'nlp', 'tts'];
 
 export class ModelResidencyDeviceModel {
   @ApiProperty({ enum: SERVICES }) service!: ResidencyServiceName;
@@ -268,7 +268,7 @@ export class ModelResidencyCatalogueResponse {
   @ApiProperty() reportedAt!: string;
   @ApiProperty({ type: ModelResidencyFreshness }) freshness!: ModelResidencyFreshness;
   @ApiProperty({ type: [ModelResidencyCatalogueDevice] }) devices!: ModelResidencyCatalogueDevice[];
-  @ApiProperty({ type: [ModelResidencyCatalogueService], description: 'Always four groups, in this order: stt, stt-worker, lm-studio, nlp.' })
+  @ApiProperty({ type: [ModelResidencyCatalogueService], description: 'Always five groups, in this order: stt, stt-worker, lm-studio, nlp, tts.' })
   services!: ModelResidencyCatalogueService[];
   @ApiProperty({
     type: [ModelResidencySuggestion],

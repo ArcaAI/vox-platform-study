@@ -138,8 +138,8 @@ describe('loadBlockedReason — why the console cannot load a model, stated on t
     expect(find(buildResidencyCatalogue(input({ catalogue: [published] })), MINICHECK.id)).not.toHaveProperty('loadBlockedReason');
   });
 
-  it('an stt stage model (Silero VAD) names the ASR-agent rule', () => {
-    expect(find(buildResidencyCatalogue(input()), VAD.id).loadBlockedReason).toMatch(/speech-to-text agent/);
+  it('an stt stage model (Silero VAD) is no longer blocked: it loads on its own (TASK-1055 wave 3)', () => {
+    expect(find(buildResidencyCatalogue(input()), VAD.id)).not.toHaveProperty('loadBlockedReason');
   });
 
   it('a resident model is never "blocked" (its action is unload)', () => {
