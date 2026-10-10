@@ -145,6 +145,21 @@ describe('agent publish — authoring-time screening (OD-4)', () => {
     expect(findings).toContainEqual(expect.objectContaining({ code: 'PROMPT_SCREENING_INJECTION', path: 'instruction.fragments[1]' }));
   });
 
+  it('forwards check and regions of a medical-scope refusal onto the finding', async () => {
+    registry.screenAndRegister.mockResolvedValue({
+      passed: false,
+      policyVersion: 'pv-1',
+      digests: ['d'],
+      findings: [
+        { code: 'PROMPT_SCREENING_UNSAFE', pieceKind: 'TEMPLATE_BODY', pieceKey: 'body', digest: 'd'.repeat(64), reason: 'r', check: 'medical_scope', regions: ['ab12'] },
+      ],
+    });
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ systemPrompt: 'Write a note.' }));
+    const validated = await makeService().validate('agent-1');
+    const findings = (validated.validationReport as unknown as { findings: unknown[] }).findings;
+    expect(findings).toContainEqual(expect.objectContaining({ check: 'medical_scope', regions: ['ab12'] }));
+  });
+
   it('screens the POINTER-rendered pieces under the agent tenant', async () => {
     registry.screenAndRegister.mockResolvedValue({ passed: true, policyVersion: 'pv-1', digests: [], findings: [] });
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ systemPrompt: 'Vitals: {{context.formatted_vitals}}' }));
@@ -157,7 +172,7 @@ describe('agent publish — authoring-time screening (OD-4)', () => {
         sourceKey: 'body',
         text: 'Vitals: [see the context_formatted_vitals data section below]',
       },
-    ]);
+    ], { judgeMedicalScope: true });
   });
 
   it('a clean publish stamps compiledConfig.governance = { policyVersion, pieceDigests }', async () => {

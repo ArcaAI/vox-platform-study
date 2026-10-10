@@ -2037,9 +2037,17 @@ export class PromptManagementService extends BaseService implements IPromptManag
    */
   private async assertTemplateBodyScreened(template: PromptTemplateEntity): Promise<void> {
     if (!this.governedPrompts || !template.content) return;
-    const result = await this.governedPrompts.screenAndRegister(template.tenantId, templateBodyPieces(template.content, template.id));
+    const result = await this.governedPrompts.screenAndRegister(template.tenantId, templateBodyPieces(template.content, template.id), {
+      judgeMedicalScope: true,
+    });
     if (result.passed) return;
-    const findings = result.findings.map(({ code, reason, digest }) => ({ code, reason, digest }));
+    const findings = result.findings.map(({ code, reason, digest, check, regions }) => ({
+      code,
+      reason,
+      digest,
+      ...(check ? { check } : {}),
+      ...(regions ? { regions } : {}),
+    }));
     if (findings.every((finding) => finding.code === 'PROMPT_SCREENING_UNAVAILABLE')) {
       throw new ServiceUnavailableException({
         message: 'Prompt screening is unavailable, so the template cannot be approved yet.',

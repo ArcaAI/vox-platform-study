@@ -50,9 +50,18 @@ export interface GovernedScreeningResult {
   readonly findings: readonly GovernedPieceFinding[];
 }
 
+/** TASK-1059 I-2: `judgeMedicalScope` defaults to false — only an explicit SAVE path opts in. */
+export interface GovernedScreenOptions {
+  readonly judgeMedicalScope?: boolean;
+}
+
 export interface IGovernedPromptRegistry {
   /** Authoring time: screen every piece (guardrail regions, FC-5) and register PASS/FAIL. Fail-closed. */
-  screenAndRegister(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult>;
+  screenAndRegister(
+    tenantId: string,
+    pieces: readonly GovernedPieceInput[],
+    options?: GovernedScreenOptions,
+  ): Promise<GovernedScreeningResult>;
   /** Call time: true iff EVERY digest is registered PASS under the current policy version ([tenant, SYSTEM]). */
   areGoverned(tenantId: string, digests: readonly string[]): Promise<boolean>;
   /**

@@ -85,7 +85,7 @@ describe('promote-to-system — screening under SYSTEM (TASK-1047 D2)', () => {
     expect(registry.screenAndRegister).toHaveBeenCalledWith(SYSTEM_TENANT_ID, [
       { kind: 'FRAGMENT', sourceType: 'AGENT', sourceId: 'agent-global-1', sourceKey: 'base', text: 'Base.' },
       { kind: 'FRAGMENT', sourceType: 'AGENT', sourceId: 'agent-global-1', sourceKey: 'peds', text: 'Age [see the context_age data section below].' },
-    ]);
+    ], { judgeMedicalScope: true });
     expect(databaseService.baseClient.$transaction).toHaveBeenCalled();
   });
 
@@ -106,6 +106,23 @@ describe('promote-to-system — screening under SYSTEM (TASK-1047 D2)', () => {
       expect(databaseService.baseClient.$transaction).not.toHaveBeenCalled();
     },
   );
+
+  it('forwards check and regions of a medical-scope refusal into the 409 findings', async () => {
+    registry.screenAndRegister.mockResolvedValue({
+      passed: false,
+      policyVersion: 'pv-1',
+      digests: [],
+      findings: [
+        { code: 'PROMPT_SCREENING_UNSAFE', pieceKind: 'FRAGMENT', pieceKey: 'peds', digest: 'd'.repeat(64), reason: 'r', check: 'medical_scope', regions: ['ab12'] },
+      ],
+    });
+    const error = await construct()
+      .promoteToSystem({ sourceSlug: 'gm-summary', changeReason: 'release' } as never)
+      .catch((caught: unknown) => caught);
+    expect((error as ConflictException).getResponse()).toMatchObject({
+      findings: [expect.objectContaining({ check: 'medical_scope', regions: ['ab12'], pieceKey: 'peds' })],
+    });
+  });
 
   it('guardrail down refuses the promotion (503) and writes nothing', async () => {
     registry.screenAndRegister.mockResolvedValue({

@@ -95,7 +95,7 @@ describe('approveTemplate — authoring-time screening (OD-4)', () => {
         sourceKey: 'body',
         text: 'Summarise [see the transcript data section below] as SOAP.',
       },
-    ]);
+    ], { judgeMedicalScope: true });
     expect(result.status).toBe('APPROVED');
     expect(templateRepo.updateWithVersion).toHaveBeenCalled();
   });
@@ -118,6 +118,23 @@ describe('approveTemplate — authoring-time screening (OD-4)', () => {
       expect(events.emit).not.toHaveBeenCalled();
     },
   );
+
+  it('forwards check and regions of a medical-scope refusal into the 409 body', async () => {
+    registry.screenAndRegister.mockResolvedValue({
+      passed: false,
+      policyVersion: 'pv-1',
+      digests: ['d'],
+      findings: [
+        { code: 'PROMPT_SCREENING_UNSAFE', pieceKind: 'TEMPLATE_BODY', pieceKey: 'body', digest: 'd'.repeat(64), reason: 'r', check: 'medical_scope', regions: ['ab12'] },
+      ],
+    });
+    const error = await makeService()
+      .approveTemplate('tpl-1', { expectedVersion: 2 } as never)
+      .catch((caught: unknown) => caught);
+    expect((error as ConflictException).getResponse()).toMatchObject({
+      findings: [expect.objectContaining({ check: 'medical_scope', regions: ['ab12'] })],
+    });
+  });
 
   it('guardrail down refuses approval with 503 PROMPT_SCREENING_UNAVAILABLE (fail closed)', async () => {
     registry.screenAndRegister.mockResolvedValue(refused('PROMPT_SCREENING_UNAVAILABLE'));
