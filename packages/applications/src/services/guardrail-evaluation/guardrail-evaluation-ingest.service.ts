@@ -74,7 +74,8 @@ function isOutboundBlock(record: GuardrailEvaluationRecord): boolean {
  *  4. a block with a consultation ENTERS THE HOLD through `GuardrailHoldService` (the one hold-entry
  *     path): `processing` AWAITING_REVIEW with reason GUARDRAIL_HOLD (EGRESS_REDACTION_UNAVAILABLE
  *     for the egress privacy hold) — only for a NEW notice: an id already stored (entered by the run
- *     watcher, or resolved by the clinician) holds nothing again.
+ *     watcher, or resolved by the clinician) holds nothing again; nor does a block from a run that is
+ *     over — superseded or terminal on the consultation's governing marker (TASK-1059).
  * After the commit: capture is paused (a RECORDING consultation → PAUSED), a state-only lifecycle
  * event carries the notice id as a pointer, and the sys-events are broadcast.
  *
@@ -135,7 +136,7 @@ export class GuardrailEvaluationIngestService extends BaseService {
     const holds: GuardrailHoldApplied[] = [];
     const write = async (tx?: unknown) => {
       const storedNoticeIds = new Map<string, string>();
-      const intents: Array<{ consultationId: string; noticeId: string; reason: string }> = [];
+      const intents: Array<{ consultationId: string; noticeId: string; reason: string; runId: string | null }> = [];
       for (const record of fresh) {
         for (const notice of record.notices ?? []) {
           if (!record.noticeIds.includes(notice.noticeId) || storedNoticeIds.has(notice.noticeId)) continue;
@@ -147,7 +148,8 @@ export class GuardrailEvaluationIngestService extends BaseService {
           // earlier batch) is already holding — or was resolved by the clinician.
           const consultationId = record.consultationId ?? notice.consultationId;
           if (record.decision === 'block' && notice.type === 'guardrail.blocked' && consultationId) {
-            intents.push({ consultationId, noticeId: row.id, reason: guardrailHoldReasonOf(notice) });
+            // The run the block came from: a hold is never entered for a run that is over (TASK-1059).
+            intents.push({ consultationId, noticeId: row.id, reason: guardrailHoldReasonOf(notice), runId: record.runId ?? notice.runId ?? null });
           }
         }
       }
@@ -159,7 +161,7 @@ export class GuardrailEvaluationIngestService extends BaseService {
       for (const intent of intents) {
         if (!this.holds || seen.has(intent.consultationId)) continue;
         seen.add(intent.consultationId);
-        const applied = await this.holds.holdInTransaction(tenantId, intent.consultationId, intent.noticeId, intent.reason, tx);
+        const applied = await this.holds.holdInTransaction(tenantId, intent.consultationId, intent.noticeId, intent.reason, tx, { runId: intent.runId });
         if (applied) holds.push(applied);
       }
       return result;

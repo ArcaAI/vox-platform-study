@@ -129,6 +129,12 @@ import type {
 import { GUARDRAIL_WITHHELD_SUBTYPE, HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
 import { isGuardrailExcludedItem, loadGuardrailExcludedItemIds } from '../../guardrail-notice/guardrail-item-exclusion';
 import { markOverrideReleasedItem } from '../../guardrail-notice/guardrail-override-release';
+import {
+  guardrailDeferredOutcomeOf,
+  hasUnresolvedGuardrailBlock,
+  isOnGuardrailHold,
+  withGuardrailDeferredOutcome,
+} from '../../guardrail-notice/guardrail-hold.service';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import { NOTE_READY_REASON } from '../lifecycle/legacy-status-projection';
 import { noteComposedSystem, styleReferenceBackground } from './note-plan-governance';
@@ -873,6 +879,7 @@ export class HarnessInternalService extends BaseService {
       });
       return false;
     }
+    if (await this.deferWhileGuardrailHeld(consultation, next, origin, reason)) return false;
     try {
       if (reason === undefined) {
         await this.lifecycleGate.setProcessing(consultation.id, next);
@@ -890,6 +897,57 @@ export class HarnessInternalService extends BaseService {
       });
       return false;
     }
+  }
+
+  /**
+   * TASK-1059 (RC-9 hold row) — a harness outcome never overwrites a REAL guardrail hold: while the
+   * consultation is on GUARDRAIL_HOLD / EGRESS_REDACTION_UNAVAILABLE and an unresolved BLOCKED notice
+   * still stands, processing keeps the hold and the outcome is recorded on the consultation's metadata
+   * (`withGuardrailDeferredOutcome`), so the release applies it rather than a bare IDLE. A hold with
+   * nothing unresolved behind it (stranded) is NOT kept — the outcome is written as before. A notice
+   * lookup that fails keeps the hold (fail safe). The deferral write itself is best-effort.
+   *
+   * @returns `true` when the hold was kept (the caller writes nothing).
+   */
+  private async deferWhileGuardrailHeld(
+    consultation: ConsultationEntity,
+    next: ConsultationProcessing,
+    origin: string,
+    reason?: string,
+  ): Promise<boolean> {
+    if (!isOnGuardrailHold(consultation)) return false;
+    if (this.guardrailNotices) {
+      try {
+        if (!(await hasUnresolvedGuardrailBlock(this.guardrailNotices, consultation.tenantId, consultation.id))) return false;
+      } catch (error) {
+        this.logger.warn({
+          message: 'Guardrail notice lookup failed — the hold is kept',
+          consultationId: consultation.id,
+          origin,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    try {
+      const expectedVersion = consultation.version;
+      consultation.metadata = withGuardrailDeferredOutcome(consultation, { processing: next, reason: reason ?? null }) as ConsultationEntity['metadata'];
+      await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Deferred note outcome could not be recorded (the hold stands; the release returns to IDLE)',
+        consultationId: consultation.id,
+        origin,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    this.logger.log({
+      message: 'Harness callback kept the guardrail hold — its outcome waits for the release',
+      consultationId: consultation.id,
+      origin,
+      currentReason: consultation.processingReason,
+      deferredProcessing: next,
+    });
+    return true;
   }
 
   /**
@@ -2536,7 +2594,10 @@ export class HarnessInternalService extends BaseService {
         // EXPLICITLY only from SUMMARIZING — `finalizeAssurance` is the second phase of an EARLY
         // draft, so a retry after the move, or a consultation another writer has moved on, is a
         // no-op rather than a regression. No status write.
-        if (consultation && consultation.processing === ConsultationProcessing.SUMMARIZING) {
+        // TASK-1059 — an EARLY draft delivered during a guardrail hold deferred SUMMARIZING; its
+        // assurance completing moves that deferred outcome on (the hold itself is kept).
+        const deferredSummarizing = !!consultation && guardrailDeferredOutcomeOf(consultation)?.processing === ConsultationProcessing.SUMMARIZING;
+        if (consultation && (consultation.processing === ConsultationProcessing.SUMMARIZING || deferredSummarizing)) {
           await this.setHarnessProcessing(consultation, ConsultationProcessing.IDLE, 'finalizeAssurance', NOTE_READY_REASON);
         }
 

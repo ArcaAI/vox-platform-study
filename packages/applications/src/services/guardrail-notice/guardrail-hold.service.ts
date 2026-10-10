@@ -9,15 +9,18 @@ import {
   GuardrailNoticeEntityMapper,
   GuardrailNoticeFactory,
   GuardrailNoticeRepository,
+  GuardrailNoticeStatus,
+  GuardrailNoticeType,
   ResourceType,
   SysEventType,
   type GuardrailNoticeEntity,
   type JsonValue,
 } from '@arcaai/domains';
-import { EGRESS_REDACTION_UNAVAILABLE_REASON, GUARDRAIL_HOLD_REASON, type GuardrailNotice } from '@arcaai/types';
+import { EGRESS_REDACTION_UNAVAILABLE_REASON, GUARDRAIL_HOLD_REASON, isGuardrailHoldReason, type GuardrailNotice } from '@arcaai/types';
 import { BaseService } from '../../common';
 import { createWorkerSession } from '../../common/worker-session';
 import { IActiveUserContext } from '../../interfaces';
+import { readGoverningEngineMarker } from '../consultation/governing-engine';
 import { IConsultationLifecycleService, IConsultationLifecycleServiceToken } from '../consultation/lifecycle/IConsultationLifecycleService';
 import { ConsultationLifecycleEventPublisher } from '../consultation/lifecycle/lifecycle-event.publisher';
 import { directionToRow, noticeSeverity, noticeTypeToRow } from './guardrail-wire';
@@ -31,6 +34,102 @@ const NOT_HOLDABLE: ReadonlySet<string> = new Set([
   ConsultationStatus.CLOSED_COMPLETE,
   ConsultationStatus.CLOSED_INCOMPLETE,
 ]);
+
+/**
+ * TASK-1059 — the run a block came from is OVER when the consultation's governing marker names another
+ * run (it was superseded, e.g. by a resume) or stamps this one with a terminal `runStatus`. A hold then
+ * has nothing paused behind it and would strand the consultation. No marker (no tenant graph governs)
+ * or no run id (a live-summary tick, a direct generation) cannot be judged and is never "over".
+ */
+export function guardrailRunIsOver(metadata: unknown, runId: string | null | undefined): boolean {
+  if (!runId) return false;
+  const marker = readGoverningEngineMarker(metadata);
+  if (!marker) return false;
+  if (marker.workflowRunId !== runId) return true;
+  return marker.runStatus !== undefined && marker.runStatus !== 'RUNNING';
+}
+
+// ── TASK-1059 — a note outcome reported while a hold stands waits for the release ────────────────
+
+/**
+ * The `Consultation.metadata` key under which a harness note outcome reported DURING a real guardrail
+ * hold waits: the note writer keeps the hold and records what it would have written here; the release
+ * (`GuardrailNoticeService.resumeHold`) applies it instead of a bare IDLE.
+ */
+export const GUARDRAIL_DEFERRED_OUTCOME_KEY = 'guardrailHoldDeferredOutcome';
+
+/** A deferred note outcome. `holdSince` is the hold's `processingUpdatedAt`: it binds the outcome to THAT hold. */
+export interface GuardrailDeferredOutcome {
+  processing: ConsultationProcessing;
+  reason: string | null;
+  holdSince: string | null;
+}
+
+type HoldView = { processing?: unknown; processingReason?: string | null; processingUpdatedAt?: Date | string | null; metadata?: unknown };
+
+function isoOrNull(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/** `processing` says the consultation is on a guardrail hold (AWAITING_REVIEW with a hold reason). */
+export function isOnGuardrailHold(consultation: HoldView): boolean {
+  return consultation.processing === ConsultationProcessing.AWAITING_REVIEW && isGuardrailHoldReason(consultation.processingReason);
+}
+
+/**
+ * Whether the consultation still has a BLOCKED notice nobody resolved (OPEN or ACKNOWLEDGED — the same
+ * set `resumeHold` counts as still holding). Filtered in the query AND here.
+ */
+export async function hasUnresolvedGuardrailBlock(
+  notices: Pick<GuardrailNoticeRepository, 'findAll'>,
+  tenantId: string,
+  consultationId: string,
+): Promise<boolean> {
+  const unresolved: string[] = [GuardrailNoticeStatus.OPEN, GuardrailNoticeStatus.ACKNOWLEDGED];
+  const rows = await notices.findAll({
+    where: { tenantId, consultationId, type: GuardrailNoticeType.BLOCKED, status: { in: unresolved } } as never,
+  });
+  return rows.some(
+    (row) =>
+      row.tenantId === tenantId &&
+      row.consultationId === consultationId &&
+      String(row.type) === GuardrailNoticeType.BLOCKED &&
+      unresolved.includes(String(row.status)),
+  );
+}
+
+/** `metadata` with the deferred outcome recorded against the consultation's CURRENT hold. Every other key is kept. */
+export function withGuardrailDeferredOutcome(
+  consultation: HoldView,
+  outcome: { processing: ConsultationProcessing; reason?: string | null },
+): Record<string, JsonValue> {
+  const base = consultation.metadata && typeof consultation.metadata === 'object' && !Array.isArray(consultation.metadata)
+    ? (consultation.metadata as Record<string, JsonValue>)
+    : {};
+  const deferred: GuardrailDeferredOutcome = {
+    processing: outcome.processing,
+    reason: outcome.reason ?? null,
+    holdSince: isoOrNull(consultation.processingUpdatedAt),
+  };
+  return { ...base, [GUARDRAIL_DEFERRED_OUTCOME_KEY]: deferred as unknown as JsonValue };
+}
+
+/**
+ * The outcome deferred during the hold that is STILL in place, or `null`. An outcome recorded against an
+ * earlier hold (its `holdSince` is not the current `processingUpdatedAt`) is stale and ignored.
+ */
+export function guardrailDeferredOutcomeOf(consultation: HoldView): GuardrailDeferredOutcome | null {
+  const metadata = consultation.metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const raw = (metadata as Record<string, unknown>)[GUARDRAIL_DEFERRED_OUTCOME_KEY];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const outcome = raw as Partial<GuardrailDeferredOutcome>;
+  if (!Object.values(ConsultationProcessing).includes(outcome.processing as ConsultationProcessing)) return null;
+  if ((outcome.holdSince ?? null) !== isoOrNull(consultation.processingUpdatedAt)) return null;
+  return { processing: outcome.processing as ConsultationProcessing, reason: outcome.reason ?? null, holdSince: outcome.holdSince ?? null };
+}
 
 /** The `processingReason` a blocked notice holds the consultation with. */
 export function guardrailHoldReasonOf(notice: Pick<GuardrailNotice, 'messageKey'>): string {
@@ -151,7 +250,7 @@ export class GuardrailHoldService extends BaseService {
         const write = async (tx?: unknown): Promise<GuardrailHoldApplied | null> => {
           const { created } = await this.notices.upsertByDedupeKey(guardrailNoticeRow(tenantId, notice), tx);
           if (!created) return null;
-          return this.holdInTransaction(tenantId, consultationId, notice.noticeId, guardrailHoldReasonOf(notice), tx);
+          return this.holdInTransaction(tenantId, consultationId, notice.noticeId, guardrailHoldReasonOf(notice), tx, { runId: notice.runId });
         };
         const applied = this.unitOfWork ? await this.unitOfWork.runInTransaction((tx) => write(tx)) : await write();
         if (!applied) return null;
@@ -171,7 +270,8 @@ export class GuardrailHoldService extends BaseService {
 
   /**
    * Inside the caller's transaction: set `processing` AWAITING_REVIEW with the hold reason. `null`
-   * (logged) for an unknown, foreign, approved or closed consultation.
+   * (logged) for an unknown, foreign, approved or closed consultation, and — when `scope.runId` names
+   * the run the block came from — for a run that is over (superseded or terminal, TASK-1059).
    */
   async holdInTransaction(
     tenantId: string,
@@ -179,6 +279,7 @@ export class GuardrailHoldService extends BaseService {
     noticeId: string,
     reason: string,
     tx?: unknown,
+    scope: { runId?: string | null } = {},
   ): Promise<GuardrailHoldApplied | null> {
     const consultation = await this.consultations.findByIdOrNull(consultationId);
     if (!consultation || consultation.tenantId !== tenantId) {
@@ -191,6 +292,15 @@ export class GuardrailHoldService extends BaseService {
         consultationId,
         noticeId,
         status: consultation.status,
+      });
+      return null;
+    }
+    if (guardrailRunIsOver(consultation.metadata, scope.runId)) {
+      this.logger.log({
+        message: 'Guardrail hold not entered — the run the block came from is over (superseded or terminal)',
+        consultationId,
+        noticeId,
+        runId: scope.runId,
       });
       return null;
     }

@@ -7,6 +7,8 @@
  *   • GuardrailNoticeRepository.upsertByDedupeKey: keyed on `(tenantId, dedupeKey)`; a repeat
  *     raise of the same notice is a NO-OP that returns the stored row (an acknowledged notice
  *     must never be reset to OPEN by the next live-summary tick) and says it was not created.
+ *     Since TASK-1059 RC-8 `created` is the insert's row count (createMany + skipDuplicates),
+ *     then the row is read back by the key (see GuardrailNoticeRepository.created.task1059.test.ts).
  *   • GuardrailNoticeRepository.findOpenByConsultation: tenant + consultation + OPEN, oldest first.
  *   • ContextItemRepository.setGuardrailStatus(+Many): updates ONLY that column — no `_version`
  *     increment (OD-21), routed through a supplied transaction client.
@@ -114,10 +116,17 @@ describe('GuardrailEvaluationRepository.createManyIdempotent', () => {
 describe('GuardrailNoticeRepository', () => {
   let delegate: Record<string, ReturnType<typeof vi.fn>>;
   let repo: any;
+  let stored: Record<string, unknown> | null;
 
   beforeEach(async () => {
+    stored = null;
     delegate = {
-      upsert: vi.fn().mockImplementation(async ({ create }) => ({ ...create, version: 1 })),
+      createMany: vi.fn().mockImplementation(async ({ data }) => {
+        if (stored) return { count: 0 };
+        stored = { ...data[0], version: 1 };
+        return { count: 1 };
+      }),
+      findUnique: vi.fn().mockImplementation(async () => stored),
       findMany: vi.fn().mockResolvedValue([]),
     };
     const { GuardrailNoticeRepository } = await import('../GuardrailNoticeRepository');
@@ -128,17 +137,19 @@ describe('GuardrailNoticeRepository', () => {
     const entity = await notice();
     const { notice: saved, created } = await repo.upsertByDedupeKey(entity);
 
-    const args = delegate.upsert.mock.calls[0][0];
-    expect(args.where).toEqual({ tenantId_dedupeKey: { tenantId: 't-1', dedupeKey: 'c-1|safety.self_harm|ci-1|pv-1' } });
-    expect(args.create).toMatchObject({ id: entity.id, status: GuardrailNoticeStatus.OPEN, itemIds: ['ci-1'] });
-    expect(args.create).not.toHaveProperty('version');
-    expect(args.update).toEqual({});
+    const args = delegate.createMany.mock.calls[0][0];
+    expect(args.skipDuplicates).toBe(true);
+    expect(args.data[0]).toMatchObject({ id: entity.id, status: GuardrailNoticeStatus.OPEN, itemIds: ['ci-1'] });
+    expect(args.data[0]).not.toHaveProperty('version');
+    expect(delegate.findUnique.mock.calls[0][0].where).toEqual({
+      tenantId_dedupeKey: { tenantId: 't-1', dedupeKey: 'c-1|safety.self_harm|ci-1|pv-1' },
+    });
     expect(created).toBe(true);
     expect(saved.id).toBe(entity.id);
   });
 
   it('a repeat raise is a no-op that returns the stored (possibly acknowledged) notice', async () => {
-    delegate.upsert.mockResolvedValue({
+    stored = {
       ...(await notice()),
       id: 'n-existing',
       tenantId: 't-1',
@@ -147,19 +158,23 @@ describe('GuardrailNoticeRepository', () => {
       checks: [],
       itemIds: ['ci-1'],
       version: 2,
-    });
+    };
     const { notice: saved, created } = await repo.upsertByDedupeKey(await notice());
-    expect(delegate.upsert.mock.calls[0][0].update).toEqual({});
     expect(created).toBe(false);
     expect(saved.id).toBe('n-existing');
     expect(saved.status).toBe(GuardrailNoticeStatus.ACKNOWLEDGED);
   });
 
   it('upsertByDedupeKey routes through a supplied transaction client', async () => {
-    const tx = { guardrailNotice: { upsert: vi.fn().mockImplementation(async ({ create }) => ({ ...create })) } };
+    const tx = {
+      guardrailNotice: {
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ id: 'n-1', tenantId: 't-1', checks: [], itemIds: [] }),
+      },
+    };
     await repo.upsertByDedupeKey(await notice(), tx);
-    expect(tx.guardrailNotice.upsert).toHaveBeenCalledTimes(1);
-    expect(delegate.upsert).not.toHaveBeenCalled();
+    expect(tx.guardrailNotice.createMany).toHaveBeenCalledTimes(1);
+    expect(delegate.createMany).not.toHaveBeenCalled();
   });
 
   it('findOpenByConsultation filters tenant + consultation + OPEN, oldest first', async () => {

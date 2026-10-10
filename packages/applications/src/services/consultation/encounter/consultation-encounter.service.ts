@@ -109,6 +109,13 @@ export class ConsultationEncounterService extends BaseService implements IConsul
     return created;
   }
 
+  /**
+   * Start the next encounter. `beginNextEncounter` also resets `processing` for it (TASK-1059 RC-10):
+   * the previous encounter's note outcome (FAILED, AWAITING_REVIEW, IDLE + NOTE_READY) becomes IDLE and
+   * is persisted by the same OCC write; work still in flight is kept. A REAL guardrail hold
+   * (AWAITING_REVIEW with GUARDRAIL_HOLD / EGRESS_REDACTION_UNAVAILABLE) is deliberately kept across an
+   * append — only a resume or an approve resolves it, so the new encounter starts held.
+   */
   async appendEncounter(
     consultation: ConsultationEntity,
     next: EncounterStart & { actor: string },

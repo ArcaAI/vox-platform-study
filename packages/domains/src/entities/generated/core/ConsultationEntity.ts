@@ -61,6 +61,23 @@ const REASON_BEARING_PROCESSING: ReadonlySet<Enums.ConsultationProcessing> = new
   Enums.ConsultationProcessing.IDLE,
 ]);
 
+/**
+ * Processing an encounter append carries into the next encounter: background work still running (the
+ * same rule `stop` applies, plus FINALIZING_TRANSCRIPT, which the stop flow owns and restores itself).
+ * Every other value is the previous encounter's NOTE OUTCOME and is reset to IDLE (TASK-1059 RC-10).
+ */
+const ENCOUNTER_IN_FLIGHT_PROCESSING: ReadonlySet<Enums.ConsultationProcessing> = new Set([
+  Enums.ConsultationProcessing.SUMMARIZING,
+  Enums.ConsultationProcessing.PROCESSING_ATTACHMENT,
+  Enums.ConsultationProcessing.FINALIZING_TRANSCRIPT,
+]);
+
+/**
+ * The `processingReason`s of a resumable guardrail hold — mirrors `GUARDRAIL_HOLD_PROCESSING_REASONS`
+ * in `@arcaai/types` (domains does not depend on it). An append never clears a real hold.
+ */
+const GUARDRAIL_HOLD_REASONS: ReadonlySet<string> = new Set(['GUARDRAIL_HOLD', 'EGRESS_REDACTION_UNAVAILABLE']);
+
 const CLOSED_STATUSES: ReadonlySet<Enums.ConsultationStatus> = new Set([
   Enums.ConsultationStatus.CLOSED_COMPLETE,
   Enums.ConsultationStatus.CLOSED_INCOMPLETE,
@@ -608,7 +625,21 @@ export class ConsultationEntity extends BaseTenantEntity {
     this.transitionTo(Enums.ConsultationStatus.OPEN, actor, 'encounter_appended');
     const seq = this._currentEncounterSeq + 1;
     this.setProperty('currentEncounterSeq', seq);
+    this.resetNoteOutcomeForNewEncounter();
     return seq;
+  }
+
+  /**
+   * TASK-1059 RC-10 — the new encounter starts IDLE: the previous encounter's note outcome (FAILED,
+   * AWAITING_REVIEW, IDLE + NOTE_READY) does not describe it. Work still in flight survives, and a
+   * real guardrail hold is kept — only a resume or an approve resolves it, never an append.
+   */
+  private resetNoteOutcomeForNewEncounter(): void {
+    const processing = this._processing;
+    if (ENCOUNTER_IN_FLIGHT_PROCESSING.has(processing)) return;
+    if (processing === Enums.ConsultationProcessing.AWAITING_REVIEW && GUARDRAIL_HOLD_REASONS.has(this._processingReason ?? '')) return;
+    if (processing === Enums.ConsultationProcessing.IDLE && !this._processingReason) return;
+    this.setProcessing(Enums.ConsultationProcessing.IDLE);
   }
 
   /**
