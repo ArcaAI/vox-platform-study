@@ -14,7 +14,8 @@ import { IActiveUserContext } from '../../../interfaces';
 import { assertPlatformRegistryAdmin } from '../lifecycle/platform-admin';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IInferenceReadinessService } from '../../ai-readiness/IInferenceReadinessService';
-import { HOPE_MODELS_BUCKET } from '../constants';
+import { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT, SINGLE_FILE_LIBRARIES } from '../constants';
+import { lmStudioWireModelId } from '../serving-spec/lm-studio-wire-id';
 import { isModelWeightFile, sha256Hex } from '../publish/model-version.util';
 import { MODEL_INVENTORY_REPORT_KEY, MODEL_INVENTORY_REPORT_TTL_SECONDS } from './model-inventory.constants';
 import type { ModelInventoryReport, ModelInventoryRow, UnregisteredBucketPrefix } from './dto';
@@ -40,6 +41,16 @@ const HF_SNAPSHOT_PREFIX_RE = /^hf\/hub\/models--[^/]+\/snapshots\/[^/]+\/$/;
  * `HF_SNAPSHOT_PREFIX_RE` above; this only bounds the manifest-less pass.
  */
 const HF_CACHE_ROOT = 'hf/';
+/** The HuggingFace hub cache inside it (`HF_HOME=/mnt/models-bucket/hf`), as `out-of-band/hope-models-publish.yaml` writes it. */
+const HF_HUB_ROOT = `${HF_CACHE_ROOT}hub/`;
+/**
+ * TASK-1055 FU-3 — the single-file libraries whose loader picks its file by the BASENAME containing
+ * the row's `computeType` (a ggml quant: `q8_0`, `f16`, `q6_k`) — stt `whisper_cpp_loader._select_gguf_file`,
+ * and the llama.cpp GGUF naming. The other `SINGLE_FILE_LIBRARIES` members are excluded on purpose:
+ * their `computeType` is a dtype (`float32` for Silero VAD) that no file name carries.
+ */
+const GGML_QUANT_LIBRARIES: ReadonlySet<string> = new Set([...SINGLE_FILE_LIBRARIES].filter((lib) => lib === 'whisper.cpp' || lib === 'llama.cpp'));
+const LM_STUDIO_NAMES: ReadonlySet<string> = new Set(['lm-studio', 'lmstudio']);
 
 /** One entry of the single bucket listing a run performs. */
 interface BucketObject {
@@ -223,6 +234,12 @@ export class ModelInventoryService {
       return { availability: AiModelAvailability.NOT_APPLICABLE, detail: { reason: `${row.libraryName} ships its weights inside the package` } };
     }
     if (!row.bucketPrefix) {
+      // TASK-1055 FU-3 — two layouts reach the bucket without a `bucketPrefix` on the row.
+      if (isLmStudioRow(row)) return measureGgufTier(row, keys);
+      if (row.source === AiModelSource.HUGGINGFACE) {
+        const verdict = await this.measureHfCache(row, keys);
+        if (verdict) return verdict;
+      }
       return { availability: AiModelAvailability.MISSING, detail: { reason: 'no bucketPrefix — the row has never been published' } };
     }
 
@@ -264,6 +281,77 @@ export class ModelInventoryService {
     // just verified so the next run can detect drift.
     if (!row.manifestDigest) {
       row.manifestDigest = digest;
+    }
+    return { availability: AiModelAvailability.AVAILABLE, detail };
+  }
+
+  /**
+   * TASK-1055 FU-3 — an HF-sourced row published into the HuggingFace cache tree (deployment repo
+   * `out-of-band/hope-models-publish.yaml` §1): `refs/main` names the revision an offline name-only load
+   * resolves, and its snapshot must hold files. `null` when `sourceUri` is not an `<org>/<repo>` id.
+   */
+  private async measureHfCache(
+    row: AiModelEntity,
+    keys: Set<string>,
+  ): Promise<{ availability: AiModelAvailability; detail: Record<string, unknown> } | null> {
+    const repo = (row.sourceUri ?? '').split('/');
+    if (repo.length !== 2 || !repo[0] || !repo[1]) return null;
+    const cacheDir = `${HF_HUB_ROOT}models--${repo[0]}--${repo[1]}/`;
+    const refsMain = `${cacheDir}refs/main`;
+    if (!keys.has(refsMain)) {
+      return {
+        availability: AiModelAvailability.MISSING,
+        detail: { layout: 'hf-cache', reason: `not in the HF cache (${refsMain} not found) and no bucketPrefix` },
+      };
+    }
+
+    let revision: string | null = null;
+    try {
+      revision = (await this.s3Service.getFile(HOPE_MODELS_BUCKET, refsMain)).toString('utf8').trim() || null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'HF cache refs/main unreadable; checking any snapshot',
+        refsMain,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // The refs/main revision's snapshot, else any snapshot that holds files.
+    const snapshotsRoot = `${cacheDir}snapshots/`;
+    const bySnapshot = new Map<string, string[]>();
+    for (const key of keys) {
+      if (!key.startsWith(snapshotsRoot) || key.endsWith('/')) continue;
+      const rest = key.slice(snapshotsRoot.length);
+      const slash = rest.indexOf('/');
+      if (slash <= 0) continue;
+      const rev = rest.slice(0, slash);
+      bySnapshot.set(rev, [...(bySnapshot.get(rev) ?? []), rest.slice(slash + 1)]);
+    }
+    const chosen = revision && bySnapshot.has(revision) ? revision : ([...bySnapshot.keys()].sort()[0] ?? null);
+    if (!chosen) {
+      return {
+        availability: AiModelAvailability.MISSING,
+        detail: { layout: 'hf-cache', revision, reason: `${refsMain} exists but no snapshot under ${snapshotsRoot} holds files` },
+      };
+    }
+
+    const files = bySnapshot.get(chosen) ?? [];
+    const detail: Record<string, unknown> = {
+      layout: 'hf-cache',
+      revision: chosen,
+      path: `${HOPE_MODELS_MOUNT.replace(/\/+$/, '')}/${snapshotsRoot}${chosen}`,
+      objectsChecked: files.length,
+    };
+    const quant = (row.libraryName && GGML_QUANT_LIBRARIES.has(row.libraryName) ? (row.computeType ?? '') : '').toLowerCase();
+    if (quant) {
+      const candidates = ggmlCandidates(files);
+      if (!candidates.some((path) => basename(path).toLowerCase().includes(quant))) {
+        const seen = candidates.map(basename).join(', ') || 'none';
+        return {
+          availability: AiModelAvailability.MISSING,
+          detail: { ...detail, reason: `no snapshot file matches quantization '${quant}' (files seen: ${seen})` },
+        };
+      }
     }
     return { availability: AiModelAvailability.AVAILABLE, detail };
   }
@@ -341,6 +429,46 @@ function measureByListing(
     return { availability: AiModelAvailability.MISSING, detail: { ...detail, reason: `no objects found under ${prefix}` } };
   }
   return { availability: AiModelAvailability.AVAILABLE, detail };
+}
+
+/** TASK-1055 FU-3 — LM Studio serves the row (its `servedBy` or `provider` says so). */
+function isLmStudioRow(row: AiModelEntity): boolean {
+  return LM_STUDIO_NAMES.has(row.servedBy ?? '') || LM_STUDIO_NAMES.has(row.provider ?? '');
+}
+
+/**
+ * TASK-1055 FU-3 — an LM Studio row's GGUF on the serving tier: a top-level `<dir>/` the cluster's
+ * `link-models` init container names after the row's LM Studio key (`lmStudioWireModelId`, the same
+ * mapping: `-gguf` suffix and a `text-embedding-` prefix stripped).
+ */
+function measureGgufTier(row: AiModelEntity, keys: Set<string>): { availability: AiModelAvailability; detail: Record<string, unknown> } {
+  const key = row.sourceUri ?? '';
+  const dirs = new Set<string>();
+  for (const object of keys) {
+    const slash = object.indexOf('/');
+    if (slash > 0 && slash < object.length - 1) dirs.add(object.slice(0, slash));
+  }
+  for (const dir of [...dirs].sort()) {
+    if (!dir.endsWith('-gguf') || lmStudioWireModelId('lm-studio', dir, row.taskType) !== key) continue;
+    const prefix = `${dir}/`;
+    return { availability: AiModelAvailability.AVAILABLE, detail: { layout: 'gguf-tier', prefix, objectsChecked: countObjectsUnder(keys, prefix) } };
+  }
+  const expected = `${key.replace(/^text-embedding-/, '')}-gguf/`;
+  return {
+    availability: AiModelAvailability.MISSING,
+    detail: { layout: 'gguf-tier', reason: `not on the LM Studio serving tier (no '${expected}' prefix in the bucket)` },
+  };
+}
+
+/** The ggml weight files whisper.cpp would choose from (`_select_gguf_file`): `.gguf` / `.bin`, no AppleDouble sidecars, a `whisper.cpp/` subdirectory preferred. */
+function ggmlCandidates(files: string[]): string[] {
+  const candidates = files.filter((path) => /\.(gguf|bin)$/i.test(path) && !basename(path).startsWith('._')).sort();
+  const subfolder = candidates.filter((path) => path.startsWith('whisper.cpp/') || path.includes('/whisper.cpp/'));
+  return subfolder.length > 0 ? subfolder : candidates;
+}
+
+function basename(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1);
 }
 
 /** How many objects the listing holds under `prefix` (the prefix marker aside). */

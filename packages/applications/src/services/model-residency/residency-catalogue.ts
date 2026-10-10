@@ -73,6 +73,10 @@ export interface CatalogueModelRow extends ServingIdentity, CatalogueRefFields {
   architecture?: string | null;
   bucketPrefix?: string | null;
   primaryObject?: string | null;
+  /** TASK-1055 FU-3 — the inventory's measured verdict; a checked `MISSING` blocks Load (`availabilityBlockedReason`). */
+  availability?: unknown;
+  availabilityCheckedAt?: Date | string | null;
+  availabilityDetail?: unknown;
 }
 
 /** The slice of a ledger entry the view reads (one resident instance). */
