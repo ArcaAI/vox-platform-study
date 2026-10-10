@@ -6,9 +6,10 @@
  * and its verdict recorded against `sha256(text)` under guardrail's policy version. Call time: a
  * system message is governed iff every piece digest is PASS under the CURRENT policy version.
  *
- * TASK-1059 C-3 (owner OD-2): the same screen also asks guardrail's medical-scope judge
- * (`scope: "prompt"`), so prompts are judged for medical scope here, before saving, and never at
- * runtime. Off scope is `PROMPT_SCREENING_UNSAFE` with `check: medical_scope`.
+ * TASK-1059 C-3 (owner OD-2): screening an AUTHORED unit also asks guardrail's medical-scope judge
+ * (`scope: "prompt"`, the whole unit in ONE call), so authored prompts are judged for medical scope
+ * here, before saving, and never at runtime. Platform pieces are never judged for scope. Off scope
+ * refuses the unit: `PROMPT_SCREENING_UNSAFE` with `check: medical_scope` and the off-scope keys.
  *
  * Fail-closed throughout (OD-4): a guardrail that cannot answer, a check that could not run, or an
  * unknown policy version yields `PROMPT_SCREENING_UNAVAILABLE` and registers nothing, so a piece is
@@ -186,7 +187,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   // ============================================================
 
   async screenAndRegister(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult> {
-    return this.screenAs(tenantId, tenantId, pieces);
+    return this.screenAs(tenantId, tenantId, pieces, true);
   }
 
   /**
@@ -194,8 +195,16 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
    * verdicts as owned by `ownerTenantId`. The two differ only for platform pieces: owned by SYSTEM,
    * screened under the request tenant's version (a tenant that overrides a guardrail selection has
    * its own version, and a SYSTEM row under THAT version is what its calls look up).
+   *
+   * `judgeMedicalScope` (TASK-1059 C-3): true for an AUTHORED unit only; platform pieces are never
+   * judged for medical scope.
    */
-  private async screenAs(screenTenantId: string, ownerTenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult> {
+  private async screenAs(
+    screenTenantId: string,
+    ownerTenantId: string,
+    pieces: readonly GovernedPieceInput[],
+    judgeMedicalScope: boolean,
+  ): Promise<GovernedScreeningResult> {
     const tenantId = ownerTenantId;
     const digests = pieces.map((piece) => pieceDigest(piece.text));
     if (pieces.length === 0) return { passed: true, policyVersion: await this.currentPolicyVersion(screenTenantId), digests: [], findings: [] };
@@ -220,7 +229,9 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
 
     let perPiece: Map<string, PieceCode[] | 'unavailable'>;
     try {
-      perPiece = await this.screen(screenTenantId, toScreen);
+      // The medical judge sees the WHOLE authored unit, already-PASS pieces included, so a short piece
+      // shares a window with the substantive text and a retry can never skip the judge.
+      perPiece = await this.screen(screenTenantId, toScreen, judgeMedicalScope ? distinct : null);
     } catch (error) {
       if (!(error instanceof PromptScreeningUnavailableError)) throw error;
       return { passed: false, policyVersion, digests, findings: toScreen.map((one) => this.unavailable(one, 'guardrail screening unavailable')) };
@@ -256,6 +267,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
       tenantId,
       SYSTEM_TENANT_ID,
       fresh.map((one) => one.piece),
+      false,
     )
       .then((result) => {
         // Unavailable ⇒ forget, so a later compose retries; a real verdict (PASS or FAIL) stays handled.
@@ -296,7 +308,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     }
     let perPiece: Map<string, PieceCode[] | 'unavailable'>;
     try {
-      perPiece = await this.screen(tenantId, distinct);
+      perPiece = await this.screen(tenantId, distinct, distinct);
     } catch (error) {
       if (!(error instanceof PromptScreeningUnavailableError)) throw error;
       return { passed: false, policyVersion, digests, findings: distinct.map((one) => this.unavailable(one, 'guardrail screening unavailable')) };
@@ -621,25 +633,38 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
    * than one piece was screened each piece is re-screened alone to attribute it; if no piece blocks
    * alone, the block is attributed to all of them (fail closed). PII is attributed by region.
    */
-  private async screen(tenantId: string, pieces: readonly DistinctPiece[]): Promise<Map<string, PieceCode[] | 'unavailable'>> {
-    const regions = pieces.map((one) => ({ key: one.regionKey, text: one.piece.text }));
-    // TASK-1059 C-3 (owner OD-2): the medical-scope judge runs beside the inbound screen, at build time
-    // only. Either one unavailable is PromptScreeningUnavailableError for the whole screen (fail closed).
+  private async screen(
+    tenantId: string,
+    pieces: readonly DistinctPiece[],
+    medicalUnit: readonly DistinctPiece[] | null,
+  ): Promise<Map<string, PieceCode[] | 'unavailable'>> {
+    // TASK-1059 C-3 (owner OD-2): the medical-scope judge runs beside the inbound screen, at build time,
+    // over the AUTHORED unit in ONE call (platform pieces are never judged for scope). Either one
+    // unavailable is PromptScreeningUnavailableError for the whole screen (fail closed).
+    const unit = (medicalUnit ?? []).filter((one) => one.piece.sourceType !== 'PLATFORM');
     const [outcome, medical] = await Promise.all([
-      this.screenClient.screenRegions(tenantId, regions),
-      this.screenClient.validateMedicalScope(tenantId, regions),
+      this.screenClient.screenRegions(
+        tenantId,
+        pieces.map((one) => ({ key: one.regionKey, text: one.piece.text })),
+      ),
+      unit.length === 0
+        ? null
+        : this.screenClient.validateMedicalScope(
+            tenantId,
+            unit.map((one) => ({ key: one.regionKey, text: one.piece.text })),
+          ),
     ]);
     const result = await this.attribute(tenantId, pieces, outcome);
-    if (medical.isMedical) return result;
-    // Off scope with no attributable region is attributed to every piece (fail closed).
-    const known = new Set(pieces.map((one) => one.regionKey));
-    const offScope = medical.offScopeRegions.filter((key) => known.has(key));
-    const refused = offScope.length > 0 ? new Set(offScope) : known;
-    this.logger.warn({ message: 'governed-prompt.medical.off_scope', tenantId, regions: [...refused] });
+    if (medical === null || medical.isMedical) return result;
+    // Off scope refuses the unit as a whole; with no attributable region every key is named (fail closed).
+    const unitKeys = unit.map((one) => one.regionKey);
+    const named = medical.offScopeRegions.filter((key) => unitKeys.includes(key));
+    const regions = named.length > 0 ? named : unitKeys;
+    this.logger.warn({ message: 'governed-prompt.medical.off_scope', tenantId, regions });
     for (const one of pieces) {
       const codes = result.get(one.digest);
-      if (codes === 'unavailable' || !refused.has(one.regionKey)) continue;
-      result.set(one.digest, [...(codes ?? []), { code: 'PROMPT_SCREENING_UNSAFE', checks: [MEDICAL_SCOPE_CHECK], regions: [one.regionKey] }]);
+      if (codes === 'unavailable' || one.piece.sourceType === 'PLATFORM') continue;
+      result.set(one.digest, [...(codes ?? []), { code: 'PROMPT_SCREENING_UNSAFE', checks: [MEDICAL_SCOPE_CHECK], regions }]);
     }
     return result;
   }

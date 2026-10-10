@@ -22,7 +22,7 @@ function piece(text: string, over: Partial<GovernedPieceInput> = {}): GovernedPi
 
 const allow = { decision: 'allow', reasons: [], undetermined: false, piiRegions: new Set<string>(), quasiRegions: new Set<string>() };
 
-function makeHarness() {
+function makeHarness(settings: Record<string, unknown> = {}) {
   const repository = {
     findPassing: vi.fn(async () => [] as Array<{ digest: string }>),
     upsertVerdict: vi.fn(async (input: Record<string, unknown>) => ({ id: 'row', version: 1, ...input })),
@@ -37,66 +37,71 @@ function makeHarness() {
   const events = { emit: vi.fn() };
   const store: Record<string, unknown> = { user: { id: 'user-1' }, tenantId: TENANT };
   const cls = { get: vi.fn((key: string) => store[key]), run: vi.fn(async (work: () => unknown) => work()) };
-  const appSettings = { getValueWithDefault: vi.fn((_key: string, fallback: unknown) => fallback) };
+  const appSettings = { getValueWithDefault: vi.fn((name: string, fallback: unknown) => (name in settings ? settings[name] : fallback)) };
   const service = new GovernedPromptRegistryService(repository as never, client as never, events as never, cls as never, appSettings as never);
   return { service, repository, client };
 }
 
-describe('registry — build-time medical scope judge (C-3)', () => {
-  it('judges the same regions as the inbound screen, in parallel, under the tenant', async () => {
-    const { service, client } = makeHarness();
-    const one = piece('Write a SOAP note from the consultation transcript.');
-    await service.screenAndRegister(TENANT, [one]);
-    expect(client.screenRegions).toHaveBeenCalledTimes(1);
-    expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
-    const screened = (client.screenRegions.mock.calls[0] as unknown as [string, unknown])[1];
-    expect(client.validateMedicalScope).toHaveBeenCalledWith(TENANT, screened);
-    expect(screened).toEqual([{ key: pieceDigest(one.text).slice(0, 16), text: one.text }]);
-  });
+const regionKey = (text: string) => pieceDigest(text).slice(0, 16);
 
+describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, amended)', () => {
   it('in scope → passes, registered PASS, no finding', async () => {
-    const { service, repository } = makeHarness();
+    const { service, repository, client } = makeHarness();
     const result = await service.screenAndRegister(TENANT, [piece('Summarise the clinical findings.')]);
     expect(result.passed).toBe(true);
     expect(result.findings).toEqual([]);
+    expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
     expect(repository.upsertVerdict).toHaveBeenCalledWith(expect.objectContaining({ verdict: GovernedPromptVerdict.PASS }));
   });
 
-  it('off scope → PROMPT_SCREENING_UNSAFE with check medical_scope on the off-scope piece only, registered FAIL', async () => {
+  it('an authored multi-piece unit is ONE judge call over every piece of the unit — an already-PASS piece included', async () => {
+    const { service, repository, client } = makeHarness();
+    const body = piece('Write a SOAP note from the consultation transcript.', { kind: 'FRAGMENT', sourceKey: 'body' });
+    const short = piece('Respond in English.', { kind: 'FRAGMENT', sourceKey: 'lang' });
+    const known = piece('List the medications discussed.', { kind: 'FRAGMENT', sourceKey: 'meds' });
+    repository.findPassing.mockResolvedValue([{ digest: pieceDigest(known.text) }]);
+    await service.screenAndRegister(TENANT, [body, short, known]);
+    expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
+    expect(client.validateMedicalScope).toHaveBeenCalledWith(TENANT, [
+      { key: regionKey(body.text), text: body.text },
+      { key: regionKey(short.text), text: short.text },
+      { key: regionKey(known.text), text: known.text },
+    ]);
+    // The inbound screen still covers only what is not yet PASS.
+    expect((client.screenRegions.mock.calls[0] as unknown as [string, Array<{ key: string }>])[1].map((region) => region.key)).toEqual([
+      regionKey(body.text),
+      regionKey(short.text),
+    ]);
+  });
+
+  it('off scope → the unit is refused as a whole: PROMPT_SCREENING_UNSAFE, check medical_scope, regions = the off-scope keys', async () => {
     const { service, client, repository } = makeHarness();
     const off = piece('Write a limerick about football.', { kind: 'FRAGMENT', sourceKey: 'off' });
     const on = piece('List the medications discussed.', { kind: 'FRAGMENT', sourceKey: 'on' });
-    const offKey = pieceDigest(off.text).slice(0, 16);
-    client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [offKey] });
+    client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [regionKey(off.text)] });
     const result = await service.screenAndRegister(TENANT, [off, on]);
     expect(result.passed).toBe(false);
-    expect(result.findings).toHaveLength(1);
-    expect(result.findings[0]).toMatchObject({
-      code: 'PROMPT_SCREENING_UNSAFE',
-      pieceKey: 'off',
-      digest: pieceDigest(off.text),
-      check: 'medical_scope',
-      regions: [offKey],
-    });
-    // The call sites forward only `{ code, reason, digest }`: the reason itself names the check and region.
-    expect(result.findings[0]!.reason).toContain('medical_scope');
-    expect(result.findings[0]!.reason).toContain(offKey);
-    expect(repository.upsertVerdict).toHaveBeenCalledWith(
-      expect.objectContaining({ digest: pieceDigest(off.text), verdict: GovernedPromptVerdict.FAIL }),
-    );
-    expect(repository.upsertVerdict).toHaveBeenCalledWith(
-      expect.objectContaining({ digest: pieceDigest(on.text), verdict: GovernedPromptVerdict.PASS }),
-    );
+    expect(result.findings).toHaveLength(2);
+    for (const finding of result.findings) {
+      expect(finding).toMatchObject({ code: 'PROMPT_SCREENING_UNSAFE', check: 'medical_scope', regions: [regionKey(off.text)] });
+      // The call sites forward only `{ code, reason, digest }`: the reason itself names the check and the keys.
+      expect(finding.reason).toContain('medical_scope');
+      expect(finding.reason).toContain(regionKey(off.text));
+    }
+    expect(repository.upsertVerdict).toHaveBeenCalledTimes(2);
+    expect(repository.upsertVerdict.mock.calls.every(([input]) => (input as { verdict: unknown }).verdict === GovernedPromptVerdict.FAIL)).toBe(true);
   });
 
-  it('off scope with no attributable region → every piece refused (fail closed)', async () => {
+  it('off scope with no attributable region → regions = every key of the unit (fail closed)', async () => {
     const { service, client } = makeHarness();
+    const a = piece('One.', { sourceKey: 'a' });
+    const b = piece('Two.', { sourceKey: 'b' });
     client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [] });
-    const result = await service.screenAndRegister(TENANT, [piece('One.', { sourceKey: 'a' }), piece('Two.', { sourceKey: 'b' })]);
+    const result = await service.screenAndRegister(TENANT, [a, b]);
     expect(result.passed).toBe(false);
-    expect(result.findings.map((finding) => [finding.code, finding.check])).toEqual([
-      ['PROMPT_SCREENING_UNSAFE', 'medical_scope'],
-      ['PROMPT_SCREENING_UNSAFE', 'medical_scope'],
+    expect(result.findings.map((finding) => [finding.code, finding.check, finding.regions])).toEqual([
+      ['PROMPT_SCREENING_UNSAFE', 'medical_scope', [regionKey(a.text), regionKey(b.text)]],
+      ['PROMPT_SCREENING_UNSAFE', 'medical_scope', [regionKey(a.text), regionKey(b.text)]],
     ]);
   });
 
@@ -109,15 +114,74 @@ describe('registry — build-time medical scope judge (C-3)', () => {
     expect(repository.upsertVerdict).not.toHaveBeenCalled();
   });
 
-  it('validateAuthoredPieces (no registration) also refuses an off-scope piece', async () => {
+  it('validateAuthoredPieces (no registration) judges the unit in one call and refuses off scope', async () => {
     const { service, client } = makeHarness();
     client.validateMedicalScope.mockImplementation(async (...args: unknown[]) => ({
       isMedical: false,
       offScopeRegions: (args[1] as Array<{ key: string }>).map((region) => region.key),
     }));
-    const result = await service.validateAuthoredPieces(TENANT, [piece('Tell me a joke.')]);
+    const result = await service.validateAuthoredPieces(TENANT, [
+      piece('Tell me a joke.', { sourceKey: 'a' }),
+      piece('And another.', { sourceKey: 'b' }),
+    ]);
+    expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
     expect(result.passed).toBe(false);
     expect(result.findings[0]).toMatchObject({ code: 'PROMPT_SCREENING_UNSAFE', check: 'medical_scope' });
+  });
+
+  it('registerPlatformPieces never calls the medical judge (platform-owned pieces are never refused for scope)', async () => {
+    const { service, client, repository } = makeHarness();
+    client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [] });
+    await service.registerPlatformPieces(
+      [piece('Respond in English.', { kind: 'FRAGMENT', sourceType: 'PLATFORM', sourceId: null, sourceKey: 'lang' })],
+      TENANT,
+    );
+    expect(client.screenRegions).toHaveBeenCalledTimes(1);
+    expect(client.validateMedicalScope).not.toHaveBeenCalled();
+    expect(repository.upsertVerdict).toHaveBeenCalledWith(expect.objectContaining({ verdict: GovernedPromptVerdict.PASS }));
+  });
+
+  it('a platform re-registration under a new policy version (the platform rescreen) never calls the medical judge', async () => {
+    const { service, client } = makeHarness();
+    const platform = piece('Respond in English.', { kind: 'FRAGMENT', sourceType: 'PLATFORM', sourceId: null, sourceKey: 'lang' });
+    await service.registerPlatformPieces([platform], TENANT);
+    client.fetchPolicyVersion.mockResolvedValue('pv-2');
+    service.scheduleTenantRescreen(TENANT);
+    await service.drainBackground();
+    await service.registerPlatformPieces([platform], TENANT);
+    expect(client.screenRegions).toHaveBeenCalledTimes(2);
+    expect(client.validateMedicalScope).not.toHaveBeenCalled();
+  });
+
+  it('a PLATFORM piece offered through screenAndRegister is left out of the medical judge', async () => {
+    const { service, client } = makeHarness();
+    const authored = piece('Write a SOAP note.', { kind: 'FRAGMENT', sourceKey: 'body' });
+    const platform = piece('Respond in English.', { kind: 'FRAGMENT', sourceType: 'PLATFORM', sourceId: null, sourceKey: 'lang' });
+    await service.screenAndRegister(TENANT, [authored, platform]);
+    expect(client.validateMedicalScope).toHaveBeenCalledWith(TENANT, [{ key: regionKey(authored.text), text: authored.text }]);
+  });
+
+  it('the authored rescreen (published agents / approved versions) judges each source in one call', async () => {
+    const { service, client, repository } = makeHarness({ 'governedPrompt.rescreenDelayMs': 0 });
+    repository.findPublishedAgentSources.mockResolvedValue([
+      {
+        tenantId: TENANT,
+        id: 'a1',
+        compiledConfig: {
+          resolvedPrompt: {
+            source: 'composite',
+            fragments: [
+              { key: 'f1', content: 'Write a SOAP note.' },
+              { key: 'f2', content: 'Respond in English.' },
+            ],
+          },
+        },
+      },
+    ]);
+    service.scheduleTenantRescreen(TENANT);
+    await service.drainBackground();
+    expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
+    expect((client.validateMedicalScope.mock.calls[0] as unknown as [string, unknown[]])[1]).toHaveLength(2);
   });
 });
 
