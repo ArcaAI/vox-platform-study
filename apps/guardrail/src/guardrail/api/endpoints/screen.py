@@ -174,6 +174,12 @@ class OutboundScreenRequest(BaseModel):
         "judge (Qwen3Guard) moderates the (prompt, response) pair; without it the pair is "
         "judged with an empty prompt.",
     )
+    locality: Literal["local", "cloud"] | None = Field(
+        default=None,
+        description="TASK-1059 C-2: where the response was generated. `local` — a `pii_leak` "
+        "that is the ONLY blocking check is taken at `warn` (detect-only: a "
+        "`guardrail.warning` notice, never a hold). `cloud` / absent — unchanged.",
+    )
 
 
 class PiiSpanModel(BaseModel):
@@ -578,6 +584,7 @@ async def screen_outbound(request: OutboundScreenRequest, http_request: Request)
                 ),
                 response_items=_item_refs(request.response_items),
                 prompt_context=request.prompt_context,
+                locality=request.locality,
             )
     except HTTPException:
         raise
