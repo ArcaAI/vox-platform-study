@@ -71,9 +71,12 @@ export interface ContextJudgeResult {
  */
 export class ContextJudgeUnavailableError extends Error {
   readonly code = 'GUARDRAIL_UNAVAILABLE' as const;
+  // `cause` is set by hand: this package's TS lib predates the ES2022 `Error(message, options)` overload.
+  readonly cause?: unknown;
   constructor(message = 'context medical judge unavailable', options?: { cause?: unknown }) {
-    super(message, options);
+    super(message);
     this.name = 'ContextJudgeUnavailableError';
+    if (options && 'cause' in options) this.cause = options.cause;
   }
 }
 
