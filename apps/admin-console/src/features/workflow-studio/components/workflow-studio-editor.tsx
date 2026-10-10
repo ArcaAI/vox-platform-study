@@ -832,7 +832,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           : 'Validation found problems — see the Problems tab.',
       );
     } catch (cause) {
-      toast.error(lifecycleFailureMessage(cause, 'Validate failed.', nodeDisplayNames(nodes, naming)));
+      toast.error(lifecycleFailureMessage(cause, 'Validate failed.', nodeNames));
     } finally {
       setValidating(false);
     }
@@ -852,7 +852,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       toast.success(published.isActive ? 'Published and active.' : 'Published — not active.');
       setJustPublished(true);
     } catch (cause) {
-      toast.error(lifecycleFailureMessage(cause, 'Publish failed.', nodeDisplayNames(nodes, naming)));
+      toast.error(lifecycleFailureMessage(cause, 'Publish failed.', nodeNames));
     } finally {
       setPublishing(false);
     }
