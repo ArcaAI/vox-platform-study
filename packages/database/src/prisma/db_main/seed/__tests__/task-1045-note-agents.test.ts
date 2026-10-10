@@ -5,7 +5,7 @@
  *    `case_note` is unchanged and `sources` is optional;
  *  - a `fact-ledger-extraction` agent exists in SYSTEM and Global (ArcaAI receives it by clone);
  *  - every seeded LLM agent samples at temperature 0;
- *  - the summarization model is served at 32768 with a q4_0 KV cache and flash attention;
+ *  - the summarization model is served at 65536 (8 slots, TASK-1059 OD-1) with a q4_0 KV cache and flash attention;
  *  - multi-encounter recall: the ledger keys facts `<category>:<term>` with numbers, and both note
  *    prompts (the finalizer agent and the SYSTEM catch-all SOAP template) carry allergies and current
  *    medications of every encounter.
@@ -126,11 +126,11 @@ describe('every seeded LLM agent samples at temperature 0', () => {
 describe('the gemma serving profile', () => {
   const gemma = LLM_AI_MODELS.find((model) => model.slug === 'lms-gemma-4-e2b-it-qat')!;
 
-  it('declares and serves 32768 with a q4_0 KV cache and flash attention', () => {
-    expect(gemma.metaData?.contextLength).toBe(32768);
+  it('declares and serves 65536 x 8 with a q4_0 KV cache and flash attention (TASK-1059 OD-1)', () => {
+    expect(gemma.metaData?.contextLength).toBe(65536);
     expect(gemma.metaData?.serving).toMatchObject({
-      contextLength: 32768,
-      parallel: 10,
+      contextLength: 65536,
+      parallel: 8,
       flashAttention: true,
       kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
     });

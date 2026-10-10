@@ -91,7 +91,7 @@ describe('text → guardrail → judge timeouts nest', () => {
   });
 
   it('the values sized against the measured p99 (50.6 s)', () => {
-    expect(judgeTimeoutS).toBe(60);
+    expect(judgeTimeoutS).toBe(90); // TASK-1059 OD-6 (was 60): the text judge lane queues up to 30 s
     expect(TEXT_GUARDRAIL_POSTURE_DEFAULTS[TEXT_TIMEOUT_KEY]).toBe(120);
     expect(TEXT_GUARDRAIL_POSTURE_DEFAULTS['text.externalGuardrail.maxRetries']).toBe(2);
   });
