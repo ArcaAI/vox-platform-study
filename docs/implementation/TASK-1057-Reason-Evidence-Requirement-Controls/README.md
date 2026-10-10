@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — merged on local `dev-2.2`, gates green, local e2e passed; NOT pushed / NOT deployed (awaiting owner) |
+| Status | **Review** — pushed by owner, deployed to dev (pipeline #1429), awaiting owner sign-off |
 | Type | feature |
 | Branch | `dev-2.2` |
 | Rules | 00, 01, 04, 05, 09 (§Configuration Tiers), 13, 07/10/11 |
@@ -188,6 +188,7 @@ Actions with their own refusal shape (residency 409 `LIVE_PATH_REASON_REQUIRED`,
 | 2026-10-09 | Ticket opened; inventory scouted (backend + console); plan + OD round written |
 | 2026-10-09 | Owner decisions recorded; contract frozen (catalogue, descriptors, service, tests) |
 | 2026-10-10 | Lanes A, B1, B2, C, D, E1, E2, H merged; post-merge gate fixes; local e2e passed; status Review |
+| 2026-10-10 | Owner pushed `5c8edf877`; pipeline #1429 green incl. `promote-dev` + `verify-dev`; Argo `hope-v2-dev` Synced/Healthy; `hope-db-migrate` applied `20261009210000_task_1057_resource_type_harness_audit`; `hope-api` on `api@sha256:0d9ad70d…`, Ready, 0 restarts; `GET admin/settings/action-confirmations[/effective]` → 401 unauthenticated (route mounted) |
 
 ## 9. Appendix — TYPE_CONFIRM call sites
 
