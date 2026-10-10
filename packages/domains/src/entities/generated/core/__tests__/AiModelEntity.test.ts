@@ -150,7 +150,7 @@ describe('AiModelEntity', () => {
 
     describe('slug format validation', () => {
       it('should accept valid slugs', () => {
-        const validSlugs = ['whisper-large-v3', 'silero-vad-v4', 'a', 'ab', 'model123', '123model', 'a1b2c3', 'arcaai-whisper-large-ml-en-gguf-q8_0', 'whisper_large_v3'];
+        const validSlugs = ['whisper-large-v3', 'silero-vad-v4', 'a', 'ab', 'model123', '123model', 'a1b2c3', 'arcaai-whisper-large-ml-en-gguf-q8_0', 'whisper_large_v3', 'granite-guardian-4.1-8b', 'azure-gpt-5.4-mini', 'mai-transcribe-1.5', 'nemotron-3.5-asr-streaming-0.6b'];
 
         validSlugs.forEach((slug) => {
           const entity = createTestEntity({ slug });
@@ -174,6 +174,13 @@ describe('AiModelEntity', () => {
         const entity = createTestEntity({ slug: '-whisper' });
 
         expect(() => entity.validate()).toThrow('Model slug must be lowercase alphanumeric with hyphens');
+      });
+
+      it('should reject a dot that does not join two segments', () => {
+        for (const slug of ['.granite', 'granite.', 'granite..8b', 'granite-.8b']) {
+          const entity = createTestEntity({ slug });
+          expect(() => entity.validate()).toThrow('Model slug must be lowercase alphanumeric with hyphens');
+        }
       });
 
       it('should reject slugs ending with hyphen', () => {

@@ -580,10 +580,12 @@ export class AiModelEntity extends BaseTaggedEntity {
     }
     // Validate slug format: lowercase alphanumeric segments joined by hyphens or underscores
     // (TASK-934: the seeded catalogue names GGUF quantisations `…-q8_0`; the old rule made those
-    // rows un-editable through the API because update() re-validates the entity).
-    if (!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(this._slug)) {
+    // rows un-editable through the API because update() re-validates the entity). TASK-1059: a dot
+    // joins segments too — seeded rows carry version numbers (`granite-guardian-4.1-8b`) and were
+    // un-editable for the same reason (500 on every PATCH).
+    if (!/^[a-z0-9]+(?:[-_.][a-z0-9]+)*$/.test(this._slug)) {
       throw new BusinessException(
-        'Model slug must be lowercase alphanumeric with hyphens (e.g., "whisper-large-v3"); an underscore may join segments (a GGUF quantisation suffix such as "q8_0")',
+        'Model slug must be lowercase alphanumeric with hyphens (e.g., "whisper-large-v3"); an underscore or a dot may join segments (a GGUF quantisation suffix such as "q8_0", a version such as "4.1")',
       );
     }
   }

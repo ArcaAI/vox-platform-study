@@ -50,8 +50,8 @@ export class UpdateModelRequest {
   @IsOptional()
   @MinLength(2)
   @MaxLength(100)
-  @Matches(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, {
-    message: 'Slug must be lowercase alphanumeric with hyphens (an underscore may join segments, e.g. q8_0)',
+  @Matches(/^[a-z0-9]+(?:[-_.][a-z0-9]+)*$/, {
+    message: 'Slug must be lowercase alphanumeric with hyphens (an underscore or a dot may join segments, e.g. q8_0, 4.1)',
   })
   slug?: string;
 
