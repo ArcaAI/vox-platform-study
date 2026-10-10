@@ -67,7 +67,11 @@ from harness.temporal.interpreter.run_events import (
     v2_node_key,
     v2_run_key,
 )
-from harness.temporal.interpreter.run_protocol import guardrail_notice_problems, run_error
+from harness.temporal.interpreter.run_protocol import (
+    guardrail_notice_problems,
+    run_error,
+    run_error_message,
+)
 
 # ---------------------------------------------------------------------------
 # Seed node activities (Task 4/6's tests dispatch against these; adds
@@ -844,6 +848,11 @@ async def _append_spec(
         tokens = _tokens(spec)
         if tokens is not None:
             completed["tokens"] = tokens
+        if completed["status"] == "DEGRADED":
+            # TASK-1059 — why it degraded, PHI-free: the fixed code and its fixed label only.
+            code = spec.error_code or run_error_code_of(spec.reason)
+            completed["errorCode"] = code
+            completed["errorMessage"] = run_error_message(code)
         await producer.append(
             run_id=run_id,
             type="node.completed",

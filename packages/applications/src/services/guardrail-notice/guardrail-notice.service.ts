@@ -439,6 +439,10 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
         tenantId: consultation.tenantId,
         triggerId: `guardrail-hold:${notice.id}`,
         userId: clinicianId,
+        // TASK-1059 lane O — the superseding run carries the override the paused re-run would have
+        // sent, under the same rule (`hold_override`): only an `acknowledged` block, never the
+        // privacy hold (whose `acknowledged` is a retry).
+        ...(resolution === 'acknowledged' && !isRedactionHoldNotice(notice) ? { guardrailOverrideNoticeIds: [notice.id] } : {}),
       });
       return result.superseded ? 'superseded' : 'none';
     } catch (error) {

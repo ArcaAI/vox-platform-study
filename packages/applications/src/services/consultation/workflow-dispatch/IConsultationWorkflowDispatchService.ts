@@ -192,6 +192,14 @@ export interface SupersedeGoverningRunInput {
    * anywhere else). Omitted ⇒ the run starts with no payload, exactly as an open without context did.
    */
   readonly authoredContext?: Record<string, unknown> | null;
+  /**
+   * TASK-1059 (TASK-1058 RC-8) — the guardrail notices a clinician resumed `acknowledged` whose run
+   * was no longer paused, so the hold fell back to THIS supersede. The fresh run sends
+   * `X-Hope-Guardrail-Override` for them exactly as a resumed node re-run does; guardrail verifies
+   * each notice and downgrades only that notice's finding. Omitted ⇒ no override (every other
+   * supersede).
+   */
+  readonly guardrailOverrideNoticeIds?: readonly string[];
 }
 
 export interface SupersedeGoverningRunResult {

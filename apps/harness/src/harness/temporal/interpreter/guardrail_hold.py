@@ -194,6 +194,21 @@ def hold_override(kind: str, resolution: str, notice_id: str) -> str | None:
     return None
 
 
+def supersede_override(notice_ids: Iterable[str] | None) -> str | None:
+    """The ``X-Hope-Guardrail-Override`` a SUPERSEDING run's node calls send, or ``None`` (pure).
+
+    The gateway lists a notice here only under :func:`hold_override`'s rule (an ``acknowledged``
+    block, never the privacy hold) and only for the one hold whose resume fell back to the
+    supersede (its ``triggerId`` is per notice). The header names ONE notice, so the first is it;
+    guardrail verifies that notice and downgrades only the checks of its finding (its dedupe key),
+    so a node whose generation raises any other finding is screened exactly as before.
+    """
+    for notice_id in notice_ids or ():
+        if notice_id:
+            return notice_id
+    return None
+
+
 def hold_wait_seconds(
     requested: int | None,
     *,
