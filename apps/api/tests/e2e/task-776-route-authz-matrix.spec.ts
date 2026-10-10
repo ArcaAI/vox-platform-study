@@ -406,6 +406,11 @@ test.describe(' route authorization conformance matrix', () => {
     // TASK-1045 added the 42nd: GET /internal/consultations/{consultationId}/note-plans/{planId}
     // (HarnessNotePlanController, `@Public()` + HarnessServiceTokenGuard + InternalTenantLockGuard). Its
     // sibling POST /internal/stt/segments is NOT `@Public()` (internal key, `internal:stt:worker`).
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(42);
+    // TASK-1047 added the 43rd without re-pinning: POST /internal/governed-prompts/verify
+    // (GovernedPromptInternalController, `@Public()` + HarnessServiceTokenGuard + InternalTenantLockGuard),
+    // and TASK-1050 the 44th: POST /internal/guardrail/evaluations (GuardrailEvaluationInternalController,
+    // `@Public()` + InternalServiceTokenGuard + InternalTenantLockGuard). Re-pinned 2026-10-10 (TASK-1057
+    // follow-up) after the `assertAll` above returned 401 for all 44 on a live gateway.
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(44);
   });
 });
