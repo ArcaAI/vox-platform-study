@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — pushed by owner, deployed to dev (pipeline #1429), awaiting owner sign-off |
+| Status | **Completed** — deployed to dev (pipeline #1429), cluster e2e passed 2026-10-10 |
 | Type | feature |
 | Branch | `dev-2.2` |
 | Rules | 00, 01, 04, 05, 09 (§Configuration Tiers), 13, 07/10/11 |
@@ -189,6 +189,7 @@ Actions with their own refusal shape (residency 409 `LIVE_PATH_REASON_REQUIRED`,
 | 2026-10-09 | Owner decisions recorded; contract frozen (catalogue, descriptors, service, tests) |
 | 2026-10-10 | Lanes A, B1, B2, C, D, E1, E2, H merged; post-merge gate fixes; local e2e passed; status Review |
 | 2026-10-10 | Owner pushed `5c8edf877`; pipeline #1429 green incl. `promote-dev` + `verify-dev`; Argo `hope-v2-dev` Synced/Healthy; `hope-db-migrate` applied `20261009210000_task_1057_resource_type_harness_audit`; `hope-api` on `api@sha256:0d9ad70d…`, Ready, 0 restarts; `GET admin/settings/action-confirmations[/effective]` → 401 unauthenticated (route mounted) |
+| 2026-10-10 | Cluster e2e (admin.taphuynh.dev, live admin session): `/action-confirmations` renders; `promptTemplate.create` → Required saved (SYSTEM row v1); in the Global tenant "Create Prompt" stayed disabled until a reason was typed, then created `01a12359-…`; cluster audit row `CREATE PromptTemplate` carries `{actionId: promptTemplate.create, mode: required, note: "reason required", provided: true}`; typed-name delete confirmation shown and the test template soft-deleted (`DELETED`); row reset → `not-required` (v2); impersonate dialog requires a reason (button disabled). Only console error: the expected 404 re-fetch of the just-deleted template. Ticket closed. |
 
 ## 9. Appendix — TYPE_CONFIRM call sites
 
