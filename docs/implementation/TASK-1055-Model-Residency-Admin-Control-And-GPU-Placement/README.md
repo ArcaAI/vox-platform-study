@@ -429,10 +429,29 @@ Contract: `tests/contracts/model-residency-task1055.fixture.json` → `wave3`. T
 
 Reported by the TASK-1058 e2e session. Cause: the TASK-1050 seed (`cfb494073`, OD-32) elects `guardrail.injection` → Llama Prompt Guard 2 86M; the cluster kept the older election until this ticket's owner-authorized reset + reseed (§8e), the first time that seed reached the cluster. PG2 is gated (manual Meta approval) and was never published, so every `jailbreak_detection` call cold-loads, misses the offline cache and 503s; the gateway fails closed (`PROMPT_SCREENING_UNAVAILABLE` on prompt approve / agent publish). **Owner decision (2026-10-10): publish Prompt Guard 2** — through `out-of-band/hope-models-publish.yaml` (new `files:` mode, `hf.private.tsv`), run after the hold is released; needs the `HF_TOKEN` account to hold Meta's approval for the repo.
 
+### 10.7 Cluster e2e of wave 3 (2026-10-10, app `5c8edf87` via CI #1429 green, deployment `15abac6`)
+
+| Requirement | Evidence |
+|---|---|
+| G1 — LM Studio loads on request with the row's profile | text calls `ensure` before every LM Studio request (judge calls → Granite `already_loaded`, 3–5 ms). A request for the unloaded Gemma 4 E4B → agent `residency.load_started` on cuda:1 with `contextLength 65536 · parallel 10 · flashAttention · f16 KV · gpuSplit priority [1]`, loaded in 24.1 s (4.43 GB measured), following requests `already_loaded`. A model whose GGUF is not on disk (`qwen3guard-gen-0.6b`) → `LOAD_FAILED` with the cause; no blind JIT copy. |
+| G2 — any self-hosted stt model loads from the console, no agent | every stt row (ASR variants + VAD / denoise / embedding) offers Load. `silero-vad` loaded (VAD stage); `whisper-large-en-medical-260726-merged-gguf-q8_0` (named by no agent) loaded on gpu0, 2.29 GB measured. `arcaai-whisper-large-ml-en-gguf-q8_0` failed with a clear toast — its q8_0 weights were never published (only the f16 file is in the bucket). |
+| G3 — tts under console control | "Text-to-speech" section (cpu, reachable). Cold Kokoro load from the console → loaded on `cpu:tts`, 327 MB measured, catalogue row `loaded` with Unload; unload 200. |
+| Phantom in-flight gone | LM Studio rows read `inFlight` 0 / unknown, never a permanent 1. |
+| Prompt screening restored (§10.6) | `hope-models-publish-pg2c` published Prompt Guard 2 (5 files, 1.05 GiB, refs/main → `a8ded8e6…`); hope-nlp restarted once (see follow-up 1); console Load of PG2 → cuda:0, 1.12 GB; `POST /api/v1/guard/classify` 649× 200, zero 503 since. |
+
+All e2e test loads (Gemma 4 E4B, Kokoro, Silero VAD, Whisper medical q8_0) were unloaded again.
+
+**Follow-ups found by this e2e (not fixed here):**
+1. **s3fs caches "not found"**: the nlp pod could not see the freshly published PG2 directory for >15 min (negative stat cache refreshed by the minute-by-minute failing loads); a rollout restart was needed. Add `-o disable_noobj_cache` (or a short `stat_cache_expire`) to the models-bucket s3fs mounts (nlp, stt, stt-worker, tts, lmstudio) so a publish is visible without a restart.
+2. **text retries an ensure `LOAD_FAILED` 3×** and then answers a generic 502; it should be non-retryable and surface 503 with the cause.
+3. **Rows offered for load whose weights do not exist** (`qwen3guard-gen-0.6b` GGUF not on the LM Studio disk; `arcaai-whisper-large-ml-en-gguf-q8_0` q8_0 file not published): the catalogue should show "weights not published" (`loadBlockedReason` from availability) instead of failing at load time.
+4. **`out-of-band/hope-models-publish.yaml` Job lacks the `environment: dev` pod label** that `allow-intra-platform` requires, so a Job rendered from base cannot reach MinIO (two attempts failed before the label was added by hand).
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
+| 2026-10-10 | Wave 3 pushed (owner: push all 51 incl. TASK-1057) — CI #1429 green, deployment `15abac6`; cluster e2e §10.7 passed G1/G2/G3; Prompt Guard 2 published (`hope-models-publish-pg2c`) and screening restored (guard/classify 649× 200). Follow-ups 1–4 recorded. Status Review. |
 | 2026-10-10 | Wave 3 merged locally (6 lanes + text agent-URL fix), gate green for this wave (§10.5); prompt-screening incident root-caused (§10.6), owner chose to publish Prompt Guard 2; all deploys on hold for the TASK-1058 e2e. |
 | 2026-10-09 | Owner: every agent kind loads on request OR by the platform admin, never needing an agent to load. Audit + plan §10 (G1 LM Studio profile on request, G2 stt model-only console loads, G3 tts console control); decisions W3-1..4 taken as recommended. Status In Progress. |
 | 2026-10-09 | Follow-up wave pushed (`31504362`, deployment `0149fe3`) and e2e-verified on the cluster (§8g); Granite moved to GPU 1 as default; phantom in-flight defect fixed (`164b453d3`, CI #1425) and verified; Prompt Guard 2 weights missing (open). |
