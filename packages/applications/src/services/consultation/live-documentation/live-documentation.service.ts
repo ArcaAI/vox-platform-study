@@ -1591,6 +1591,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private readonly HANDOFF_PENDING_PREFIX = 'live-doc:handoff-pending:';
   private readonly HANDOFF_PENDING_TTL = 600; // 10 min — far past any observed drain (35 s)
+  /**
+   * TASK-1059 RC-7 — how long `stop()` waits, measured from the stop's START (the drain counts), for
+   * the session's `onStart` nodes (the warm-start pre-summary) to settle before it publishes `closed`.
+   * A bound, not a budget: a warm start that settled already costs nothing, and one that hangs can
+   * delay the terminal marker by at most this much. Not `readonly` only so a test can shorten it.
+   */
+  private ON_START_SETTLE_MS = 120_000;
 
   /** The one running stop per consultation; a second stop joins it. */
   private readonly stopsInFlight = new Map<string, Promise<LiveSummaryEventDto | null>>();
@@ -3138,6 +3145,7 @@ return 0`;
   private async runStop(consultationId: string, opts?: { persistSnapshot?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
     let finalPayload: LiveSummaryEventDto | null = null;
+    const stopStartedAt = Date.now();
 
     if (session) {
       // TASK-1022 (D-FLUSH) — fence the session BEFORE draining. Replay1020 run3: a non-forced
@@ -3193,6 +3201,16 @@ return 0`;
       await this.persistLiveHandoff(session);
 
       this.teardownLocal(session);
+
+      // TASK-1059 RC-7 — the terminal `closed` must not overtake the warm start. Every SDK and the
+      // ALaaS broker stop reading at `closed`; a pre-summary that settles after it is never shown
+      // (TASK-1058: generated and persisted 67 s after `closed`). So wait, bounded, for the `onStart`
+      // nodes — the warm start publishes its own `presummary` event when it settles, which then
+      // precedes `closed` on the channel. Chosen over carrying the pre-summary IN the closing
+      // snapshot because that alone cannot deliver one that does not exist yet at stop time, which is
+      // the case that was observed. Before `clearPreSummary` below, so the replay key it writes is
+      // cleared with the session as before.
+      await this.awaitOnStartSettled(session, stopStartedAt);
     }
 
     // Drop this session from the admin live view (stats key +
@@ -3229,6 +3247,35 @@ return 0`;
 
     this.logger.log({ message: 'Live documentation session stopped', consultationId, owned: !!session });
     return finalPayload;
+  }
+
+  /**
+   * TASK-1059 RC-7 — resolve once the session's `onStart` nodes settled, or once
+   * {@link ON_START_SETTLE_MS} has passed since the stop began, whichever is first. Never rejects
+   * (`runOnStartNodes` never throws; the catch is belt and braces).
+   */
+  private async awaitOnStartSettled(session: LiveSession, stopStartedAt: number): Promise<void> {
+    const pending = session.onStartPromise;
+    if (!pending) return;
+    const remainingMs = Math.max(0, stopStartedAt + this.ON_START_SETTLE_MS - Date.now());
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settled = await Promise.race([
+      pending.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), remainingMs);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (!settled) {
+      this.logger.warn({
+        message: 'Warm start still running at stop — publishing the terminal snapshot without waiting further',
+        consultationId: session.consultationId,
+        waitedMs: Date.now() - stopStartedAt,
+      });
+    }
   }
 
   // ------------------------------------------------------------------
@@ -6140,6 +6187,13 @@ return 0`;
     const documentKey = session.templateSnapshot?.slug ?? null;
     const durableSnapshotMs = this.realtimeBudgets.durableSnapshotMs;
     if (!opts.force && (durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < durableSnapshotMs)) return;
+    // TASK-1059 D-08 — a note with no section BODY is not a note. With a template,
+    // `buildStructuredSummary([])` still renders every heading over the "not documented" marker, so a
+    // session whose flushes all failed wrote a headings-only LIVE_SOAP_SNAPSHOT as an ordinary
+    // PRE_SUMMARY item, which the finalizer then reads as the live note. Nothing is persisted until a
+    // flush produced content; the degrade reason travels on the published payload, not on a row.
+    const hasBody = !!payload.runningSummary?.trim() || (payload.sections ?? []).some((section) => (section.content ?? '').trim().length > 0);
+    if (!hasBody) return;
 
     // A1 — the finalizer's input is a DOCUMENT, so write it as one.
     //
