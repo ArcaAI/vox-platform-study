@@ -113,6 +113,12 @@ def retry_after_from(exc: BaseException) -> float | None:
 #: `should_retry` — never retried, whatever a caller's ``retry_on`` asks for.
 INVALID_REQUEST_ERROR_TYPE = "invalid_request"
 
+#: TASK-1055 — the error-type value for a model the engine could not LOAD (the LM
+#: Studio agent's `ensure` answered LOAD_FAILED). The load was already attempted
+#: with the governed profile and refused; retrying repeats the same refusal, so it
+#: is structurally excluded from `should_retry` like a provider 4xx.
+PROVIDER_UNAVAILABLE_ERROR_TYPE = "provider_unavailable"
+
 #: The `code` this service answers with for a provider 4xx that is NOT
 #: recognised as a context-window overflow. Same naming convention as
 #: `services/output_gate.py`'s `REJECTED_CODE` / `UNAVAILABLE_CODE`.
@@ -257,7 +263,7 @@ def should_retry(
     which-error-CLASSES knob and was never the right place to disable the one
     class that comes with a deadline attached.
     """
-    if error_type == INVALID_REQUEST_ERROR_TYPE:
+    if error_type in (INVALID_REQUEST_ERROR_TYPE, PROVIDER_UNAVAILABLE_ERROR_TYPE):
         return False
     if attempt >= min(max_retries, MAX_RETRIES):
         return False

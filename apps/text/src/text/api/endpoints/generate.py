@@ -38,6 +38,7 @@ from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
     ProviderCredentialsError,
+    ProviderUnavailableError,
     QueueTimeoutError,
     RateLimitError,
     ShutdownError,
@@ -112,6 +113,7 @@ from text.services.resizable_semaphore import ResizableSemaphore
 from text.services.retry_handler import (
     DEFAULT_RATE_LIMIT_RETRY_AFTER_S,
     INVALID_REQUEST_ERROR_TYPE,
+    PROVIDER_UNAVAILABLE_ERROR_TYPE,
     RATE_LIMITED_ERROR_TYPE,
     calculate_backoff,
     is_provider_invalid_request,
@@ -283,6 +285,8 @@ def _classify_provider_failure(exc: BaseException) -> str:
     Two copies of a three-way rule is how one of them ends up a branch behind
     the other.
     """
+    if isinstance(exc, ProviderUnavailableError):
+        return PROVIDER_UNAVAILABLE_ERROR_TYPE
     if is_provider_rate_limited(exc):
         return RATE_LIMITED_ERROR_TYPE
     if is_provider_invalid_request(exc):
@@ -1041,6 +1045,19 @@ async def generate(
         )
         GENERATION_ERRORS.labels(
             provider=request_body.provider, model=model, error_type="credentials_missing"
+        ).inc()
+        GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
+        raise
+    except ProviderUnavailableError:
+        # TASK-1055 — the engine could not LOAD the model (LM Studio agent `ensure`
+        # LOAD_FAILED). A model/capacity fact, not provider ill-health: no breaker
+        # failure, no generic 502. Re-raise so the shared handler answers 503 with
+        # the cause (`_STATUS_MAP`).
+        await task_manager.update_task(
+            task.task_id, status=TaskStatus.FAILED, error="Model could not be loaded"
+        )
+        GENERATION_ERRORS.labels(
+            provider=request_body.provider, model=model, error_type="provider_unavailable"
         ).inc()
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
         raise

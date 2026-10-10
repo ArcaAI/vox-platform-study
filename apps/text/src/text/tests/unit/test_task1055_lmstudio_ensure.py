@@ -244,3 +244,56 @@ async def test_a_failing_url_source_skips_the_ensure(monkeypatch):
     await provider.generate(_req())
 
     assert seen == []
+
+
+# ── TASK-1055 §10.7 follow-up 2 — an ensure LOAD_FAILED is final: no retry, 503 with its cause ──
+
+
+def test_a_load_failure_is_classified_as_non_retryable():
+    from text.api.endpoints.generate import _classify_provider_failure
+    from text.services.retry_handler import PROVIDER_UNAVAILABLE_ERROR_TYPE, should_retry
+
+    exc = ProviderUnavailableError(
+        "LM Studio could not load model 'm': no such model", provider="lm-studio"
+    )
+    error_type = _classify_provider_failure(exc)
+    assert error_type == PROVIDER_UNAVAILABLE_ERROR_TYPE
+    assert (
+        should_retry(error_type, [error_type, "provider_error"], attempt=0, max_retries=3) is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_endpoint_answers_503_with_the_cause_after_one_attempt():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from httpx import ASGITransport, AsyncClient
+
+    from text.main import create_app
+
+    provider = AsyncMock()
+    provider.generate = AsyncMock(
+        side_effect=ProviderUnavailableError(
+            "LM Studio could not load model 'qwen3guard-gen-0.6b': LM Studio carries no loadable model",
+            provider="lm-studio",
+        )
+    )
+    registry = MagicMock()
+    registry.get.return_value = provider
+    tm = AsyncMock()
+    state = MagicMock()
+    state.task_id = "task-1055-fu2"
+    tm.create_task = AsyncMock(return_value=state)
+    app = create_app()
+    app.state.provider_registry = registry
+    app.state.task_manager = tm
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/api/v1/generate",
+            json={"prompt": "hello", "provider": "lm-studio", "model": "qwen3guard-gen-0.6b"},
+        )
+
+    assert resp.status_code == 503
+    assert "carries no loadable model" in resp.text
+    assert provider.generate.await_count == 1
