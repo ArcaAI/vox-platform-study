@@ -77,4 +77,11 @@ describe('quick-start plan', () => {
     expect(states.workflow).toBeUndefined();
     expect(calls.createWorkflowDefinition).not.toHaveBeenCalled();
   });
+
+  it('C-17: with no assignment it stops after the workflow and never creates one', async () => {
+    const calls = api();
+    const result = await runQuickStart({ ...INPUT, assignment: { scope: 'NONE' } }, calls, () => {});
+    expect(result.ok).toBe(true);
+    expect(calls.createWorkflowAssignment).not.toHaveBeenCalled();
+  });
 });
