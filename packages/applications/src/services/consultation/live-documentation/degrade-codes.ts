@@ -18,6 +18,7 @@
  * |---|---|
  * | `no_case_notes` | the ordinary case, not a fault: a first-ever visit has no prior record |
  * | `context_overflow` | the prompt did not fit the model's context window |
+| `kv_exhausted` | TASK-1059 — the prompt fit, but the engine's SHARED KV cache was exhausted by concurrent slots |
  * | `text_unavailable` | the TEXT service could not be reached, or answered 5xx |
  * | `timeout` | the call, or the node's own budget, ran out |
  *
@@ -80,9 +81,22 @@ export const LIVE_DEGRADE_GUARDRAIL_BLOCKED = 'guardrail_blocked';
  */
 export const LIVE_DEGRADE_REDACTION_UNAVAILABLE = 'redaction_unavailable';
 
+/**
+ * TASK-1059 RC-6 — TEXT answered `CONTEXT_WINDOW_EXCEEDED` for a prompt that FITS the model's context.
+ *
+ * LM Studio loads a model with one KV cache SHARED by its parallel slots (`kv_unified`), so several
+ * concurrent generations can exhaust it while each prompt alone is far below `n_ctx` — the engine then
+ * answers every one of them "Context size has been exceeded". Measured in TASK-1058: a 1 803-token
+ * pre-summary prompt against a 32 768-token context. Deliberately NOT `context_overflow`, whose remedy
+ * is "send less": here the remedy is serving capacity (fewer slots or a bigger cache), and the prompt
+ * was never the problem. See {@link KvBudgetHint} for when the classifier may say so.
+ */
+export const LIVE_DEGRADE_KV_EXHAUSTED = 'kv_exhausted';
+
 export const LIVE_DEGRADE_CODES = Object.freeze([
   'no_case_notes',
   'context_overflow',
+  LIVE_DEGRADE_KV_EXHAUSTED,
   'text_unavailable',
   'timeout',
   LIVE_DEGRADE_OUTPUT_TRUNCATED,
@@ -103,6 +117,12 @@ const NO_CASE_NOTES = /no case notes/i;
 const CONTEXT_OVERFLOW =
   /context[ _-]?(window|length|size)|exceeds? the (model'?s? )?context|too (long|many tokens)|maximum context|prompt is too large/i;
 const TIMEOUT = /\btimed?[ _-]?out\b|\btimeout\b|budget[ _]exceeded|etimedout|econnaborted/i;
+/**
+ * TASK-1059 C-0 — the context medical judge's fail-closed code (`ContextJudgeUnavailableError.code`).
+ * It degrades exactly as TEXT's 503 `GUARDRAIL_UNAVAILABLE` did before the judge moved to the gateway:
+ * `text_unavailable`. Matched in the MESSAGE too, because the graph executor keeps only that.
+ */
+const GUARDRAIL_UNAVAILABLE = /\bGUARDRAIL_UNAVAILABLE\b/;
 const UNAVAILABLE = /econnrefused|econnreset|enotfound|ehostunreach|socket hang up|service unavailable|bad gateway|status code 5\d\d/i;
 
 /** The JSON error body the transport carried, when it carried an object. */
@@ -159,6 +179,45 @@ function httpStatus(error: unknown): number | undefined {
 }
 
 /**
+ * TASK-1059 RC-6 — what the CALLER knows about the prompt and the model it was sent to, so a
+ * `CONTEXT_WINDOW_EXCEEDED` can be told apart from a shared-KV exhaustion. Every field is optional;
+ * an absent hint (or an absent `contextTokens`) keeps the pre-1059 answer, `context_overflow`.
+ *
+ * - `promptTokens` — the prompt's token count, when it is KNOWN. Below `contextTokens` ⇒ the prompt
+ *   fit, so the window can only have been exhausted by other slots ⇒ `kv_exhausted`.
+ * - `promptChars` — the prompt's character count, used when the token count is UNKNOWN (the failed
+ *   call returned no usage). Characters are an upper bound on tokens for the BPE tokenizers we serve,
+ *   but not a precise one, so the rule keeps a 50 % margin: under half the configured context ⇒
+ *   `kv_exhausted`, otherwise the prompt may genuinely be too big ⇒ `context_overflow`.
+ * - `contextTokens` — the configured context window of the serving engine.
+ */
+export interface KvBudgetHint {
+  readonly promptTokens?: number | null;
+  readonly promptChars?: number | null;
+  readonly contextTokens?: number | null;
+}
+
+/** The share of the configured context under which a prompt of UNKNOWN token count is said to fit. */
+export const KV_EXHAUSTED_UNKNOWN_PROMPT_SHARE = 0.5;
+
+function isPositive(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/** RC-6 — did a `CONTEXT_WINDOW_EXCEEDED` happen to a prompt that fits? See {@link KvBudgetHint}. */
+function isKvExhaustion(hint: KvBudgetHint | undefined): boolean {
+  if (!hint || !isPositive(hint.contextTokens)) return false;
+  if (isPositive(hint.promptTokens)) return hint.promptTokens < hint.contextTokens;
+  if (isPositive(hint.promptChars)) return hint.promptChars < hint.contextTokens * KV_EXHAUSTED_UNKNOWN_PROMPT_SHARE;
+  return false;
+}
+
+/** RC-6 — is this TEXT's `CONTEXT_WINDOW_EXCEEDED`? Read off the same code shapes {@link degradeCode} reads. */
+export function isContextWindowExceeded(error: unknown): boolean {
+  return /CONTEXT_WINDOW_EXCEEDED/i.test(upstreamCode(error));
+}
+
+/**
  * Classify one failure into the vocabulary above.
  *
  * `fallback` is the surface's terminal code — pass {@link LIVE_DEGRADE_FALLBACK} or
@@ -168,7 +227,7 @@ function httpStatus(error: unknown): number | undefined {
  * NEVER returns the input message. Anything unrecognised becomes `fallback`, which is what makes
  * this safe to publish on a clinician-facing feed regardless of what an upstream service said.
  */
-export function degradeCode(error: unknown, fallback: string): string {
+export function degradeCode(error: unknown, fallback: string, hint?: KvBudgetHint): string {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error ?? '');
   const codes = upstreamCode(error);
   const status = httpStatus(error);
@@ -183,7 +242,8 @@ export function degradeCode(error: unknown, fallback: string): string {
   // status rule below would call a deliberate 503 refusal an outage.
   if (status === 422 && responseBody(error)?.type === GUARDRAIL_BLOCKED_PROBLEM_TYPE) return LIVE_DEGRADE_GUARDRAIL_BLOCKED;
   if (/\bEGRESS_REDACTION_UNAVAILABLE\b/.test(codes)) return LIVE_DEGRADE_REDACTION_UNAVAILABLE;
-  if (/CONTEXT_WINDOW_EXCEEDED/i.test(codes)) return 'context_overflow';
+  if (/CONTEXT_WINDOW_EXCEEDED/i.test(codes)) return isKvExhaustion(hint) ? LIVE_DEGRADE_KV_EXHAUSTED : 'context_overflow';
+  if (GUARDRAIL_UNAVAILABLE.test(`${codes} ${message}`)) return 'text_unavailable';
   if (NO_CASE_NOTES.test(message)) return 'no_case_notes';
   if (CONTEXT_OVERFLOW.test(haystack)) return 'context_overflow';
   if (TIMEOUT.test(haystack)) return 'timeout';

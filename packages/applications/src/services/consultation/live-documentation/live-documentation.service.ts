@@ -238,8 +238,16 @@ import {
   LIVE_DEGRADE_GUARDRAIL_BLOCKED,
   LIVE_DEGRADE_REDACTION_UNAVAILABLE,
   degradeCode,
+  isContextWindowExceeded,
   repetitionPressureCode,
 } from './degrade-codes';
+import type { LmStudioServingKey } from '../../settings-registry/descriptors/lmstudio-serving.descriptors';
+// TASK-1059 C-0 — the FROZEN runtime context-judge contract (implemented by the guardrail-context-judge lane).
+import {
+  ContextJudgeUnavailableError,
+  IContextMedicalJudgeService,
+  type ContextJudgeItem,
+} from '../../guardrail-context-judge/IContextMedicalJudgeService';
 import {
   DocumentSectionStore,
   GuardMemo,
@@ -371,6 +379,66 @@ class LivePromptUnresolvedError extends Error {
     super(message);
     this.name = 'LivePromptUnresolvedError';
   }
+}
+
+/**
+ * TASK-1059 RC-6 — TEXT's `CONTEXT_WINDOW_EXCEEDED`, already CLASSIFIED (`context_overflow` or
+ * `kv_exhausted`) where the prompt and the serving context are known.
+ *
+ * The message IS the code, because the graph executor keeps nothing of a node's error but its
+ * message (`realtime-executor.ts`), and `degradeCode` passes a bare code through unchanged — so the
+ * legacy catch and the graph degrade event land on the same answer. Before this the graph path
+ * reported `generation_failed` for every 422. The transport error rides along as `cause`.
+ */
+class LiveContextWindowError extends Error {
+  readonly code: string;
+  constructor(code: string, cause: unknown) {
+    super(code);
+    this.name = 'LiveContextWindowError';
+    this.code = code;
+    (this as { cause?: unknown }).cause = cause;
+  }
+}
+
+/** TASK-1059 RC-6 — the governed LM Studio context window (`lmstudio-serving.descriptors.ts`). */
+const LM_STUDIO_CONTEXT_LENGTH_KEY: LmStudioServingKey = 'lmStudio.serving.contextLength';
+/** The provider spellings LM Studio arrives under; only its context window is governed by the platform. */
+const LM_STUDIO_PROVIDERS = new Set(['lm-studio', 'lmstudio']);
+
+/**
+ * TASK-1059 C-0 — the size at which a transcript chunk sent to the context judge is SEALED.
+ *
+ * The judge's verdict cache is keyed by the digest of an item's text, so an item whose text changes
+ * every flush is re-judged every flush. Finalized segments are therefore grouped, in arrival order,
+ * into chunks that close once they reach this many characters and never change again: each flush
+ * re-sends the sealed chunks of its window byte-identical (cache hits) and only the newest, still
+ * open chunk is new. 600 characters also keeps a chunk well clear of the tiny regions whose lone
+ * judging caused the TASK-1058 false refusals.
+ */
+const LIVE_JUDGE_CHUNK_MIN_CHARS = 600;
+
+/** TASK-1059 C-0 — the stable judge item ids of the two prior-visit blocks this lane composes. */
+const LIVE_JUDGE_PREVIOUS_VISITS_ID = 'previous_visits';
+const LIVE_JUDGE_SAME_DAY_PREQUEL_ID = 'same_day_prequel';
+
+/** TASK-1059 C-0 — one transcript chunk: `transcriptParts[start, end)`, sealed once full. */
+interface LiveJudgeChunk {
+  readonly start: number;
+  end: number;
+  chars: number;
+  sealed: boolean;
+}
+
+/** TASK-1059 C-0 — what one flush composes after the context judge. */
+interface LiveContextJudgement {
+  /** Indices of `transcriptParts` whose chunk was judged out of scope. */
+  readonly excludedParts: ReadonlySet<number>;
+  /** The context-note ids judged out of scope. */
+  readonly excludedNoteIds: ReadonlySet<string>;
+  readonly previousVisitsInScope: boolean;
+  readonly sameDayPrequelInScope: boolean;
+  /** Set when the generation must not run: `refused`, or no verdict (fail closed). */
+  readonly block?: Error;
 }
 
 /**
@@ -943,7 +1011,13 @@ interface LiveSession {
    * preserved, so the assembled notes block stays byte-identical to the prior
    * `string[]` representation on the add-only path.
    */
-  contextNotes: { contextItemId: string; text: string }[];
+  contextNotes: { contextItemId: string; text: string; contextType?: string }[];
+  /**
+   * TASK-1059 C-0 — the transcript chunks sent to the context judge, append-only and covering
+   * `transcriptParts[0, last.end)`. Boundaries are fixed when a part is appended (see
+   * {@link LIVE_JUDGE_CHUNK_MIN_CHARS}), so a sealed chunk is the same item on every flush.
+   */
+  judgeChunks?: LiveJudgeChunk[];
   pendingSegments: number;
   segmentCounter: number;
   lastSegmentId?: string;
@@ -1216,6 +1290,12 @@ interface LiveGuardrailTurn {
   outputNotices?: GuardrailNotice[];
   /** The first guardrail STOP a call of this flush met (422 block / 503 redaction hold), or null. */
   stop: LiveGuardrailStop | null;
+  /**
+   * TASK-1059 C-0 — set when the context judge refused this flush's context (`guardrail_blocked`) or
+   * could not judge it (`GUARDRAIL_UNAVAILABLE`, fail closed). The flush's document generation throws
+   * it instead of calling TEXT, so both engines degrade the node through their existing paths.
+   */
+  contextBlock?: Error;
 }
 
 /** TASK-1050 W2g — the bounded per-session record of relayed notices kept on the snapshot. */
@@ -1565,6 +1645,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private readonly HANDOFF_PENDING_PREFIX = 'live-doc:handoff-pending:';
   private readonly HANDOFF_PENDING_TTL = 600; // 10 min — far past any observed drain (35 s)
+  /**
+   * TASK-1059 RC-7 — how long `stop()` waits, measured from the stop's START (the drain counts), for
+   * the session's `onStart` nodes (the warm-start pre-summary) to settle before it publishes `closed`.
+   * A bound, not a budget: a warm start that settled already costs nothing, and one that hangs can
+   * delay the terminal marker by at most this much. Not `readonly` only so a test can shorten it.
+   */
+  private ON_START_SETTLE_MS = 120_000;
 
   /** The one running stop per consultation; a second stop joins it. */
   private readonly stopsInFlight = new Map<string, Promise<LiveSummaryEventDto | null>>();
@@ -1877,6 +1964,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-1057 — the platform reason policy for the engine kill-switch write. Optional + trailing
     // like every dependency above it; ABSENT ⇒ no policy is consulted.
     @Optional() @Inject(ActionConfirmationService) private readonly confirmations?: ActionConfirmationService,
+    // TASK-1059 C-0 — the runtime medical judge over the flush's narrative CONTEXT (OD-5/OD-8/OD-9).
+    // Optional + trailing like every dependency above it; ABSENT ⇒ nothing is judged here (the
+    // composer is unchanged), which is what keeps every positional fixture byte-identical.
+    @Optional() @Inject(IContextMedicalJudgeService) private readonly contextJudge?: IContextMedicalJudgeService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -3112,6 +3203,7 @@ return 0`;
   private async runStop(consultationId: string, opts?: { persistSnapshot?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
     let finalPayload: LiveSummaryEventDto | null = null;
+    const stopStartedAt = Date.now();
 
     if (session) {
       // TASK-1022 (D-FLUSH) — fence the session BEFORE draining. Replay1020 run3: a non-forced
@@ -3167,6 +3259,16 @@ return 0`;
       await this.persistLiveHandoff(session);
 
       this.teardownLocal(session);
+
+      // TASK-1059 RC-7 — the terminal `closed` must not overtake the warm start. Every SDK and the
+      // ALaaS broker stop reading at `closed`; a pre-summary that settles after it is never shown
+      // (TASK-1058: generated and persisted 67 s after `closed`). So wait, bounded, for the `onStart`
+      // nodes — the warm start publishes its own `presummary` event when it settles, which then
+      // precedes `closed` on the channel. Chosen over carrying the pre-summary IN the closing
+      // snapshot because that alone cannot deliver one that does not exist yet at stop time, which is
+      // the case that was observed. Before `clearPreSummary` below, so the replay key it writes is
+      // cleared with the session as before.
+      await this.awaitOnStartSettled(session, stopStartedAt);
     }
 
     // Drop this session from the admin live view (stats key +
@@ -3203,6 +3305,35 @@ return 0`;
 
     this.logger.log({ message: 'Live documentation session stopped', consultationId, owned: !!session });
     return finalPayload;
+  }
+
+  /**
+   * TASK-1059 RC-7 — resolve once the session's `onStart` nodes settled, or once
+   * {@link ON_START_SETTLE_MS} has passed since the stop began, whichever is first. Never rejects
+   * (`runOnStartNodes` never throws; the catch is belt and braces).
+   */
+  private async awaitOnStartSettled(session: LiveSession, stopStartedAt: number): Promise<void> {
+    const pending = session.onStartPromise;
+    if (!pending) return;
+    const remainingMs = Math.max(0, stopStartedAt + this.ON_START_SETTLE_MS - Date.now());
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settled = await Promise.race([
+      pending.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), remainingMs);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (!settled) {
+      this.logger.warn({
+        message: 'Warm start still running at stop — publishing the terminal snapshot without waiting further',
+        consultationId: session.consultationId,
+        waitedMs: Date.now() - stopStartedAt,
+      });
+    }
   }
 
   // ------------------------------------------------------------------
@@ -3287,7 +3418,7 @@ return 0`;
     if (existing) {
       existing.text = text;
     } else {
-      session.contextNotes.push({ contextItemId: payload.contextItemId, text });
+      session.contextNotes.push({ contextItemId: payload.contextItemId, text, contextType: payload.contextType });
     }
     this.scheduleFlush(session);
   }
@@ -3407,6 +3538,110 @@ return 0`;
    * Never throws and never rejects: this is on the live flush path, and a failed resume must degrade
    * to the previous behaviour (a fresh note) rather than fail the flush.
    */
+  /**
+   * TASK-1059 C-0 — extend the session's judge chunks over `transcriptParts[.., upTo)`. A part joins
+   * the open chunk; the chunk seals once it holds {@link LIVE_JUDGE_CHUNK_MIN_CHARS}. Boundaries are
+   * decided when a part is first covered and never move (a later in-place blanking by the guardrail
+   * exclusion changes a chunk's text, once, but not where any chunk starts).
+   */
+  private extendJudgeChunks(session: LiveSession, upTo: number): LiveJudgeChunk[] {
+    const chunks = (session.judgeChunks ??= []);
+    let open = chunks.at(-1);
+    for (let i = open?.end ?? 0; i < upTo; i++) {
+      if (!open || open.sealed) {
+        open = { start: i, end: i, chars: 0, sealed: false };
+        chunks.push(open);
+      }
+      open.chars += (open.end > open.start ? 1 : 0) + (session.transcriptParts[i] ?? '').length;
+      open.end = i + 1;
+      if (open.chars >= LIVE_JUDGE_CHUNK_MIN_CHARS) open.sealed = true;
+    }
+    return chunks;
+  }
+
+  /**
+   * TASK-1059 C-0 (OD-5 / OD-8 / OD-9) — judge this flush's narrative context and say what to compose.
+   *
+   * Items, each with a STABLE id: the transcript chunks overlapping the flush's window
+   * (`transcript:<first part index>`, the whole chunk's text), every live-folded note (its context item
+   * id; `attachment_text` for an attachment, `case_note` otherwise), the client's previous visits and
+   * the same-day prequel (`prior_visit`). Never vitals or lab results — typed fields (OD-8).
+   *
+   * `refused` (nothing in scope) and a failed judge both BLOCK the generation: the first with the code
+   * TEXT's 422 `CONTENT_BLOCKED_NOT_MEDICAL` produced on this lane (`guardrail_blocked`), the second
+   * with the frozen `ContextJudgeUnavailableError` (`text_unavailable`, the guardrail-outage code) —
+   * fail closed, never "in scope". The judge raises the OD-9 exclusion notices itself.
+   */
+  private async judgeLiveContext(
+    session: LiveSession,
+    input: { from: number; to: number; previousVisits?: string; sameDayPrequel: string },
+  ): Promise<LiveContextJudgement> {
+    const windowChunks = this.extendJudgeChunks(session, input.to).filter((chunk) => chunk.end > input.from && chunk.start < input.to);
+    const items: ContextJudgeItem[] = [];
+    const chunkIds = new Map<string, LiveJudgeChunk>();
+    for (const chunk of windowChunks) {
+      const text = session.transcriptParts
+        .slice(chunk.start, chunk.end)
+        .filter((part) => part.length > 0)
+        .join(' ')
+        .trim();
+      if (!text) continue;
+      const id = `transcript:${chunk.start}`;
+      chunkIds.set(id, chunk);
+      items.push({ id, kind: 'transcript', text });
+    }
+    for (const note of session.contextNotes) {
+      if (!note.text.trim()) continue;
+      items.push({ id: note.contextItemId, kind: note.contextType === ContextItemType.ATTACHMENT ? 'attachment_text' : 'case_note', text: note.text });
+    }
+    const previousVisits = input.previousVisits?.trim() ?? '';
+    if (previousVisits) items.push({ id: LIVE_JUDGE_PREVIOUS_VISITS_ID, kind: 'prior_visit', text: previousVisits });
+    const sameDayPrequel = input.sameDayPrequel.trim();
+    if (sameDayPrequel) items.push({ id: LIVE_JUDGE_SAME_DAY_PREQUEL_ID, kind: 'prior_visit', text: sameDayPrequel });
+
+    const none: LiveContextJudgement = { excludedParts: new Set(), excludedNoteIds: new Set(), previousVisitsInScope: true, sameDayPrequelInScope: true };
+    if (items.length === 0 || !this.contextJudge) return none;
+
+    let result: Awaited<ReturnType<IContextMedicalJudgeService['judge']>>;
+    try {
+      result = await this.contextJudge.judge({ tenantId: session.tenantId, consultationId: session.consultationId, items });
+    } catch (error) {
+      // PHI-safe: the class and the item COUNT, never a text.
+      this.logger.warn({
+        message: 'Live context judge unavailable — the document is not generated this flush (fail closed)',
+        consultationId: session.consultationId,
+        itemCount: items.length,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+      return { ...none, block: new ContextJudgeUnavailableError('GUARDRAIL_UNAVAILABLE: context medical judge unavailable', { cause: error }) };
+    }
+
+    const inScope = new Set(result.inScopeIds);
+    const excludedParts = new Set<number>();
+    for (const [id, chunk] of chunkIds) {
+      if (inScope.has(id)) continue;
+      for (let i = Math.max(chunk.start, input.from); i < Math.min(chunk.end, input.to); i++) excludedParts.add(i);
+    }
+    const excludedNoteIds = new Set(
+      session.contextNotes.filter((note) => note.text.trim() && !inScope.has(note.contextItemId)).map((note) => note.contextItemId),
+    );
+    if (result.excludedIds.length > 0 || result.refused) {
+      this.logger.log({
+        message: result.refused ? 'Live context refused by the medical judge — no in-scope context' : 'Live context items left out by the medical judge',
+        consultationId: session.consultationId,
+        itemCount: items.length,
+        excludedCount: result.excludedIds.length,
+      });
+    }
+    return {
+      excludedParts,
+      excludedNoteIds,
+      previousVisitsInScope: !previousVisits || inScope.has(LIVE_JUDGE_PREVIOUS_VISITS_ID),
+      sameDayPrequelInScope: !sameDayPrequel || inScope.has(LIVE_JUDGE_SAME_DAY_PREQUEL_ID),
+      ...(result.refused ? { block: new Error(LIVE_DEGRADE_GUARDRAIL_BLOCKED) } : {}),
+    };
+  }
+
   private async resumePersistedNote(session: LiveSession, template: ResolvedDocumentTemplate): Promise<void> {
     if (session.lastPayload) return;
     const resumed = await this.sections().readDocument(
@@ -3697,6 +3932,40 @@ return 0`;
     // TASK-1020 — the same-day prequel and lab results, resolved once at start (memoised, never rejects).
     const carry = await (session.carryContextPromise ?? NO_CARRY_CONTEXT);
     const carryBlocks = { sameDayPrequel: carry.sameDayPrequel.summary, testResults: carry.testResults };
+    // TASK-1059 C-0 (OD-5) — judge the narrative CONTEXT before it is combined with the prompt, and
+    // compose only what is in scope (OD-9). Typed fields (vitals, lab results) are never sent (OD-8);
+    // the lane's own previous note is not context. Only when a judge is wired: without one this block
+    // adds no await at all, so the claim-to-TEXT path is unchanged.
+    const sourceFrom = delta ? deltaStart : 0;
+    const sourceTo = delta ? deltaEnd : flushUpTo;
+    let sourceTranscript = delta || transcript;
+    let previousVisitsForPrompt = clientContext.previousVisits;
+    let excludedParts: ReadonlySet<number> | undefined;
+    if (this.contextJudge) {
+      const judged = await this.judgeLiveContext(session, {
+        from: sourceFrom,
+        to: sourceTo,
+        previousVisits: clientContext.previousVisits,
+        sameDayPrequel: carryBlocks.sameDayPrequel,
+      });
+      if (isStale()) return this.dropStale(session);
+      if (judged.block) guardrailTurn.contextBlock = judged.block;
+      if (judged.excludedNoteIds.size > 0) {
+        notes = session.contextNotes
+          .filter((note) => !judged.excludedNoteIds.has(note.contextItemId))
+          .map((n) => n.text)
+          .join('\n')
+          .trim();
+      }
+      if (!judged.previousVisitsInScope) previousVisitsForPrompt = undefined;
+      if (!judged.sameDayPrequelInScope) carryBlocks.sameDayPrequel = '';
+      if (judged.excludedParts.size > 0) {
+        excludedParts = judged.excludedParts;
+        // NOT trimmed: `buildGraphSegments` measures its offsets against exactly this join.
+        const kept = session.transcriptParts.slice(sourceFrom, sourceTo).filter((_, k) => !judged.excludedParts.has(sourceFrom + k));
+        sourceTranscript = kept.join(' ').trim() ? kept.join(' ') : '';
+      }
+    }
     // TASK-1022 (D-GROUND) — what this turn may be grounded in, for `applyTurn`'s guard: the WHOLE
     // transcript so far (not the delta) plus the clinician's context notes, against the same two
     // reference blocks the prompt appends. Built from the same values the prompt is, so the guard
@@ -3711,7 +3980,7 @@ return 0`;
     const platformOutputLanguageTag = await this.sessionPlatformOutputLanguage(session);
     const promptParts = this.buildLivePromptParts(
       priorNote,
-      delta || transcript,
+      sourceTranscript,
       notes,
       elidedParts > 0,
       this.stablePrefixFor(agent, template),
@@ -3724,7 +3993,7 @@ return 0`;
       // cannot drift.
       turnInstruction(template.compiled),
       clientContext.vitals,
-      clientContext.previousVisits,
+      previousVisitsForPrompt,
       carryBlocks,
     );
     // TASK-943 — the run's expression/prompt context, built ONCE per flush. The lane evaluates its
@@ -3806,11 +4075,12 @@ return 0`;
     // The capture node's output for THIS flush — the same `delta || transcript`
     // the legacy path feeds NER, which is what makes the platform lane's
     // behaviour identical rather than merely similar.
-    session.pendingGraphTranscript = delta || transcript;
+    // TASK-1059 C-0 — minus the transcript chunks the context judge left out (`sourceTranscript`).
+    session.pendingGraphTranscript = sourceTranscript;
     // The metadata for exactly the string above, and over the same index range — `delta` is a
     // WINDOW on most turns, so segments built against the whole session transcript would carry
     // offsets pointing past the end of what the node actually published.
-    session.pendingGraphSegments = delta ? this.buildGraphSegments(session, deltaStart, deltaEnd) : this.buildGraphSegments(session, 0, flushUpTo);
+    session.pendingGraphSegments = this.buildGraphSegments(session, sourceFrom, sourceTo, excludedParts);
     session.pendingGraphAudio = {
       kind: 'stream',
       ...(session.sessionId === undefined ? {} : { sessionId: session.sessionId }),
@@ -3829,7 +4099,7 @@ return 0`;
               this.operatingFrame(template, resolveOutputLanguage(policySelected, platformOutputLanguageTag)),
               turnInstruction(template.compiled),
               clientContext.vitals,
-              clientContext.previousVisits,
+              previousVisitsForPrompt,
               carryBlocks,
             ),
           agent,
@@ -4021,7 +4291,7 @@ return 0`;
     // `consultation.extractEntities` node, bound to its declared `in: transcript`
     // port. The anti-laundering rule is enforced there by the executor's port-type
     // check, which refuses `document -> transcript` outright.
-    const nerSourceText = delta || transcript;
+    const nerSourceText = sourceTranscript;
     const priorEntities = session.lastPayload?.entities ?? [];
     let extracted: LiveSummaryEntityDto[] = [];
     let flushVitals: LiveSummaryVitalsDto | undefined;
@@ -4106,7 +4376,11 @@ return 0`;
     // . Merging with the prior set preserves the running highlight set across flushes
     // (NER only sees the new delta, but the note is cumulative — recall), and always re-grounding
     // against the current `runningSummary` keeps offsets valid even on the NLP-failure fallback.
-    const entities = this.groundEntitiesToNote([...priorEntities, ...extracted], runningSummary);
+    //
+    // TASK-1059 RC-5 — but only once there IS a note. With no note yet (or when this flush failed and
+    // the note on screen is not the one this turn's transcript was meant for) the grounding below
+    // would answer `[]` and the clinician would see no highlight at all, although NER found them.
+    const entities = this.publishableEntities([...priorEntities, ...extracted], runningSummary, textFailed || graph?.run.failed === true);
     // Lane N — findings go through the SAME grounding function, deliberately. A finding whose
     // surface form does not survive in the rendered note is DROPPED for the identical reason an
     // entity is: there is nothing to anchor a highlight to, and — because the findings pass reads
@@ -5683,13 +5957,17 @@ return 0`;
    * `transcript.slice(charStart, charEnd) === segment.text` holds by construction rather than by
    * a text search that a repeated phrase could fool.
    */
-  private buildGraphSegments(session: LiveSession, from: number, to: number): RealtimeTranscriptSegment[] {
+  private buildGraphSegments(session: LiveSession, from: number, to: number, skip?: ReadonlySet<number>): RealtimeTranscriptSegment[] {
     const built: RealtimeTranscriptSegment[] = [];
     let cursor = 0;
+    // TASK-1059 C-0 — parts the context judge excluded are not in the published string at all.
+    let joined = false;
     for (let i = from; i < to; i++) {
       const part = session.transcriptParts[i];
       if (part === undefined) continue;
-      if (i > from) cursor += 1; // the single space `join(' ')` puts before this part
+      if (skip?.has(i)) continue;
+      if (joined) cursor += 1; // the single space `join(' ')` puts before this part
+      joined = true;
       const charStart = cursor;
       cursor += part.length;
 
@@ -6110,6 +6388,13 @@ return 0`;
     const documentKey = session.templateSnapshot?.slug ?? null;
     const durableSnapshotMs = this.realtimeBudgets.durableSnapshotMs;
     if (!opts.force && (durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < durableSnapshotMs)) return;
+    // TASK-1059 D-08 — a note with no section BODY is not a note. With a template,
+    // `buildStructuredSummary([])` still renders every heading over the "not documented" marker, so a
+    // session whose flushes all failed wrote a headings-only LIVE_SOAP_SNAPSHOT as an ordinary
+    // PRE_SUMMARY item, which the finalizer then reads as the live note. Nothing is persisted until a
+    // flush produced content; the degrade reason travels on the published payload, not on a row.
+    const hasBody = !!payload.runningSummary?.trim() || (payload.sections ?? []).some((section) => (section.content ?? '').trim().length > 0);
+    if (!hasBody) return;
 
     // A1 — the finalizer's input is a DOCUMENT, so write it as one.
     //
@@ -6996,6 +7281,10 @@ return 0`;
     // Trailing + optional, so every existing caller keeps its arity and its budget.
     isRepairAttempt?: boolean,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
+    // TASK-1059 C-0 — the context judge refused this flush's context, or could not judge it: the
+    // document is not generated, and the node degrades through the path a TEXT refusal takes.
+    const contextBlock = consultationId ? this.sessions.get(consultationId)?.guardrailTurn?.contextBlock : undefined;
+    if (contextBlock) throw contextBlock;
     if (textAgent) {
       // The candidates this call may run, in order: the primary, then — only when the tenant's
       // per-agent HA toggle is ON (owner decision #4, default ON) — the resolved chain: the
@@ -7407,11 +7696,46 @@ return 0`;
     // The running note IS the PRE_SUMMARY snapshot's content, so this call's output updates that item
     // (`response_items`); its data regions are the flush's own (`region_items`, from the turn).
     const session = consultationId ? this.sessions.get(consultationId) : undefined;
-    const response = await this.postLiveText(payload, tenantId, consultationId, signal, undefined, session ? this.snapshotItemRefs(session) : []);
+    let response: { data: unknown };
+    try {
+      response = await this.postLiveText(payload, tenantId, consultationId, signal, undefined, session ? this.snapshotItemRefs(session) : []);
+    } catch (error) {
+      // TASK-1059 RC-6 — classify a context-window refusal HERE, the one place that knows both the
+      // prompt it sent and the engine it sent it to.
+      if (isContextWindowExceeded(error)) throw await this.contextWindowError(error, payload, tenantId);
+      throw error;
+    }
     // TASK-1050 finding D — this call's output IS the note: its notices may mark a snapshot created later.
     session?.guardrailTurn?.outputNotices?.push(...textResponseNotices(response.data));
     this.recordLlmUsage(tenantId, response.data, consultationId, egress?.agentNode === true);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
+  }
+
+  /**
+   * TASK-1059 RC-6 — a `CONTEXT_WINDOW_EXCEEDED` named for what it was: `kv_exhausted` when the
+   * prompt fits the configured context (the engine's SHARED KV cache ran out under concurrent slots),
+   * `context_overflow` otherwise.
+   *
+   * The prompt's token count is unknown on a failed call (no usage came back), so its CHARACTER count
+   * is handed over and `degradeCode` applies the 50 % margin rule (`KvBudgetHint`). The configured
+   * context is LM Studio's governed `lmStudio.serving.contextLength`; a per-model
+   * `_metadata.serving.contextLength` override is not consulted here (the live lane does not resolve
+   * serving profiles). Any other provider has no platform-governed window, so it keeps
+   * `context_overflow`. Never throws: a settings failure only loses the distinction.
+   */
+  private async contextWindowError(error: unknown, payload: Record<string, unknown>, tenantId: string): Promise<LiveContextWindowError> {
+    const promptChars = String(payload.prompt ?? '').length + String(payload.system_prompt ?? '').length;
+    let contextTokens: number | null = null;
+    if (LM_STUDIO_PROVIDERS.has(String(payload.provider ?? '').toLowerCase()) && this.effectiveSettings) {
+      try {
+        const resolved = await this.effectiveSettings.resolveEffective(LM_STUDIO_CONTEXT_LENGTH_KEY, { tenantId });
+        const parsed = Number(resolved.value);
+        contextTokens = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      } catch {
+        contextTokens = null;
+      }
+    }
+    return new LiveContextWindowError(degradeCode(error, LIVE_DEGRADE_FALLBACK, { promptChars, contextTokens }), error);
   }
 
   /**
@@ -8146,6 +8470,36 @@ return 0`;
         transcriptEnd: transcriptEnd - segment.charStart,
       };
     });
+  }
+
+  /**
+   * TASK-1059 RC-5 — the entities a flush publishes.
+   *
+   * A note exists and this flush succeeded ⇒ {@link groundEntitiesToNote}, unchanged: only mentions
+   * the rendered note carries, with note offsets.
+   *
+   * No note yet, or this flush FAILED ⇒ the note-grounded ones first (when a last-good note exists),
+   * then every other transcript-supported mention, deduplicated by text and class, WITHOUT note
+   * offsets — they keep only their transcript anchor (`transcriptSegmentId` / `transcriptStart` /
+   * `transcriptEnd`), which is exactly what NER established. Nothing is invented: no `start`/`end` is
+   * claimed for a note that does not contain the mention. They are grounded by the first successful
+   * flush after, which receives them back as the prior set.
+   */
+  private publishableEntities(entities: LiveSummaryEntityDto[], note: string, flushFailed: boolean): LiveSummaryEntityDto[] {
+    const grounded = this.groundEntitiesToNote(entities, note);
+    if (note && !flushFailed) return grounded;
+    const seen = new Set(grounded.map((entity) => `${(entity.text ?? '').toLowerCase()}\0${entity.type}`));
+    const anchored: LiveSummaryEntityDto[] = [];
+    for (const entity of entities) {
+      const needle = entity.text ?? '';
+      if (!needle.trim()) continue;
+      const key = `${needle.toLowerCase()}\0${entity.type}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const { start: _noteStart, end: _noteEnd, ...transcriptAnchored } = entity;
+      anchored.push(transcriptAnchored);
+    }
+    return [...grounded, ...anchored];
   }
 
   private groundEntitiesToNote(entities: LiveSummaryEntityDto[], note: string): LiveSummaryEntityDto[] {
