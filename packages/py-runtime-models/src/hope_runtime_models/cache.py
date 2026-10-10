@@ -704,10 +704,19 @@ class _CacheCore(Generic[T]):
     ) -> tuple[int | None, str]:
         """A load's footprint and its source (TASK-1055).
 
-        The ``measure`` hook wins when it returns a positive int; otherwise the device
+        GPU: the ``measure`` hook wins when it returns a positive int; otherwise the device
         delta, ``measured`` when clean and ``estimated`` when another load or unload
         overlapped it; otherwise ``unknown``.
+
+        CPU (TASK-1060 D-5/D-6): a CLEAN process-RSS delta wins (torch parameter bytes miss
+        activations, tokenizers and allocator slack); then the hook; then a dirty delta as
+        ``estimated``; otherwise ``unknown``.
         """
+        residency = self._residency
+        cpu = residency is not None and residency.device.kind == "cpu"
+        delta = reading.bytes if reading is not None else None
+        if cpu and reading is not None and reading.clean and delta is not None and delta > 0:
+            return delta, "measured"
         if self._measure is not None:
             try:
                 sized = self._measure(instance)
