@@ -238,8 +238,10 @@ import {
   LIVE_DEGRADE_GUARDRAIL_BLOCKED,
   LIVE_DEGRADE_REDACTION_UNAVAILABLE,
   degradeCode,
+  isContextWindowExceeded,
   repetitionPressureCode,
 } from './degrade-codes';
+import type { LmStudioServingKey } from '../../settings-registry/descriptors/lmstudio-serving.descriptors';
 import {
   DocumentSectionStore,
   GuardMemo,
@@ -372,6 +374,30 @@ class LivePromptUnresolvedError extends Error {
     this.name = 'LivePromptUnresolvedError';
   }
 }
+
+/**
+ * TASK-1059 RC-6 — TEXT's `CONTEXT_WINDOW_EXCEEDED`, already CLASSIFIED (`context_overflow` or
+ * `kv_exhausted`) where the prompt and the serving context are known.
+ *
+ * The message IS the code, because the graph executor keeps nothing of a node's error but its
+ * message (`realtime-executor.ts`), and `degradeCode` passes a bare code through unchanged — so the
+ * legacy catch and the graph degrade event land on the same answer. Before this the graph path
+ * reported `generation_failed` for every 422. The transport error rides along as `cause`.
+ */
+class LiveContextWindowError extends Error {
+  readonly code: string;
+  constructor(code: string, cause: unknown) {
+    super(code);
+    this.name = 'LiveContextWindowError';
+    this.code = code;
+    (this as { cause?: unknown }).cause = cause;
+  }
+}
+
+/** TASK-1059 RC-6 — the governed LM Studio context window (`lmstudio-serving.descriptors.ts`). */
+const LM_STUDIO_CONTEXT_LENGTH_KEY: LmStudioServingKey = 'lmStudio.serving.contextLength';
+/** The provider spellings LM Studio arrives under; only its context window is governed by the platform. */
+const LM_STUDIO_PROVIDERS = new Set(['lm-studio', 'lmstudio']);
 
 /**
  * The §3.3 render scope a `core.agent` instruction is composed over on the REALTIME lane — built in
@@ -7407,11 +7433,46 @@ return 0`;
     // The running note IS the PRE_SUMMARY snapshot's content, so this call's output updates that item
     // (`response_items`); its data regions are the flush's own (`region_items`, from the turn).
     const session = consultationId ? this.sessions.get(consultationId) : undefined;
-    const response = await this.postLiveText(payload, tenantId, consultationId, signal, undefined, session ? this.snapshotItemRefs(session) : []);
+    let response: { data: unknown };
+    try {
+      response = await this.postLiveText(payload, tenantId, consultationId, signal, undefined, session ? this.snapshotItemRefs(session) : []);
+    } catch (error) {
+      // TASK-1059 RC-6 — classify a context-window refusal HERE, the one place that knows both the
+      // prompt it sent and the engine it sent it to.
+      if (isContextWindowExceeded(error)) throw await this.contextWindowError(error, payload, tenantId);
+      throw error;
+    }
     // TASK-1050 finding D — this call's output IS the note: its notices may mark a snapshot created later.
     session?.guardrailTurn?.outputNotices?.push(...textResponseNotices(response.data));
     this.recordLlmUsage(tenantId, response.data, consultationId, egress?.agentNode === true);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
+  }
+
+  /**
+   * TASK-1059 RC-6 — a `CONTEXT_WINDOW_EXCEEDED` named for what it was: `kv_exhausted` when the
+   * prompt fits the configured context (the engine's SHARED KV cache ran out under concurrent slots),
+   * `context_overflow` otherwise.
+   *
+   * The prompt's token count is unknown on a failed call (no usage came back), so its CHARACTER count
+   * is handed over and `degradeCode` applies the 50 % margin rule (`KvBudgetHint`). The configured
+   * context is LM Studio's governed `lmStudio.serving.contextLength`; a per-model
+   * `_metadata.serving.contextLength` override is not consulted here (the live lane does not resolve
+   * serving profiles). Any other provider has no platform-governed window, so it keeps
+   * `context_overflow`. Never throws: a settings failure only loses the distinction.
+   */
+  private async contextWindowError(error: unknown, payload: Record<string, unknown>, tenantId: string): Promise<LiveContextWindowError> {
+    const promptChars = String(payload.prompt ?? '').length + String(payload.system_prompt ?? '').length;
+    let contextTokens: number | null = null;
+    if (LM_STUDIO_PROVIDERS.has(String(payload.provider ?? '').toLowerCase()) && this.effectiveSettings) {
+      try {
+        const resolved = await this.effectiveSettings.resolveEffective(LM_STUDIO_CONTEXT_LENGTH_KEY, { tenantId });
+        const parsed = Number(resolved.value);
+        contextTokens = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      } catch {
+        contextTokens = null;
+      }
+    }
+    return new LiveContextWindowError(degradeCode(error, LIVE_DEGRADE_FALLBACK, { promptChars, contextTokens }), error);
   }
 
   /**
