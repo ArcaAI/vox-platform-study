@@ -8,11 +8,11 @@ import type { ResidencyDevice, ResidencyServiceGroup } from '../api/types';
 import { GpuMemoryBar, HATCH_CLASS, SERVICE_LEGEND_LABEL, serviceSwatch, UNATTRIBUTED_SWATCH } from './gpu-memory-bar';
 import { splitDeviceLabel, withMeasuredDeviceBytes } from './residency-display';
 
-function Swatch({ className }: { className: string }) {
+export function Swatch({ className }: { className: string }) {
   return <span aria-hidden className={cn('size-2.5 shrink-0 rounded-[2px]', className)} />;
 }
 
-function DeviceSize({ bytes, source }: { bytes: number | null; source: 'measured' | 'estimated' | 'unknown' }) {
+export function DeviceSize({ bytes, source }: { bytes: number | null; source: 'measured' | 'estimated' | 'unknown' }) {
   if (bytes === null || source === 'unknown') return <span className="text-muted-foreground tabular-nums">size unknown</span>;
   return <span className="text-muted-foreground tabular-nums">{source === 'measured' ? formatBytes(bytes) : `~${formatBytes(bytes)} est.`}</span>;
 }
@@ -113,7 +113,9 @@ export interface GpuSummaryPanelProps {
  * over-headroom status. Freshness lives in the page header, not repeated here.
  */
 export function GpuSummaryPanel({ devices: reported, services }: GpuSummaryPanelProps) {
-  const devices = services ? withMeasuredDeviceBytes(reported, services) : reported;
+  // TASK-1060: host memory (`kind: 'cpu'`) has its own section — only GPUs render here.
+  const gpus = reported.filter((device) => device.kind === 'gpu');
+  const devices = services ? withMeasuredDeviceBytes(gpus, services) : gpus;
   return (
     <section aria-labelledby="residency-gpu-heading" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -61,6 +61,12 @@ describe('GpuMemoryBar', () => {
 });
 
 describe('GpuSummaryPanel', () => {
+  it('renders no card for a cpu-kind device (TASK-1060: host memory has its own section)', () => {
+    render(<GpuSummaryPanel devices={[makeDevice(), makeDevice({ id: 'cpu:nlp', kind: 'cpu', label: 'Host memory — nlp' })]} />);
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.queryByText(/Host memory/)).toBeNull();
+  });
+
   it('shows the full device label (no truncation), used of total, free, and "Room for" when inside headroom', () => {
     render(<GpuSummaryPanel devices={[makeDevice()]} />);
     const card = screen.getByRole('article', { name: /GPU 0/ });
