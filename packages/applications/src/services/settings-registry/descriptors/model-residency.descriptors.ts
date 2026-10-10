@@ -13,7 +13,8 @@
 // degrades to shadow mode (recommend, never act), which is the safe side.
 //
 // READERS: `ModelResidencyService` resolves the `residency.*` keys through the
-// registry cascade (SYSTEM passed explicitly) once per 10 s decision tick.
+// registry cascade (SYSTEM passed explicitly) once per 10 s decision tick
+// (`residency.cpu.workloads`, TASK-1060: once per catalogue read, display only).
 // `stt.warmDefaultAsrOnBoot` is read by `apps/stt` off its effective-config
 // pull (`stt.main._warm_default_asr_model`) — hence `consumedBy: ['stt']`, the
 // ONE wiring step that puts a key on that route.
@@ -42,6 +43,36 @@ export type ModelResidencySettingKey = keyof typeof MODEL_RESIDENCY_DEFAULTS;
  * numeric/boolean tuning set, and this is a record, not a knob.
  */
 export const RESIDENCY_SHADOW_REVIEWED_AT_KEY = 'residency.shadowReviewedAt';
+
+/**
+ * TASK-1060 — which Kubernetes workload runs each residency service, for the DISPLAY-ONLY CPU panel
+ * (`GET admin/model-residency/catalogue` → `cpu`). A pod belongs to a service when its name is
+ * `<workload>-<replicaset hash>-<pod hash>` (a Deployment pod), so `hope-stt` never claims a
+ * `hope-stt-worker-…` pod. `gateway` is the API gateway's own workload (it holds no models).
+ * Workload names are deployment config, not code (rule 00 §Configuration Principles).
+ */
+export const RESIDENCY_CPU_WORKLOADS_KEY = 'residency.cpu.workloads';
+export const RESIDENCY_CPU_WORKLOADS_DEFAULT: Readonly<Record<string, string>> = Object.freeze({
+  stt: 'hope-stt',
+  'stt-worker': 'hope-stt-worker',
+  nlp: 'hope-nlp',
+  tts: 'hope-tts',
+  'lm-studio': 'hope-lmstudio',
+  gateway: 'hope-api',
+});
+const CPU_WORKLOAD_SERVICES: ReadonlySet<string> = new Set(Object.keys(RESIDENCY_CPU_WORKLOADS_DEFAULT));
+/** A Kubernetes object name (RFC 1123 label). */
+const WORKLOAD_NAME = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
+
+function validateCpuWorkloads(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'CPU workloads must be an object mapping a service to its workload name.';
+  for (const [service, name] of Object.entries(value)) {
+    if (!CPU_WORKLOAD_SERVICES.has(service)) return `Unknown service '${service}' (expected one of: ${[...CPU_WORKLOAD_SERVICES].join(', ')}).`;
+    if (typeof name !== 'string' || !WORKLOAD_NAME.test(name))
+      return `Workload name for '${service}' must be a Kubernetes object name (lower-case letters, digits, '-').`;
+  }
+  return undefined;
+}
 
 /** An inclusive bound, refused rather than clamped so an admin is told. */
 const numberBetween =
@@ -154,6 +185,17 @@ export const MODEL_RESIDENCY_SETTINGS: SettingDescriptor[] = [
         return 'Shadow review date must be an ISO 8601 date (e.g. 2026-10-14 or 2026-10-14T09:00:00Z).';
       }
     },
+  },
+  {
+    ...PLATFORM_KNOB,
+    key: RESIDENCY_CPU_WORKLOADS_KEY,
+    dataType: 'json',
+    category: CATEGORY,
+    label: 'Model residency: CPU panel workloads',
+    description:
+      'Which Kubernetes workload (Deployment name) runs each residency service, for the model-residency CPU panel: `{ stt, stt-worker, nlp, tts, lm-studio, gateway }` → workload name. A pod counts toward a service when it is named `<workload>-<hash>-<hash>`, so `hope-stt` never claims a `hope-stt-worker` pod; every other container on the node is shown as "Other workloads". DISPLAY ONLY: nothing is loaded, placed or refused on it. A service left out is not matched to any pod.',
+    default: RESIDENCY_CPU_WORKLOADS_DEFAULT,
+    validate: validateCpuWorkloads,
   },
   {
     ...PLATFORM_KNOB,

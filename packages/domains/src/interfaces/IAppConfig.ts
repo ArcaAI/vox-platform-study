@@ -53,6 +53,8 @@ export interface IAppConfig {
   TTS_URL: string;
   /** TASK-1055 — LM Studio's in-pod residency agent; unset = LM Studio is not controllable (no default, no REST fallback). */
   LMSTUDIO_AGENT_URL?: string;
+  /** TASK-1060 — the gateway's own k8s namespace (downward API); scopes the residency CPU panel's pod series. Unset off-cluster. */
+  POD_NAMESPACE?: string;
 
   //=========== MQTT ============//
   MQTT_HOST: string;

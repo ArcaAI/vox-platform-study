@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 145 |
+| Declared keys (distinct) | 146 |
 | … of which required (`failMode: closed`) | 28 |
 | … of which secret | 27 |
-| … tier `env` | 113 |
+| … tier `env` | 114 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
 | Python declared fields | 314 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 369 |
-| `turbo.json#globalEnv` entries | 525 |
+| `turbo.json#globalEnv` entries | 526 |
 
 ## Variables — the TypeScript platform surface
 
@@ -123,6 +123,7 @@ disagree with those declarations.
 | `PG_PORT` | `env` | no | `5432` | `apps/api` | Port used when assembling a dynamic-credential connection. |
 | `PG_VAULT_MAX_TTL_SEC` | `env` | no | — | `apps/api` | Upper bound applied to a Vault-issued credential lease. |
 | `PG_VAULT_ROLE` | `env` | no | `hope-app-role` | `apps/api` | Vault database-engine role that mints the dynamic credentials. |
+| `POD_NAMESPACE` | `env` | no | — | `apps/api` | The Kubernetes namespace the gateway runs in, from the downward API (`fieldRef: metadata.namespace`). Scopes the model-residency CPU panel`s per-pod Prometheus series (`ModelResidencyService`, read through `IConfigService`). Unset (off-cluster): the panel shows the residency agents` own host readings instead (no cores, no limits). |
 | `PORT` | `env` | no | `8868` | `apps/api` | HTTP listen port for the NestJS gateway. |
 | `PRISMA_PG_MAX` | `env` | no | `15` | `apps/api` | Driver-adapter connection-pool size, PER PrismaClient. The Prisma v6 `connection_limit` URL parameter is ignored. A non-positive-integer value is a hard error, not a silent fallback. Budget rule: `pods × 2 × PRISMA_PG_MAX ≤ 0.7 × PG max_connections` — the ×2 is not a typo, because in env mode `getExtendedPrismaClient()` and `getPlatformAdminPrismaClient_Unscoped()` each build their own pg pool of this size. Demand per gateway pod at the MEASURED 10-tenant × 100-user load (229 req/s platform-wide, from a 30/70 active/parked mix at 26.0 and 8.5 req/min): 8 slots reserved for in-flight HTTP (76 req/s/pod × 6 ms DB time × 3 spike = 1.4, reserved high because a document load is 8.0 correlated requests and a handler that cannot get a connection in 5 s fails) plus 18 DB-bound BullMQ worker slots at a 0.35 duty cycle = 6.3, total 14.3. At 15 the cluster footprint is 2 × 15 × 3 api pods = 90 against a 140 budget (max_connections 200), and a single local gateway is 30 against a 70 budget (max_connections 100). |
 | `PROMETHEUS_URL` | `env` | no | `http://localhost:9090` | `apps/api` | Prometheus query endpoint for the platform-metrics service (`prometheus-query.service.ts`). |

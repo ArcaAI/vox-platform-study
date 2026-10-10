@@ -28,10 +28,11 @@ describe('model-residency descriptors (TASK-1005)', () => {
 
   it('every key is a SYSTEM-only, platform-admin, global-kv, open-to-default tuning knob', () => {
     // TASK-1051: a ninth descriptor (`residency.shadowReviewedAt`, a string date record) joined the
-    // family; the eight TASK-1005 knobs are still asserted exactly as before, the new one separately below.
-    const knobs = MODEL_RESIDENCY_SETTINGS.filter((d) => d.key !== 'residency.shadowReviewedAt');
+    // family; TASK-1060 a tenth (`residency.cpu.workloads`, a json map). The eight TASK-1005 knobs are
+    // still asserted exactly as before, the newer ones separately below.
+    const knobs = MODEL_RESIDENCY_SETTINGS.filter((d) => d.key !== 'residency.shadowReviewedAt' && d.key !== 'residency.cpu.workloads');
     expect(knobs).toHaveLength(8);
-    expect(MODEL_RESIDENCY_SETTINGS).toHaveLength(9);
+    expect(MODEL_RESIDENCY_SETTINGS).toHaveLength(10);
     for (const descriptor of knobs) {
       expect(descriptor, descriptor.key).toMatchObject({
         tier: 'global-kv',
@@ -51,6 +52,23 @@ describe('model-residency descriptors (TASK-1005)', () => {
     expect(d?.validate?.('2026-10-14')).toBeUndefined();
     expect(d?.validate?.('yesterday')).toEqual(expect.any(String));
     expect(d?.validate?.(5)).toEqual(expect.any(String));
+  });
+
+  it('`residency.cpu.workloads` is a SYSTEM-only json map of service → workload name, validated (TASK-1060)', () => {
+    const d = MODEL_RESIDENCY_SETTINGS.find((x) => x.key === 'residency.cpu.workloads');
+    expect(d).toMatchObject({ tier: 'global-kv', maxScope: 'system', globalOnly: true, failMode: 'open-to-default', dataType: 'json' });
+    expect(HOPE_SETTINGS_REGISTRY.get('residency.cpu.workloads')?.default).toEqual({
+      stt: 'hope-stt',
+      'stt-worker': 'hope-stt-worker',
+      nlp: 'hope-nlp',
+      tts: 'hope-tts',
+      'lm-studio': 'hope-lmstudio',
+      gateway: 'hope-api',
+    });
+    expect(d?.validate?.({ stt: 'hope-stt', gateway: 'hope-api' })).toBeUndefined();
+    expect(d?.validate?.({ other: 'hope-postgres' })).toEqual(expect.any(String));
+    expect(d?.validate?.({ stt: 'Hope_STT' })).toEqual(expect.any(String));
+    expect(d?.validate?.(['hope-stt'])).toEqual(expect.any(String));
   });
 
   it('puts `stt.warmDefaultAsrOnBoot` on the stt effective-config pull (where STT reads it) and nothing else', () => {

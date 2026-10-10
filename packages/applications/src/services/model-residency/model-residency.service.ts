@@ -9,6 +9,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -33,12 +34,15 @@ import { BaseService } from '../../common/base.service';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { declaredContextLengthOf } from '../ai-model/serving-profile.util';
 import type { IActiveUserContext } from '../../interfaces';
+import { IConfigService } from '../baseServices/_meta/config';
 import { lmStudioPreloadEntryFor, lmStudioServingContextFrom } from '../effective-config/effective-config.service';
 import type { EffectiveLmStudioPreload } from '../effective-config/IEffectiveConfigService';
 import { IPrometheusQueryService, type PrometheusSample } from '../platform-metrics/prometheus-query.service';
 import { LM_STUDIO_SERVING_DEFAULTS, type LmStudioServingKey } from '../settings-registry/descriptors/lmstudio-serving.descriptors';
 import {
   MODEL_RESIDENCY_DEFAULTS,
+  RESIDENCY_CPU_WORKLOADS_DEFAULT,
+  RESIDENCY_CPU_WORKLOADS_KEY,
   RESIDENCY_SHADOW_REVIEWED_AT_KEY,
   type ModelResidencySettingKey,
 } from '../settings-registry/descriptors/model-residency.descriptors';
@@ -69,6 +73,7 @@ import type {
   ModelResidencyUsage,
   ModelResidencyViewResponse,
   PinModelResidencyRequest,
+  ResidencyCpuServiceName,
   UnloadModelResidencyRequest,
   UpdateModelResidencyPolicyRequest,
 } from './dto';
@@ -98,7 +103,14 @@ import {
 import { PhysicalGpuLoadGate } from './physical-gpu-load-gate';
 import { type ResidencyBudget, budgetFor } from './residency-budget';
 import { ResidencyAgentClient, ResidencyAgentError } from './residency-agent.client';
-import { type CatalogueFailedEntry, attributeDevice, buildResidencyCatalogue, footprintFor } from './residency-catalogue';
+import {
+  type CatalogueFailedEntry,
+  type CpuReading,
+  type CpuServiceReading,
+  attributeDevice,
+  buildResidencyCatalogue,
+  footprintFor,
+} from './residency-catalogue';
 import { ResidencyLoadSpecBuilder, ResidencyLoadSpecError } from './residency-load-spec.builder';
 import {
   residencyAdmissionRejectionsTotal,
@@ -259,7 +271,26 @@ const PROMQL = {
   p50Seconds: 'histogram_quantile(0.5, sum by (job, exported_service, model, le) (rate(model_inference_latency_seconds_bucket[5m])))',
   workerResident: 'max by (model, device, state) (model_resident{job="stt-worker"}) == 1',
   workerBytes: 'max by (model, device) (model_resident_bytes{job="stt-worker"})',
+  // TASK-1060 — the display-only CPU panel. ONE node is assumed (the dev cluster has exactly one): the node
+  // series are taken `max` across scrapes, never split per node. Pod series are scoped to the gateway's own
+  // namespace (`POD_NAMESPACE`); `allContainerMemory` spans every namespace, for the "Other workloads" segment.
+  nodeMemTotal: 'max(node_memory_MemTotal_bytes)',
+  nodeMemAvailable: 'max(node_memory_MemAvailable_bytes)',
+  nodeCpuUtil: '100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))',
+  nodeCpuCores: 'count(count by (cpu) (node_cpu_seconds_total))',
+  allContainerMemory: 'sum(container_memory_working_set_bytes{container!="",container!="POD"})',
+  podMemory: (ns: string) => `sum by (pod) (container_memory_working_set_bytes{namespace="${ns}",container!="",container!="POD"})`,
+  podCpu: (ns: string) => `sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="${ns}",container!="",container!="POD"}[5m]))`,
+  podCpuRequests: (ns: string) => `sum by (pod) (kube_pod_container_resource_requests{namespace="${ns}",resource="cpu"})`,
+  podCpuLimits: (ns: string) => `sum by (pod) (kube_pod_container_resource_limits{namespace="${ns}",resource="cpu"})`,
+  podMemoryLimits: (ns: string) => `sum by (pod) (kube_pod_container_resource_limits{namespace="${ns}",resource="memory"})`,
 } as const;
+
+/** A PromQL label value, quoted-string safe. */
+const promLabel = (value: string): string => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+/** A literal string inside a RegExp. */
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const finite = (value: number | undefined): value is number => typeof value === 'number' && Number.isFinite(value);
 
 interface ResidencySettings extends EngineSettings {
   enforce: boolean;
@@ -465,6 +496,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     private readonly confirmations: ActionConfirmationService,
+    // TASK-1060 — `POD_NAMESPACE` (env-tier topology) for the CPU panel's pod series; absent = the agents source.
+    @Optional() @Inject(IConfigService) private readonly config?: IConfigService,
   ) {
     super(eventEmitter, clsService, ResourceType.ModelResidencyPolicy);
   }
@@ -786,7 +819,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    */
   async getCatalogue(): Promise<ModelResidencyCatalogueResponse> {
     this.assertPlatformAdmin('read the model catalogue');
-    const view = await this.buildCatalogueView({ withUsage: true });
+    const view = await this.buildCatalogueView({ withUsage: true, withCpu: true });
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: { surface: 'model-residency.catalogue', models: view.services.reduce((sum, s) => sum + s.models.length, 0) },
     });
@@ -804,7 +837,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    * stays behind `getCatalogue` and its platform-admin gate.
    */
   async getLifecycleStates(): Promise<ModelResidencyStateSnapshot> {
-    const view = await this.buildCatalogueView({ withUsage: false });
+    const view = await this.buildCatalogueView({ withUsage: false, withCpu: false });
     return {
       reportedAt: view.reportedAt ?? null,
       services: view.services.map((group) => ({
@@ -818,9 +851,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     };
   }
 
-  private async buildCatalogueView(opts: { withUsage: boolean }): Promise<ModelResidencyCatalogueResponse> {
+  private async buildCatalogueView(opts: { withUsage: boolean; withCpu: boolean }): Promise<ModelResidencyCatalogueResponse> {
     const now = Date.now();
-    const [settings, ledger, rows] = await Promise.all([
+    const namespace = opts.withCpu ? this.podNamespace() : null;
+    const [settings, ledger, rows, clusterCpu] = await Promise.all([
       this.readSettings(),
       this.currentLedger(),
       // The platform catalogue is the SYSTEM tier (rule 00); a tenant's BYO row is served by the tenant's own connection, not these workloads.
@@ -831,8 +865,11 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
           resourceStatus: { not: ResourceStatusType.DELETED },
         } as never,
       }),
+      namespace ? this.readClusterCpu(namespace) : Promise.resolve(null),
     ]);
     const catalogue = rows.filter((row) => residencyServiceOf(row) !== null);
+    // TASK-1060 — display only: the cluster's series when they answer, else the agents' own readings (after the ledger refresh).
+    const cpu = opts.withCpu ? (clusterCpu ?? this.readAgentCpu()) : null;
     // E11 — a standing row the state now satisfies is not shown, even between ticks.
     this.suggestions.withdraw((conclusion) => this.alreadySatisfied(conclusion, ledger));
     const usage = opts.withUsage
@@ -861,6 +898,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       observedLoadSeconds: (_service, _modelRef, model) => model?.observedLoadSeconds ?? null,
       // F4 — only live, non-dismissed standing rows (the builder projects and caps them).
       recommendations: this.suggestions.visible(now),
+      cpu,
     });
   }
 
@@ -2691,6 +2729,130 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       freeBytes: cpu.freeBytes,
       utilisationPercent: null,
     });
+  }
+
+  /** TASK-1060 — the gateway's own namespace (`POD_NAMESPACE`, the downward API); `null` off-cluster. */
+  private podNamespace(): string | null {
+    // The key set is wider than the shared `IAppConfig` typing knows until the domains build carries `POD_NAMESPACE`.
+    const read = this.config?.getConfigValue as ((key: string) => unknown) | undefined;
+    const value = read?.call(this.config, 'POD_NAMESPACE');
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  }
+
+  /**
+   * TASK-1060 — the CPU panel from node-exporter / cAdvisor / kube-state-metrics. `null` when the node
+   * series do not answer (Prometheus down, or no node-exporter): the caller falls back to the agents.
+   * A pod series that fails only leaves its fields `null`. DISPLAY ONLY — nothing here feeds admission.
+   */
+  private async readClusterCpu(namespace: string): Promise<CpuReading | null> {
+    const query = (q: string) =>
+      this.prometheus
+        .instantVector(q)
+        .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'CPU metric read failed', meta: { query: q } }));
+    const ns = promLabel(namespace);
+    const [total, available, util, cores, allMemory, memory, cpu, requests, cpuLimits, memoryLimits, workloads] = await Promise.all([
+      query(PROMQL.nodeMemTotal),
+      query(PROMQL.nodeMemAvailable),
+      query(PROMQL.nodeCpuUtil),
+      query(PROMQL.nodeCpuCores),
+      query(PROMQL.allContainerMemory),
+      query(PROMQL.podMemory(ns)),
+      query(PROMQL.podCpu(ns)),
+      query(PROMQL.podCpuRequests(ns)),
+      query(PROMQL.podCpuLimits(ns)),
+      query(PROMQL.podMemoryLimits(ns)),
+      this.readCpuWorkloads(),
+    ]);
+    const totalBytes = total[0]?.value;
+    const freeBytes = available[0]?.value;
+    if (!finite(totalBytes) || !finite(freeBytes)) return null;
+
+    // A Deployment pod is `<workload>-<replicaset hash>-<pod hash>`: `hope-stt` never matches `hope-stt-worker-…`.
+    const matchers = Object.entries(workloads).map(([service, name]) => ({
+      service: service as ResidencyCpuServiceName,
+      pattern: new RegExp(`^${escapeRegExp(name)}-[a-z0-9]+-[a-z0-9]+$`),
+    }));
+    const serviceOf = (pod: string | undefined) => (pod ? matchers.find((m) => m.pattern.test(pod))?.service : undefined);
+    const sumByService = (samples: PrometheusSample[]): Map<ResidencyCpuServiceName, number> => {
+      const sums = new Map<ResidencyCpuServiceName, number>();
+      for (const sample of samples) {
+        const service = serviceOf(sample.metric.pod);
+        if (service && finite(sample.value)) sums.set(service, (sums.get(service) ?? 0) + sample.value);
+      }
+      return sums;
+    };
+    const [memoryBy, cpuBy, requestsBy, cpuLimitsBy, memoryLimitsBy] = [memory, cpu, requests, cpuLimits, memoryLimits].map(sumByService);
+    const bytes = (value: number | undefined): number | null => (finite(value) ? Math.round(value) : null);
+
+    const services: CpuReading['services'] = {};
+    for (const { service } of matchers) {
+      services[service] = {
+        memoryBytes: bytes(memoryBy.get(service)),
+        memoryLimitBytes: bytes(memoryLimitsBy.get(service)),
+        cpuCores: cpuBy.get(service) ?? null,
+        cpuRequestCores: requestsBy.get(service) ?? null,
+        cpuLimitCores: cpuLimitsBy.get(service) ?? null,
+      };
+    }
+    // "Other workloads": every container on the node that is not a matched HOPE workload.
+    const everything = allMemory[0]?.value;
+    if (finite(everything)) {
+      const matched = [...memoryBy.values()].reduce((sum, v) => sum + v, 0);
+      services.other = {
+        memoryBytes: Math.max(0, Math.round(everything - matched)),
+        memoryLimitBytes: null,
+        cpuCores: null,
+        cpuRequestCores: null,
+        cpuLimitCores: null,
+      };
+    }
+    const cpuCores = cores[0]?.value;
+    const utilisation = util[0]?.value;
+    return {
+      source: 'prometheus',
+      node: {
+        totalBytes: Math.round(totalBytes),
+        freeBytes: Math.round(freeBytes),
+        cpuCores: finite(cpuCores) ? cpuCores : null,
+        utilisationPercent: finite(utilisation) ? Math.min(100, Math.max(0, utilisation)) : null,
+      },
+      services,
+    };
+  }
+
+  /**
+   * TASK-1060 — the agents' fallback: the node is the first controlled service's `cpu` device; each
+   * service's segment is its process RSS (`processBytes`), the gateway's is this process's. No cores,
+   * no limits, no "Other workloads" — the agents cannot see them. `null` when no agent reports a host.
+   */
+  private readAgentCpu(): CpuReading | null {
+    const hosts = RESIDENCY_CONTROLLED_SERVICES.map((service) => ({
+      service,
+      cpu: this.lastReports.get(service)?.report.devices.find((d) => d.kind === 'cpu'),
+    }));
+    const node = hosts.find((h) => h.cpu)?.cpu;
+    if (!node) return null;
+    const rss = (memoryBytes: number): CpuServiceReading => ({
+      memoryBytes,
+      memoryLimitBytes: null,
+      cpuCores: null,
+      cpuRequestCores: null,
+      cpuLimitCores: null,
+    });
+    const services: CpuReading['services'] = {};
+    for (const { service, cpu } of hosts) if (typeof cpu?.processBytes === 'number') services[service] = rss(cpu.processBytes);
+    services.gateway = rss(process.memoryUsage().rss);
+    return { source: 'agents', node: { totalBytes: node.totalBytes, freeBytes: node.freeBytes, cpuCores: null, utilisationPercent: null }, services };
+  }
+
+  /** TASK-1060 — `residency.cpu.workloads` (SYSTEM tier only); the code default when unset or unreadable (display only). */
+  private async readCpuWorkloads(): Promise<Record<string, string>> {
+    const resolved = await this.effectiveSettings
+      .resolveEffective(RESIDENCY_CPU_WORKLOADS_KEY, { tenantId: SYSTEM_TENANT_ID })
+      .catch(warnAndFallback(null, { logger: this.logger, message: 'Residency setting read failed', meta: { key: RESIDENCY_CPU_WORKLOADS_KEY } }));
+    const value = resolved?.value;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...RESIDENCY_CPU_WORKLOADS_DEFAULT };
+    return Object.fromEntries(Object.entries(value).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1].length > 0));
   }
 
   private async readGpus(): Promise<GpuReading[]> {

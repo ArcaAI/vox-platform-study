@@ -6,6 +6,8 @@ import type {
   ModelResidencyCatalogueModel,
   ModelResidencyCatalogueResponse,
   ModelResidencyCatalogueService,
+  ModelResidencyCpuService,
+  ModelResidencyCpuSummary,
   ModelResidencyDevice,
   ModelResidencyFreshness,
   ModelResidencyKeepPolicy,
@@ -13,6 +15,7 @@ import type {
   ModelResidencySize,
   ModelResidencySuggestion,
   ModelResidencyUsage,
+  ResidencyCpuServiceName,
 } from './dto';
 import {
   type CatalogueAction,
@@ -141,6 +144,8 @@ export interface CatalogueBuildInput {
   /** A MEASURED footprint when not resident (LM Studio's own measurement, else `observedMemoryMb`). */
   observedBytes(service: string, modelRef: string, model: CatalogueModelRow | undefined): number | undefined;
   observedLoadSeconds(service: string, modelRef: string, model: CatalogueModelRow | undefined): number | null;
+  /** TASK-1060 — host RAM / CPU readings for the display-only `cpu` block; absent / `null` ⇒ `cpu: null`. */
+  cpu?: CpuReading | null;
   /** Standing, non-dismissed recommendations (TASK-1051 F4); `firstSeenAt` / `repeats` fall back to `at` / 1 when absent. */
   recommendations: Array<
     Omit<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'> & Partial<Pick<ModelResidencyRecommendation, 'firstSeenAt' | 'repeats'>>
@@ -154,6 +159,26 @@ const SERVICE_META: Record<(typeof CATALOGUE_SERVICES)[number], { label: string;
   nlp: { label: 'Medical NLP — entities and classification', runsOn: 'cpu' },
   tts: { label: 'Text-to-speech', runsOn: 'cpu' },
 };
+
+/** TASK-1060 — one CPU panel segment's readings, before its models are attached. `null` = unknown. */
+export interface CpuServiceReading {
+  memoryBytes: number | null;
+  memoryLimitBytes: number | null;
+  cpuCores: number | null;
+  cpuRequestCores: number | null;
+  cpuLimitCores: number | null;
+}
+
+/** TASK-1060 — what the controller read for the CPU panel: the node, and each segment it has a reading for. */
+export interface CpuReading {
+  source: 'prometheus' | 'agents';
+  node: { totalBytes: number; freeBytes: number; cpuCores: number | null; utilisationPercent: number | null };
+  services: Partial<Record<ResidencyCpuServiceName, CpuServiceReading>>;
+}
+
+/** The CPU panel's segments, in display order: the catalogue groups, then the gateway, then everything else on the node. */
+const CPU_SEGMENTS: readonly ResidencyCpuServiceName[] = [...CATALOGUE_SERVICES, 'gateway', 'other'];
+const CPU_SEGMENT_LABELS: Record<'gateway' | 'other', string> = { gateway: 'Gateway', other: 'Other workloads' };
 
 const STATUS_ORDER: Record<CatalogueModelStatus, number> = { loaded: 0, loading: 1, unloading: 2, failed: 3, not_loaded: 4 };
 const SUGGESTION_LIMIT = 20;
@@ -302,6 +327,8 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
     };
   });
 
+  const cpu = input.cpu ? cpuSummary(input.cpu, devices, input.headroomPercent) : null;
+
   // Standing recommendations: only the most recently confirmed one per (action, service, model).
   const latest = new Map<string, CatalogueBuildInput['recommendations'][number]>();
   for (const r of input.recommendations) {
@@ -330,7 +357,58 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
       };
     });
 
-  return { mode: input.mode, reportedAt: input.reportedAt, freshness: input.freshness, devices, services, suggestions };
+  return { mode: input.mode, reportedAt: input.reportedAt, freshness: input.freshness, devices, cpu, services, suggestions };
+}
+
+/**
+ * TASK-1060 — the CPU panel, DISPLAY ONLY (no load, placement or refusal reads it). Each segment's
+ * models are the ones the catalogue already attributed to that service's host-memory pool
+ * (`cpu:<service>` in `devices`), so the panel and the pool can never disagree about a model's bytes.
+ * A segment with no reading and no model is omitted.
+ */
+function cpuSummary(reading: CpuReading, devices: ModelResidencyCatalogueDevice[], headroomPercent: number): ModelResidencyCpuSummary {
+  const { totalBytes, freeBytes, cpuCores, utilisationPercent } = reading.node;
+  const usedBytes = Math.max(0, totalBytes - freeBytes);
+  const headroomBytes = Math.floor((totalBytes * headroomPercent) / 100);
+  const services: ModelResidencyCpuService[] = CPU_SEGMENTS.flatMap((service) => {
+    const r = reading.services[service];
+    const models = devices.find((d) => d.id === `cpu:${service}`)?.models ?? [];
+    const known = r !== undefined && Object.values(r).some((v) => v !== null);
+    if (!known && models.length === 0) return [];
+    const attributedBytes = models.reduce((sum, m) => sum + (m.bytes ?? 0), 0);
+    const memoryBytes = r?.memoryBytes ?? null;
+    return [
+      {
+        service,
+        label: service === 'gateway' || service === 'other' ? CPU_SEGMENT_LABELS[service] : SERVICE_META[service].label,
+        memoryBytes,
+        memoryLimitBytes: r?.memoryLimitBytes ?? null,
+        cpuCores: r?.cpuCores ?? null,
+        cpuRequestCores: r?.cpuRequestCores ?? null,
+        cpuLimitCores: r?.cpuLimitCores ?? null,
+        models,
+        attributedBytes,
+        unattributedBytes: Math.max(0, Math.round((memoryBytes ?? 0) - attributedBytes)),
+      },
+    ];
+  });
+  const segmentBytes = services.reduce((sum, s) => sum + (s.memoryBytes ?? 0), 0);
+  return {
+    source: reading.source,
+    node: {
+      label: cpuCores !== null ? `Node — ${cpuCores} vCPU` : 'Host',
+      totalBytes,
+      usedBytes,
+      freeBytes,
+      headroomPercent,
+      headroomBytes,
+      overHeadroom: freeBytes < headroomBytes,
+      cpuCores,
+      utilisationPercent,
+    },
+    services,
+    unattributedBytes: Math.max(0, Math.round(usedBytes - segmentBytes)),
+  };
 }
 
 /** A resident instance's whole footprint and how it is known. */

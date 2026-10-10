@@ -152,6 +152,8 @@ export class ConfigService implements IConfigService, OnModuleInit {
       TTS_URL: process.env.TTS_URL || 'http://localhost:8865',
       // TASK-1055 — deliberately no default: unset = LM Studio is reported unreachable for residency.
       LMSTUDIO_AGENT_URL: process.env.LMSTUDIO_AGENT_URL || undefined,
+      // TASK-1060 — the gateway's own namespace (k8s downward API); unset off-cluster = the CPU panel reads the agents.
+      POD_NAMESPACE: process.env.POD_NAMESPACE || undefined,
 
       // MQTT
       MQTT_HOST: process.env.MQTT_HOST || 'localhost',
