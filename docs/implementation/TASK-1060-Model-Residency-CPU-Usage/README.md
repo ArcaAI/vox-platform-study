@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — owner said go 2026-10-10 (OD-1…3 = recommendations) |
+| **Status** | Review — merged locally on `dev-2.2`, gates green; runtime proof pending (local stack down) |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
@@ -136,10 +136,37 @@ Each lane works against fixtures of the frozen contract above. Lanes commit in t
 
 ## 5. Implementation Summary
 
-_Pending go._
+Merged on `dev-2.2` (local only, not pushed): `47ace7f8c` (P), `1a5a12d99` (G), `9f9b12ad4` (C), artifacts `53e0f0fa5`.
+Deployment repo: branch `task-1060/deploy` @ `d36e4c7` (worktree `../hope-v2-deployment-task-1060`, off `main`) — **not merged**, awaiting the owner's merge target.
+
+| Lane | Commit | What |
+|---|---|---|
+| P (sonnet) | `d2c6a9fa6` | `_size_load`: on a `cpu` device a clean RSS delta wins over the torch hook; `psutil>=7.2.2` declared in `py-runtime-models` (`uv.lock` +7/−1) |
+| G (opus) | `604853c12` | `cpu: ModelResidencyCpuSummary \| null` on the catalogue; Prometheus (node-exporter/cadvisor/kube-state-metrics) with agents fallback; descriptor `residency.cpu.workloads` (global-kv, platform-only); env knob `POD_NAMESPACE` (`env.descriptors.ts` → `env:sync`); contract fixture gains `response.cpu` |
+| C (sonnet) | `dd1b5eb7a` | `CpuSummaryPanel` + `CpuMemoryBar` after the GPU panel; GPU panel renders `kind:'gpu'` only; skeleton extended |
+| Deploy | `d36e4c7` | `hope-api` env `POD_NAMESPACE` ← `fieldRef: metadata.namespace`; `kubectl kustomize overlays/dev` renders it |
+
+### Evidence (orchestrator, after the merge)
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/domains build` / `@arcaai/applications build` | rc=0 |
+| `api:build → route-manifest → openapi → portal → vox-node gen:admin` | rc=0; then `api:openapi:check`, `api:portal:check`, `gen:admin:check` rc=0 (`no drift (49 areas, 483 routes, 629 schemas)`) |
+| `py-runtime-models` pytest | 187 passed |
+| `apps/nlp` pytest | 1210 passed, 6 skipped |
+| `apps/tts` pytest | 516 passed, 1 failed — `test_task990_health_contract::TestBuildIdentity` passes alone (2 passed): load/order flake |
+| `apps/stt` unit | 4098 passed, 1 failed — `test_lexicon_task935::TestBounds` latency budget passes alone (4 passed): load flake |
+| `@arcaai/applications` test | 18980 passed, 4 failed — all timeouts (30–120 s); the 3 files re-run alone: 4/4 passed |
+| `@arcaai/admin-console` lint / build | rc=0 / rc=0 (Edge-runtime warnings in `instrumentation.ts` pre-exist) |
+| `@arcaai/admin-console` test | 4993 passed, 6 failed; re-run alone: 5 pass + all `model-residency` tests pass; `findings-list.asr-warnings.task1048` still fails ("No QueryClient set") and fails identically on the pre-merge base — out of scope |
+
+### Not yet done
+- Runtime browser proof: Docker Desktop and the local stack were down; starting nlp/tts/stt would load models (owner approval needed).
+- Cluster proof: after the owner pushes `dev-2.2` and merges `task-1060/deploy`.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-10 | Owner: go with recommendations (OD-1 gateway segment, OD-2 one "Other workloads" segment, OD-3 no pressure). Waves 1–2 executed; deviations: lane G added `POD_NAMESPACE` to `IAppConfig`/`config.service.ts`/`env.descriptors.ts` (the env-sync path) and `response.cpu` to the catalogue contract fixture; lane C exported `Swatch`/`DeviceSize` from the GPU panel for reuse. |
 | 2026-10-10 | Ticket opened. Owner chose: all four CPU items, display-only headroom, per-model RSS measurement. Discovery (scout + live Prometheus check) recorded; plan, decisions D-1…D-10 and OD-1…OD-3 written. |
