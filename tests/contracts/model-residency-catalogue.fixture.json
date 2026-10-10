@@ -42,6 +42,67 @@
         "unattributedBytes": 2771596084
       }
     ],
+    "cpu": {
+      "source": "prometheus",
+      "node": {
+        "label": "Node — 48 vCPU",
+        "totalBytes": 67430170624,
+        "usedBytes": 40458102374,
+        "freeBytes": 26972068250,
+        "headroomPercent": 15,
+        "headroomBytes": 10114525593,
+        "overHeadroom": false,
+        "cpuCores": 48,
+        "utilisationPercent": 12.4
+      },
+      "services": [
+        {
+          "service": "nlp",
+          "label": "Medical NLP — entities and classification",
+          "memoryBytes": 4294967296,
+          "memoryLimitBytes": 8589934592,
+          "cpuCores": 0.25,
+          "cpuRequestCores": 1,
+          "cpuLimitCores": 4,
+          "models": [
+            {
+              "service": "nlp",
+              "modelRef": "blaze999/Medical-NER",
+              "name": "Medical NER",
+              "bytes": 1258291200,
+              "bytesSource": "measured"
+            }
+          ],
+          "attributedBytes": 1258291200,
+          "unattributedBytes": 3036676096
+        },
+        {
+          "service": "gateway",
+          "label": "Gateway",
+          "memoryBytes": 1073741824,
+          "memoryLimitBytes": null,
+          "cpuCores": 0.021,
+          "cpuRequestCores": null,
+          "cpuLimitCores": null,
+          "models": [],
+          "attributedBytes": 0,
+          "unattributedBytes": 1073741824
+        },
+        {
+          "service": "other",
+          "label": "Other workloads",
+          "memoryBytes": 21474836480,
+          "memoryLimitBytes": null,
+          "cpuCores": null,
+          "cpuRequestCores": null,
+          "cpuLimitCores": null,
+          "models": [],
+          "attributedBytes": 0,
+          "unattributedBytes": 21474836480
+        }
+      ],
+      "unattributedBytes": 13614556774
+    },
     "services": [
       {
         "service": "stt",

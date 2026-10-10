@@ -66,6 +66,68 @@ export class ModelResidencyCatalogueDevice {
   models!: ModelResidencyDeviceModel[];
 }
 
+/** TASK-1060 — a CPU panel segment: a residency workload, the gateway itself, or every other container on the node. */
+export type ResidencyCpuServiceName = ResidencyServiceName | 'gateway' | 'other';
+const CPU_SERVICES = [...SERVICES, 'gateway', 'other'];
+
+export class ModelResidencyCpuNode {
+  @ApiProperty({ example: 'Node — 48 vCPU', description: '`Node — <cores> vCPU`, or `Host` when the core count is unknown (the agents source).' })
+  label!: string;
+  @ApiProperty({ description: 'Host RAM, bytes.' }) totalBytes!: number;
+  @ApiProperty({ description: '`totalBytes − freeBytes`.' }) usedBytes!: number;
+  @ApiProperty({ description: 'Prometheus: `MemAvailable`; agents: the reporting service`s free host memory.' }) freeBytes!: number;
+  @ApiProperty({ description: 'The `residency.headroomPercent` in force.' }) headroomPercent!: number;
+  @ApiProperty({ description: '`totalBytes × headroomPercent / 100`.' }) headroomBytes!: number;
+  @ApiProperty({ description: '`freeBytes < headroomBytes`. DISPLAY ONLY — no load is gated or refused on it.' }) overHeadroom!: boolean;
+  @ApiProperty({ nullable: true, type: Number, description: 'Logical CPUs on the node; `null` on the agents source.' }) cpuCores!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Node CPU busy over the last 5 min, 0–100; `null` on the agents source.' })
+  utilisationPercent!: number | null;
+}
+
+export class ModelResidencyCpuService {
+  @ApiProperty({ enum: CPU_SERVICES, description: '`gateway` = the API gateway; `other` = every other container on the node (Prometheus only).' })
+  service!: ResidencyCpuServiceName;
+  @ApiProperty({ example: 'Speech-to-text — live sessions', description: 'The service group`s catalogue label; `Gateway`; `Other workloads`.' })
+  label!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Prometheus: the pods` container working set; agents: the service process`s RSS. `null` when unknown.',
+  })
+  memoryBytes!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Sum of the pods` container memory limits; `null` when unset or unknown.' })
+  memoryLimitBytes!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'CPU cores in use (5 min rate); `null` on the agents source.' }) cpuCores!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Sum of the pods` CPU requests (cores); `null` when unset or unknown.' })
+  cpuRequestCores!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Sum of the pods` CPU limits (cores); `null` when unset or unknown.' })
+  cpuLimitCores!: number | null;
+  @ApiProperty({ type: [ModelResidencyDeviceModel], description: 'Models resident on this service`s host-memory pool (`cpu:<service>`).' })
+  models!: ModelResidencyDeviceModel[];
+  @ApiProperty({ description: 'The sum of `models[].bytes` (measured + estimated).' }) attributedBytes!: number;
+  @ApiProperty({
+    description: '`memoryBytes − attributedBytes`, floored at 0 (0 when `memoryBytes` is unknown): runtime, buffers, freed-not-returned pages.',
+  })
+  unattributedBytes!: number;
+}
+
+export class ModelResidencyCpuSummary {
+  @ApiProperty({
+    enum: ['prometheus', 'agents'],
+    description:
+      '`prometheus` = node-exporter / cAdvisor / kube-state-metrics (the gateway knows its namespace); `agents` = the residency agents` own host reading and per-process RSS (no cores, no limits, no `other`).',
+  })
+  source!: 'prometheus' | 'agents';
+  @ApiProperty({ type: ModelResidencyCpuNode }) node!: ModelResidencyCpuNode;
+  @ApiProperty({
+    type: [ModelResidencyCpuService],
+    description: 'In order: stt, stt-worker, lm-studio, nlp, tts, gateway, other (Prometheus only). A service with no data at all is omitted.',
+  })
+  services!: ModelResidencyCpuService[];
+  @ApiProperty({ description: '`node.usedBytes − Σ services[].memoryBytes`, floored at 0: the kernel, page cache and system daemons.' })
+  unattributedBytes!: number;
+}
+
 export class ModelResidencySize {
   @ApiProperty({ nullable: true, type: Number }) bytes!: number | null;
   @ApiProperty({
@@ -267,7 +329,18 @@ export class ModelResidencyCatalogueResponse {
   @ApiProperty({ enum: ['shadow', 'enforce'] }) mode!: ResidencyMode;
   @ApiProperty() reportedAt!: string;
   @ApiProperty({ type: ModelResidencyFreshness }) freshness!: ModelResidencyFreshness;
-  @ApiProperty({ type: [ModelResidencyCatalogueDevice] }) devices!: ModelResidencyCatalogueDevice[];
+  @ApiProperty({
+    type: [ModelResidencyCatalogueDevice],
+    description:
+      'GPUs, plus each `cpu:<service>` host-memory pool a service places models in (placement reads them). TASK-1060 — the CPU panel (`cpu`) is the display source for host memory; every pool repeats the whole node`s RAM.',
+  })
+  devices!: ModelResidencyCatalogueDevice[];
+  @ApiProperty({
+    type: ModelResidencyCpuSummary,
+    nullable: true,
+    description: 'TASK-1060 — host RAM / CPU by service, DISPLAY ONLY. `null` only when neither Prometheus nor any agent yields a node reading.',
+  })
+  cpu!: ModelResidencyCpuSummary | null;
   @ApiProperty({ type: [ModelResidencyCatalogueService], description: 'Always five groups, in this order: stt, stt-worker, lm-studio, nlp, tts.' })
   services!: ModelResidencyCatalogueService[];
   @ApiProperty({

@@ -522,6 +522,7 @@
         "PG_VAULT_MAX_TTL_SEC",
         "PG_VAULT_ROLE",
         "PLAYWRIGHT_ALL_BROWSERS",
+        "POD_NAMESPACE",
         "PORT",
         "PRISMA_PG_MAX",
         "PROMETHEUS_URL",

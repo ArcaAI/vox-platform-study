@@ -99,6 +99,14 @@ const TOPOLOGY: SettingDescriptor[] = [
     'LM Studio residency agent URL',
     'LM Studio residency agent base URL — the in-pod sidecar (port 8869, k8s `http://hope-lmstudio:8869`) the residency controller commands LM Studio through (TASK-1055). Unset: LM Studio is reported unreachable for residency and cannot be loaded / unloaded / pinned from the console; there is deliberately no fallback to the LM Studio REST API.',
   ),
+  // TASK-1060 — no default on purpose: unset (local dev) means "not in a cluster", never a guessed namespace.
+  envKnob(
+    'pod.namespace',
+    'string',
+    'Topology',
+    'Gateway pod namespace',
+    'The Kubernetes namespace the gateway runs in, from the downward API (`fieldRef: metadata.namespace`). Scopes the model-residency CPU panel`s per-pod Prometheus series (`ModelResidencyService`, read through `IConfigService`). Unset (off-cluster): the panel shows the residency agents` own host readings instead (no cores, no limits).',
+  ),
   envKnob(
     'adminConsole.url',
     'string',
