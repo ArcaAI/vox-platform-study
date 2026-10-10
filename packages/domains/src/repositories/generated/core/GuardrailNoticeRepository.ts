@@ -30,20 +30,25 @@ export class GuardrailNoticeRepository extends Repository<GuardrailNoticeEntity,
 
   /**
    * Insert the notice unless one with the same `(tenantId, dedupeKey)` exists.
-   * A repeat raise is a NO-OP (`update: {}`) that returns the stored row as it
-   * stands — an acknowledged or resolved notice is never reset to OPEN by the
-   * next live-summary re-screen.
+   * A repeat raise is a NO-OP that returns the stored row as it stands — an
+   * acknowledged or resolved notice is never reset to OPEN by the next
+   * live-summary re-screen.
+   *
+   * `created` comes from the INSERT's row count (`ON CONFLICT DO NOTHING`), never
+   * from comparing ids: notice ids are deterministic (sha256(tenantId|dedupeKey),
+   * or the producer's own id that is also its dedupe key), so a re-raise always
+   * carries the stored row's id (TASK-1059 RC-8). Race-free: of two concurrent
+   * raises exactly one inserts.
    */
   async upsertByDedupeKey(entity: GuardrailNoticeEntity, tx?: Prisma.TransactionClient | any): Promise<GuardrailNoticeUpsertResult> {
     const delegate = tx ? (tx as Record<string, any>).guardrailNotice : (this as any).db;
     const mapper = (this as any)._mapper as GuardrailNoticeEntityMapper;
     const create = removeNullValues(mapper.toPersistence(entity)) as Record<string, unknown>;
-    const model = await delegate.upsert({
+    const { count } = await delegate.createMany({ data: [create], skipDuplicates: true });
+    const model = await delegate.findUnique({
       where: { tenantId_dedupeKey: { tenantId: entity.tenantId, dedupeKey: entity.dedupeKey } },
-      create,
-      update: {},
     });
-    return { notice: mapper.toDomainEntity(model), created: model.id === entity.id };
+    return { notice: mapper.toDomainEntity(model), created: count > 0 };
   }
 
   /** The consultation's OPEN notices, oldest first. */

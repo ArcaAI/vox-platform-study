@@ -223,7 +223,13 @@ export class ConsultationApprovalService extends BaseService {
       consultation.approvedAt = approvedAt;
     }
     consultation.updatedBy = approvedBy;
-    if (guardrail.clearHold) consultation.setProcessing(ConsultationProcessing.IDLE);
+    // TASK-1059 RC-10 — the signed note IS the outcome: approve ends on IDLE whatever note outcome
+    // (AWAITING_REVIEW / FAILED / IDLE + NOTE_READY) or cleared hold processing carried. Attachment work
+    // still in flight is the attachment pipeline's to finish (FINALIZING_TRANSCRIPT / SUMMARIZING are
+    // refused above).
+    if (guardrail.clearHold || consultation.processing !== ConsultationProcessing.PROCESSING_ATTACHMENT) {
+      consultation.setProcessing(ConsultationProcessing.IDLE);
+    }
 
     const createdBy = actor.principalId || approvedBy;
     const lateMeta = lateSignOff ? { lateSignOff: true, fromStatus } : undefined;

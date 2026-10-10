@@ -43,6 +43,7 @@ import {
   screenedVersionsFor,
 } from './guardrail-hold.rules';
 import { acknowledgementOf, isBlockNotice, toNoticeView, type GuardrailNoticeView } from './guardrail-wire';
+import { guardrailDeferredOutcomeOf } from './guardrail-hold.service';
 import type { IGuardrailNoticeService } from './IGuardrailNoticeService';
 
 /** How many closed (acknowledged / resolved) notices a list carries beside every open one. */
@@ -89,7 +90,8 @@ export type GuardrailHoldResumeResult = ConsultationResponse & { resolvedNoticeI
  *
  * Resume (OD-18, §9.8.1): `item_excluded` / `item_edited` are always offered, `acknowledged` (an
  * override recorded as `SAFETY_OVERRIDE`) unless the check's platform floor is block. The notice
- * resolves and — when no other block holds it — processing returns to IDLE, in one transaction.
+ * resolves and — when no other block holds it — processing returns to IDLE (or to the note outcome the
+ * harness deferred while the hold stood, TASK-1059), in one transaction.
  * After the commit the run paused on that notice is signalled to re-execute its node; a run that is
  * no longer paused (timed out, `run.failed GUARDRAIL_BLOCKED`) is replaced through the supersede
  * path, so a resume is never a dead end.
@@ -211,19 +213,23 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
     const held = consultation.processing === ConsultationProcessing.AWAITING_REVIEW && isGuardrailHoldReason(consultation.processingReason);
     const retry = isRedactionHoldNotice(notice);
     const release = held && otherBlocks.length === 0;
+    // TASK-1059 — the note outcome the harness reported while this hold stood (it kept the hold);
+    // none, or one recorded against an earlier hold, releases to a bare IDLE as before.
+    const deferred = release ? guardrailDeferredOutcomeOf(consultation) : null;
+    const releasedTo = { processing: deferred?.processing ?? ConsultationProcessing.IDLE, reason: deferred?.reason ?? null };
 
     const write = async (tx?: unknown) => {
       notice.resolve({ by: clinicianId, resolution: body.resolution });
       await this.notices.updateWithVersion(notice.id, notice, notice.version, tx);
       if (edited.length > 0) await this.contextItems.setGuardrailStatusMany(edited, GuardrailItemStatus.CLEAN, tx);
-      if (release) await this.consultations.setProcessing(consultation.id, ConsultationProcessing.IDLE, { reason: null }, tx);
+      if (release) await this.consultations.setProcessing(consultation.id, releasedTo.processing, { reason: releasedTo.reason }, tx);
       // The egress-redaction hold's `acknowledged` is a RETRY, not a safety override (round 4).
       if (body.resolution === 'acknowledged' && !retry) await this.appendOverride(consultation, notice, clinicianId, submittedBy);
     };
     if (this.unitOfWork) await this.unitOfWork.runInTransaction((tx) => write(tx));
     else await write();
 
-    if (release) await this.announceRelease(consultation, notice.id);
+    if (release) await this.announceRelease(consultation, notice.id, releasedTo);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: notice.id,
       resourceType: ResourceType.GuardrailNotice,
@@ -368,15 +374,19 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
     });
   }
 
-  private async announceRelease(consultation: ConsultationEntity, noticeId: string): Promise<void> {
+  private async announceRelease(
+    consultation: ConsultationEntity,
+    noticeId: string,
+    releasedTo: { processing: ConsultationProcessing; reason: string | null },
+  ): Promise<void> {
     try {
       await this.lifecycleEvents?.publish(
         {
           id: consultation.id,
           tenantId: consultation.tenantId,
           status: String(consultation.status),
-          processing: ConsultationProcessing.IDLE,
-          processingReason: null,
+          processing: releasedTo.processing,
+          processingReason: releasedTo.reason,
           closedReason: consultation.closedReason ?? null,
           currentEncounterSeq: consultation.currentEncounterSeq,
           version: consultation.version,
