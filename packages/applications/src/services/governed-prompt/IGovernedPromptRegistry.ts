@@ -37,6 +37,10 @@ export interface GovernedPieceFinding {
   readonly pieceKey: string | null;
   readonly digest: string;
   readonly reason: string;
+  /** TASK-1059 C-3: the guardrail check behind a refusal when it is not a screen check (`medical_scope`). */
+  readonly check?: string;
+  /** TASK-1059 C-3: the off-scope region keys (digest prefixes, never text) behind a `medical_scope` refusal. */
+  readonly regions?: readonly string[];
 }
 
 export interface GovernedScreeningResult {

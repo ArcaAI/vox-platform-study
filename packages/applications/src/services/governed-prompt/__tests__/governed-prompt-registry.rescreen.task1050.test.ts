@@ -41,6 +41,8 @@ function makeHarness(settings: Record<string, unknown> = {}) {
       inFlight -= 1;
       return allow as unknown;
     }),
+    // TASK-1059 C-3: the build-time medical-scope judge, in scope unless a test says otherwise.
+    validateMedicalScope: vi.fn(async (): Promise<unknown> => ({ isMedical: true, offScopeRegions: [] })),
     fetchPolicyVersion: vi.fn(async () => 'pv-1' as string | null),
   };
   const cls = { get: vi.fn(() => undefined), run: vi.fn(async (work: () => unknown) => work()) };

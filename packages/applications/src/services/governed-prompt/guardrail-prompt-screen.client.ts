@@ -39,6 +39,13 @@ export interface PromptScreenOutcome {
   readonly quasiRegions: ReadonlySet<string>;
 }
 
+/** TASK-1059 C-3 — what the build-time medical judge said (region keys only, never text). */
+export interface PromptMedicalScopeOutcome {
+  readonly isMedical: boolean;
+  /** The region keys judged off medical scope (`region_verdicts`); empty when none is attributable. */
+  readonly offScopeRegions: readonly string[];
+}
+
 export class PromptScreeningUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -93,6 +100,52 @@ export class GuardrailPromptScreenClient {
       throw new PromptScreeningUnavailableError('Guardrail prompt screening is unavailable.');
     }
     return this.readOutcome(body, regions);
+  }
+
+  /**
+   * TASK-1059 C-3 (owner OD-2) — the medical-scope judge over authored prompt pieces:
+   * `POST /api/medical/validate` with `scope: "prompt"` and every piece an `instruction` region.
+   * Prompts are judged here, at build time, and never at runtime. Fail-closed like `screenRegions`:
+   * a transport error, a non-2xx (guardrail answers 503 when undetermined), a timeout, a body with no
+   * `is_medical` or a `screened_regions` that does not cover every key sent is unavailable.
+   */
+  async validateMedicalScope(tenantId: string, regions: readonly PromptScreenRegion[]): Promise<PromptMedicalScopeOutcome> {
+    const timeout =
+      this.appSettings?.getValueWithDefault<number>('governedPrompt.screenTimeoutMs', DEFAULT_SCREEN_TIMEOUT_MS) ?? DEFAULT_SCREEN_TIMEOUT_MS;
+    let body: Record<string, unknown> | undefined;
+    try {
+      const response = await this.httpService.axiosRef.post(
+        `${this.guardrailUrl}/api/medical/validate`,
+        { scope: 'prompt', regions: regions.map((region) => ({ key: region.key, text: region.text, trust: 'instruction' })) },
+        {
+          timeout,
+          headers: internalServiceHeaders({
+            serviceToken: await resolveInternalAccessToken(this.secretsService, 'GUARDRAIL_SERVICE_TOKEN'),
+            tenantId,
+            tenantlessReason: TENANTLESS.CONTROL_PLANE,
+          }),
+        },
+      );
+      body = response.data as Record<string, unknown> | undefined;
+    } catch (error) {
+      // PHI-safe: the error TYPE, never the judged text.
+      this.logger.warn({ message: 'governed-prompt.medical.unavailable', error: error instanceof Error ? error.name : 'unknown' });
+      throw new PromptScreeningUnavailableError('Guardrail medical-scope judge is unavailable.');
+    }
+    if (typeof body?.is_medical !== 'boolean') {
+      throw new PromptScreeningUnavailableError('Guardrail medical-scope judge answered without a verdict.');
+    }
+    const screened = new Set(Array.isArray(body.screened_regions) ? body.screened_regions : []);
+    if (regions.some((region) => !screened.has(region.key))) {
+      // Version-skew guard (TASK-1047): a region guardrail did not cover has no verdict.
+      throw new PromptScreeningUnavailableError('Guardrail medical-scope judge did not cover every region.');
+    }
+    if (body.is_medical) return { isMedical: true, offScopeRegions: [] };
+    const offScopeRegions = (Array.isArray(body.region_verdicts) ? body.region_verdicts : [])
+      .filter((verdict) => (verdict as { is_medical?: unknown } | null)?.is_medical === false)
+      .map((verdict) => (verdict as { key?: unknown }).key)
+      .filter((key): key is string => typeof key === 'string');
+    return { isMedical: false, offScopeRegions };
   }
 
   /**

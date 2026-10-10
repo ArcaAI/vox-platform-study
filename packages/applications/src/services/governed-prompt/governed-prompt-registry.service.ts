@@ -6,6 +6,11 @@
  * and its verdict recorded against `sha256(text)` under guardrail's policy version. Call time: a
  * system message is governed iff every piece digest is PASS under the CURRENT policy version.
  *
+ * TASK-1059 C-3 (owner OD-2): screening an AUTHORED unit also asks guardrail's medical-scope judge
+ * (`scope: "prompt"`, the whole unit in ONE call), so authored prompts are judged for medical scope
+ * here, before saving, and never at runtime. Platform pieces are never judged for scope. Off scope
+ * refuses the unit: `PROMPT_SCREENING_UNSAFE` with `check: medical_scope` and the off-scope keys.
+ *
  * Fail-closed throughout (OD-4): a guardrail that cannot answer, a check that could not run, or an
  * unknown policy version yields `PROMPT_SCREENING_UNAVAILABLE` and registers nothing, so a piece is
  * never governed without a verdict. No text is stored or logged — digests, codes and check names.
@@ -64,6 +69,8 @@ const DEFAULT_BACKFILL_RETRY_MAX_MS = 900_000;
 const DEFAULT_BACKFILL_INITIAL_DELAY_MS = 60_000;
 /** The check guardrail names an injection/jailbreak verdict by (`INBOUND_TASKS`). */
 const INJECTION_CHECK = 'jailbreak_detection';
+/** TASK-1059 C-3 — the build-time medical-scope judge, reported under this check name. */
+const MEDICAL_SCOPE_CHECK = 'medical_scope';
 
 type FindingCode = GovernedPieceFinding['code'];
 
@@ -71,6 +78,8 @@ type FindingCode = GovernedPieceFinding['code'];
 interface PieceCode {
   readonly code: FindingCode;
   readonly checks: readonly string[];
+  /** Set for a medical-scope refusal: the off-scope region keys. */
+  readonly regions?: readonly string[];
 }
 
 interface DistinctPiece {
@@ -177,8 +186,13 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   // Authoring time
   // ============================================================
 
+  /**
+   * TASK-1059 C-3: the public entry is the EXPLICIT SAVE path only (template approve, agent
+   * validate/publish, promote-to-system), so it runs the medical-scope judge. The boot backfill and the
+   * tenant rescreen go through `screenAs(…, false)` and never judge medical scope.
+   */
   async screenAndRegister(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult> {
-    return this.screenAs(tenantId, tenantId, pieces);
+    return this.screenAs(tenantId, tenantId, pieces, true);
   }
 
   /**
@@ -186,8 +200,16 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
    * verdicts as owned by `ownerTenantId`. The two differ only for platform pieces: owned by SYSTEM,
    * screened under the request tenant's version (a tenant that overrides a guardrail selection has
    * its own version, and a SYSTEM row under THAT version is what its calls look up).
+   *
+   * `judgeMedicalScope` (TASK-1059 C-3): true for an AUTHORED unit only; platform pieces are never
+   * judged for medical scope.
    */
-  private async screenAs(screenTenantId: string, ownerTenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult> {
+  private async screenAs(
+    screenTenantId: string,
+    ownerTenantId: string,
+    pieces: readonly GovernedPieceInput[],
+    judgeMedicalScope: boolean,
+  ): Promise<GovernedScreeningResult> {
     const tenantId = ownerTenantId;
     const digests = pieces.map((piece) => pieceDigest(piece.text));
     if (pieces.length === 0) return { passed: true, policyVersion: await this.currentPolicyVersion(screenTenantId), digests: [], findings: [] };
@@ -212,7 +234,9 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
 
     let perPiece: Map<string, PieceCode[] | 'unavailable'>;
     try {
-      perPiece = await this.screen(screenTenantId, toScreen);
+      // The medical judge sees the WHOLE authored unit, already-PASS pieces included, so a short piece
+      // shares a window with the substantive text and a retry can never skip the judge.
+      perPiece = await this.screen(screenTenantId, toScreen, judgeMedicalScope ? distinct : null);
     } catch (error) {
       if (!(error instanceof PromptScreeningUnavailableError)) throw error;
       return { passed: false, policyVersion, digests, findings: toScreen.map((one) => this.unavailable(one, 'guardrail screening unavailable')) };
@@ -248,6 +272,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
       tenantId,
       SYSTEM_TENANT_ID,
       fresh.map((one) => one.piece),
+      false,
     )
       .then((result) => {
         // Unavailable ⇒ forget, so a later compose retries; a real verdict (PASS or FAIL) stays handled.
@@ -288,7 +313,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     }
     let perPiece: Map<string, PieceCode[] | 'unavailable'>;
     try {
-      perPiece = await this.screen(tenantId, distinct);
+      perPiece = await this.screen(tenantId, distinct, distinct);
     } catch (error) {
       if (!(error instanceof PromptScreeningUnavailableError)) throw error;
       return { passed: false, policyVersion, digests, findings: distinct.map((one) => this.unavailable(one, 'guardrail screening unavailable')) };
@@ -566,7 +591,9 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
           continue;
         }
         counts.screened += 1;
-        const result = await this.screenAndRegister(source.tenantId, source.pieces);
+        // TASK-1059 C-3: a published source is re-screened WITHOUT the medical-scope judge — that judge runs
+        // only on an explicit save, so a policy-version bump never refuses a published agent/template.
+        const result = await this.screenAs(source.tenantId, source.tenantId, source.pieces, false);
         if (result.passed) {
           counts.passed += 1;
           continue;
@@ -613,11 +640,48 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
    * than one piece was screened each piece is re-screened alone to attribute it; if no piece blocks
    * alone, the block is attributed to all of them (fail closed). PII is attributed by region.
    */
-  private async screen(tenantId: string, pieces: readonly DistinctPiece[]): Promise<Map<string, PieceCode[] | 'unavailable'>> {
-    const outcome = await this.screenClient.screenRegions(
-      tenantId,
-      pieces.map((one) => ({ key: one.regionKey, text: one.piece.text })),
-    );
+  private async screen(
+    tenantId: string,
+    pieces: readonly DistinctPiece[],
+    medicalUnit: readonly DistinctPiece[] | null,
+  ): Promise<Map<string, PieceCode[] | 'unavailable'>> {
+    // TASK-1059 C-3 (owner OD-2): the medical-scope judge runs beside the inbound screen, at build time,
+    // over the AUTHORED unit in ONE call (platform pieces are never judged for scope). Either one
+    // unavailable is PromptScreeningUnavailableError for the whole screen (fail closed).
+    const unit = (medicalUnit ?? []).filter((one) => one.piece.sourceType !== 'PLATFORM');
+    const [outcome, medical] = await Promise.all([
+      this.screenClient.screenRegions(
+        tenantId,
+        pieces.map((one) => ({ key: one.regionKey, text: one.piece.text })),
+      ),
+      unit.length === 0
+        ? null
+        : this.screenClient.validateMedicalScope(
+            tenantId,
+            unit.map((one) => ({ key: one.regionKey, text: one.piece.text })),
+          ),
+    ]);
+    const result = await this.attribute(tenantId, pieces, outcome);
+    if (medical === null || medical.isMedical) return result;
+    // Off scope refuses the unit as a whole; with no attributable region every key is named (fail closed).
+    const unitKeys = unit.map((one) => one.regionKey);
+    const named = medical.offScopeRegions.filter((key) => unitKeys.includes(key));
+    const regions = named.length > 0 ? named : unitKeys;
+    this.logger.warn({ message: 'governed-prompt.medical.off_scope', tenantId, regions });
+    for (const one of pieces) {
+      const codes = result.get(one.digest);
+      if (codes === 'unavailable' || one.piece.sourceType === 'PLATFORM') continue;
+      result.set(one.digest, [...(codes ?? []), { code: 'PROMPT_SCREENING_UNSAFE', checks: [MEDICAL_SCOPE_CHECK], regions }]);
+    }
+    return result;
+  }
+
+  /** The inbound screen's verdict per piece (the TASK-1047 attribution rules below). */
+  private async attribute(
+    tenantId: string,
+    pieces: readonly DistinctPiece[],
+    outcome: PromptScreenOutcome,
+  ): Promise<Map<string, PieceCode[] | 'unavailable'>> {
     const result = new Map<string, PieceCode[] | 'unavailable'>();
     if (outcome.undetermined) {
       for (const one of pieces) result.set(one.digest, 'unavailable');
@@ -686,8 +750,11 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
               ? `injection/jailbreak detected (${INJECTION_CHECK})`
               : entry.code === 'PROMPT_INJECTION_ADVISORY'
                 ? `injection classifier flagged the text (${INJECTION_CHECK}) — advisory: authored instructions often trip it`
-                : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
-    return { code: entry.code, pieceKind: one.piece.kind, pieceKey: one.piece.sourceKey, digest: one.digest, reason };
+                : entry.regions
+                  ? `off medical scope (check: ${MEDICAL_SCOPE_CHECK}; regions: ${entry.regions.join(', ')})`
+                  : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
+    const base = { code: entry.code, pieceKind: one.piece.kind, pieceKey: one.piece.sourceKey, digest: one.digest, reason };
+    return entry.regions ? { ...base, check: MEDICAL_SCOPE_CHECK, regions: entry.regions } : base;
   }
 
   private unavailable(one: DistinctPiece, reason: string): GovernedPieceFinding {
