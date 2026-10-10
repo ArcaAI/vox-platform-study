@@ -87,7 +87,7 @@ describe('TASK-1031 — service=lmstudio: the boot serving plan', () => {
     const response = await serviceWith().resolveForService('lmstudio');
 
     expect(response.lmStudioServing).toEqual({
-      defaults: { contextLength: 65536, parallel: 10, gpu: 1, flashAttention: true, kvCacheQuant: { k: 'f16', v: 'f16' } },
+      defaults: { contextLength: 65536, parallel: 8, gpu: 1, flashAttention: true, kvCacheQuant: { k: 'f16', v: 'f16' } },
       preload: [
         {
           slug: 'gemma-4-e2b-it-qat',
@@ -123,7 +123,7 @@ describe('TASK-1031 — service=lmstudio: the boot serving plan', () => {
       {
         slug: 'gemma-4-e4b-it-qat',
         contextLength: 65536,
-        parallel: 10,
+        parallel: 8,
         flashAttention: true,
         gpuSplit: null,
         gpu: 0,
@@ -166,14 +166,14 @@ describe('TASK-1031 — service=lmstudio: the boot serving plan', () => {
 
   it('serves the defaults with an empty preload when no model repository is wired', async () => {
     const response = await serviceWith(settingsStub(), null).resolveForService('lmstudio');
-    expect(response.lmStudioServing?.defaults.parallel).toBe(10);
+    expect(response.lmStudioServing?.defaults.parallel).toBe(8);
     expect(response.lmStudioServing?.preload).toEqual([]);
   });
 });
 
 describe('TASK-1031 — service=text: the lm-studio concurrency', () => {
   it('serves the effective lmStudio.serving.parallel, and nothing else of the plan', async () => {
-    expect((await serviceWith().resolveForService('text')).lmStudioServing).toEqual({ parallel: 10 });
+    expect((await serviceWith().resolveForService('text')).lmStudioServing).toEqual({ parallel: 8 });
     expect((await serviceWith(settingsStub({ 'lmStudio.serving.parallel': 12 })).resolveForService('text')).lmStudioServing).toEqual({
       parallel: 12,
     });
