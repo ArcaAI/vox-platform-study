@@ -63,8 +63,8 @@ describe('the PRELOADED LM Studio row', () => {
     expect(preloaded?.metaData?.serving?.parallel).toEqual(expect.any(Number));
   });
 
-  it('is served at 32768 — the value TASK-1045 lowered LMS_CONTEXT to, which this must not exceed', () => {
-    expect(preloaded?.metaData?.serving?.contextLength).toBe(32768);
+  it('is served at 65536 — the value TASK-1059 OD-1 raised LMS_CONTEXT to (8 slots)', () => {
+    expect(preloaded?.metaData?.serving?.contextLength).toBe(65536);
   });
 });
 
@@ -80,8 +80,8 @@ describe('the JIT-loaded LM Studio rows', () => {
  * TASK-1031 (owner, 2026-10-01) — the serving layout is a rule for the ROLE, and it REVERSES
  * the TASK-996 one (summarization was GPU 0, guardrail GPU 1):
  *
- *   summarization  32768 ctx (was 65536, TASK-1045) · 10 concurrent · GPU 1 · q4_0 KV
- *   guardrail      16384 ctx · 10 concurrent · GPU 1 · q8_0 KV
+ *   summarization  65536 ctx (TASK-1059 OD-1) · 8 concurrent · GPU 1 · q4_0 KV
+ *   guardrail      16384 ctx · 8 concurrent · GPU 1 · q8_0 KV
  *
  * TASK-1055 (owner, 2026-10-09) moved the guardrail role from GPU 0 to GPU 1, beside summarization:
  * GPU 0 is Medical NER + GLiGuard + Whisper ML-EN (`task-1055-default-gpu-alignment.test.ts`).
@@ -89,17 +89,17 @@ describe('the JIT-loaded LM Studio rows', () => {
 describe('TASK-1031 — the owner serving layout', () => {
   const bySlug = (slug: string) => LLM_AI_MODELS.find((model) => model.slug === slug);
 
-  it('serves the summarization model at 32768 x 10 on GPU 1 only, with a q4_0 KV cache (TASK-1045)', () => {
+  it('serves the summarization model at 65536 x 8 on GPU 1 only, with a q4_0 KV cache (TASK-1045)', () => {
     expect(bySlug('lms-gemma-4-e2b-it-qat')?.metaData?.serving).toEqual({
-      contextLength: 32768,
-      parallel: 10,
+      contextLength: 65536,
+      parallel: 8,
       flashAttention: true,
       gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
       kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
     });
   });
 
-  it('serves every guardrail/safety LM Studio model at 16384 x 10 on GPU 1 only, with a q8_0 KV cache (TASK-1055)', () => {
+  it('serves every guardrail/safety LM Studio model at 16384 x 8 on GPU 1 only, with a q8_0 KV cache (TASK-1055)', () => {
     const guardrail = LLM_AI_MODELS.filter(
       (model) => model.provider === 'lm-studio' && (model.tags ?? []).some((tag) => tag === 'guardrail' || tag === 'safety'),
     );
@@ -107,7 +107,7 @@ describe('TASK-1031 — the owner serving layout', () => {
     for (const model of guardrail) {
       expect(model.metaData?.serving, model.slug).toEqual({
         contextLength: 16384,
-        parallel: 10,
+        parallel: 8,
         // A quantized V-cache REQUIRES flash attention; declared so the row is coherent alone.
         flashAttention: true,
         gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },

@@ -131,7 +131,9 @@ const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERA
  * cannot drift apart. The deploy must not lag behind a RAISE of this value; a LOWER is safe
  * in either order, because the safe direction of the invariant is to under-claim.
  */
-const LM_STUDIO_CONTEXT_LENGTH = 32768;
+const LM_STUDIO_CONTEXT_LENGTH = 65536;
+// TASK-1059 OD-1 (owner): 32768 -> 65536 with 8 slots (was 10), to hold the realtime prompt headroom.
+// Mirrored in `base/lmstudio.yaml` (LMS_CONTEXT, LMS_PRELOAD_PLAN) of the deployment repo.
 // TASK-1045: 65536 -> 32768, with the KV cache quantized to q4_0 (K and V) and flash attention on.
 // The note planner budgets against this declared window (never a constant) and falls back to a
 // ledger + cited-transcript plan when a case does not fit, so a smaller window costs no facts.
@@ -148,7 +150,7 @@ const LM_STUDIO_CONTEXT_LENGTH = 32768;
  * slot gets the full window, so VRAM scales with their product and reading either number
  * alone tells you nothing about whether the model fits the card.
  */
-const LM_STUDIO_PARALLEL = 10;
+const LM_STUDIO_PARALLEL = 8; // TASK-1059 OD-1 (was 10)
 
 // =============================================================================
 // TASK-1050 — the guardrail judge criteria (README §6, §10.2 A1, §11.3 C, OD-43)
@@ -362,7 +364,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
       // The row deliberately declares no catalogue `contextLength` (under-claim).
       serving: {
         contextLength: 16384,
-        parallel: 10,
+        parallel: 8,
         flashAttention: true,
         gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
         kvCacheQuant: { k: 'q8_0', v: 'q8_0' },

@@ -145,9 +145,9 @@ describe('LM Studio serving descriptors — what is deliberately NOT registered'
 describe('TASK-1031 — governed LM Studio concurrency, placement and preload', () => {
   const validate = (key: LmStudioServingKey, value: unknown) => HOPE_SETTINGS_REGISTRY.getOrThrow(key).validate?.(value);
 
-  it('ships 10 concurrent requests per model, named as such, applying on the next LM Studio restart', () => {
+  it('ships 8 concurrent requests per model, named as such, applying on the next LM Studio restart', () => {
     const d = HOPE_SETTINGS_REGISTRY.getOrThrow('lmStudio.serving.parallel');
-    expect(d.default).toBe(10);
+    expect(d.default).toBe(8);
     expect(d.label).toBe('LM Studio concurrent requests per model');
     expect(d.description).toMatch(/decode slots/);
     expect(d.description).toMatch(/apps\/text/);

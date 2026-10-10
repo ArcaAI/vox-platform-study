@@ -74,7 +74,7 @@ export const LM_STUDIO_SERVING_DEFAULTS = {
   'lmStudio.serving.contextLength': 65536,
   // TASK-1031 (owner, 2026-10-01): 4 -> 10. ONE governed number for LM Studio's
   // per-model decode slots AND apps/text's lm-studio concurrency (user + judge lane).
-  'lmStudio.serving.parallel': 10,
+  'lmStudio.serving.parallel': 8, // TASK-1059 OD-1 (was 10)
   'lmStudio.serving.flashAttention': true,
   'lmStudio.serving.kvCacheQuantK': 'f16',
   'lmStudio.serving.kvCacheQuantV': 'f16',
