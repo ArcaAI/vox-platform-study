@@ -264,12 +264,54 @@ export interface ResidencySuggestion {
   applied: boolean;
 }
 
+/** TASK-1060 — CPU workload names: the residency services plus the gateway and the "everything else" remainder. */
+export type ResidencyCpuServiceName = ResidencyServiceId | 'gateway' | 'other';
+
+/** TASK-1060 — the host node's memory and CPU. */
+export interface ResidencyCpuNode {
+  label: string;
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  headroomPercent: number;
+  headroomBytes: number;
+  overHeadroom: boolean;
+  cpuCores: number | null;
+  /** 0..100; null = not reported. */
+  utilisationPercent: number | null;
+}
+
+/** TASK-1060 — one service's slice of host memory and CPU. */
+export interface ResidencyCpuService {
+  service: ResidencyCpuServiceName;
+  label: string;
+  memoryBytes: number | null;
+  memoryLimitBytes: number | null;
+  cpuCores: number | null;
+  cpuRequestCores: number | null;
+  cpuLimitCores: number | null;
+  models: ResidencyDeviceModelRef[];
+  attributedBytes: number;
+  unattributedBytes: number;
+}
+
+/** TASK-1060 — CPU & host memory summary (null on the catalogue when no host metrics are reported). */
+export interface ResidencyCpuSummary {
+  source: 'prometheus' | 'agents';
+  node: ResidencyCpuNode;
+  services: ResidencyCpuService[];
+  /** Kernel/system remainder of `node.usedBytes`. */
+  unattributedBytes: number;
+}
+
 /** GET admin/model-residency/catalogue */
 export interface ModelResidencyCatalogueResponse {
   mode: ModelResidencyMode;
   reportedAt: string;
   freshness: ResidencyFreshness;
   devices: ResidencyDevice[];
+  /** TASK-1060 — host CPU & memory; null when no host metrics are reported. */
+  cpu: ResidencyCpuSummary | null;
   services: ResidencyServiceGroup[];
   suggestions: ResidencySuggestion[];
 }

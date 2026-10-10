@@ -13,6 +13,8 @@ export const SERVICE_SWATCH: Record<string, string> = {
   'lm-studio': 'bg-chart-2',
   nlp: 'bg-chart-4',
   tts: 'bg-chart-5',
+  gateway: 'bg-primary',
+  other: 'bg-secondary-foreground/60',
 };
 const FALLBACK_SWATCH = 'bg-chart-5';
 
@@ -22,6 +24,8 @@ export const SERVICE_LEGEND_LABEL: Record<string, string> = {
   'lm-studio': 'LM Studio',
   nlp: 'Medical NLP',
   tts: 'Text-to-speech',
+  gateway: 'API gateway',
+  other: 'Other workloads',
 };
 
 /** Diagonal stripes over the swatch: the non-colour cue for an estimate / the unattributed remainder. */

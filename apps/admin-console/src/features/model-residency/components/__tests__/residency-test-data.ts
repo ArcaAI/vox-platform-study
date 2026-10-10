@@ -6,6 +6,7 @@
 import type {
   ModelResidencyCatalogueResponse,
   ResidencyCatalogueModel,
+  ResidencyCpuSummary,
   ResidencyDevice,
   ResidencyServiceGroup,
   ResidencySuggestion,
@@ -68,6 +69,68 @@ export function makeDevice(overrides: Partial<ResidencyDevice> = {}): ResidencyD
       { service: 'stt', modelRef: 'whisper-ml-en', name: 'ArcaAI Whisper ml-en', bytes: 1.5 * GiB, bytesSource: 'measured' },
       { service: 'lm-studio', modelRef: 'gemma', name: 'Gemma 4 E2B', bytes: 2.5 * GiB, bytesSource: 'estimated' },
     ],
+    ...overrides,
+  };
+}
+
+/** TASK-1060 — a host CPU summary: 64 GiB node, three services, a kernel remainder. */
+export function makeCpu(overrides: Partial<ResidencyCpuSummary> = {}): ResidencyCpuSummary {
+  return {
+    source: 'prometheus',
+    node: {
+      label: 'dell — 48 vCPU',
+      totalBytes: 64 * GiB,
+      usedBytes: 24 * GiB,
+      freeBytes: 40 * GiB,
+      headroomPercent: 15,
+      headroomBytes: 9.6 * GiB,
+      overHeadroom: false,
+      cpuCores: 48,
+      utilisationPercent: 37,
+    },
+    services: [
+      {
+        service: 'nlp',
+        label: 'Medical NLP',
+        memoryBytes: 8 * GiB,
+        memoryLimitBytes: 16 * GiB,
+        cpuCores: 0.13,
+        cpuRequestCores: 0.5,
+        cpuLimitCores: 2,
+        models: [
+          { service: 'nlp', modelRef: 'gliner', name: 'GLiNER2', bytes: 3 * GiB, bytesSource: 'measured' },
+          { service: 'nlp', modelRef: 'bert', name: 'Clinical BERT', bytes: 1 * GiB, bytesSource: 'estimated' },
+          { service: 'nlp', modelRef: 'mystery', name: 'Mystery model', bytes: null, bytesSource: 'unknown' },
+        ],
+        attributedBytes: 4 * GiB,
+        unattributedBytes: 4 * GiB,
+      },
+      {
+        service: 'gateway',
+        label: 'API gateway',
+        memoryBytes: 2 * GiB,
+        memoryLimitBytes: null,
+        cpuCores: null,
+        cpuRequestCores: null,
+        cpuLimitCores: null,
+        models: [],
+        attributedBytes: 0,
+        unattributedBytes: 0,
+      },
+      {
+        service: 'other',
+        label: 'Other workloads',
+        memoryBytes: 6 * GiB,
+        memoryLimitBytes: null,
+        cpuCores: 1.5,
+        cpuRequestCores: null,
+        cpuLimitCores: null,
+        models: [],
+        attributedBytes: 0,
+        unattributedBytes: 0,
+      },
+    ],
+    unattributedBytes: 8 * GiB,
     ...overrides,
   };
 }
@@ -298,6 +361,7 @@ export function makeCatalogue(overrides: Partial<ModelResidencyCatalogueResponse
     reportedAt: '2026-10-07T10:00:00Z',
     freshness: { maxAgeSeconds: 4, staleServices: [], oldestReportAt: '2026-10-07T09:59:56Z' },
     devices: [makeDevice()],
+    cpu: null,
     services: [STT, WORKER, LMS, NLP],
     suggestions: [makeSuggestion()],
     ...overrides,

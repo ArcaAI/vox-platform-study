@@ -25,6 +25,7 @@ import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
 import { modelResidencyKeys, useLoadResidencyModel, useModelResidencyCatalogue, useModelResidencyReadiness } from '../api';
 import type { ModelResidencyCatalogueResponse, ResidencyCatalogueModel, ResidencyServiceGroup } from '../api/types';
 import { AttentionStrip } from './attention-strip';
+import { CpuSummaryPanel } from './cpu-summary-panel';
 import { GpuSummaryPanel } from './gpu-summary-panel';
 import { LinkInstanceDialog } from './link-instance-dialog';
 import { LoadPreviewDialog } from './load-preview-dialog';
@@ -112,6 +113,15 @@ export function ModelResidencySkeleton() {
                   <Skeleton key={line} className="h-3 w-3/4" />
                 ))}
               </div>
+            ))}
+          </div>
+          <Skeleton className="h-5 w-40" />
+          <div className="flex flex-col gap-3 rounded-xl border p-4">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-full" />
+            {Array.from({ length: 3 }, (_, line) => (
+              <Skeleton key={line} className="h-3 w-3/4" />
             ))}
           </div>
           <div className="flex flex-col gap-3 rounded-xl border p-4">
@@ -346,6 +356,7 @@ export function ModelResidencyScreen() {
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="flex min-w-0 flex-col gap-4">
               <GpuSummaryPanel devices={data.devices} services={data.services} />
+              <CpuSummaryPanel cpu={data.cpu} />
               <ModelsTable
                 services={data.services}
                 devices={data.devices}
