@@ -140,6 +140,7 @@ import { CloneDefinitionDialog, type CloneDefinitionSubmission } from './clone-d
 import { ImportDefinitionDialog, type ImportDefinitionSubmission } from './import-definition-dialog';
 import { WorkflowSwitcher } from './workflow-switcher';
 import { StudioHeader, collectAgentPins } from './header';
+import { nameNodesInMessage, unpublishedPinFindings } from '../lib/pin-findings';
 import { TestTab, useNodeLastRuns } from './test-tab';
 import { IntegrationTab } from './integration-tab';
 import { VersionHistorySheet } from './management/version-history-sheet';
@@ -197,11 +198,12 @@ function etagOf(row: { version?: number | null }): string | null {
  * gate, a capability refusal, "is PUBLISHED and can no longer be edited"); it is shown verbatim,
  * with the first finding when the body carries one, never reduced to "Publish failed."
  */
-function lifecycleFailureMessage(cause: unknown, fallback: string): string {
+function lifecycleFailureMessage(cause: unknown, fallback: string, names?: ReadonlyMap<string, string>): string {
   if (!(cause instanceof GatewayError)) return fallback;
   const findings = (cause.details as { findings?: { message?: string }[] } | undefined)?.findings;
   const first = findings?.find((finding) => typeof finding?.message === 'string')?.message;
-  return first ? `${cause.message} ${first}` : cause.message;
+  const text = first ? `${cause.message} ${first}` : cause.message;
+  return names ? nameNodesInMessage(text, names) : text;
 }
 
 function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorProps) {
@@ -818,14 +820,19 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       const { data: updated, etag: nextEtag } = await validateMutation.mutateAsync(definition.id);
       setCurrentEtag(nextEtag ?? etagOf(updated));
       setStatus(updated.status);
-      setReport(updated.validationReport);
+      const advisories = updated.validationReport ? unpublishedPinFindings(agentPins, agentOptions) : [];
+      setReport(updated.validationReport ? { ...updated.validationReport, findings: [...updated.validationReport.findings, ...advisories] } : updated.validationReport);
       setInspectorTab('problems');
       setRailPinned(true);
       toast[updated.validationReport?.ok ? 'success' : 'error'](
-        updated.validationReport?.ok ? 'Validation passed.' : 'Validation found problems — see the Problems tab.',
+        updated.validationReport?.ok
+          ? advisories.length > 0
+            ? `Validation passed with ${advisories.length} warning${advisories.length === 1 ? '' : 's'} — a step pins an unpublished agent version.`
+            : 'Validation passed.'
+          : 'Validation found problems — see the Problems tab.',
       );
     } catch (cause) {
-      toast.error(lifecycleFailureMessage(cause, 'Validate failed.'));
+      toast.error(lifecycleFailureMessage(cause, 'Validate failed.', nodeNames));
     } finally {
       setValidating(false);
     }
@@ -845,7 +852,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       toast.success(published.isActive ? 'Published and active.' : 'Published — not active.');
       setJustPublished(true);
     } catch (cause) {
-      toast.error(lifecycleFailureMessage(cause, 'Publish failed.'));
+      toast.error(lifecycleFailureMessage(cause, 'Publish failed.', nodeNames));
     } finally {
       setPublishing(false);
     }

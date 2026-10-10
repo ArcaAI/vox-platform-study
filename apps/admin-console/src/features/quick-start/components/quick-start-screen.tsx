@@ -50,6 +50,16 @@ const STEP_LINK: Record<QuickStartStep, string> = {
 };
 
 const TENANT_SCOPE = '__tenant__';
+const NO_ASSIGNMENT = '__none__';
+
+/** C-17 — only a READY, usable model can be chosen; the rest stay listed with the reason. */
+function isModelReady(model: { usable: boolean; readiness: string }): boolean {
+  return model.usable && model.readiness === 'ready';
+}
+function readinessText(model: { usable: boolean; readiness: string; unusableReason?: string | null }): string {
+  if (isModelReady(model)) return 'ready';
+  return `not ready (${model.unusableReason ?? model.readiness.toLowerCase()})`;
+}
 
 function Required() {
   return <span aria-hidden> *</span>;
@@ -92,7 +102,7 @@ export function QuickStartBody() {
   const schemaOptions = useContextSchemaOptions();
   const departments = useDepartmentOptions();
   const catalogue = useModelCatalogue({ taskType: 'TEXT_GENERATION' });
-  const models = useMemo(() => (catalogue.data?.models ?? []).filter((model) => model.usable), [catalogue.data]);
+  const models = useMemo(() => catalogue.data?.models ?? [], [catalogue.data]);
 
   const [schemaMode, setSchemaMode] = useState<'preset' | 'existing'>('preset');
   const [presetKey, setPresetKey] = useState(SCHEMA_PRESETS[0]?.key ?? '');
@@ -104,7 +114,7 @@ export function QuickStartBody() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [promptTemplateId, setPromptTemplateId] = useState<string | null>(null);
   const [workflowName, setWorkflowName] = useState('');
-  const [assignTo, setAssignTo] = useState(TENANT_SCOPE);
+  const [assignTo, setAssignTo] = useState(NO_ASSIGNMENT);
   const [steps, setSteps] = useState<Partial<Record<QuickStartStep, QuickStartStepState>>>({});
   const [running, setRunning] = useState(false);
 
@@ -121,7 +131,8 @@ export function QuickStartBody() {
   const instructionReady = instructionMode === 'inline' ? systemPrompt.trim().length > 0 : promptTemplateId !== null;
   const schemaReady = schemaMode === 'preset' ? schemaName.trim().length > 0 && !!presetByKey(presetKey) : existingSchemaId.length > 0;
   const ready = schemaReady && agentSlug.length >= 2 && modelId.length > 0 && instructionReady && workflowSlug.length >= 2 && !running;
-  const finished = QUICK_START_STEPS.every((step) => steps[step]?.status === 'done');
+  const visibleSteps = assignTo === NO_ASSIGNMENT ? QUICK_START_STEPS.filter((step) => step !== 'assignment') : QUICK_START_STEPS;
+  const finished = visibleSteps.every((step) => steps[step]?.status === 'done');
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,7 +146,7 @@ export function QuickStartBody() {
         instruction: instructionMode === 'inline' ? { systemPrompt } : { promptTemplateId: promptTemplateId as string },
       },
       workflow: { name: effectiveWorkflowName, slug: workflowSlug },
-      assignment: assignTo === TENANT_SCOPE ? { scope: 'TENANT' } : { scope: 'DEPARTMENT', departmentId: assignTo },
+      assignment: assignTo === NO_ASSIGNMENT ? { scope: 'NONE' } : assignTo === TENANT_SCOPE ? { scope: 'TENANT' } : { scope: 'DEPARTMENT', departmentId: assignTo },
     };
     setSteps({});
     setRunning(true);
@@ -246,13 +257,14 @@ export function QuickStartBody() {
               </Label>
               <Select value={modelId} onValueChange={setModelId}>
                 <SelectTrigger id="qs-model" className="w-full">
-                  <SelectValue placeholder={models.length === 0 ? 'No usable text-generation model' : 'Choose a model'} />
+                  <SelectValue placeholder={models.length === 0 ? 'No text-generation model' : 'Choose a model'} />
                 </SelectTrigger>
                 <SelectContent>
                   {models.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
+                    <SelectItem key={model.id} value={model.id} disabled={!isModelReady(model)}>
                       {model.name}
                       {model.provider ? ` · ${model.provider}` : ''}
+                      {` · ${readinessText(model)}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -311,7 +323,8 @@ export function QuickStartBody() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={TENANT_SCOPE}>Whole tenant (default)</SelectItem>
+                <SelectItem value={NO_ASSIGNMENT}>Don’t assign yet (default)</SelectItem>
+                <SelectItem value={TENANT_SCOPE}>Whole tenant — replaces the current governing workflow</SelectItem>
                 {departments.options.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
@@ -319,17 +332,20 @@ export function QuickStartBody() {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-muted-foreground text-xs">
+              Assigning to the whole tenant makes this workflow govern every department without its own assignment. Leave it unassigned to review the rows first.
+            </p>
           </div>
         </fieldset>
 
         <div className="flex flex-col gap-3">
           <Button type="submit" className="self-start" disabled={!ready}>
             {running ? <Spinner /> : null}
-            Create and assign
+            {assignTo === NO_ASSIGNMENT ? 'Create' : 'Create and assign'}
           </Button>
           {!ready && !running ? <p className="text-muted-foreground text-xs">Fill every field marked * to continue.</p> : null}
           <ol aria-label="Progress" className="flex flex-col gap-2">
-            {QUICK_START_STEPS.map((step, index) => (
+            {visibleSteps.map((step, index) => (
               <li key={step} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border px-3 py-2 text-sm">
                 <span className="w-40 font-medium">
                   {index + 1}. {STEP_LABEL[step]}

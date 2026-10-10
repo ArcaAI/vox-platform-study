@@ -41,7 +41,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useAgentEvalRuns, useApproveTemplate, useEvalGoldenSets, useRunGoldenSetEval, useTemplate, useTemplates } from '../api';
 import type { PromptTemplate, PromptTemplateStatus } from '../api';
 import type { PermissionRule } from '@/shared/auth';
-import { ApprovalPin, TemplateStatusBadge, statusVariant } from './approval-pin';
+import { ApprovalPin, TemplateStatusBadge } from './approval-pin';
 import { VersionsPanel } from './versions-panel';
 
 /** Governance-focused list: filter by approval status, select to inspect. */
@@ -113,7 +113,7 @@ function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; o
               >
                 <span className="truncate text-sm font-medium">{template.name}</span>
                 <span className="flex items-center gap-2">
-                  <Badge variant={statusVariant(template.status)}>{template.status}</Badge>
+                  <TemplateStatusBadge status={template.status} />
                   <ApprovalPin template={template} />
                   <span className="text-muted-foreground font-mono text-xs">v{template.version}</span>
                 </span>

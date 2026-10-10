@@ -101,7 +101,15 @@ export function StepPanel({ node, run, hidePhi, live }: { node: StepPanelNode | 
       ) : (
         <>
           {run.error ? (
-            <div role="alert" className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
+            <div
+              role={status === 'degraded' ? 'status' : 'alert'}
+              className={
+                status === 'degraded'
+                  ? 'border-warning/40 bg-warning/10 text-warning-strong rounded-md border px-3 py-2 text-sm'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm'
+              }
+            >
+              {status === 'degraded' ? <p className="text-xs font-medium uppercase">Degraded because</p> : null}
               <p className="font-medium">
                 {run.error.code} — {run.error.message}
                 {run.willRetry ? ' Retrying.' : ''}

@@ -186,6 +186,9 @@ export interface Agent {
   updatedAt: string;
   createdBy: string | null;
   updatedBy: string | null;
+  /** Display names for the two ids above, when the gateway resolves them (C-16: show a username, not a UUID). */
+  createdByName?: string | null;
+  updatedByName?: string | null;
   version: number;
 }
 

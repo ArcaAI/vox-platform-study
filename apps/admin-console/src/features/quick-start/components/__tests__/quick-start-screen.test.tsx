@@ -17,7 +17,7 @@ interface Call {
 
 const MODELS = {
   providers: [],
-  models: [{ id: 'model-1', slug: 'gemma', name: 'Gemma 4', taskType: 'TEXT_GENERATION', providerId: 'p', provider: 'lmstudio', providerClass: 'BUILT_IN', readiness: 'READY', readinessCheckedAt: null, readinessDetail: null, usable: true, description: null }],
+  models: [{ id: 'model-0', slug: 'cold', name: 'Cold model', taskType: 'TEXT_GENERATION', providerId: 'p', provider: 'lmstudio', providerClass: 'BUILT_IN', readiness: 'engine_down', readinessCheckedAt: null, readinessDetail: null, usable: false, unusableReason: 'engine down', description: null }, { id: 'model-1', slug: 'gemma', name: 'Gemma 4', taskType: 'TEXT_GENERATION', providerId: 'p', provider: 'lmstudio', providerClass: 'BUILT_IN', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, description: null }],
 };
 
 function stub(failOn?: string): Call[] {
@@ -60,6 +60,19 @@ async function fillAndRun() {
   fireEvent.click(await screen.findByRole('option', { name: /Cardiology/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Create and assign' }));
 }
+
+describe('QuickStartBody — C-17', () => {
+  it('lists non-ready models disabled with their reason, and defaults to no assignment', async () => {
+    stub();
+    renderWithProviders(<QuickStartBody />);
+    fireEvent.click(screen.getByLabelText('Model *'));
+    const cold = await screen.findByRole('option', { name: /Cold model.*not ready/ });
+    expect(cold.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.keyDown(cold, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Create and assign' })).toBeNull();
+  });
+});
 
 describe('QuickStartBody', () => {
   it('creates schema → agent → workflow → assignment and links each to its editor', async () => {

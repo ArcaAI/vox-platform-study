@@ -134,7 +134,8 @@ export interface QuickStartInput {
   schema: { mode: 'preset'; presetKey: string; name: string } | { mode: 'existing'; schemaId: string };
   agent: { name: string; slug: string; modelId: string; instruction: QuickStartInstruction };
   workflow: { name: string; slug: string };
-  assignment: { scope: 'TENANT' } | { scope: 'DEPARTMENT'; departmentId: string };
+  /** `NONE` (the default) creates the workflow without making it govern anything. */
+  assignment: { scope: 'NONE' } | { scope: 'TENANT' } | { scope: 'DEPARTMENT'; departmentId: string };
 }
 
 /** The admin endpoints the quick start drives — each returns the created/published row's identity. */
@@ -233,10 +234,12 @@ export async function runQuickStart(
   if (workflow === undefined) return { ok: false };
   const workflowSlug = workflow;
 
+  const assignment = input.assignment;
+  if (assignment.scope === 'NONE') return { ok: true };
   const assigned = await step('assignment', async () => {
     await api.createWorkflowAssignment({
-      scope: input.assignment.scope,
-      scopeId: input.assignment.scope === 'DEPARTMENT' ? input.assignment.departmentId : null,
+      scope: assignment.scope,
+      scopeId: assignment.scope === 'DEPARTMENT' ? assignment.departmentId : null,
       paletteKey: QUICK_START_PALETTE,
       workflowDefinitionSlug: workflowSlug,
       reason: 'Quick start',

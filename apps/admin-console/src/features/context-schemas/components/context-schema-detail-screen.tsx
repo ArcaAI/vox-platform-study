@@ -245,6 +245,7 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
             }
             actions={
               <>
+                {draft.kinds.length === 0 ? <span className="text-muted-foreground text-xs">Add at least one kind to publish.</span> : null}
                 <Button type="button" disabled={draft.kinds.length === 0 || publish.isPending} onClick={() => setPublishOpen(true)}>
                   {publish.isPending ? <Spinner /> : null}
                   Publish

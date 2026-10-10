@@ -133,6 +133,15 @@ function errorText(error: unknown): string {
   return `${String(error.code ?? 'ERROR')} — ${String(error.message ?? '')}`.trim();
 }
 
+/** C-12 — why a step finished degraded: `errorCode` (+ message) the run reported, in whichever shape it arrives. */
+function degradeReason(data: Record<string, unknown>): string | null {
+  if (isRecord(data.error)) return errorText(data.error);
+  const code = typeof data.errorCode === 'string' && data.errorCode ? data.errorCode : typeof data.reason === 'string' && data.reason ? data.reason : null;
+  if (!code) return null;
+  const message = typeof data.errorMessage === 'string' && data.errorMessage ? data.errorMessage : typeof data.message === 'string' ? data.message : '';
+  return message ? `${code} — ${message}` : code;
+}
+
 /** One line for the Events list. `labelOf` names a step by its label, never its raw id. */
 export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => string, options: DescribeOptions = {}): string {
   const data = event.data as Record<string, unknown>;
@@ -171,6 +180,8 @@ export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => stri
       if (isRecord(data.tokens))
         parts.push(`${Number(data.tokens.in ?? 0).toLocaleString('en-US')} in / ${Number(data.tokens.out ?? 0).toLocaleString('en-US')} out tokens`);
       if (typeof data.warnings === 'number' && data.warnings > 0) parts.push(count(data.warnings, 'warning'));
+      const reason = data.status === 'DEGRADED' ? degradeReason(data) : null;
+      if (reason) parts.push(`reason: ${reason}`);
       return parts.join(' · ');
     }
     case 'node.failed':

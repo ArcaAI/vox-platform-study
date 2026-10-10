@@ -435,11 +435,11 @@ function ManagementBody() {
       },
       {
         id: 'versions',
-        header: () => <span className="sr-only">Versions</span>,
+        header: () => <span className="sr-only">Version history</span>,
         enableSorting: false,
         enableHiding: false,
         size: 56,
-        meta: { label: 'Versions' },
+        meta: { label: 'Version history' },
         cell: ({ row }) => (
           <Button
             type="button"
