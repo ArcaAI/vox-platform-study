@@ -4132,7 +4132,11 @@ return 0`;
     // . Merging with the prior set preserves the running highlight set across flushes
     // (NER only sees the new delta, but the note is cumulative — recall), and always re-grounding
     // against the current `runningSummary` keeps offsets valid even on the NLP-failure fallback.
-    const entities = this.groundEntitiesToNote([...priorEntities, ...extracted], runningSummary);
+    //
+    // TASK-1059 RC-5 — but only once there IS a note. With no note yet (or when this flush failed and
+    // the note on screen is not the one this turn's transcript was meant for) the grounding below
+    // would answer `[]` and the clinician would see no highlight at all, although NER found them.
+    const entities = this.publishableEntities([...priorEntities, ...extracted], runningSummary, textFailed || graph?.run.failed === true);
     // Lane N — findings go through the SAME grounding function, deliberately. A finding whose
     // surface form does not survive in the rendered note is DROPPED for the identical reason an
     // entity is: there is nothing to anchor a highlight to, and — because the findings pass reads
@@ -8207,6 +8211,36 @@ return 0`;
         transcriptEnd: transcriptEnd - segment.charStart,
       };
     });
+  }
+
+  /**
+   * TASK-1059 RC-5 — the entities a flush publishes.
+   *
+   * A note exists and this flush succeeded ⇒ {@link groundEntitiesToNote}, unchanged: only mentions
+   * the rendered note carries, with note offsets.
+   *
+   * No note yet, or this flush FAILED ⇒ the note-grounded ones first (when a last-good note exists),
+   * then every other transcript-supported mention, deduplicated by text and class, WITHOUT note
+   * offsets — they keep only their transcript anchor (`transcriptSegmentId` / `transcriptStart` /
+   * `transcriptEnd`), which is exactly what NER established. Nothing is invented: no `start`/`end` is
+   * claimed for a note that does not contain the mention. They are grounded by the first successful
+   * flush after, which receives them back as the prior set.
+   */
+  private publishableEntities(entities: LiveSummaryEntityDto[], note: string, flushFailed: boolean): LiveSummaryEntityDto[] {
+    const grounded = this.groundEntitiesToNote(entities, note);
+    if (note && !flushFailed) return grounded;
+    const seen = new Set(grounded.map((entity) => `${(entity.text ?? '').toLowerCase()}\0${entity.type}`));
+    const anchored: LiveSummaryEntityDto[] = [];
+    for (const entity of entities) {
+      const needle = entity.text ?? '';
+      if (!needle.trim()) continue;
+      const key = `${needle.toLowerCase()}\0${entity.type}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const { start: _noteStart, end: _noteEnd, ...transcriptAnchored } = entity;
+      anchored.push(transcriptAnchored);
+    }
+    return [...grounded, ...anchored];
   }
 
   private groundEntitiesToNote(entities: LiveSummaryEntityDto[], note: string): LiveSummaryEntityDto[] {
