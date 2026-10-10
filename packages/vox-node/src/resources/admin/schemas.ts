@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 626 component schemas the generated surface transitively
+ * Only the 629 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -4929,6 +4929,9 @@ export interface ModelResidencyCatalogueModel {
 }
 
 export interface ModelResidencyCatalogueResponse {
+  /** TASK-1060 — host RAM / CPU by service, DISPLAY ONLY. `null` only when neither Prometheus nor any agent yields a node reading. */
+  cpu: ModelResidencyCpuSummary;
+  /** GPUs, plus each `cpu:<service>` host-memory pool a service places models in (placement reads them). TASK-1060 — the CPU panel (`cpu`) is the display source for host memory; every pool repeats the whole node`s RAM. */
   devices: ModelResidencyCatalogueDevice[];
   freshness: ModelResidencyFreshness;
   mode: 'shadow' | 'enforce';
@@ -4962,6 +4965,60 @@ export interface ModelResidencyConsumerCounts {
   routingPolicies: number;
   /** Published workflow `core.agent` nodes whose agent runs on it. */
   workflowNodes: number;
+}
+
+export interface ModelResidencyCpuNode {
+  /** Logical CPUs on the node; `null` on the agents source. */
+  cpuCores: number | null;
+  /** Prometheus: `MemAvailable`; agents: the reporting service`s free host memory. */
+  freeBytes: number;
+  /** `totalBytes × headroomPercent / 100`. */
+  headroomBytes: number;
+  /** The `residency.headroomPercent` in force. */
+  headroomPercent: number;
+  /** `Node — <cores> vCPU`, or `Host` when the core count is unknown (the agents source). */
+  label: string;
+  /** `freeBytes < headroomBytes`. DISPLAY ONLY — no load is gated or refused on it. */
+  overHeadroom: boolean;
+  /** Host RAM, bytes. */
+  totalBytes: number;
+  /** `totalBytes − freeBytes`. */
+  usedBytes: number;
+  /** Node CPU busy over the last 5 min, 0–100; `null` on the agents source. */
+  utilisationPercent: number | null;
+}
+
+export interface ModelResidencyCpuService {
+  /** The sum of `models[].bytes` (measured + estimated). */
+  attributedBytes: number;
+  /** CPU cores in use (5 min rate); `null` on the agents source. */
+  cpuCores: number | null;
+  /** Sum of the pods` CPU limits (cores); `null` when unset or unknown. */
+  cpuLimitCores: number | null;
+  /** Sum of the pods` CPU requests (cores); `null` when unset or unknown. */
+  cpuRequestCores: number | null;
+  /** The service group`s catalogue label; `Gateway`; `Other workloads`. */
+  label: string;
+  /** Prometheus: the pods` container working set; agents: the service process`s RSS. `null` when unknown. */
+  memoryBytes: number | null;
+  /** Sum of the pods` container memory limits; `null` when unset or unknown. */
+  memoryLimitBytes: number | null;
+  /** Models resident on this service`s host-memory pool (`cpu:<service>`). */
+  models: ModelResidencyDeviceModel[];
+  /** `gateway` = the API gateway; `other` = every other container on the node (Prometheus only). */
+  service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp' | 'tts' | 'gateway' | 'other';
+  /** `memoryBytes − attributedBytes`, floored at 0 (0 when `memoryBytes` is unknown): runtime, buffers, freed-not-returned pages. */
+  unattributedBytes: number;
+}
+
+export interface ModelResidencyCpuSummary {
+  node: ModelResidencyCpuNode;
+  /** In order: stt, stt-worker, lm-studio, nlp, tts, gateway, other (Prometheus only). A service with no data at all is omitted. */
+  services: ModelResidencyCpuService[];
+  /** `prometheus` = node-exporter / cAdvisor / kube-state-metrics (the gateway knows its namespace); `agents` = the residency agents` own host reading and per-process RSS (no cores, no limits, no `other`). */
+  source: 'prometheus' | 'agents';
+  /** `node.usedBytes − Σ services[].memoryBytes`, floored at 0: the kernel, page cache and system daemons. */
+  unattributedBytes: number;
 }
 
 export interface ModelResidencyDevice {
