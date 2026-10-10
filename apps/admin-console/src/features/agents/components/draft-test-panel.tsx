@@ -13,9 +13,11 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge, Button, Field, FieldContent, FieldDescription, FieldLabel, Skeleton, Spinner, Switch, Textarea } from '@arcaai/ui';
 import { GatewayError } from '@/shared/api';
+import { GuardrailNoticeBanner } from '@/shared/guardrail';
 import { useTaskStream } from '@/shared/streams';
 import { useFinalizeAgentTest, useTestAgent } from '../api';
 import type { Agent, AgentFinding, AgentTestAck, AgentTestResult } from '../api';
+import { contextWindowCopy } from '../lib/test-error-copy';
 import { JsonField } from './json-field';
 
 export interface DraftTestPanelProps {
@@ -44,6 +46,8 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
   const stream = useTaskStream(taskId);
   const finalizedRef = useRef<string | null>(null);
   const notifiedRef = useRef<string | null>(null);
+  const startedAt = useRef<number>(0);
+  const [latency, setLatency] = useState<{ firstMs: number | null; totalMs: number | null }>({ firstMs: null, totalMs: null });
 
   useEffect(() => {
     if (!taskId || stream.status !== 'done' || finalizedRef.current === taskId) return;
@@ -57,8 +61,16 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
   useEffect(() => {
     if (!taskId || (stream.status !== 'failed' && stream.status !== 'error') || notifiedRef.current === taskId) return;
     notifiedRef.current = taskId;
-    toast.error(stream.error ?? 'The test run stream failed.');
+    toast.error(contextWindowCopy(stream.error) ?? stream.error ?? 'The test run stream failed.');
   }, [taskId, stream.status, stream.error]);
+
+  // Latency is measured here (the stream carries none): to the first streamed character, and to the end.
+  useEffect(() => {
+    if (!taskId || !startedAt.current) return;
+    const elapsed = Math.round(performance.now() - startedAt.current);
+    if (stream.content && latency.firstMs === null) setLatency((previous) => ({ ...previous, firstMs: elapsed }));
+    if ((stream.status === 'done' || stream.status === 'failed' || stream.status === 'error') && latency.totalMs === null) setLatency((previous) => ({ ...previous, totalMs: elapsed }));
+  }, [taskId, stream.content, stream.status, latency.firstMs, latency.totalMs]);
 
   const streaming = !!taskId && (stream.status === 'connecting' || stream.status === 'streaming');
   const running = runTest.isPending || streaming || finalize.isPending;
@@ -68,6 +80,8 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
     setFindings(null);
     setResult(null);
     setTaskId(null);
+    setLatency({ firstMs: null, totalMs: null });
+    startedAt.current = performance.now();
     finalize.reset();
     runTest.mutate(
       { id: agent.id, body: { input: { text: inputText }, ...(variables ? { variables } : {}), ...(context ? { context } : {}), dryRun } },
@@ -83,7 +97,7 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
             setFindings(blocking);
             return;
           }
-          toast.error(error instanceof GatewayError ? error.message : 'The test run failed.');
+          toast.error(contextWindowCopy(error instanceof GatewayError ? `${error.code ?? ''} ${error.message}` : null) ?? (error instanceof GatewayError ? error.message : 'The test run failed.'));
         },
       },
     );
@@ -169,9 +183,22 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
 
       {streaming ? <Skeleton className="h-16 w-full" /> : null}
       {stream.content ? <pre className="bg-muted max-h-80 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">{stream.content}</pre> : null}
-      {result ? (
+      {stream.guardrailNotices.length > 0 ? <GuardrailNoticeBanner notices={stream.guardrailNotices} /> : null}
+      {contextWindowCopy(stream.error) ? (
+        <p role="alert" className="text-destructive text-sm">
+          {contextWindowCopy(stream.error)}
+        </p>
+      ) : null}
+      {result || latency.totalMs !== null ? (
         <p className="text-muted-foreground text-xs">
-          {result.usage ? `${result.usage.totalTokens} tokens · ` : ''}served by {result.provider}/{result.model}
+          {latency.firstMs !== null ? `first text after ${(latency.firstMs / 1000).toFixed(1)} s · ` : ''}
+          {latency.totalMs !== null ? `finished in ${(latency.totalMs / 1000).toFixed(1)} s · ` : ''}
+          {result?.usage
+            ? `${result.usage.totalTokens} tokens (${result.usage.promptTokens} in, ${result.usage.completionTokens} out) · `
+            : stream.usage
+              ? `${stream.usage.total_tokens} tokens (${stream.usage.prompt_tokens} in, ${stream.usage.completion_tokens} out) · `
+              : ''}
+          {result ? `served by ${result.provider}/${result.model}` : null}
         </p>
       ) : null}
     </div>
