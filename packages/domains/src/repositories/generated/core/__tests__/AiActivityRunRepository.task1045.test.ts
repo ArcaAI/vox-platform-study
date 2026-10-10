@@ -63,6 +63,14 @@ describe('AiActivityRunRepository', () => {
     expect(saved.runKey).toBe('harness:sess-1:run-1:3');
   });
 
+  it('TASK-1059 D-15: a successful replay explicitly clears the failed attempt error columns', async () => {
+    await repo.upsertByRunKey(await run());
+    const args = delegate.upsert.mock.calls[0][0];
+    expect(args.update).toHaveProperty('errorCode', null);
+    expect(args.update).toHaveProperty('stopReason', null);
+    expect(args.create).not.toHaveProperty('errorCode');
+  });
+
   it('upsertByRunKey is idempotent: two writes of the same runKey hit the same unique key', async () => {
     await repo.upsertByRunKey(await run({ status: AiActivityRunStatus.ERROR, errorCode: 'TIMEOUT' }));
     await repo.upsertByRunKey(await run());

@@ -8,6 +8,7 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -1081,18 +1082,43 @@ export class ConsultationService extends BaseService implements IConsultationSer
       return;
     }
 
+    // TASK-1059 D-14: an encounter append re-sends the same prior notes. Skip an entry whose
+    // origin/kindKey/content digest is already on the consultation. A failed lookup degrades to
+    // "write everything" - a duplicate is a smaller loss than a missing note.
+    const alreadyMaterialized = new Set<string>();
+    try {
+      const existing = (await this.contextService!.getCaseNotes?.(consultationId)) ?? [];
+      for (const item of existing) {
+        const meta = item.metadata ?? {};
+        if (meta.origin === 'open.context' && meta.kindKey === kindKey && typeof item.content === 'string') {
+          alreadyMaterialized.add(createHash('sha256').update(item.content).digest('hex'));
+        }
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Existing case notes could not be read; materializing without de-duplication',
+        consultationId,
+        kindKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     for (const [index, entry] of notes.entries()) {
       if (typeof entry !== 'object' || entry === null) continue;
       const note = entry as Record<string, unknown>;
       const text = typeof note.text === 'string' ? note.text : '';
       if (text.length === 0) continue;
       const title = typeof note.title === 'string' && note.title.length > 0 ? note.title : null;
+      const content = title ? `${title}\n${text}` : text;
+      const digest = createHash('sha256').update(content).digest('hex');
+      if (alreadyMaterialized.has(digest)) continue;
+      alreadyMaterialized.add(digest);
 
       try {
         await this.contextService!.addContext(consultationId, {
           type: ContextItemType.CASE_NOTE,
           source: ContextItemSource.USER,
-          content: title ? `${title}\n${text}` : text,
+          content,
           // Provenance, so a later reader can tell a note the client sent AT OPEN from one a
           // clinician wrote during the visit - they are the same type on purpose (every existing
           // reader must see both), and this is the only thing that distinguishes them.

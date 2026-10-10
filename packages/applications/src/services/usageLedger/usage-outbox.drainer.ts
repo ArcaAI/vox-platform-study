@@ -384,12 +384,29 @@ function readPayload(row: AiUsageOutboxEntity): SerializedUsageEvent[] {
  */
 function isIdempotencyKeyConflict(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
-  const candidate = error as { code?: unknown; meta?: { target?: unknown } };
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: { cause?: { constraint?: unknown } };
+    };
+  };
   if (candidate.code !== 'P2002') return false;
-  const target = candidate.meta?.target;
-  if (Array.isArray(target)) return target.includes('idempotencyKey');
-  if (typeof target === 'string') return target.includes('idempotencyKey');
-  return false;
+  const names = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(names);
+    if (typeof value === 'string') return value.includes('idempotencyKey');
+    return false;
+  };
+  if (names(candidate.meta?.target)) return true;
+  if (typeof candidate.message === 'string' && candidate.message.includes('AiUsageEvent_idempotencyKey_key')) return true;
+  // Prisma 7 driver-adapter errors carry the constraint as `{ index }` or `{ fields }`.
+  const constraint = candidate.meta?.driverAdapterError?.cause?.constraint;
+  if (constraint && typeof constraint === 'object') {
+    const { index, fields } = constraint as { index?: unknown; fields?: unknown };
+    return names(index) || names(fields);
+  }
+  return names(constraint);
 }
 
 /** Exponential, capped. `attempts` is the attempt just consumed (1-based). */

@@ -306,6 +306,32 @@ describe('UsageOutboxDrainer — exactly-once-effective under redelivery', () =>
     expect(mockOutboxRepository.update).toHaveBeenCalled();
   });
 
+  it('TASK-1059 D-16: treats a Prisma 7 driver-adapter unique violation as already delivered', async () => {
+    mockEventRepository.create.mockRejectedValue({
+      code: 'P2002',
+      message: 'Unique constraint failed on the constraint: `AiUsageEvent_idempotencyKey_key`',
+      meta: { modelName: 'AiUsageEvent', driverAdapterError: { cause: { kind: 'UniqueConstraintViolation', constraint: { index: 'AiUsageEvent_idempotencyKey_key' } } } },
+    });
+    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent()])]);
+
+    const report = await drainer.drainBatch();
+
+    expect(report).toMatchObject({ inserted: 0, skipped: 1, failed: 0 });
+    expect(mockHourlyRepository.accumulate).not.toHaveBeenCalled();
+  });
+
+  it('TASK-1059 D-16: also matches a driver-adapter constraint given as fields', async () => {
+    mockEventRepository.create.mockRejectedValue({
+      code: 'P2002',
+      meta: { driverAdapterError: { cause: { constraint: { fields: ['idempotencyKey'] } } } },
+    });
+    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent()])]);
+
+    const report = await drainer.drainBatch();
+
+    expect(report).toMatchObject({ inserted: 0, skipped: 1, failed: 0 });
+  });
+
   it('is a full no-op on a complete redrain, then marks the row DISPATCHED', async () => {
     mockEventRepository.create.mockRejectedValue({ code: 'P2002', meta: { target: ['idempotencyKey'] } });
     mockOutboxRepository.findClaimable.mockResolvedValue([

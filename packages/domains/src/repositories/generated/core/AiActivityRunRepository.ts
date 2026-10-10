@@ -11,6 +11,22 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 /** Columns a replayed upsert never rewrites — the record's identity. */
 const UPSERT_IMMUTABLE = ['id', 'tenantId', 'runKey', 'createdAt', 'createdBy'];
 
+/**
+ * Outcome columns a replay overwrites even with null, so a successful retry
+ * under the same runKey clears the failed attempt's `errorCode` / `stopReason`.
+ */
+const UPSERT_OUTCOME_NULLABLE = [
+  'endedAt',
+  'durationMs',
+  'tokensIn',
+  'tokensOut',
+  'stopReason',
+  'errorCode',
+  'costMicros',
+  'costBasis',
+  'usageRequestId',
+];
+
 /** Lookup for {@link AiActivityRunRepository.findProducerOf}. */
 export interface ActivityRunProducerQuery {
   tenantId: string;
@@ -42,6 +58,8 @@ export class AiActivityRunRepository extends Repository<AiActivityRunEntity, AiA
     const create = removeNullValues(mapper.toPersistence(entity)) as Record<string, unknown>;
     const update: Record<string, unknown> = { ...create };
     for (const key of UPSERT_IMMUTABLE) delete update[key];
+    const raw = mapper.toPersistence(entity) as unknown as Record<string, unknown>;
+    for (const key of UPSERT_OUTCOME_NULLABLE) update[key] = raw[key] ?? null;
 
     const model = await delegate.upsert({ where: { runKey: entity.runKey }, create, update });
     return mapper.toDomainEntity(model);
