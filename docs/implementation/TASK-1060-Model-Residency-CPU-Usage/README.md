@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — merged locally on `dev-2.2`, gates green; local runtime proof done (empty state); cluster proof pending pipeline #1434 |
+| **Status** | Review — merged locally on `dev-2.2`, gates green; cluster proof done (pipeline #1437); two display follow-ups open |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
@@ -165,10 +165,17 @@ Deployment repo: branch `task-1060/deploy` @ `d36e4c7` (worktree `../hope-v2-dep
 - `/model-residency` renders "GPU memory" then "CPU & host memory" with the empty state "No host metrics reported"; no console errors besides a 401 from a mistyped login.
 - The populated state (node card, service bar, cores vs limits) is provable only where a source exists — the cluster.
 
-### Not yet done
-- Cluster proof after pipeline #1434 promotes: expect `cpu.source: 'prometheus'` (hope-api now has `POD_NAMESPACE`), values matching Grafana for the same instant.
-- Deployment: `task-1060/deploy` merged into deployment `main` (`648fe8a`) and pushed by the TASK-1059 session at the owner's instruction (`7799716`).
+### Cluster proof (2026-10-11, pipeline #1437 `c50182c3a`, Argo `hope-v2-dev` Synced/Healthy)
+- `hope-api-67f96f696d-fvhhf`: `build-info.json` `gitCommitSha c50182c3…`, `POD_NAMESPACE=hope-v2-dev` (downward API).
+- `GET /api/hope/admin/model-residency/catalogue` → 200, `cpu.source: "prometheus"`; node `Node — 48 vCPU`, 17.05 GiB used of 62.76 GiB, 45.71 free, headroom 15 % (9.41 GiB, not over), CPU 2.227 %.
+- Per service (working set · limit · cores · request/limit): stt 0.78 G · 24 G · 0.007 · 2/8; stt-worker 0.14 G · 16 G · 0.004 · 2/8; lm-studio 9.61 G · 20 G · 0.133 · 2/8; nlp 0.50 G · 8 G · 0.006 · 0.5/4; tts 0.07 G · 4 G · 0.005 · 0.5/2; gateway 0.55 G · 2 G · 0.023 · 0.5/2; other 9.10 G.
+- Cross-checked against Prometheus at the same instant: lm-studio 9.614 GiB, node used 17.049 GiB, CPU 2.227 % — exact match.
+- `devices[]` = `gpu0`, `gpu1` only; the panel renders the node card, bar, per-service rows with cores vs request/limit.
+- No model is resident on CPU in the cluster right now, so per-model RSS (D-5) is proven by unit tests only; proving it live needs a CPU load (owner approval).
 
+### Follow-ups found in the cluster proof
+1. **Bar overshoots "used".** Σ services + other = 20.75 GiB > node used 17.05 GiB: cadvisor working set counts active page cache, `MemTotal − MemAvailable` does not. Proposed fix: `other = max(0, node.used − Σ HOPE services)` (and scale the bar to `node.used` when Σ HOPE alone exceeds it), so the segments never exceed the headline figure.
+2. **Per-service "Not attributed" noise.** With no CPU models, every service repeats a "Not attributed — runtime, buffers…" row equal to its whole working set. Proposed fix: render that row only when the service has ≥ 1 CPU model.
 ## 6. Change History
 
 | Date | Change |
