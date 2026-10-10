@@ -39,7 +39,7 @@
  * merely visual.
  */
 
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { IconChevronRight, IconTrash } from '@tabler/icons-react';
 import { CodeEditor } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -69,6 +69,71 @@ import { FieldRoleTable } from './field-role-table';
 
 function stringifyFields(fields: Record<string, unknown> | undefined): string {
   return JSON.stringify(fields ?? {}, null, 2);
+}
+
+/**
+ * The STRUCTURED `fields` JSON Schema editor. The raw text lives in local state
+ * so a half-typed document is never snapped back; the parsed value is committed
+ * to the draft only when the text is valid JSON.
+ */
+function FieldsEditor({ fields, onCommit, uid }: { fields: Record<string, unknown> | undefined; onCommit: (next: Record<string, unknown>) => void; uid: string }) {
+  const [text, setText] = useState(() => stringifyFields(fields));
+  const [parseError, setParseError] = useState<string | null>(null);
+  const committedJson = useRef(JSON.stringify(fields ?? {}));
+
+  // External change (e.g. a different draft loaded): adopt it. Our own commits don't match this branch.
+  const incomingJson = JSON.stringify(fields ?? {});
+  useEffect(() => {
+    if (incomingJson !== committedJson.current) {
+      committedJson.current = incomingJson;
+      setText(stringifyFields(fields));
+      setParseError(null);
+    }
+  }, [incomingJson, fields]);
+
+  function handleChange(next: string) {
+    setText(next);
+    try {
+      const parsed = JSON.parse(next) as unknown;
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setParseError('Fields must be a JSON object.');
+        return;
+      }
+      setParseError(null);
+      committedJson.current = JSON.stringify(parsed);
+      onCommit(parsed as Record<string, unknown>);
+    } catch (error) {
+      setParseError(`Invalid JSON: ${error instanceof Error ? error.message : 'could not parse'}`);
+    }
+  }
+
+  const problems = parseError ? [] : authorableJsonSchemaProblems(fields ?? {});
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={`${uid}-fields`}>
+        Fields (JSON Schema){' '}
+        <span aria-hidden className="text-destructive">
+          *
+        </span>
+      </Label>
+      <CodeEditor aria-label="Fields JSON Schema" value={text} onChange={handleChange} language="json" className="min-h-40" />
+      {parseError ? (
+        <p role="alert" className="text-destructive text-xs">
+          {parseError} The draft keeps the last valid schema until this is fixed.
+        </p>
+      ) : problems.length > 0 ? (
+        <ul className="text-destructive flex flex-col gap-0.5 text-xs">
+          {problems.map((problem) => (
+            <li key={problem}>{problem}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          Required for STRUCTURED — validated against the authorable subset (no if/then/else; oneOf needs a discriminator).
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** A closed-by-default group. Content is unmounted while closed, not merely hidden. */
@@ -107,8 +172,6 @@ export function KindForm({
 }) {
   const uid = useId();
   const allKinds = kinds ?? [kind];
-  const fieldsText = stringifyFields(kind.fields);
-  const fieldsProblems = kind.primitive === 'STRUCTURED' ? authorableJsonSchemaProblems(kind.fields ?? {}) : [];
   // The same shape `FieldRoleTable` renders for; asking it here keeps the
   // disclosure from appearing above an empty panel.
   const canCarryFieldRoles = kind.primitive === 'STRUCTURED' && kind.cardinality === 'ONE';
@@ -120,15 +183,6 @@ export function KindForm({
   function toggleProducer(producer: ContextProducer, checked: boolean) {
     const next = checked ? [...kind.producedBy, producer] : kind.producedBy.filter((entry) => entry !== producer);
     patch({ producedBy: next });
-  }
-
-  function handleFieldsChange(text: string) {
-    try {
-      patch({ fields: JSON.parse(text) as Record<string, unknown> });
-    } catch {
-      // Invalid JSON mid-edit — CodeEditor's own toolbar already flags it;
-      // don't propagate an unparsable value into the draft.
-    }
   }
 
   return (
@@ -234,6 +288,8 @@ export function KindForm({
         />
       </div>
 
+      {kind.primitive === 'STRUCTURED' ? <FieldsEditor fields={kind.fields} onCommit={(fields) => patch({ fields })} uid={uid} /> : null}
+
       {canCarryFieldRoles ? (
         <Disclosure
           title="Field roles"
@@ -291,29 +347,6 @@ export function KindForm({
             </Select>
           </div>
         </div>
-
-        {kind.primitive === 'STRUCTURED' ? (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${uid}-fields`}>
-              Fields (JSON Schema){' '}
-              <span aria-hidden className="text-destructive">
-                *
-              </span>
-            </Label>
-            <CodeEditor aria-label="Fields JSON Schema" value={fieldsText} onChange={handleFieldsChange} language="json" className="min-h-40" />
-            {fieldsProblems.length > 0 ? (
-              <ul className="text-destructive flex flex-col gap-0.5 text-xs">
-                {fieldsProblems.map((problem) => (
-                  <li key={problem}>{problem}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-muted-foreground text-xs">
-                Required for STRUCTURED — validated against the authorable subset (no if/then/else; oneOf needs a discriminator).
-              </p>
-            )}
-          </div>
-        ) : null}
 
         <ConstraintsFields kind={kind} onChange={patch} uid={uid} />
         <DeprecationFields kind={kind} onChange={patch} uid={uid} />

@@ -50,14 +50,15 @@ describe('KindForm disclosures', () => {
     expect(screen.getByLabelText('Description')).toBeDefined();
 
     // Key, Label, Primitive, 3 × Produced by, Required, Description = 8 DOM
-    // controls across the 6 labelled groups.
-    expect(visibleControlCount(container)).toBe(8);
+    // controls across the 6 labelled groups, plus the STRUCTURED Fields editor
+    // (required, so it is out of Advanced — TASK-1059 C-09).
+    expect(visibleControlCount(container)).toBe(9);
+    expect(screen.getByLabelText('Fields JSON Schema')).toBeDefined();
 
     // Advanced machinery is not on screen until asked for.
     expect(screen.queryByLabelText('PHI class')).toBeNull();
     expect(screen.queryByLabelText('Cardinality')).toBeNull();
     expect(screen.queryByLabelText('Lifecycle')).toBeNull();
-    expect(screen.queryByLabelText(/Fields \(JSON Schema\)/)).toBeNull();
     expect(screen.queryByRole('button', { name: /Remove kind/ })).toBeNull();
   });
 
@@ -69,7 +70,6 @@ describe('KindForm disclosures', () => {
     expect(screen.getByLabelText('PHI class')).toBeDefined();
     expect(screen.getByLabelText('Cardinality')).toBeDefined();
     expect(screen.getByLabelText('Lifecycle')).toBeDefined();
-    expect(screen.getByLabelText('Fields JSON Schema')).toBeDefined();
     expect(screen.getByLabelText(/MIME types/)).toBeDefined();
     expect(screen.getByLabelText('Max bytes')).toBeDefined();
     expect(screen.getByLabelText('Mark this kind deprecated')).toBeDefined();
