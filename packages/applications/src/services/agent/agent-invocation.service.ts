@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -37,6 +37,25 @@ import { agentInputBlock } from './agent-input-block';
 import { platformPiecesOf } from '../text-request/system-governance';
 import { promptVariableSlot, splitBindings, type PromptVariableSlot } from './agent-required-variables';
 import { wireModelIdOf } from './agent-wire-model';
+import {
+  ContextJudgeUnavailableError,
+  IContextMedicalJudgeService,
+  type ContextJudgeItem,
+} from '../guardrail-context-judge/IContextMedicalJudgeService';
+
+/**
+ * TASK-1059 OD-8 — the SHAPE test for a caller variable that is narrative text rather than a typed
+ * field: a string of at least this many whitespace-separated words, whose declaration (when the
+ * template declares one) is `string`. A gender, an age, a date, a code or a one-line label is a
+ * field value and is never judged on its own (judging such values alone caused the false 422s).
+ */
+export const CALLER_INPUT_NARRATIVE_MIN_WORDS = 5;
+const MESSAGE_JUDGE_ID = 'input:message';
+const variableJudgeId = (name: string) => `input:variables.${name}`;
+
+function isNarrative(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().split(/\s+/).length >= CALLER_INPUT_NARRATIVE_MIN_WORDS;
+}
 
 export interface AgentTextInvocationResult {
   text: string;
@@ -248,6 +267,10 @@ export class AgentInvocationService {
     // binding, a machine caller and a supplied value and finds no resolver raises 503. Silence
     // there would drop the clinician on the floor and leave nothing behind saying so.
     @Optional() @Inject(IContextUserIdentityService) private readonly userIdentity?: IContextUserIdentityService,
+    // TASK-1059 C-0 — the runtime medical judge over the caller's NARRATIVE input, before it is
+    // combined with the prompt. Optional + trailing for the positional fixtures; unwired ⇒ nothing
+    // is judged here.
+    @Optional() @Inject(IContextMedicalJudgeService) private readonly contextJudge?: IContextMedicalJudgeService,
   ) {
     // Bootstrap TRANSPORT address (rule 00): the only sanctioned env default.
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -353,6 +376,10 @@ export class AgentInvocationService {
     // gateway can stamp it on this call's usage row (`AiUsageEvent.doctorId`). Captured here, at
     // the single resolution point, and carried to both returns below: the stream return happens
     // after the model call, and re-resolving there could provision a second time.
+    // TASK-1059 C-0 / OD-5 — the caller's narrative input is judged BEFORE it is combined with the
+    // prompt (and before any user is provisioned for a request that may yet be refused).
+    input = await this.judgeCallerInput(resolved, tenantId, input, options?.attribution?.consultationId ?? undefined);
+
     const actingUserId = await this.resolveContextUserIdentity(resolved, tenantId, input);
     const actingUser: { actingUserId?: string } = actingUserId ? { actingUserId } : {};
 
@@ -637,6 +664,59 @@ export class AgentInvocationService {
    * VERBATIM. This lane adds no translation layer: an integrator that has to fix its staff-id
    * mapping needs the resolver's own code, not a paraphrase of it.
    */
+  /**
+   * TASK-1059 C-0 / OD-8 / OD-9 — judge the `message` turn and the caller's narrative variables; an
+   * off-scope piece is rendered EMPTY (left out of the prompt, never "missing"). Nothing in scope is
+   * a 422 `CONTENT_BLOCKED_NOT_MEDICAL`; no verdict is a 503 `GUARDRAIL_UNAVAILABLE` (fail-closed).
+   */
+  private async judgeCallerInput(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    input: Record<string, unknown>,
+    consultationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    if (!this.contextJudge) return input;
+    // The stored declarations carry the authored `type` (TASK-890 §3.6); the scope view does not type it.
+    const declared = new Map(
+      resolvedPromptVariableDeclarations(resolved.compiledConfig.resolvedPrompt).map((entry) => [entry.name, (entry as { type?: unknown }).type]),
+    );
+    const callerVariables = asRecord(input.variables);
+    const items: ContextJudgeItem[] = [];
+    const message = readTextAgentMessage(input);
+    if (message?.trim()) items.push({ id: MESSAGE_JUDGE_ID, kind: 'caller_input', text: message });
+    for (const [name, value] of Object.entries(callerVariables)) {
+      const type = declared.get(name);
+      if ((type === undefined || type === 'string') && isNarrative(value)) items.push({ id: variableJudgeId(name), kind: 'caller_input', text: value });
+    }
+    if (items.length === 0) return input;
+    let result;
+    try {
+      result = await this.contextJudge.judge({ tenantId, ...(consultationId ? { consultationId } : {}), items });
+    } catch (error) {
+      if (error instanceof ContextJudgeUnavailableError) {
+        throw new ServiceUnavailableException({ code: error.code, message: 'The safety guardrail is temporarily unavailable. Please retry shortly.', retryable: true });
+      }
+      throw error;
+    }
+    if (result.refused) {
+      throw new UnprocessableEntityException({
+        code: 'CONTENT_BLOCKED_NOT_MEDICAL',
+        message: 'The prompt was not classified as clinical content and was blocked by the guardrail.',
+        retryable: false,
+      });
+    }
+    if (result.excludedIds.length === 0) return input;
+    const excluded = new Set(result.excludedIds);
+    const judged: Record<string, unknown> = { ...input };
+    if (excluded.has(MESSAGE_JUDGE_ID)) {
+      if ('message' in judged) judged.message = '';
+      if ('text' in judged) judged.text = '';
+    }
+    const variables = Object.fromEntries(Object.entries(callerVariables).map(([name, value]) => [name, excluded.has(variableJudgeId(name)) ? '' : value]));
+    if (input.variables !== undefined) judged.variables = variables;
+    return judged;
+  }
+
   private async resolveContextUserIdentity(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>): Promise<string | null> {
     const serviceAccount = this.clsService?.get('serviceAccount') ?? null;
     if (!serviceAccount) return null;

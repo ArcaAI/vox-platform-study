@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import {
   AiModelRepository,
   AiTaskKind,
@@ -35,7 +35,12 @@ import {
   NOTE_LEDGER_WAIT_SECONDS_KEY,
   NOTE_TOKENIZER_ALLOW_ESTIMATE_KEY,
 } from '../../settings-registry/descriptors/consultation-note-composition.descriptors';
-import { contextItemDecryptor } from '../context/client-clinical-context';
+import { CLIENT_INVESTIGATIONS_KIND_KEY, CLIENT_VITALS_KIND_KEY, contextItemDecryptor } from '../context/client-clinical-context';
+import {
+  ContextJudgeUnavailableError,
+  IContextMedicalJudgeService,
+  type ContextJudgeItem,
+} from '../../guardrail-context-judge/IContextMedicalJudgeService';
 import { isGuardrailExcludedItem, loadGuardrailExcludedItemIds } from '../../guardrail-notice/guardrail-item-exclusion';
 import { computeInputDigest, parseStoredLedger, type FactLedgerV1, type LedgerFact } from '../fact-ledger/fact-ledger.schema';
 import { HARNESS_DRAFT_SUBTYPE } from '../harness/harness-draft.constants';
@@ -863,6 +868,69 @@ function byCreated(a: ContextItemEntity, b: ContextItemEntity): number {
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id);
 }
 
+// ------------------------------------------------------------------------------------------------
+// TASK-1059 C-0 — the narrative context the runtime medical judge sees (OD-8)
+// ------------------------------------------------------------------------------------------------
+
+/** The refusal code when no narrative context is in scope (the code TEXT's 422 has always carried). */
+export const CONTENT_BLOCKED_NOT_MEDICAL = 'CONTENT_BLOCKED_NOT_MEDICAL';
+
+/** Background keys that are earlier-visit history; every other background entry (the style reference) is not context. */
+const PRIOR_VISIT_BACKGROUND_KEYS: ReadonlySet<string> = new Set(['prior_visit_summary', 'previous_visits', 'same_day_prequel']);
+
+const encounterJudgeId = (seq: number) => `encounter:${seq}`;
+const backgroundJudgeId = (key: string) => `background:${key}`;
+
+/**
+ * The snapshot's NARRATIVE context as judge items: each encounter's transcript, legacy transcripts,
+ * uploaded-audio transcripts, attachment text, the caller's case / work notes and highlights, and
+ * earlier-visit history. Never judged: typed readings (vitals, test results), the pre-summary and the
+ * draft (generated content), and the style reference.
+ */
+export function noteContextJudgeItems(
+  snapshot: NoteSourceSnapshot,
+  options: { callerResultIds: ReadonlySet<string>; typedReadingIds: ReadonlySet<string> },
+): ContextJudgeItem[] {
+  const items: ContextJudgeItem[] = [];
+  const add = (id: string, kind: ContextJudgeItem['kind'], text: string) => {
+    if (text.trim()) items.push({ id, kind, text });
+  };
+  for (const encounter of snapshot.encounters) add(encounterJudgeId(encounter.seq), 'transcript', encounter.segments.map((segment) => segment.text).join('\n'));
+  for (const entry of snapshot.legacyTranscripts) add(entry.itemId, 'transcript', entry.text);
+  for (const entry of snapshot.attachmentTranscripts) add(entry.itemId, 'attachment_text', entry.text);
+  for (const entry of snapshot.results) {
+    if (options.typedReadingIds.has(entry.itemId)) continue;
+    add(entry.itemId, options.callerResultIds.has(entry.itemId) ? 'case_note' : 'attachment_text', entry.text);
+  }
+  for (const entry of snapshot.background) if (PRIOR_VISIT_BACKGROUND_KEYS.has(entry.key)) add(backgroundJudgeId(entry.key), 'prior_visit', entry.text);
+  return items;
+}
+
+/** The snapshot without the items the judge excluded (an excluded encounter keeps its row, empty). */
+export function withoutExcludedContext(snapshot: NoteSourceSnapshot, excluded: ReadonlySet<string>): NoteSourceSnapshot {
+  if (excluded.size === 0) return snapshot;
+  // An encounter's fact ledger is built from its segments AND its uploaded audio: either one left
+  // out makes the ledger carry facts the plan no longer shows, so it is dropped (the encounter
+  // then stays verbatim, exactly like one whose ledger is not current).
+  const staleLedgers = new Set(
+    snapshot.attachmentTranscripts.filter((entry) => excluded.has(entry.itemId) && entry.encounterSeq !== null).map((entry) => entry.encounterSeq),
+  );
+  return {
+    ...snapshot,
+    encounters: snapshot.encounters.map((encounter) =>
+      excluded.has(encounterJudgeId(encounter.seq))
+        ? { ...encounter, segments: [], ledger: null }
+        : staleLedgers.has(encounter.seq)
+          ? { ...encounter, ledger: null }
+          : encounter,
+    ),
+    legacyTranscripts: snapshot.legacyTranscripts.filter((entry) => !excluded.has(entry.itemId)),
+    attachmentTranscripts: snapshot.attachmentTranscripts.filter((entry) => !excluded.has(entry.itemId)),
+    results: snapshot.results.filter((entry) => !excluded.has(entry.itemId)),
+    background: snapshot.background.filter((entry) => !excluded.has(backgroundJudgeId(entry.key))),
+  };
+}
+
 @Injectable()
 export class NoteInputComposerService {
   private readonly logger = new Logger(NoteInputComposerService.name);
@@ -885,6 +953,9 @@ export class NoteInputComposerService {
     @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistry,
     // TASK-1050 — the resolved `item_excluded` holds. Unwired ⇒ only WITHHELD items are skipped.
     @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll'>,
+    // TASK-1059 C-0 — the runtime medical judge over the gathered NARRATIVE context, before it is
+    // combined with the prompt. Unwired ⇒ nothing is judged here (unit fixtures).
+    @Optional() @Inject(IContextMedicalJudgeService) private readonly contextJudge?: IContextMedicalJudgeService,
   ) {}
 
   /**
@@ -926,7 +997,8 @@ export class NoteInputComposerService {
   async compose(request: NoteComposeRequest): Promise<NotePlanEnvelope> {
     const settings = await this.resolveSettings(request.tenantId);
     const model = await this.resolveModel(request.tenantId, request.model ?? null);
-    const snapshot = await this.gather(request, model, settings.ledgerWaitSeconds);
+    const planId = request.planId ?? generateId();
+    const snapshot = await this.judgeContext(request, await this.gather(request, model, settings.ledgerWaitSeconds), planId);
     const carryAiDraft = await this.resolveCarryAiDraft(request.tenantId);
     const composedSystem = typeof request.system === 'string' ? request.system : await request.system(previewNoteBlocks(snapshot, carryAiDraft));
     const system = typeof composedSystem === 'string' ? composedSystem : composedSystem.system;
@@ -940,7 +1012,7 @@ export class NoteInputComposerService {
       sectionKeys: request.sectionKeys,
       system,
       settings: settings.budget,
-      planId: request.planId ?? generateId(),
+      planId,
       counter: (texts) =>
         this.tokenCounter.count(texts, {
           tenantId: request.tenantId,
@@ -962,6 +1034,53 @@ export class NoteInputComposerService {
       });
     }
     return envelope;
+  }
+
+  /**
+   * TASK-1059 C-0 / OD-9 — judge the snapshot's narrative context and leave out what is off scope.
+   * A preview (`cache: false`) names no consultation, so it raises no notice. Nothing in scope is a
+   * 422 `CONTENT_BLOCKED_NOT_MEDICAL`; no verdict is a retryable 503 `GUARDRAIL_UNAVAILABLE`.
+   */
+  private async judgeContext(request: NoteComposeRequest, snapshot: NoteSourceSnapshot, planId: string): Promise<NoteSourceSnapshot> {
+    if (!this.contextJudge) return snapshot;
+    const items = noteContextJudgeItems(snapshot, {
+      callerResultIds: new Set((request.extras?.results ?? []).map((entry) => entry.itemId)),
+      typedReadingIds: await this.typedReadingIds(request.consultationId),
+    });
+    let result;
+    try {
+      result = await this.contextJudge.judge({
+        tenantId: request.tenantId,
+        ...(request.cache === false ? {} : { consultationId: request.consultationId }),
+        items,
+        requestId: planId,
+      });
+    } catch (error) {
+      if (error instanceof ContextJudgeUnavailableError) {
+        throw new ServiceUnavailableException({ code: error.code, message: 'The safety guardrail is temporarily unavailable. Please retry shortly.', retryable: true });
+      }
+      throw error;
+    }
+    if (result.refused) {
+      throw new UnprocessableEntityException({
+        code: CONTENT_BLOCKED_NOT_MEDICAL,
+        message: 'The consultation context was not classified as clinical content and was blocked by the guardrail.',
+        retryable: false,
+      });
+    }
+    return withoutExcludedContext(snapshot, new Set(result.excludedIds));
+  }
+
+  /** The ids the clinic's TYPED readings (vitals, test results) ride under — never judged (OD-8). */
+  private async typedReadingIds(consultationId: string): Promise<Set<string>> {
+    const ids = new Set<string>();
+    for (const kindKey of [CLIENT_VITALS_KIND_KEY, CLIENT_INVESTIGATIONS_KIND_KEY]) {
+      // The id the harness labels a reading with when its item is unreadable.
+      ids.add(`${consultationId}:${kindKey}`);
+      const item = await this.contextItemRepository.findLatestByKindKey(consultationId, kindKey).catch(() => null);
+      if (item) ids.add(item.id);
+    }
+    return ids;
   }
 
   /** The cached plan (+ preserved sections), only for the consultation and tenant it was composed for; `null` on a miss. */

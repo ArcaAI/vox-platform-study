@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { ITenantLockService } from '../../../tenant-checkpoint/contracts';
 import { postponeIfTenantLocked } from '../../../../common/worker-session-lock';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -38,6 +38,14 @@ import { QUEUE_CONCURRENCY } from '../../../baseServices/redis/queue-concurrency
 import { EffectiveSettingsService } from '../../../settings-registry/effective-settings.service';
 import { resolvePlatformOutputLanguage } from '../../summary/platform-output-language';
 import { runJobInContext } from '../../../baseServices/observability/job-context';
+import {
+  ContextJudgeUnavailableError,
+  IContextMedicalJudgeService,
+  type ContextJudgeItem,
+} from '../../../guardrail-context-judge/IContextMedicalJudgeService';
+
+/** TASK-1059 — the judge id of the clinic's stated previous visits (the same id the note composer uses). */
+const PREVIOUS_VISITS_JUDGE_ID = 'background:previous_visits';
 
 // boundary (owner decision,: KEPT,
 // un-gated, as an explicitly non-signable helper generator — never had a
@@ -97,6 +105,10 @@ export class PreSummaryProcessor extends WorkerHost {
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
     // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
     @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
+    // TASK-1059 C-0 — the runtime medical judge over the NARRATIVE context (case notes, previous
+    // visits) before it is combined with the prompt. Optional + trailing so positional fixtures keep
+    // their arity; unwired ⇒ nothing is judged here.
+    @Optional() @Inject(IContextMedicalJudgeService) private readonly contextJudge?: IContextMedicalJudgeService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -217,12 +229,19 @@ export class PreSummaryProcessor extends WorkerHost {
         // structured kind AND as one `CASE_NOTE` per entry — and the prior-visit history already
         // carries it. Without this the same note reaches the model under two headings.
         const duplicated = client.previousVisits ? clientCaseNoteRenderings(client.raw.previousVisits) : null;
-        const promptCaseNotes = caseNoteTexts.map((text) => text.trim()).filter((text) => text.length > 0 && !duplicated?.has(text));
+        let promptCaseNotes = caseNoteTexts.map((text) => text.trim()).filter((text) => text.length > 0 && !duplicated?.has(text));
+
+        // TASK-1059 C-0 / OD-5 / OD-9 — the narrative context is judged BEFORE it is combined with the
+        // prompt; an off-scope note or history is left out. The vitals are typed readings (OD-8).
+        const excluded = await this.judgeContext(tenantId, consultationId, jobId, caseNoteRecords, duplicated, client.previousVisits);
+        promptCaseNotes = promptCaseNotes.filter((text) => !caseNoteRecords.some((record) => record && excluded.has(record.id) && (record.content ?? '').trim() === text));
+        caseNoteRecords = caseNoteRecords.filter((record) => !record || !excluded.has(record.id));
+        const previousVisits = excluded.has(PREVIOUS_VISITS_JUDGE_ID) ? undefined : client.previousVisits;
 
         const assembledPrompt = await this.promptAssemblyService.assemble({
           departmentId: consultation.departmentId ?? undefined,
           vitals: client.vitals,
-          previousVisits: client.previousVisits,
+          previousVisits,
           // Same reason as the resolve() above — assemble() runs its OWN
           // resolution, and that is the one whose body reaches the LLM.
           tenantId: consultation.tenantId,
@@ -333,6 +352,39 @@ export class PreSummaryProcessor extends WorkerHost {
         throw error;
       }
     });
+  }
+
+  /**
+   * TASK-1059 C-0 — judge the job's narrative context; returns the ids left out (OD-9). Nothing in
+   * scope fails the job UNRECOVERABLY with `CONTENT_BLOCKED_NOT_MEDICAL` (the same verdict on every
+   * retry); no verdict fails it with `GUARDRAIL_UNAVAILABLE`, which a retry may clear.
+   */
+  private async judgeContext(
+    tenantId: string,
+    consultationId: string,
+    jobId: string | undefined,
+    caseNoteRecords: ReadonlyArray<{ id: string; content?: string | null } | null>,
+    duplicated: ReadonlySet<string> | null,
+    previousVisits: string | undefined,
+  ): Promise<Set<string>> {
+    if (!this.contextJudge) return new Set();
+    const items: ContextJudgeItem[] = [];
+    for (const record of caseNoteRecords) {
+      const text = (record?.content ?? '').trim();
+      if (record && text && !duplicated?.has(text)) items.push({ id: record.id, kind: 'case_note', text });
+    }
+    if (previousVisits?.trim()) items.push({ id: PREVIOUS_VISITS_JUDGE_ID, kind: 'prior_visit', text: previousVisits });
+    let result;
+    try {
+      result = await this.contextJudge.judge({ tenantId, consultationId, items, ...(jobId ? { requestId: jobId } : {}) });
+    } catch (error) {
+      if (error instanceof ContextJudgeUnavailableError) throw new Error(`${error.code}: the safety guardrail is temporarily unavailable`);
+      throw error;
+    }
+    if (result.refused) {
+      throw new UnrecoverableError('CONTENT_BLOCKED_NOT_MEDICAL: the case notes were not classified as clinical content and were blocked by the guardrail');
+    }
+    return new Set(result.excludedIds);
   }
 
   private async callTextService(

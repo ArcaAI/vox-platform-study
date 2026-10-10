@@ -23,6 +23,7 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
 import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
 import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.module';
 import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
+import { ContextMedicalJudgeServiceModule } from '../../guardrail-context-judge/context-medical-judge.service.module';
 
 @Module({
   imports: [
@@ -64,6 +65,9 @@ import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
     // reported as not re-finalised (never handed to the default engine). No cycle: the dispatch
     // module's imports reach neither this module nor the harness-internal one.
     ConsultationWorkflowDispatchServiceModule,
+    // TASK-1059 C-0 — the runtime context medical judge the pre-summary processor runs before it
+    // assembles the prompt (a leaf module: no cycle).
+    ContextMedicalJudgeServiceModule,
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     // TASK-1038 B3a (G14) — `HarnessGatewayService.cancelDocumentWorkflow` cancels a SUMMARY job.
