@@ -187,12 +187,17 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   // ============================================================
 
   /**
-   * TASK-1059 C-3: the public entry is the EXPLICIT SAVE path only (template approve, agent
-   * validate/publish, promote-to-system), so it runs the medical-scope judge. The boot backfill and the
+   * TASK-1059 C-3: the public entry judges medical scope only when the caller passes
+   * `{ judgeMedicalScope: true }` (the EXPLICIT SAVE paths: template approve, agent validate/publish,
+   * promote-to-system); an unknown caller never judges. The boot backfill and the
    * tenant rescreen go through `screenAs(…, false)` and never judge medical scope.
    */
-  async screenAndRegister(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult> {
-    return this.screenAs(tenantId, tenantId, pieces, true);
+  async screenAndRegister(
+    tenantId: string,
+    pieces: readonly GovernedPieceInput[],
+    options?: { judgeMedicalScope?: boolean },
+  ): Promise<GovernedScreeningResult> {
+    return this.screenAs(tenantId, tenantId, pieces, options?.judgeMedicalScope ?? false);
   }
 
   /**

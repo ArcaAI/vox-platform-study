@@ -47,11 +47,18 @@ const regionKey = (text: string) => pieceDigest(text).slice(0, 16);
 describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, amended)', () => {
   it('in scope → passes, registered PASS, no finding', async () => {
     const { service, repository, client } = makeHarness();
-    const result = await service.screenAndRegister(TENANT, [piece('Summarise the clinical findings.')]);
+    const result = await service.screenAndRegister(TENANT, [piece('Summarise the clinical findings.')], { judgeMedicalScope: true });
     expect(result.passed).toBe(true);
     expect(result.findings).toEqual([]);
     expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
     expect(repository.upsertVerdict).toHaveBeenCalledWith(expect.objectContaining({ verdict: GovernedPromptVerdict.PASS }));
+  });
+
+  it('the default (no options) never judges medical scope', async () => {
+    const { service, client } = makeHarness();
+    const result = await service.screenAndRegister(TENANT, [piece('Summarise the clinical findings.')]);
+    expect(result.passed).toBe(true);
+    expect(client.validateMedicalScope).not.toHaveBeenCalled();
   });
 
   it('an authored multi-piece unit is ONE judge call over every piece of the unit — an already-PASS piece included', async () => {
@@ -60,7 +67,7 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
     const short = piece('Respond in English.', { kind: 'FRAGMENT', sourceKey: 'lang' });
     const known = piece('List the medications discussed.', { kind: 'FRAGMENT', sourceKey: 'meds' });
     repository.findPassing.mockResolvedValue([{ digest: pieceDigest(known.text) }]);
-    await service.screenAndRegister(TENANT, [body, short, known]);
+    await service.screenAndRegister(TENANT, [body, short, known], { judgeMedicalScope: true });
     expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
     expect(client.validateMedicalScope).toHaveBeenCalledWith(TENANT, [
       { key: regionKey(body.text), text: body.text },
@@ -79,7 +86,7 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
     const off = piece('Write a limerick about football.', { kind: 'FRAGMENT', sourceKey: 'off' });
     const on = piece('List the medications discussed.', { kind: 'FRAGMENT', sourceKey: 'on' });
     client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [regionKey(off.text)] });
-    const result = await service.screenAndRegister(TENANT, [off, on]);
+    const result = await service.screenAndRegister(TENANT, [off, on], { judgeMedicalScope: true });
     expect(result.passed).toBe(false);
     expect(result.findings).toHaveLength(2);
     for (const finding of result.findings) {
@@ -97,7 +104,7 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
     const a = piece('One.', { sourceKey: 'a' });
     const b = piece('Two.', { sourceKey: 'b' });
     client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [] });
-    const result = await service.screenAndRegister(TENANT, [a, b]);
+    const result = await service.screenAndRegister(TENANT, [a, b], { judgeMedicalScope: true });
     expect(result.passed).toBe(false);
     expect(result.findings.map((finding) => [finding.code, finding.check, finding.regions])).toEqual([
       ['PROMPT_SCREENING_UNSAFE', 'medical_scope', [regionKey(a.text), regionKey(b.text)]],
@@ -108,7 +115,7 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
   it('no medical verdict → PROMPT_SCREENING_UNAVAILABLE, nothing registered', async () => {
     const { service, client, repository } = makeHarness();
     client.validateMedicalScope.mockRejectedValue(new PromptScreeningUnavailableError('down'));
-    const result = await service.screenAndRegister(TENANT, [piece('Summarise the clinical findings.')]);
+    const result = await service.screenAndRegister(TENANT, [piece('Summarise the clinical findings.')], { judgeMedicalScope: true });
     expect(result.passed).toBe(false);
     expect(result.findings.map((finding) => finding.code)).toEqual(['PROMPT_SCREENING_UNAVAILABLE']);
     expect(repository.upsertVerdict).not.toHaveBeenCalled();
@@ -157,7 +164,7 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
     const { service, client } = makeHarness();
     const authored = piece('Write a SOAP note.', { kind: 'FRAGMENT', sourceKey: 'body' });
     const platform = piece('Respond in English.', { kind: 'FRAGMENT', sourceType: 'PLATFORM', sourceId: null, sourceKey: 'lang' });
-    await service.screenAndRegister(TENANT, [authored, platform]);
+    await service.screenAndRegister(TENANT, [authored, platform], { judgeMedicalScope: true });
     expect(client.validateMedicalScope).toHaveBeenCalledWith(TENANT, [{ key: regionKey(authored.text), text: authored.text }]);
   });
 
@@ -203,14 +210,14 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
   describe('each explicit save path judges its unit once', () => {
     it('template approve (templateBodyPieces → screenAndRegister): one call', async () => {
       const { service, client } = makeHarness();
-      await service.screenAndRegister(TENANT, templateBodyPieces('Write a discharge summary for {{patient}}.', 'pt-1'));
+      await service.screenAndRegister(TENANT, templateBodyPieces('Write a discharge summary for {{patient}}.', 'pt-1'), { judgeMedicalScope: true });
       expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
     });
 
     it('agent validate / publish (resolvedPrompt pieces → screenAndRegister): one call over every fragment', async () => {
       const { service, client } = makeHarness();
       const pieces = piecesFromResolvedPrompt(compositeAgent(TENANT, 'a1').compiledConfig.resolvedPrompt, { sourceType: 'AGENT', sourceId: 'a1' });
-      await service.screenAndRegister(TENANT, pieces);
+      await service.screenAndRegister(TENANT, pieces, { judgeMedicalScope: true });
       expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
       expect((client.validateMedicalScope.mock.calls[0] as unknown as [string, unknown[]])[1]).toHaveLength(2);
     });
@@ -221,7 +228,7 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
         sourceType: 'AGENT',
         sourceId: 'a1',
       });
-      await service.screenAndRegister(SYSTEM_TENANT_ID, pieces);
+      await service.screenAndRegister(SYSTEM_TENANT_ID, pieces, { judgeMedicalScope: true });
       expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
       expect(client.validateMedicalScope.mock.calls[0]![0]).toBe(SYSTEM_TENANT_ID);
     });

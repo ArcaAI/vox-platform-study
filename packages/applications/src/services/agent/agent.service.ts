@@ -2195,7 +2195,7 @@ export class AgentService extends BaseService implements IAgentService {
     if (!this.governedPrompts) return { findings: [], governance: null };
     const pieces = piecesFromResolvedPrompt(resolvedPrompt, { sourceType: 'AGENT', sourceId: entity.id });
     if (pieces.length === 0) return { findings: [], governance: null };
-    const result = await this.governedPrompts.screenAndRegister(entity.tenantId, pieces);
+    const result = await this.governedPrompts.screenAndRegister(entity.tenantId, pieces, { judgeMedicalScope: true });
     const findings = result.findings.map((finding) => this.screeningFinding(entity, finding));
     const governance =
       result.passed && result.policyVersion ? { policyVersion: result.policyVersion, pieceDigests: [...new Set(result.digests)] } : null;
@@ -2216,7 +2216,9 @@ export class AgentService extends BaseService implements IAgentService {
         : isBlockingPromptFinding(finding)
           ? `${subject} was refused by guardrail screening: ${finding.reason}.`
           : `${subject} — guardrail screening note: ${finding.reason}.`;
-    return { severity: isBlockingPromptFinding(finding) ? 'ERROR' : 'WARNING', code: finding.code, path, message };
+    const result: AgentFinding = { severity: isBlockingPromptFinding(finding) ? 'ERROR' : 'WARNING', code: finding.code, path, message };
+    // TASK-1059 I-1: a medical-scope refusal carries its check and off-scope region keys through.
+    return finding.check ? Object.assign(result, { check: finding.check, regions: finding.regions }) : result;
   }
 
   /**

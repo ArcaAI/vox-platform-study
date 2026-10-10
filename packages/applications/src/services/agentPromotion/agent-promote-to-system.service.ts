@@ -336,9 +336,17 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     const compiled = asRecord(source.compiledConfig);
     const pieces = piecesFromResolvedPrompt(compiled?.resolvedPrompt, { sourceType: 'AGENT', sourceId: source.id });
     if (pieces.length === 0) return;
-    const result = await this.governedPrompts.screenAndRegister(SYSTEM_TENANT_ID, pieces);
+    const result = await this.governedPrompts.screenAndRegister(SYSTEM_TENANT_ID, pieces, { judgeMedicalScope: true });
     if (result.passed) return;
-    const findings = result.findings.map(({ code, pieceKind, pieceKey, digest, reason }) => ({ code, pieceKind, pieceKey, digest, reason }));
+    const findings = result.findings.map(({ code, pieceKind, pieceKey, digest, reason, check, regions }) => ({
+      code,
+      pieceKind,
+      pieceKey,
+      digest,
+      reason,
+      ...(check ? { check } : {}),
+      ...(regions ? { regions } : {}),
+    }));
     if (findings.every((finding) => finding.code === 'PROMPT_SCREENING_UNAVAILABLE')) {
       throw new ServiceUnavailableException({
         message: 'Prompt screening is unavailable, so the agent cannot be promoted into SYSTEM yet.',

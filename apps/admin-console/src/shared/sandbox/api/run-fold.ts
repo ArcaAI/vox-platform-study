@@ -343,6 +343,13 @@ class Folder {
           this.nodeTokenSum = { in: (this.nodeTokenSum?.in ?? 0) + tokens.in, out: (this.nodeTokenSum?.out ?? 0) + tokens.out };
         }
         node.warnings = typeof data.warnings === 'number' ? data.warnings : node.warnings;
+        // TASK-1059 I-3: a DEGRADED completion may say why (`error`, or flat `errorCode`/`errorMessage`).
+        if (status === 'degraded') {
+          if (isRecord(data.error)) node.error = data.error as unknown as RunError;
+          else if (typeof data.errorCode === 'string') {
+            node.error = { code: data.errorCode, message: typeof data.errorMessage === 'string' ? data.errorMessage : data.errorCode };
+          }
+        }
         node.streaming = [];
         return;
       }

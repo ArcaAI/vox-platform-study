@@ -224,4 +224,32 @@ describe('nodeLastRunsOf', () => {
     );
     expect(runs.n).toMatchObject({ status: 'FAILED', error: 'MODEL_ERROR — The model returned an error.', durationMs: 10 });
   });
+
+  describe('degraded node.completed reason (TASK-1059 I-3)', () => {
+    const fold = (data: Record<string, unknown>) => {
+      seq = 0;
+      const view = foldRunEvents([
+        ev('node.started', { kind: 'core.agent', label: 'N' }, 'n'),
+        ev('node.completed', { status: 'DEGRADED', durationMs: 5, ...data }, 'n'),
+      ]);
+      return view.nodes.n;
+    };
+
+    it('captures errorCode / errorMessage as node.error', () => {
+      expect(fold({ errorCode: 'MODEL_ERROR', errorMessage: 'The model returned an error.' })?.error).toMatchObject({
+        code: 'MODEL_ERROR',
+        message: 'The model returned an error.',
+      });
+    });
+
+    it('captures an error object as node.error', () => {
+      expect(fold({ error: { code: 'GUARDRAIL_FAILED', message: 'Skipped.' } })?.error).toMatchObject({ code: 'GUARDRAIL_FAILED', message: 'Skipped.' });
+    });
+
+    it('leaves a healthy completion without an error', () => {
+      seq = 0;
+      const view = foldRunEvents([ev('node.started', { kind: 'k' }, 'n'), ev('node.completed', { status: 'COMPLETED', durationMs: 1 }, 'n')]);
+      expect(view.nodes.n?.error).toBeUndefined();
+    });
+  });
 });
