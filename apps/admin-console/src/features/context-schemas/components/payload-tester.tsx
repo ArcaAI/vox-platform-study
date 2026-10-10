@@ -22,7 +22,6 @@ import { IconCircleCheck, IconFlask } from '@tabler/icons-react';
 import { CodeEditor, validateJson } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
-import { Label } from '@arcaai/ui/components/shadcn/label';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import type { ContextKindDeclaration } from '../api/types';
 import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
@@ -69,7 +68,7 @@ export function KindPayloadTester({ kind }: { kind: ContextKindDeclaration }) {
           </DialogHeader>
 
           <div className="flex min-h-0 flex-1 flex-col gap-2">
-            <Label htmlFor="payload-tester-editor">Sample payload</Label>
+            <p className="text-sm font-medium">Sample payload</p>
             <CodeEditor
               aria-label="Sample payload"
               value={payloadText}

@@ -288,6 +288,13 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
   const [tags, setTags] = useState<string[]>([]);
   const [changeReason, setChangeReason] = useState('');
   const reasonPolicy = useActionConfirmation('promptTemplate.create');
+  const createBlockedReason = !name.trim()
+    ? 'Enter a name to create the prompt.'
+    : !content
+      ? 'Write the prompt content to create it.'
+      : !reasonPolicy.isSatisfied(changeReason)
+        ? 'Add a change reason to create the prompt.'
+        : null;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -398,6 +405,7 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
       <TagsField id="create-template-tags" value={tags} onChange={setTags} description={TAGS_DESCRIPTION} />
       <ReasonField actionId="promptTemplate.create" label="Change reason" value={changeReason} onChange={setChangeReason} disabled={createTemplate.isPending} />
       <FormActions>
+        {createBlockedReason ? <p className="text-muted-foreground mr-auto text-sm">{createBlockedReason}</p> : null}
         <Button type="button" variant="outline" onClick={onCancel} disabled={createTemplate.isPending}>
           Cancel
         </Button>
