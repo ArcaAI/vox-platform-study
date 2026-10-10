@@ -483,8 +483,10 @@ async def screen_inbound(request: InboundScreenRequest, http_request: Request) -
                     [(region.key, region.text, region.trust) for region in request.regions],
                     kind=request.kind,
                     items=region_items,
-                    # A `medical_internal`-exempt request is not judged for medical scope.
-                    include_medical=request.exempt != "medical_internal",
+                    # TASK-1059 OD-2: the PROMPT is never judged for medical scope at runtime —
+                    # context is judged in the gateway before composition, authored prompts at
+                    # save time (`/api/medical/validate`). The exemption is still recorded.
+                    include_medical=False,
                 )
             else:
                 screen = screener.screen_inbound(request.text, kind=request.kind)

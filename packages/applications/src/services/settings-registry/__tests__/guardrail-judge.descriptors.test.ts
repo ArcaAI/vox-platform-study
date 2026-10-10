@@ -54,8 +54,8 @@ describe('guardrail.judge.timeoutSeconds', () => {
     // outage must not turn every clinical judgement into a failure.
     const d = descriptor();
     expect(d.failMode).toBe('open-to-default');
-    expect(d.default).toBe(60);
-    expect(GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_JUDGE_TIMEOUT_KEY]).toBe(60);
+    expect(d.default).toBe(90); // TASK-1059 OD-6 (was 60)
+    expect(GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_JUDGE_TIMEOUT_KEY]).toBe(90);
   });
 
   it('is not a kill-switch and carries no tighten-only floor', () => {

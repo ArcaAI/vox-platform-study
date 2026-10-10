@@ -56,7 +56,7 @@ LM_STUDIO_PROVIDER = "lm-studio"
 #: default 10), served as ``lmStudioServing.parallel`` and applied to BOTH lanes
 #: of ``lm-studio`` by `services/runtime_limits.py`; this floor must equal that
 #: default so an unreachable gateway still serves the same capacity.
-LM_STUDIO_PARALLEL_FLOOR = 10
+LM_STUDIO_PARALLEL_FLOOR = 8  # TASK-1059 OD-1: LM Studio serves 8 parallel slots (was 10)
 
 #: Zero means "no client-side rate limiting" — the honest floor, because a
 #: non-zero guess would silently throttle a vendor account whose real quota

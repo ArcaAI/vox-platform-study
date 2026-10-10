@@ -52,7 +52,9 @@ _JITTER_FRACTION = 0.10
 #: `JudgePolicy.timeout_s`'s former literal, so registering it changed nothing.
 #: Measured judge p99 is 50.6 s. `apps/text` waits longer than one attempt at this
 #: budget (`text.externalGuardrail.timeoutS`); keep the two nested.
-DEFAULT_JUDGE_TIMEOUT_S = 60.0
+DEFAULT_JUDGE_TIMEOUT_S = (
+    90.0  # TASK-1059 OD-6: text judge lane queues up to 30 s + p99 ~51 s generation
+)
 
 
 @dataclass(frozen=True)

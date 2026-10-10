@@ -414,7 +414,7 @@ class TestJudgeTimeoutRidesTheControlPlane:
         """One definition site, matching the descriptor's `default`."""
         from guardrail.core.effective_config import DEFAULT_JUDGE_TIMEOUT_S
 
-        assert DEFAULT_JUDGE_TIMEOUT_S == 60.0
+        assert DEFAULT_JUDGE_TIMEOUT_S == 90.0  # TASK-1059 OD-6 (was 60)
 
     @pytest.mark.asyncio
     async def test_a_control_plane_outage_never_breaks_the_judge(self) -> None:

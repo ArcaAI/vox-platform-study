@@ -102,7 +102,7 @@ class TestTheBudgetTextDependsOn:
             "guardrail-judge.descriptors.ts",
             r"GUARDRAIL_JUDGE_DEFAULTS = \{\s*\[GUARDRAIL_JUDGE_TIMEOUT_KEY\]:\s*([0-9_.]+)",
         )
-        assert declared == DEFAULT_JUDGE_TIMEOUT_S == 60.0
+        assert declared == DEFAULT_JUDGE_TIMEOUT_S == 90.0  # TASK-1059 OD-6 (was 60)
 
     def test_one_validation_fits_inside_texts_moderation_deadline(self) -> None:
         """If this fails, TEXT abandons validations guardrail is still judging."""

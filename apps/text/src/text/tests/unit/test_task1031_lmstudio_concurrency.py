@@ -58,17 +58,18 @@ def _profile(provider: str = LM_STUDIO_PROVIDER, **fields: object) -> dict:
 
 
 class TestFloors:
-    def test_the_judge_lane_floor_is_ten(self):
-        assert JUDGE_LANE_FLOOR.max_concurrent == 10
+    def test_the_judge_lane_floor_matches_the_eight_slots(self):
+        # TASK-1059 OD-1: LM Studio serves 8 parallel slots (was 10).
+        assert JUDGE_LANE_FLOOR.max_concurrent == 8
         # TASK-1059 OD-6: a 30 s wait in a bounded queue (was 5 s, no queue).
         assert JUDGE_LANE_FLOOR.acquire_timeout_s == 30.0
-        assert JUDGE_LANE_FLOOR.queue_max_size == 20
+        assert JUDGE_LANE_FLOOR.queue_max_size == 16
 
     def test_the_lm_studio_user_lane_floor_matches_its_decode_slots(self):
         assert LM_STUDIO_PROVIDER == "lm-studio"
-        assert LM_STUDIO_PARALLEL_FLOOR == 10
-        assert lane_floor(LM_STUDIO_PROVIDER, "user").max_concurrent == 10
-        assert lane_budget(SimpleNamespace(), LM_STUDIO_PROVIDER, "user").max_concurrent == 10
+        assert LM_STUDIO_PARALLEL_FLOOR == 8
+        assert lane_floor(LM_STUDIO_PROVIDER, "user").max_concurrent == 8
+        assert lane_budget(SimpleNamespace(), LM_STUDIO_PROVIDER, "user").max_concurrent == 8
 
     def test_other_providers_keep_the_generic_floor(self):
         assert lane_floor("openai", "user") is USER_LANE_FLOOR

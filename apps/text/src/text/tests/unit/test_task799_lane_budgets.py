@@ -49,9 +49,9 @@ class TestTheFloors:
 
         Its CONCURRENCY is no longer smaller (TASK-1031, owner decision
         2026-10-01): two permits were the whole cause of a week of judge 503s,
-        and the floor now matches LM Studio's 10 decode slots per model.
+        and the floor matches LM Studio's decode slots per model (8 since TASK-1059 OD-1).
         """
-        assert JUDGE_LANE_FLOOR.max_concurrent == 10
+        assert JUDGE_LANE_FLOOR.max_concurrent == 8
         assert JUDGE_LANE_FLOOR.acquire_timeout_s < USER_LANE_FLOOR.acquire_timeout_s
         assert JUDGE_LANE_FLOOR.timeout_s < USER_LANE_FLOOR.timeout_s
 
