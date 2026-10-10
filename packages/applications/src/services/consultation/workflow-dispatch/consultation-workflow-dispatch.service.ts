@@ -468,6 +468,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
             externalPatientId: consultation.patientId ?? undefined,
           },
           ...(input.authoredContext && Object.keys(input.authoredContext).length > 0 ? { payload: input.authoredContext } : {}),
+          ...(input.guardrailOverrideNoticeIds?.length ? { guardrailOverrideNoticeIds: input.guardrailOverrideNoticeIds } : {}),
         });
       } catch (error) {
         await this.restoreMarker(consultationId, runId, previousMarker);

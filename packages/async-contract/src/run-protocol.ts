@@ -365,6 +365,9 @@ export interface RunEventDataMap {
     readonly durationMs: number;
     readonly tokens?: RunTokens;
     readonly warnings?: number;
+    /** TASK-1059: why a DEGRADED node degraded — a `RunError` code and its fixed label. */
+    readonly errorCode?: string;
+    readonly errorMessage?: string;
   };
   'node.failed': { readonly durationMs: number; readonly error: RunError; readonly attempt?: number; readonly willRetry?: boolean };
   'output.text.delta': { readonly field: string; readonly text: string };
@@ -764,6 +767,8 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
       durationMs: INT0,
       tokens: TOKENS,
       warnings: INT0,
+      errorCode: Object.freeze({ type: 'string', pattern: '^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$', maxLength: 64 }),
+      errorMessage: STR,
     },
     ['status', 'durationMs'],
   ),

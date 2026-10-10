@@ -137,6 +137,10 @@ class StartWorkflowRunRequest(BaseModel):
     # TASK-1042 C7. The live STT session the gateway bound to this run, AFTER its C3 checks. A
     # server-resolved channel like `subject`: a caller's `payload` can never create it.
     live_audio: LiveAudioBinding | None = Field(default=None, alias="liveAudio")
+    # TASK-1059 O2. Guardrail notice ids already overridden, carried into a superseding run.
+    guardrail_override_notice_ids: list[str] | None = Field(
+        default=None, alias="guardrailOverrideNoticeIds"
+    )
 
 
 async def _execution_timeout(
@@ -219,6 +223,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         limits=_run_limits(settings, body.limits),
         retention_seconds=body.retention_seconds,
         live_audio=live_audio,
+        guardrail_override_notice_ids=body.guardrail_override_notice_ids,
     )
     # TASK-1038 D-B — the Temporal backstop. `None` (no timeout) when it cannot be computed
     # honestly; the in-workflow deadline still bounds the walk either way.
