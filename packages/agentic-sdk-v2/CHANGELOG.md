@@ -1,5 +1,13 @@
 # @arcaai/vox — Changelog
 
+## 5.0.1
+
+### Patch Changes
+
+- @arcaai/room@5.0.1
+  - @arcaai/stt@5.0.1
+  - @arcaai/types@5.0.1
+
 ## 5.0.0
 
 ### Major Changes

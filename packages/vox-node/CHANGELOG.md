@@ -1,5 +1,14 @@
 # @arcaai/vox-node — Changelog
 
+## 5.0.1
+
+### Patch Changes
+
+- TASK-1059 — two `ConsultationHandle` fixes found by the TASK-1058 end-to-end run.
+
+  - The lifecycle event stream's 15 s heartbeat frame (`{"type":"heartbeat"}`) and any frame without a `seq` are no longer dispatched as lifecycle events. They only keep the connection alive; they used to blank `processingReason` on the handle and on `status` listeners, which dropped a guardrail hold.
+  - `sendAttachment`: when the presigned upload URL cannot be reached (a network failure on the PUT, after its retries), the file is sent through the gateway's multipart `…/attachments/:attachmentId/content` route instead. An HTTP refusal from object storage (4xx or 5xx) still fails the upload and does not fall back.
+
 ## 5.0.0
 
 ### Major Changes

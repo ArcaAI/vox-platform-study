@@ -1,5 +1,11 @@
 # @arcaai/stt
 
+## 5.0.1
+
+### Patch Changes
+
+- @arcaai/room@5.0.1
+
 ## 5.0.0
 
 ### Patch Changes
