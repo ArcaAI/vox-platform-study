@@ -193,7 +193,12 @@ LOCALITY_LOCAL: Final = "local"
 #: Citation labels: a superset of `CITATION_LABEL_PATTERN` in
 #: `packages/types/src/citation-labels.ts` (`[S7]`, `[S7 E1]`, `[A2]`, `[R3]` …) that also
 #: takes `/` and `,` separated groups (`[S8/S9]`, `[S7, S8]`).
-_CITATION_LABEL: Final = r"\[[SAR]\d+(?:[ \t,/;][^\]\n]*)?\]"
+_CITATION_TOKEN: Final = r"[SAR]\d+(?:[ \t]+E\d+)?"
+#: Only label tokens may sit inside the brackets — free text after `[S7 ` is kept, since a
+#: bracket that merely starts like a citation could still carry an identifier.
+_CITATION_LABEL: Final = (
+    rf"\[[ \t]*{_CITATION_TOKEN}(?:[ \t]*[,/;][ \t]*{_CITATION_TOKEN})*[ \t]*\]"
+)
 #: Region keys a note may cite: the note-input composer's block keys
 #: (`note-input-composer.service.ts`: `encounter_<n>`, `ledger_<n>`, `pre_summary`, `results`,
 #: `attachment_audio`, `draft_clinician`, `draft_ai`; background keys from

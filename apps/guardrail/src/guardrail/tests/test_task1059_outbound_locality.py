@@ -221,6 +221,9 @@ async def test_real_pii_beside_labels_is_still_caught(
             "[John Smith] [mrn_123] [S] [results of CBC]",
             "[John Smith] [mrn_123] [S] [results of CBC]",
         ),
+        # A bracket that merely STARTS like a citation keeps its free text (it may hide PII).
+        ("[S7 call John at 555-0100]", "[S7 call John at 555-0100]"),
+        ("[S7 E1] and [S8/S9; S10 E2]", "  and  "),
     ],
 )
 def test_strip_note_labels_is_narrow(text: str, expected: str) -> None:
