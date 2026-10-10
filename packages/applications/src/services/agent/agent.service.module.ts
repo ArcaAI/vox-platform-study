@@ -17,6 +17,7 @@ import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { AgentInvocationService } from './agent-invocation.service';
+import { ContextMedicalJudgeServiceModule } from '../guardrail-context-judge/context-medical-judge.service.module';
 import { AgentResolverService } from './agent-resolver.service';
 import { AgentService } from './agent.service';
 import { AgentUsageService } from './agent-usage.service';
@@ -70,6 +71,9 @@ import { IAgentService } from './IAgentService';
     // TASK-1048 — `TenantSettingsService`: the platform default speaker-embedding model the advisory
     // ASR prerequisite findings read. @Optional() in the service, named here so it is never silently absent.
     EffectiveSettingsModule,
+    // TASK-1059 C-0 — `IContextMedicalJudgeService`: `AgentInvocationService` judges the caller's
+    // narrative input before it is combined with the prompt. A leaf module: no cycle.
+    ContextMedicalJudgeServiceModule,
   ],
   providers: [
     AgentService,
