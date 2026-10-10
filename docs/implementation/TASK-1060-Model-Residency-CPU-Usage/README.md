@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — plan written, awaiting owner go |
+| **Status** | In Progress — owner said go 2026-10-10 (OD-1…3 = recommendations) |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
