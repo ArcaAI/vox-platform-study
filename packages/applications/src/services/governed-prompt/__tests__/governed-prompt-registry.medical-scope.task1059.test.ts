@@ -8,8 +8,8 @@
  *  - No verdict (5xx / timeout / malformed / skewed coverage) → `PROMPT_SCREENING_UNAVAILABLE`.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { GovernedPromptVerdict } from '@arcaai/domains';
-import { pieceDigest } from '../governed-pieces';
+import { GovernedPromptVerdict, SYSTEM_TENANT_ID } from '@arcaai/domains';
+import { pieceDigest, piecesFromResolvedPrompt, templateBodyPieces } from '../governed-pieces';
 import { GovernedPromptRegistryService } from '../governed-prompt-registry.service';
 import { GuardrailPromptScreenClient, PromptScreeningUnavailableError } from '../guardrail-prompt-screen.client';
 import type { GovernedPieceInput } from '../IGovernedPromptRegistry';
@@ -161,27 +161,79 @@ describe('registry — build-time medical scope judge on AUTHORED prompts (C-3, 
     expect(client.validateMedicalScope).toHaveBeenCalledWith(TENANT, [{ key: regionKey(authored.text), text: authored.text }]);
   });
 
-  it('the authored rescreen (published agents / approved versions) judges each source in one call', async () => {
-    const { service, client, repository } = makeHarness({ 'governedPrompt.rescreenDelayMs': 0 });
-    repository.findPublishedAgentSources.mockResolvedValue([
-      {
-        tenantId: TENANT,
-        id: 'a1',
-        compiledConfig: {
-          resolvedPrompt: {
-            source: 'composite',
-            fragments: [
-              { key: 'f1', content: 'Write a SOAP note.' },
-              { key: 'f2', content: 'Respond in English.' },
-            ],
-          },
-        },
+  const compositeAgent = (tenantId: string, id: string) => ({
+    tenantId,
+    id,
+    compiledConfig: {
+      resolvedPrompt: {
+        source: 'composite',
+        fragments: [
+          { key: 'f1', content: 'Write a SOAP note.' },
+          { key: 'f2', content: 'Respond in English.' },
+        ],
       },
-    ]);
+    },
+  });
+
+  it('the tenant rescreen (published agents / approved versions) never calls the medical judge — inbound screen only', async () => {
+    const { service, client, repository } = makeHarness({ 'governedPrompt.rescreenDelayMs': 0 });
+    repository.findPublishedAgentSources.mockResolvedValue([compositeAgent(TENANT, 'a1')]);
+    repository.findApprovedVersionSources.mockResolvedValue([{ tenantId: TENANT, promptTemplateId: 'pt-1', content: 'Write a discharge summary.' }]);
+    client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [] });
     service.scheduleTenantRescreen(TENANT);
     await service.drainBackground();
-    expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
-    expect((client.validateMedicalScope.mock.calls[0] as unknown as [string, unknown[]])[1]).toHaveLength(2);
+    expect(client.screenRegions).toHaveBeenCalledTimes(2);
+    expect(client.validateMedicalScope).not.toHaveBeenCalled();
+    expect(repository.upsertVerdict.mock.calls.every(([input]) => (input as { verdict: unknown }).verdict === GovernedPromptVerdict.PASS)).toBe(true);
+  });
+
+  it('the boot backfill (and its retry) never calls the medical judge — no retroactive FAIL on a published source', async () => {
+    const { service, client, repository } = makeHarness({ 'governedPrompt.backfillInitialDelayMs': 0 });
+    repository.findPublishedAgentSources.mockResolvedValue([compositeAgent(TENANT, 'dna-writing-style-analyst')]);
+    client.validateMedicalScope.mockResolvedValue({ isMedical: false, offScopeRegions: [] });
+    service.onApplicationBootstrap();
+    await service.drainBackground();
+    const summary = await service.runBackfill(new Set([`${TENANT}|AGENT|dna-writing-style-analyst`]));
+    expect(summary.failed).toBe(0);
+    expect(client.screenRegions).toHaveBeenCalled();
+    expect(client.validateMedicalScope).not.toHaveBeenCalled();
+    expect(repository.upsertVerdict.mock.calls.every(([input]) => (input as { verdict: unknown }).verdict === GovernedPromptVerdict.PASS)).toBe(true);
+  });
+
+  describe('each explicit save path judges its unit once', () => {
+    it('template approve (templateBodyPieces → screenAndRegister): one call', async () => {
+      const { service, client } = makeHarness();
+      await service.screenAndRegister(TENANT, templateBodyPieces('Write a discharge summary for {{patient}}.', 'pt-1'));
+      expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
+    });
+
+    it('agent validate / publish (resolvedPrompt pieces → screenAndRegister): one call over every fragment', async () => {
+      const { service, client } = makeHarness();
+      const pieces = piecesFromResolvedPrompt(compositeAgent(TENANT, 'a1').compiledConfig.resolvedPrompt, { sourceType: 'AGENT', sourceId: 'a1' });
+      await service.screenAndRegister(TENANT, pieces);
+      expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
+      expect((client.validateMedicalScope.mock.calls[0] as unknown as [string, unknown[]])[1]).toHaveLength(2);
+    });
+
+    it('promote-to-system (screenAndRegister under SYSTEM): one call', async () => {
+      const { service, client } = makeHarness();
+      const pieces = piecesFromResolvedPrompt(compositeAgent(SYSTEM_TENANT_ID, 'a1').compiledConfig.resolvedPrompt, {
+        sourceType: 'AGENT',
+        sourceId: 'a1',
+      });
+      await service.screenAndRegister(SYSTEM_TENANT_ID, pieces);
+      expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
+      expect(client.validateMedicalScope.mock.calls[0]![0]).toBe(SYSTEM_TENANT_ID);
+    });
+
+    it('validateAuthoredPieces: one call', async () => {
+      const { service, client } = makeHarness();
+      await service.validateAuthoredPieces(TENANT, [
+        piece('Write a SOAP note.', { sourceKey: 'a' }),
+        piece('Use bullet points.', { sourceKey: 'b' }),
+      ]);
+      expect(client.validateMedicalScope).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

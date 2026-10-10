@@ -186,6 +186,11 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   // Authoring time
   // ============================================================
 
+  /**
+   * TASK-1059 C-3: the public entry is the EXPLICIT SAVE path only (template approve, agent
+   * validate/publish, promote-to-system), so it runs the medical-scope judge. The boot backfill and the
+   * tenant rescreen go through `screenAs(…, false)` and never judge medical scope.
+   */
   async screenAndRegister(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult> {
     return this.screenAs(tenantId, tenantId, pieces, true);
   }
@@ -586,7 +591,9 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
           continue;
         }
         counts.screened += 1;
-        const result = await this.screenAndRegister(source.tenantId, source.pieces);
+        // TASK-1059 C-3: a published source is re-screened WITHOUT the medical-scope judge — that judge runs
+        // only on an explicit save, so a policy-version bump never refuses a published agent/template.
+        const result = await this.screenAs(source.tenantId, source.tenantId, source.pieces, false);
         if (result.passed) {
           counts.passed += 1;
           continue;
