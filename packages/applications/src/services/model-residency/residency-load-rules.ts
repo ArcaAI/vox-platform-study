@@ -1,4 +1,4 @@
-import { ModelTaskType } from '@arcaai/domains';
+import { AiModelAvailability, ModelTaskType } from '@arcaai/domains';
 import { ASR_SPEC_ROLE_TASK_TYPE, type AsrSpecModelRole } from '@arcaai/types';
 import { derivedLocalPath } from '../ai-model/constants';
 
@@ -46,6 +46,25 @@ export const isRec = (value: unknown): value is Record<string, unknown> => value
 
 /** The slice of a catalogue row the static rules read. `AiModelEntity` satisfies it. */
 export type LoadSpecRow = Omit<NlpRow, 'id' | 'sourceUri'> & { slug?: string; sourceUri?: string };
+
+/** TASK-1055 FU-3 — the inventory's measured verdict (`ModelInventoryService`). `AiModelEntity` carries it. */
+export type AvailabilityFacts = {
+  availability?: unknown;
+  availabilityCheckedAt?: Date | string | null;
+  availabilityDetail?: unknown;
+};
+
+/**
+ * TASK-1055 FU-3 — a row whose weights the inventory MEASURED as absent cannot load (seen live:
+ * `qwen3guard-gen-0.6b` with no GGUF on the LM Studio tier, a whisper.cpp q8_0 row whose snapshot holds
+ * only the f16 file). Only a CHECKED `MISSING` blocks: an unmeasured row, `PARTIAL`, `AVAILABLE` and
+ * `NOT_APPLICABLE` never do.
+ */
+export function availabilityBlockedReason(row: AvailabilityFacts): string | null {
+  if (row.availability !== AiModelAvailability.MISSING || !row.availabilityCheckedAt) return null;
+  const reason = isRec(row.availabilityDetail) && typeof row.availabilityDetail.reason === 'string' ? row.availabilityDetail.reason : null;
+  return reason ? `Weights are not published to the models bucket — ${reason}` : 'Weights are not published to the models bucket';
+}
 
 /**
  * What the row ALONE says about the nlp slot: a cache, a refusal, or "a text classifier — the SYSTEM
@@ -106,8 +125,11 @@ export function sttSpecRoleFor(row: LoadSpecRow & { taskType?: unknown }): { rol
  * (`null` = nothing static stands in the way; the load may still be refused at run time, e.g. a
  * suggester with no `nlp.ner` election). The same words the builder throws. Wave 3: an stt stage row
  * (VAD, denoise, diarization, embedding) loads on its own, so only a kind no pipeline role takes is refused.
+ * FU-3: a measured-MISSING row is refused first, on any service (`availabilityBlockedReason`).
  */
-export function loadBlockedReasonFor(service: string, row: LoadSpecRow & { taskType?: unknown }): string | null {
+export function loadBlockedReasonFor(service: string, row: LoadSpecRow & AvailabilityFacts & { taskType?: unknown }): string | null {
+  const unpublished = availabilityBlockedReason(row);
+  if (unpublished) return unpublished;
   if (service === 'nlp') {
     const slot = staticNlpSlot(row);
     // A row that does not carry `taskType` at all (a partial projection) has not said its slot is underivable.
