@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
@@ -84,8 +84,15 @@ class MedicalValidationRequest(BaseModel):
     )
     regions: list[ScreenRegion] | None = Field(
         default=None,
-        description="TASK-1047 FC-5 / OD-5: content as regions; every window is judged "
-        "on scope (cached per window) and the request is medical iff all are.",
+        description="TASK-1047 FC-5 / OD-5: content as regions, windowed by size (TASK-1059 "
+        "C-1: small regions share a window, large ones are split) and judged on scope per "
+        "window (cached per window).",
+    )
+    scope: Literal["context", "prompt"] = Field(
+        default="context",
+        description="TASK-1059 C-1 (regions only): `context` — runtime context items; the "
+        "request is medical iff at least one judged region is. `prompt` — the pieces of a "
+        "prompt being saved (build time); medical iff every window is.",
     )
     request_id: str | None = Field(None, description="Optional request ID for tracking")
     include_reasoning: bool = Field(False, description="Include reasoning in response")
@@ -96,6 +103,15 @@ class MedicalValidationRequest(BaseModel):
         if self.regions is not None and self.text:
             raise ValueError("`text` must be empty when `regions` is given")
         return self
+
+
+class RegionVerdict(BaseModel):
+    """TASK-1059 C-1: the verdict of ONE request region (keys and scores only, never text)."""
+
+    key: str
+    is_medical: bool
+    context_type: str
+    confidence: float
 
 
 class MedicalValidationResponse(BaseModel):
@@ -127,6 +143,14 @@ class MedicalValidationResponse(BaseModel):
     screened_regions: list[str] | None = Field(
         default=None,
         description="Region keys covered — judged, or skipped as settings by `medicalJudgeConfigRegions` — (regions requests only), in order",
+    )
+    #: TASK-1059 C-1: one verdict per request region, in the order sent; `null` on a legacy
+    #: `text` request. A packed region takes its window's verdict; a split region is medical if
+    #: any (context) / every (prompt) window is. A skipped settings region is `is_medical: true`,
+    #: `context_type: "skipped"` — covered, never judged, never excluded.
+    region_verdicts: list[RegionVerdict] | None = Field(
+        default=None,
+        description="Per-region verdicts (regions requests only), in the order sent",
     )
 
 
@@ -220,12 +244,13 @@ async def _validate_regions(
     guardian_provider: GuardianLike,
     start_time: float,
 ) -> MedicalValidationResponse:
-    """The OD-5 path: per-window `on_scope`, cached, fail-CLOSED (503 on undetermined).
+    """The OD-5 path: size-packed windows judged `on_scope`, cached, fail-CLOSED (503).
 
-    TASK-1050: with an inbound safety-judge lane enabled for the tenant, the windows go through
-    the judge runner so each data window is ONE combined call (medical + the safety lanes),
-    shared with the screen route. With none enabled (the seeded default, OD-6) the medical judge
-    runs exactly as before. Either way the response contract is unchanged.
+    TASK-1059 C-1: ``scope`` decides the request verdict (context: any judged region in scope;
+    prompt: every window) and every region gets its own verdict. TASK-1050: with an inbound
+    safety-judge lane enabled for the tenant, the medical lane is asked through the judge runner
+    (its model row decides the protocol); with none enabled (the seeded default, OD-6) the medical
+    judge runs directly. Either way the windows and the verdict rules are the same.
     """
     regions = [(region.key, region.text) for region in request.regions or []]
     try:
@@ -243,24 +268,30 @@ async def _validate_regions(
             result = await judge_regions_combined(
                 judge_runner,
                 tenant_id,
-                [(region.key, region.text, region.trust) for region in request.regions or []],
-                enabled_safety_lanes=safety_lanes,
+                regions,
                 skip=skip,
                 geometry=judge_geometry(screen_policy, settings.judge.max_input_chars),
+                scope=request.scope,
             )
         else:
             runner, geometry = await build_judge_window_plan(
                 app_state, tenant_id, guardian_provider, settings
             )
-            judged = [(key, text) for key, text in regions if key not in skip]
             result = await judge_regions(
-                guardian_provider, judged, runner=runner, geometry=geometry
+                guardian_provider,
+                regions,
+                runner=runner,
+                geometry=geometry,
+                scope=request.scope,
+                skip=skip,
             )
-        if not result["is_medical"]:
+        if not result["is_medical"] or result.get("off_scope_regions"):
             # Which regions were off scope — keys and counts only, never text (TASK-1047 V7).
             logger.info(
                 "guardrail.medical_validate.off_scope",
                 tenant_id=tenant_id,
+                scope=request.scope,
+                is_medical=bool(result["is_medical"]),
                 regions=[key for key, _ in regions],
                 off_scope_regions=result.get("off_scope_regions", []),
                 off_scope_windows=result.get("off_scope_windows", 0),
@@ -290,6 +321,7 @@ async def _validate_regions(
         error=None,
         stats=result["stats"],
         screened_regions=[key for key, _text in regions],
+        region_verdicts=[RegionVerdict(**verdict) for verdict in result["region_verdicts"]],
     )
 
 

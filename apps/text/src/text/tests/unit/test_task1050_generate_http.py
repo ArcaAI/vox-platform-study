@@ -172,7 +172,8 @@ async def test_warn_and_an_outbound_outage_both_continue_and_ride_on_the_body(ma
     ]
     assert body["guardrail_notices"][0] == warning
     assert body["guardrail_notices"][1]["direction"] == "outbound"
-    assert body["guardrail_evaluation_ids"] == ["ev-in", "ev-med"]
+    # TASK-1059 (OD-2/OD-5): no runtime medical judge, so no medical evaluation id.
+    assert body["guardrail_evaluation_ids"] == ["ev-in"]
 
 
 async def test_a_clean_generation_carries_empty_lists(make_client) -> None:
@@ -265,7 +266,8 @@ async def test_correlation_locality_and_region_items_reach_every_guardrail_call(
     resp = await client.post("/api/v1/generate", json=_body(region_items=items), headers=headers)
 
     assert resp.status_code == 200, resp.text
-    assert [name for name, *_ in guardrail.calls] == ["inbound", "medical", "outbound"]
+    # TASK-1059 (OD-2/OD-5): the inbound screen and the output screen; no medical judge.
+    assert [name for name, *_ in guardrail.calls] == ["inbound", "outbound"]
     for _, kwargs, correlation in guardrail.calls:
         assert correlation == {
             "X-Hope-Consultation-Id": "c-1",
@@ -278,7 +280,7 @@ async def test_correlation_locality_and_region_items_reach_every_guardrail_call(
     assert inbound["include_pii_spans"] is False
     regions = {r["key"]: r for r in inbound["regions"]}
     assert regions["transcript"]["items"] == [{"itemId": "seg-1", "itemVersion": 4}]
-    outbound_regions = {r["key"]: r for r in guardrail.calls[2][1]["source_regions"]}
+    outbound_regions = {r["key"]: r for r in guardrail.calls[1][1]["source_regions"]}
     assert outbound_regions["transcript"]["items"] == [{"itemId": "seg-1", "itemVersion": 4}]
 
 
@@ -362,7 +364,7 @@ async def test_generate_sends_caller_agent_items_prompt_and_the_override_header(
     )
 
     assert resp.status_code == 200, resp.text
-    (_, inbound, inbound_headers), _, (_, outbound, _) = guardrail.calls
+    (_, inbound, inbound_headers), (_, outbound, _) = guardrail.calls  # TASK-1059: no medical
     assert inbound["caller"] == "text.generate"
     assert inbound["agent_slug"] == "soap-writer"
     assert inbound["exempt"] is None

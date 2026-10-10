@@ -149,11 +149,12 @@ USER_LANE_FLOOR = LaneBudget(
 #: The internal judge lane (`/generate/internal/judge`).
 #:
 #: Bounded, never unbounded: an unbounded safety lane would just relocate the
-#: saturation problem. A judge call that cannot get a permit fails fast with a
-#: 503 rather than queueing — guardrail owns the retry budget for the safety
-#: plane, and queueing here would add latency to a call already on the critical
-#: path of a user-facing generation. Its queue size is 0 for the same reason:
-#: there is no judge queue, and there must not be one.
+#: saturation problem. A judge call that cannot get a permit WAITS, in a bounded
+#: queue, for up to ``acquire_timeout_s`` (owner decision OD-6, TASK-1059): the
+#: TASK-1058 e2e showed that shedding the instant every slot was busy (5 s, queue
+#: 0) failed whole medical validations under an ordinary burst. A call that finds
+#: the queue full, or whose wait runs out, is still a fast 503 — guardrail then
+#: retries only that one window (`api/endpoints/judge.acquire_judge_permit`).
 #:
 #: Concurrency 10, not 2 (owner decision 2026-10-01, TASK-1031): two permits
 #: were the cause of every judge-route 503 for a week, and 10 matches LM
@@ -161,12 +162,12 @@ USER_LANE_FLOOR = LaneBudget(
 #: `lmStudio.serving.parallel` replaces it live; this is the floor.
 JUDGE_LANE_FLOOR = LaneBudget(
     max_concurrent=LM_STUDIO_PARALLEL_FLOOR,
-    acquire_timeout_s=5.0,
+    acquire_timeout_s=30.0,
     timeout_s=60,
     failure_threshold=5,
     recovery_timeout_s=30.0,
-    queue_max_size=0,
-    queue_max_wait_s=0.0,
+    queue_max_size=2 * LM_STUDIO_PARALLEL_FLOOR,
+    queue_max_wait_s=30.0,
 )
 
 LANE_FLOORS: dict[str, LaneBudget] = {"user": USER_LANE_FLOOR, "judge": JUDGE_LANE_FLOOR}

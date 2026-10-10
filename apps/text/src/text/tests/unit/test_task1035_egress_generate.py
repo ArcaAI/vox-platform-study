@@ -18,7 +18,6 @@ Hermetic: the guardrail client is a recording stub and the provider is a spy.
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -302,17 +301,15 @@ async def test_pii_leak_on_a_local_output_is_detect_only(make_client) -> None:
 # ── both gates always run ────────────────────────────────────────────────────
 
 
-async def test_inbound_screen_and_medical_judge_run_concurrently(make_client) -> None:
-    guardrail = _guardrail_with_smith(delay=0.3)
+async def test_the_inbound_screen_runs_and_no_runtime_medical_judge(make_client) -> None:
+    # TASK-1059 (OD-2/OD-5): the medical judge moved to the gateway, before composition.
+    guardrail = _guardrail_with_smith(medical_allowed=False)
     client = await make_client(_SpyProvider(), guardrail)
 
-    started = time.monotonic()
     resp = await client.post("/api/v1/generate", json=_body("lm-studio"))
-    elapsed = time.monotonic() - started
 
     assert resp.status_code == 200, resp.text
-    assert guardrail.validate_calls == 1 and len(guardrail.inbound_regions) == 1
-    assert elapsed < 0.55  # sequential would be >= 0.6 s
+    assert guardrail.validate_calls == 0 and len(guardrail.inbound_regions) == 1
 
 
 async def test_an_opt_out_in_the_request_is_ignored(make_client) -> None:
@@ -325,7 +322,6 @@ async def test_an_opt_out_in_the_request_is_ignored(make_client) -> None:
     )
 
     assert resp.status_code == 200, resp.text
-    assert guardrail.validate_calls == 1
     assert len(guardrail.inbound_regions) == 1
     assert len(guardrail.outputs) == 1
 
@@ -340,7 +336,7 @@ async def test_an_unsafe_prompt_is_refused_before_the_provider(make_client) -> N
     assert provider.requests == []
 
 
-async def test_medical_exempt_internal_skips_only_the_judge(make_client) -> None:
+async def test_medical_exempt_internal_still_screens(make_client) -> None:
     guardrail = _guardrail_with_smith(medical_allowed=False)
     client = await make_client(_SpyProvider(), guardrail)
 
@@ -434,7 +430,7 @@ async def test_translate_runs_the_inbound_gate_and_redacts_for_a_cloud_provider(
     )
 
     assert resp.status_code == 200, resp.text
-    assert guardrail.validate_calls == 1 and len(guardrail.inbound_regions) == 1
+    assert guardrail.validate_calls == 0 and len(guardrail.inbound_regions) == 1
     assert translator.texts == [["[PERSON_1] has a fever."]]
     assert resp.json()["translations"] == ["(ml) John Doe has a fever."]
     assert resp.json()["egress"]["locality"] == "cloud"

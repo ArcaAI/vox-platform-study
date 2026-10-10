@@ -60,8 +60,9 @@ def _profile(provider: str = LM_STUDIO_PROVIDER, **fields: object) -> dict:
 class TestFloors:
     def test_the_judge_lane_floor_is_ten(self):
         assert JUDGE_LANE_FLOOR.max_concurrent == 10
-        assert JUDGE_LANE_FLOOR.acquire_timeout_s == 5.0
-        assert JUDGE_LANE_FLOOR.queue_max_size == 0
+        # TASK-1059 OD-6: a 30 s wait in a bounded queue (was 5 s, no queue).
+        assert JUDGE_LANE_FLOOR.acquire_timeout_s == 30.0
+        assert JUDGE_LANE_FLOOR.queue_max_size == 20
 
     def test_the_lm_studio_user_lane_floor_matches_its_decode_slots(self):
         assert LM_STUDIO_PROVIDER == "lm-studio"
@@ -138,7 +139,7 @@ class TestJudgeLane:
         apply_lane_budgets(_snapshot(12), state)
         budget = lane_budget(state, LM_STUDIO_PROVIDER, "judge")
         assert budget.acquire_timeout_s == JUDGE_LANE_FLOOR.acquire_timeout_s
-        assert budget.queue_max_size == 0
+        assert budget.queue_max_size == JUDGE_LANE_FLOOR.queue_max_size
 
     def test_other_providers_are_not_touched(self):
         state = SimpleNamespace(circuit_breakers={})

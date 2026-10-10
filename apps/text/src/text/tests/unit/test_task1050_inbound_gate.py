@@ -12,6 +12,10 @@ README §9.7.1 / §9.8.1:
   reaches a cloud model;
 * F8: a LOCAL call does not ask for PII spans; F3: text TEXT composes into regions
   (``/translate``) is DATA, not instruction.
+
+TASK-1059 (OD-2/OD-5): the gate no longer calls the medical judge, so the cases that pinned its
+verdict (a judge outage, a judge "not medical" block) are gone; a medical-scope block can still
+come from the SCREEN when an inbound judge lane is enabled, and those cases stay.
 """
 
 from __future__ import annotations
@@ -36,7 +40,6 @@ _TRANSCRIPT = (
 _SEGMENTS = ["", f"Summarise.\n\n{_TRANSCRIPT}"]
 _OUTAGE = {"allowed": False, "reason": GUARDRAIL_UNAVAILABLE_REASON, "pii_spans": []}
 _ALLOW = {"allowed": True, "decision": "allow", "reason": "input_screened", "pii_spans": []}
-_MEDICAL_OK = {"allowed": True, "decision": "allow", "is_medical": True}
 
 
 @pytest.fixture(autouse=True)
@@ -46,10 +49,9 @@ def _no_correlation():
     gn.reset_guardrail_correlation(token)
 
 
-def _client(screen: dict[str, Any], medical: dict[str, Any] | None = None) -> MagicMock:
+def _client(screen: dict[str, Any]) -> MagicMock:
     client = MagicMock()
     client.screen_inbound = AsyncMock(return_value=screen)
-    client.validate = AsyncMock(return_value=medical or _MEDICAL_OK)
     return client
 
 
@@ -76,12 +78,11 @@ async def test_warn_continues_and_collects_the_notices_and_evaluation_ids() -> N
         "defaultMessage": gn.DEFAULT_MESSAGES["guardrail.warning.generic"],
     }
     screen = {**_ALLOW, "decision": "warn", "notices": [warning], "evaluation_id": "ev-in"}
-    medical = {**_MEDICAL_OK, "evaluation_id": "ev-med"}
 
-    result = await _gate(_client(screen, medical), locality="local")
+    result = await _gate(_client(screen), locality="local")
 
     assert result.outcome.notices == [warning]
-    assert result.outcome.evaluation_ids == ["ev-in", "ev-med"]
+    assert result.outcome.evaluation_ids == ["ev-in"]
 
 
 async def test_a_guardrail_unverified_decision_continues_with_its_notice() -> None:
@@ -106,16 +107,6 @@ async def test_a_screen_outage_on_a_local_provider_degrades_to_unverified() -> N
     assert notice["direction"] == "inbound"
     assert [c["checkId"] for c in notice["checks"]] == list(gn.INBOUND_SCREEN_CHECKS)
     assert result.spans_by_segment == [[], []]
-
-
-async def test_a_medical_judge_outage_degrades_to_unverified_even_on_cloud() -> None:
-    medical = {"allowed": False, "is_medical": False, "reason": GUARDRAIL_UNAVAILABLE_REASON}
-
-    result = await _gate(_client(_ALLOW, medical), locality="cloud")
-
-    (notice,) = result.outcome.notices
-    assert notice["type"] == "guardrail.unverified"
-    assert notice["checks"] == [{"checkId": "medical_validation", "severity": "low"}]
 
 
 async def test_a_non_dict_screen_verdict_is_an_outage_not_a_crash() -> None:
@@ -146,15 +137,6 @@ async def test_an_unknown_locality_is_read_as_cloud_for_the_redaction_hold() -> 
         await _gate(_client(_OUTAGE), locality=None)
 
 
-async def test_a_judged_block_wins_over_the_redaction_hold() -> None:
-    medical = {"allowed": False, "decision": "block", "is_medical": False, "reason": "no"}
-
-    with pytest.raises(ContentBlockedError) as raised:
-        await _gate(_client(_OUTAGE, medical), locality="cloud")
-
-    assert raised.value.error_code == "CONTENT_BLOCKED_NOT_MEDICAL"
-
-
 # ── block ────────────────────────────────────────────────────────────────────
 
 
@@ -172,7 +154,7 @@ async def test_a_screen_block_keeps_the_422_code_and_carries_guardrails_notice()
     }
 
     with pytest.raises(ContentBlockedError) as raised:
-        await _gate(_client(screen, {**_MEDICAL_OK, "evaluation_id": "ev-med"}), locality="local")
+        await _gate(_client(screen), locality="local")
 
     error = raised.value
     assert error.error_code == "CONTENT_BLOCKED"
@@ -181,7 +163,7 @@ async def test_a_screen_block_keeps_the_422_code_and_carries_guardrails_notice()
     assert body["type"] == gn.GUARDRAIL_BLOCKED_PROBLEM_TYPE
     assert body["status"] == 422
     assert body["guardrailNotice"] == blocked
-    assert body["guardrailEvaluationIds"] == ["ev-in", "ev-med"]
+    assert body["guardrailEvaluationIds"] == ["ev-in"]
 
 
 async def test_a_block_without_a_notice_gets_one_naming_the_blocking_checks() -> None:
@@ -202,18 +184,6 @@ async def test_a_block_without_a_notice_gets_one_naming_the_blocking_checks() ->
     assert notice["checks"] == [{"checkId": "jailbreak_detection", "severity": "high"}]
 
 
-async def test_a_not_medical_block_uses_the_locked_medical_message() -> None:
-    medical = {"allowed": False, "is_medical": False, "reason": "not clinical"}
-
-    with pytest.raises(ContentBlockedError) as raised:
-        await _gate(_client(_ALLOW, medical), locality="local")
-
-    notice = raised.value.extra_body["guardrailNotice"]
-    assert raised.value.error_code == "CONTENT_BLOCKED_NOT_MEDICAL"
-    assert notice["messageKey"] == "guardrail.blocked.not_medical"
-    assert notice["checks"] == [{"checkId": "medical_validation", "severity": "high"}]
-
-
 # ── wire: spans flag, locality, items, data trust ────────────────────────────
 
 
@@ -225,7 +195,6 @@ async def test_a_local_call_does_not_ask_for_pii_spans_and_sends_its_locality() 
     kwargs = client.screen_inbound.await_args.kwargs
     assert kwargs["include_pii_spans"] is False
     assert kwargs["locality"] == "local"
-    assert client.validate.await_args.kwargs["locality"] == "local"
 
 
 async def test_a_cloud_call_asks_for_pii_spans() -> None:
@@ -247,8 +216,6 @@ async def test_region_items_ride_on_the_regions_and_on_synthesised_notices() -> 
     regions = {r["key"]: r for r in client.screen_inbound.await_args.kwargs["regions"]}
     assert regions["transcript"]["items"] == items["transcript"]
     assert "items" not in regions["user"]
-    judged = {r["key"]: r for r in client.validate.await_args.kwargs["regions"]}
-    assert judged["transcript"]["items"] == items["transcript"]
     assert result.outcome.notices[0]["itemIds"] == ["seg-1", "seg-2"]
 
 
@@ -386,7 +353,7 @@ async def test_caller_agent_exemption_and_connection_reach_the_screen() -> None:
     assert kwargs["provider_overrides"]["openai"]["api_key"] == "k"
 
 
-async def test_no_exemption_is_sent_when_the_judge_runs() -> None:
+async def test_no_exemption_is_sent_without_a_declared_one() -> None:
     client = _client(_ALLOW)
 
     await _gate(client, locality="local", caller="text.translate")

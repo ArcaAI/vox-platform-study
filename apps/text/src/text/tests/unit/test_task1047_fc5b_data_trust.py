@@ -153,15 +153,15 @@ async def test_a_block_named_user_without_outside_text_is_data() -> None:
     assert _screened(client) == {"user": "data"}
 
 
-async def test_the_judge_and_the_outbound_source_carry_no_trust() -> None:
+async def test_the_outbound_source_carries_no_trust_and_no_medical_judge_runs() -> None:
     client = _mock_client()
     request = _request()
 
     await _gate(client, request)
     egress = prepare_egress(request, spans_by_segment=None, system_governed=False)
 
-    for region in client.validate.await_args.kwargs["regions"]:
-        assert set(region) == {"key", "text"}
+    # TASK-1059 (OD-2/OD-5): no runtime medical judge — the gateway judges the context.
+    client.validate.assert_not_awaited()
     for region in egress.source_regions:
         assert set(region) == {"key", "text"}
 

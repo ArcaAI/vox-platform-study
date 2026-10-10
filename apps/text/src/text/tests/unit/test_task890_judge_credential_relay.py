@@ -155,8 +155,10 @@ async def test_the_input_gate_hands_the_requests_overrides_to_the_client() -> No
     )
 
     # Serialized, so the far side gets the usable key plus the funding attribution
-    # the gateway stamped (defaulting to "tenant" when it stamped none).
-    assert client.validate.await_args.kwargs["provider_overrides"] == {
+    # the gateway stamped (defaulting to "tenant" when it stamped none). TASK-1059: the
+    # screen carries it (a cloud inbound judge lane needs it); no medical judge runs.
+    client.validate.assert_not_awaited()
+    assert client.screen_inbound.await_args.kwargs["provider_overrides"] == {
         "lm-studio": {**_LM_STUDIO_OVERRIDE["lm-studio"], "funding": "tenant"}
     }
 

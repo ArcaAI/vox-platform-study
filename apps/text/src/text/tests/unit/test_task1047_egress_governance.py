@@ -133,24 +133,22 @@ def _screened_regions(client: AsyncMock) -> list[dict[str, str]]:
     return client.screen_inbound.await_args.kwargs["regions"]
 
 
-def _judged_regions(client: AsyncMock) -> list[dict[str, str]]:
-    return client.validate.await_args.kwargs["regions"]
-
-
 # ── FC-4: governed iff the digest matches ────────────────────────────────────
 
 
-async def test_a_governed_system_prompt_skips_the_ml_screen_and_the_judge() -> None:
+async def test_a_governed_system_prompt_skips_the_ml_screen() -> None:
     client = _region_client()
     request = _request(system_governance=_governance(_GOVERNED_SYSTEM))
 
     governed, _ = await _gate(client, request)
 
     assert governed is True
-    for regions in (_screened_regions(client), _judged_regions(client)):
-        assert [r["key"] for r in regions] == ["trigger_context_formatted_vitals", "transcript"]
-        assert all("clinical scribe" not in r["text"] for r in regions)
+    regions = _screened_regions(client)
+    assert [r["key"] for r in regions] == ["trigger_context_formatted_vitals", "transcript"]
+    assert all("clinical scribe" not in r["text"] for r in regions)
     assert client.screen_inbound.await_args.kwargs.get("text") in (None, "")
+    # TASK-1059 (OD-2/OD-5): there is no runtime medical judge at all any more.
+    client.validate.assert_not_awaited()
 
 
 async def test_a_one_byte_tamper_is_screened_as_the_system_region() -> None:
@@ -163,8 +161,7 @@ async def test_a_one_byte_tamper_is_screened_as_the_system_region() -> None:
     assert governed is False
     screened = _screened_regions(client)
     assert screened[0] == {"key": "system", "text": tampered, "trust": "instruction"}
-    # OD-1: the judge never sees the system prompt, governed or not.
-    assert all(r["key"] != "system" for r in _judged_regions(client))
+    client.validate.assert_not_awaited()  # TASK-1059: no runtime medical judge
 
 
 async def test_a_caller_system_prompt_without_governance_is_screened() -> None:
@@ -421,10 +418,9 @@ async def test_a_screen_outage_before_a_cloud_call_fails_closed_even_when_govern
     assert raised.value.error_code == "EGRESS_REDACTION_UNAVAILABLE"
 
 
-async def test_a_judge_outage_degrades_to_unverified_even_when_governed() -> None:
-    # TASK-1050 §9.8.1 / OD-23: the judge is a safety verdict, not the cloud
-    # redaction — its outage continues with a `guardrail.unverified` notice (the screen
-    # answered, so the spans the pseudonymiser needs are there).
+async def test_a_dead_medical_judge_no_longer_touches_a_governed_generation() -> None:
+    # TASK-1059 (OD-2/OD-5): text runs no runtime medical judge, so an unavailable one
+    # raises no notice — the screen answered, and that is the whole inbound gate.
     client = _region_client()
     client.validate = AsyncMock(
         return_value={"allowed": False, "reason": GUARDRAIL_UNAVAILABLE_REASON}
@@ -432,9 +428,8 @@ async def test_a_judge_outage_degrades_to_unverified_even_when_governed() -> Non
 
     _, result = await _gate(client, _request(system_governance=_governance(_GOVERNED_SYSTEM)))
 
-    (notice,) = result.outcome.notices
-    assert notice["type"] == "guardrail.unverified"
-    assert notice["checks"] == [{"checkId": "medical_validation", "severity": "low"}]
+    assert result.outcome.notices == []
+    client.validate.assert_not_awaited()
 
 
 # ── the client speaks FC-5 on the wire ───────────────────────────────────────
