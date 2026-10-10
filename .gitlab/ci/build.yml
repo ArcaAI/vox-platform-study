@@ -224,8 +224,12 @@ build-admin-console:
 
 # ── NLP ──────────────────────────────────────────────────────────────────────
 
+# Same 90m wall as build-nlp-gpu (TASK-1055, pipeline #1434): both compile the CPU
+# `llama-cpp-python` sdist (MiniCheck) on a cold uv cache — any `uv.lock` change —
+# and that compile alone overran the 30m `.build-template` default.
 build-nlp:
   extends: .build-template
+  timeout: 90m
   needs:
     - job: warm-up-base-images
       optional: true
