@@ -2086,9 +2086,6 @@ provides-extras = ["dev"]
 name = "hope-runtime-models"
 version = "0.1.0"
 source = { editable = "packages/py-runtime-models" }
-dependencies = [
-    { name = "psutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
-]
 
 [package.optional-dependencies]
 nvml = [
@@ -2096,10 +2093,7 @@ nvml = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "psutil", specifier = ">=7.2.2" },
-    { name = "pynvml", marker = "extra == 'nvml'", specifier = ">=11.5.0" },
-]
+requires-dist = [{ name = "pynvml", marker = "extra == 'nvml'", specifier = ">=11.5.0" }]
 provides-extras = ["nvml"]
 
 [[package]]

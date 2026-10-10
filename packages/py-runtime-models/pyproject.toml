@@ -10,12 +10,12 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11,<3.12"
 
-# Near-DEPENDENCY-FREE: the cache contract needs only the stdlib; Prometheus
-# metrics and the NVML probe are injected by the host service (see `metrics.py`
-# / `vram.py`). The one exception is `psutil` (TASK-1060): a cpu-device load is
-# sized by the process RSS delta, so the probe must be present everywhere, at
-# the floor stt already pins in the single root `uv.lock`.
-dependencies = ["psutil>=7.2.2"]
+# Deliberately DEPENDENCY-FREE. This package is imported by every Python
+# service, so any dependency it declared would be forced onto all of them and
+# would have to co-resolve inside the single root `uv.lock`. The cache contract
+# needs nothing beyond the stdlib; Prometheus metrics and the NVML probe are
+# injected by the host service (see `metrics.py` / `vram.py`).
+dependencies = []
 
 # `pynvml` stays an EXTRA, never a base dependency (see the rationale above) —
 # `vram.py` already feature-detects it via a lazy, try/except-guarded import,
