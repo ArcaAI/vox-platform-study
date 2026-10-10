@@ -56,6 +56,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import inspect
+import re
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -182,6 +183,38 @@ _DEFAULT_BENIGN: Final[frozenset[str]] = _ANALYZER_DEFAULT_BENIGN
 
 #: A context item at the version that was screened: `(itemId, itemVersion)`.
 ItemRef = tuple[str, int]
+
+#: Where a response is screened from (C-2, TASK-1059): the provider that produced it.
+LOCALITY_LOCAL: Final = "local"
+
+#: TASK-1059 RC-9 — bracketed labels a generated note carries that are NOT identifiers,
+#: removed before `pii_leak` span extraction so the span model never sees them.
+#:
+#: Citation labels: a superset of `CITATION_LABEL_PATTERN` in
+#: `packages/types/src/citation-labels.ts` (`[S7]`, `[S7 E1]`, `[A2]`, `[R3]` …) that also
+#: takes `/` and `,` separated groups (`[S8/S9]`, `[S7, S8]`).
+_CITATION_LABEL: Final = r"\[[SAR]\d+(?:[ \t,/;][^\]\n]*)?\]"
+#: Region keys a note may cite: the note-input composer's block keys
+#: (`note-input-composer.service.ts`: `encounter_<n>`, `ledger_<n>`, `pre_summary`, `results`,
+#: `attachment_audio`, `draft_clinician`, `draft_ai`; background keys from
+#: `harness-internal.service.ts`: `prior_visit_summary`, `previous_visits`, `same_day_prequel`;
+#: `style_reference` from `prompt/style-reference.ts`) and the legacy prompt-assembly block
+#: keys (`prompt/prompt-assembly-blocks.ts`).
+_REGION_KEY: Final = (
+    r"(?:encounter_\d+|ledger_\d+|pre_summary|results|attachment_audio|draft_clinician"
+    r"|draft_ai|prior_visit_summary|previous_visits|same_day_prequel|style_reference"
+    r"|ner_entities|clinician_notes|attachments|case_notes|recent_vitals"
+    r"|previous_case_notes_summary|test_results|same_day_prequel_summary|doctor_highlights"
+    r"|prior_draft|transcript|[SAR]\d+(?:[ \t]+E\d+)?)"
+)
+_NOTE_LABELS: Final = re.compile(
+    rf"{_CITATION_LABEL}|\[[ \t]*{_REGION_KEY}(?:[ \t]*[,/;][ \t]*{_REGION_KEY})*[ \t]*\]"
+)
+
+
+def strip_note_labels(text: str) -> str:
+    """``text`` with every citation label / bracketed region key replaced by one space."""
+    return _NOTE_LABELS.sub(" ", text)
 
 
 def action_taken_for(verdict: str, action: str) -> str:
@@ -1473,11 +1506,15 @@ class Screener:
         source_regions: Sequence[tuple[str, str]] | None = None,
         response_items: Sequence[ItemRef] | None = None,
         prompt_context: str | None = None,
+        locality: str | None = None,
     ) -> GuardrailDecision:
         """Screen a model response before it reaches a clinician (T4/T5/T6).
 
         ``source_regions`` (TASK-1047 FC-5) replaces ``source_context`` when given.
         ``response_items`` names the generated context item(s) the response becomes.
+        ``locality`` (C-2, owner OD-3): on a ``local`` provider a ``pii_leak`` that is the
+        ONLY blocking check is taken at ``warn`` — detect-only, never a hold. Any other
+        blocking check, or a cloud / unknown locality, keeps the configured action.
         """
         clean, report = sanitize_untrusted(response, max_chars=self._max_untrusted_chars)
         refs = tuple(response_items or ())
@@ -1500,9 +1537,22 @@ class Screener:
         checks.extend(
             await self._outbound_judges(clean, checks, refs, prompt_context=prompt_context)
         )
+        if locality == LOCALITY_LOCAL:
+            checks = self._local_pii_leak_detect_only(checks)
         # TASK-1050 follow-up B: no record-only set any more — every outbound check decides at
         # its configured action (`ignore` = recorded only), so there are no outbound findings.
         return self._finish(DIRECTION_OUTBOUND, checks, report)
+
+    def _local_pii_leak_detect_only(self, checks: list[CheckOutcome]) -> list[CheckOutcome]:
+        """OD-3: a local provider's ``pii_leak`` block, when it is the ONLY block, warns."""
+        decided = [self._decide(DIRECTION_OUTBOUND, check) for check in checks]
+        blocking = {check.name for check in decided if check.blocks}
+        if blocking != {"pii_leak"}:
+            return checks
+        return [
+            dataclasses.replace(check, action_taken=TAKEN_WARN) if check.blocks else check
+            for check in decided
+        ]
 
     async def _check_pii_leak(
         self, response: str, sources: list[str] | None, refs: tuple[ItemRef, ...] = ()
@@ -1524,6 +1574,8 @@ class Screener:
             )
 
         started = time.monotonic()
+        # RC-9: the note's own citation labels / region keys are not identifiers.
+        response = strip_note_labels(response)
         try:
             spans = await windowed_spans(
                 self.window_runner,
