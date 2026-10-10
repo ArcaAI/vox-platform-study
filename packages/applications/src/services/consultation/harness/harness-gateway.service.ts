@@ -297,6 +297,11 @@ export interface StartWorkflowRunInput {
    * binding after its checks pass, never from a caller's `payload`. Omitted ⇒ no live audio.
    */
   liveAudio?: StartWorkflowRunLiveAudio;
+  /**
+   * TASK-1059 (lane O2) — guardrail notice ids the operator already overrode; carried into a
+   * superseding run so a resumed hold does not re-raise them. Omitted when empty.
+   */
+  guardrailOverrideNoticeIds?: readonly string[];
 }
 
 /** TASK-1042 (C7) — mirrors the harness `LiveAudioBinding`, which forbids any other key. */
@@ -650,6 +655,7 @@ export class HarnessGatewayService {
             },
           }
         : {}),
+      ...(input.guardrailOverrideNoticeIds?.length ? { guardrailOverrideNoticeIds: [...input.guardrailOverrideNoticeIds] } : {}),
       // TASK-1038 B3a — every start carries the event-stream retention (the TTL of the terminal
       // append) and the payload limits, resolved here from the platform settings so no harness
       // knob is a literal or an env var. One resolution site covers every caller (exposure plane,
