@@ -47,7 +47,7 @@ Decisions taken (owner may override):
 **C-1 guardrail `POST /api/medical/validate` (backward compatible).**
 - Request adds `scope: "context" | "prompt"` (default `"context"`). `regions[]` stays `{key, text, trust}`.
 - `scope="context"`: regions are context items (`key` = item id). Windowing is SIZE-based: small regions are packed together into one window up to the geometry's max chars, and large regions are split. One region never yields its own tiny window when it can share. `medical_judge_config_regions` still skips by key.
-- `scope="prompt"`: every region is judged; overall `is_medical` = no off-scope window (today's strict rule).
+- `scope="prompt"`: every region is judged, also size-packed (amendment A-1). Overall `is_medical` = no off-scope window (today's strict rule).
 - Response adds `region_verdicts: [{key, is_medical, context_type, confidence}]`, one per request region. A region packed into a window takes that window's verdict; a split region is medical if any of its windows is. Overall `is_medical` for `scope="context"` = at least one region in scope. `screened_regions` is unchanged.
 - The policy version is part of the verdict cache key. Bump it so old per-region verdicts are not reused.
 
@@ -56,7 +56,7 @@ Decisions taken (owner may override):
 - `locality="local"` and the ONLY blocking check is `pii_leak`: decision `warn`, notice type `guardrail.warning`, evaluation `decision: "warn"`. Never `guardrail.blocked`, so the gateway ingest never enters GUARDRAIL_HOLD (OD-3). Cloud and other checks are unchanged.
 - `pii_leak` span extraction ignores citation labels (`[S7]`, `[S7 E1]`, `[S8/S9]`) and region keys (`[encounter_1]`, `[previous_visits]`, `[results]`) before comparing with the source.
 
-**C-3 build time (OD-2).**
+**C-3 build time (OD-2)** — amendment A-2: authored prompts only (template approve, agent validate/publish, promote, `validateAuthoredPieces`). Platform-composed pieces and their rescreens are never medical-judged. One call per authored unit; off scope refuses the unit.
 - The governed-prompt registry calls C-1 with `scope="prompt"` beside the existing inbound screen, with the pieces being saved (instruction / template / composed pieces) as `trust:"instruction"` regions.
 - Off-scope → the existing `PROMPT_SCREENING_UNSAFE` refusal, with `check: "medical_scope"` in its details.
 - No verdict → `PROMPT_SCREENING_UNAVAILABLE`. No new error code; the console needs no change.
@@ -107,3 +107,4 @@ _(pending go)_
 - 2026-10-10 — plan from TASK-1058 findings + owner OD-1..OD-3; OD-4..OD-7 proposed.
 - 2026-10-10 — owner: OD-4 publish PG2 weights; OD-5 judge context before composition. W1-B split into B1 (gateway context judge) and B2 (text/guardrail); OD-8..OD-10 defaults added.
 - 2026-10-10 — owner **go** ("maximise parallel"); contract C-0..C-3 frozen; 12 parallel lanes.
+- 2026-10-10 — contract amendments A-1 (prompt scope also size-packed) and A-2 (build-time medical judge on authored prompts only, never platform pieces), after lane C flagged that short platform pieces judged alone would fail and leave composed prompts ungoverned.
