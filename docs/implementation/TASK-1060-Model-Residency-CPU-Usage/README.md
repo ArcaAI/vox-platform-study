@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — merged locally on `dev-2.2`, gates green; runtime proof pending (local stack down) |
+| **Status** | Review — merged locally on `dev-2.2`, gates green; local runtime proof done (empty state); cluster proof pending pipeline #1434 |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
@@ -160,9 +160,14 @@ Deployment repo: branch `task-1060/deploy` @ `d36e4c7` (worktree `../hope-v2-dep
 | `@arcaai/admin-console` lint / build | rc=0 / rc=0 (Edge-runtime warnings in `instrumentation.ts` pre-exist) |
 | `@arcaai/admin-console` test | 4993 passed, 6 failed; re-run alone: 5 pass + all `model-residency` tests pass; `findings-list.asr-warnings.task1048` still fails ("No QueryClient set") and fails identically on the pre-merge base — out of scope |
 
+### Runtime proof (local, API + console only — owner choice, no model services)
+- `GET /api/hope/admin/model-residency/catalogue` → 200 with `cpu: null` (0 of 5 services reporting, no Prometheus/namespace locally — the documented null case); `devices: []`.
+- `/model-residency` renders "GPU memory" then "CPU & host memory" with the empty state "No host metrics reported"; no console errors besides a 401 from a mistyped login.
+- The populated state (node card, service bar, cores vs limits) is provable only where a source exists — the cluster.
+
 ### Not yet done
-- Runtime browser proof: Docker Desktop and the local stack were down; starting nlp/tts/stt would load models (owner approval needed).
-- Cluster proof: after the owner pushes `dev-2.2` and merges `task-1060/deploy`.
+- Cluster proof after pipeline #1434 promotes: expect `cpu.source: 'prometheus'` (hope-api now has `POD_NAMESPACE`), values matching Grafana for the same instant.
+- Deployment: `task-1060/deploy` merged into deployment `main` (`648fe8a`) and pushed by the TASK-1059 session at the owner's instruction (`7799716`).
 
 ## 6. Change History
 
