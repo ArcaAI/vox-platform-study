@@ -3546,7 +3546,7 @@ return 0`;
    */
   private extendJudgeChunks(session: LiveSession, upTo: number): LiveJudgeChunk[] {
     const chunks = (session.judgeChunks ??= []);
-    let open = chunks.at(-1);
+    let open = chunks[chunks.length - 1];
     for (let i = open?.end ?? 0; i < upTo; i++) {
       if (!open || open.sealed) {
         open = { start: i, end: i, chars: 0, sealed: false };
