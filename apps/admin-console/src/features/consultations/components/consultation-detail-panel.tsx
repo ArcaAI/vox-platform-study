@@ -13,6 +13,7 @@ import { formatDateTime } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { useConsultation, visitTypeOf } from '../api';
 import type { Consultation } from '../api';
+import { ConsultationEncountersSection, ConsultationLifecycleMeta } from './consultation-lifecycle-section';
 import { ConsultationStatusBadge } from './consultation-status-badge';
 import { ConsultationWorkflowMeta } from './consultation-workflow-meta';
 import { PromptInspector } from './prompt-inspector';
@@ -25,7 +26,10 @@ const EM_DASH = '\u2014';
  * prefix, never the full id — this admin surface has no clinical need for it.
  */
 function maskPatientId(patientId: string): string {
-  return patientId.length <= 7 ? patientId : `${patientId.slice(0, 7)}\u2026`;
+  if (patientId.length <= 7) return patientId;
+  // Namespace prefix plus the last four characters (`alaas:E…P01`); an id too short to hide
+  // anything between the two keeps the prefix only.
+  return patientId.length <= 11 ? `${patientId.slice(0, 7)}\u2026` : `${patientId.slice(0, 7)}\u2026${patientId.slice(-4)}`;
 }
 
 function MetaItem({ label, children }: { label: string; children: ReactNode }) {
@@ -40,6 +44,8 @@ function MetaItem({ label, children }: { label: string; children: ReactNode }) {
 /** ContextItemType groups the relations summary rolls the detail's items into. */
 const RELATION_GROUPS: { label: string; types: string[] }[] = [
   { label: 'Transcript', types: ['TRANSCRIPT'] },
+  { label: 'Full transcript', types: ['FULL_TRANSCRIPT'] },
+  { label: 'Transcript segments', types: ['TRANSCRIPT_SEGMENT'] },
   { label: 'Summary', types: ['RAW_SUMMARY', 'MODIFIED_SUMMARY', 'PRE_SUMMARY'] },
   { label: 'Audio recordings', types: ['AUDIO_RECORDING'] },
   { label: 'Attachments', types: ['ATTACHMENT'] },
@@ -47,6 +53,9 @@ const RELATION_GROUPS: { label: string; types: string[] }[] = [
   { label: 'Worknotes', types: ['WORKNOTE'] },
   { label: 'Named entities', types: ['NAMED_ENTITY'] },
   { label: 'Signed note', types: ['SIGNED_NOTE'] },
+  { label: 'Structured data', types: ['STRUCTURED'] },
+  { label: 'Fact ledger', types: ['FACT_LEDGER'] },
+  { label: 'Encounter recaps', types: ['ENCOUNTER_RECAP'] },
 ];
 
 function RelationsSummary({ consultation }: { consultation: Consultation }) {
@@ -142,6 +151,7 @@ function DetailBody({ id }: { id: string }) {
             {formatDateTime(consultation.updatedAt)}
           </span>
         </MetaItem>
+        <ConsultationLifecycleMeta consultation={consultation} />
         {consultation.parentConsultationId ? (
           <MetaItem label="Parent consultation">
             <span className="inline-flex items-center gap-1 font-mono text-xs">
@@ -151,6 +161,7 @@ function DetailBody({ id }: { id: string }) {
           </MetaItem>
         ) : null}
       </dl>
+      <ConsultationEncountersSection consultation={consultation} />
       <RelationsSummary consultation={consultation} />
       <ConsultationTelemetrySection consultationId={id} />
       <p className="text-muted-foreground border-t pt-3 text-xs">Read-only {'\u2014'} no mutations; a plain DOCTOR never passes this guard.</p>

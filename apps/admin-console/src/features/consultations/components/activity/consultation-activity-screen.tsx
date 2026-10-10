@@ -21,7 +21,7 @@ import { guardrailCountsByItem, useConsultationGuardrailNotices, useGuardrailEva
 import { ConsultationGuardrailTab } from '../guardrail/consultation-guardrail-tab';
 import { ConsultationHoldBanner } from '../guardrail/consultation-hold-banner';
 import { ConsultationStatusBadge } from '../consultation-status-badge';
-import { formatRunCost, kindLabel } from './activity-format';
+import { countHumanEdits, formatRunCost, kindLabel } from './activity-format';
 import { ItemBody } from './activity-item-row';
 import { buildActivityRows, isItemEntry, segmentRunRowId } from './activity-model';
 import { GuardrailStatCard, type GuardrailAggregates } from './guardrail-stat-card';
@@ -62,14 +62,23 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function StatsStrip({ encounters, aggregates }: { encounters: EncounterBlock[]; aggregates: Aggregates & { guardrail?: GuardrailAggregates } }) {
+function StatsStrip({
+  encounters,
+  aggregates,
+  editedItems,
+}: {
+  encounters: EncounterBlock[];
+  aggregates: Aggregates & { guardrail?: GuardrailAggregates };
+  /** Human edits counted over the loaded feed; `+` marks a feed with more pages still to load. */
+  editedItems: string;
+}) {
   return (
     <dl aria-label="Consultation totals" className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
       <Stat label="Encounters">{encounters.length}</Stat>
       <Stat label="AI runs">{formatNumber(aggregates.aiRunCount)}</Stat>
       <Stat label="Tokens in/out">{`${formatNumber(aggregates.tokensIn)} / ${formatNumber(aggregates.tokensOut)}`}</Stat>
       <Stat label="AI cost">{formatRunCost(aggregates.costMicros)}</Stat>
-      <Stat label="Edited items">{formatNumber(aggregates.editedItems)}</Stat>
+      <Stat label="Edited items">{editedItems}</Stat>
       <Stat label="Feedback">{`${formatNumber(aggregates.feedbackUp)} up / ${formatNumber(aggregates.feedbackDown)} down`}</Stat>
       {/* TASK-1050 — the guardrail telemetry (counts only), when the gateway recorded it. */}
       <GuardrailStatCard aggregates={aggregates.guardrail} />
@@ -282,7 +291,7 @@ export function ConsultationActivityScreen({ consultationId }: { consultationId:
             }
           />
         }
-        stats={first?.aggregates ? <StatsStrip encounters={encounters} aggregates={first.aggregates} /> : undefined}
+        stats={first?.aggregates ? <StatsStrip encounters={encounters} aggregates={first.aggregates} editedItems={`${countHumanEdits(pages.flatMap((page) => page.items))}${feed.hasNextPage ? '+' : ''}`} /> : undefined}
         statusBanner={first ? <ConsultationHoldBanner consultationId={consultationId} processingReason={first.processingReason} /> : undefined}
         tabs={
           <TabsList variant="line">

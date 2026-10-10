@@ -22,13 +22,14 @@ export function ConsultationHoldBanner({
   processingReason: string | null | undefined;
 }) {
   const held = isGuardrailHoldReason(processingReason ?? null);
-  const notices = useConsultationGuardrailNotices(consultationId, held);
+  // The notices are read always: an OPEN blocking notice is a hold the admin must see even when the
+  // lifecycle marker has moved on (TASK-1059 C-03).
+  const notices = useConsultationGuardrailNotices(consultationId);
   const resume = useResumeConsultationHold(consultationId);
   const [pending, setPending] = useState<GuardrailHoldResolution['resolution'] | null>(null);
-  if (!held) return null;
-  if (notices.isPending) return <Skeleton className="h-24 w-full" />;
-
   const blocking = (notices.data ?? []).find((notice) => (notice.status ?? 'open') === 'open' && isBlockedNotice(notice)) ?? null;
+  if (!held && !blocking) return null;
+  if (held && notices.isPending) return <Skeleton className="h-24 w-full" />;
   return (
     <GuardrailBlockPanel
       notice={blocking}

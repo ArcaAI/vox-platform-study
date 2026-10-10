@@ -84,7 +84,7 @@ interface Call {
   body: unknown;
 }
 
-function stub({ withheldStatus = 200 }: { withheldStatus?: number } = {}): Call[] {
+function stub({ withheldStatus = 200, notices = [WARNING, MEDICAL_BLOCK] }: { withheldStatus?: number; notices?: unknown[] } = {}): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal(
     'fetch',
@@ -114,7 +114,7 @@ function stub({ withheldStatus = 200 }: { withheldStatus?: number } = {}): Call[
           : Response.json({ statusCode: 403, code: 'GUARDRAIL_WITHHELD_FORBIDDEN', message: 'Forbidden' }, { status: 403 });
       }
       if (path === '/api/hope/consultations/c-1/guardrail-notices')
-        return Response.json({ notices: [WARNING, MEDICAL_BLOCK], unacknowledgedNoticeIds: ['n-warn'] });
+        return Response.json({ notices, unacknowledgedNoticeIds: ['n-warn'] });
       if (path === '/api/hope/consultations/c-1' && method === 'GET') return Response.json({ id: 'c-1', version: 11 }, { headers: { etag: '"11"' } });
       if (method === 'POST') return Response.json({ ok: true });
       if (path === '/api/hope/users/me/settings') return Response.json([]);
@@ -185,10 +185,18 @@ describe('ConsultationGuardrailTab', () => {
 });
 
 describe('ConsultationHoldBanner', () => {
-  it('renders nothing unless the processing reason is a hold', () => {
-    stub();
+  it('renders nothing unless the reason is a hold or an open blocking notice exists', async () => {
+    const calls = stub({ notices: [WARNING] });
     const { container } = renderWithProviders(<ConsultationHoldBanner consultationId="c-1" processingReason="NOTE_READY" />);
+    await waitFor(() => expect(calls.some((call) => call.url.pathname.endsWith('/guardrail-notices'))).toBe(true));
     expect(container.textContent).toBe('');
+  });
+
+  // TASK-1059 C-03: the marker can move on while a blocking notice is still open.
+  it('shows the banner for an OPEN blocking notice even when the reason is not a hold', async () => {
+    stub();
+    renderWithProviders(<ConsultationHoldBanner consultationId="c-1" processingReason="NOTE_COVERAGE_GAPS:2" />);
+    expect(await screen.findByRole('button', { name: /exclude the flagged content/i })).toBeDefined();
   });
 
   it('shows the hold with only the allowed resumes and resumes under a fresh If-Match', async () => {

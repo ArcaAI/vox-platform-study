@@ -364,7 +364,12 @@ export function ConsultationsScreen() {
     );
   }
 
-  if (session.data.isElevated && !session.data.workingTenantId) {
+  // The EFFECTIVE identity decides: a super admin impersonating a tenant admin is a tenant admin
+  // here, so they get the grid, not the cross-tenant aggregate (TASK-1059 C-01). `?? ` keeps an
+  // older session payload (without the effective fields) on the operator fields.
+  const elevated = session.data.effectiveIsElevated ?? session.data.isElevated;
+  const tenantId = session.data.effectiveTenantId !== undefined ? session.data.effectiveTenantId : session.data.workingTenantId;
+  if (elevated && !tenantId) {
     return <CrossTenantAggregateView />;
   }
 

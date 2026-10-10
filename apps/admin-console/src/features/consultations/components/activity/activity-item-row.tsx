@@ -1,8 +1,11 @@
 import type { ActivityEntry, ActivityItemEntry, RunSummary } from '@arcaai/types';
+import Link from 'next/link';
 import { formatNumber } from '@/shared/format';
+import { useFeatureGates } from '@/shared/feature-gates/use-feature-gates';
 import { GuardrailItemBadge } from '@/shared/guardrail/guardrail-item-badge';
 import { formatDuration, formatRecordingOffset, formatRunCost, formatTokenPair, humanizeEventType } from './activity-format';
 import { parseRecap, recapPlainText } from './recap-model';
+import { StructuredList, parseStructured } from './structured-list';
 
 function RunField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -16,15 +19,22 @@ function RunField({ label, children }: { label: string; children: React.ReactNod
 /** The AI activity that produced an item: which workflow/agent/model, how long, tokens, context, cost. */
 export function RunMeta({ run }: { run: RunSummary }) {
   const contextShare = run.contextWindow > 0 ? Math.min(100, Math.round((run.contextUsed / run.contextWindow) * 100)) : 0;
+  // The run page is a 404 unless the Workflow & Harness domain is on, so the trace link is gated.
+  const { gates } = useFeatureGates();
+  const traceLinkable = gates['console.workflowHarness.enabled'] === true && !!run.runId;
   return (
     <div role="group" aria-label="AI activity" className="mt-3 border-t border-dashed pt-2">
       <dl className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <RunField label="workflow">
-          <span className="font-mono">{run.workflowSlug}</span>
-        </RunField>
-        <RunField label="agent">
-          <span className="font-mono">{run.agentSlug}</span>
-        </RunField>
+        {run.workflowSlug ? (
+          <RunField label="workflow">
+            <span className="font-mono">{run.workflowSlug}</span>
+          </RunField>
+        ) : null}
+        {run.agentSlug ? (
+          <RunField label="agent">
+            <span className="font-mono">{run.agentSlug}</span>
+          </RunField>
+        ) : null}
         <RunField label="model">
           <span className="font-mono">{run.model}</span>
         </RunField>
@@ -34,19 +44,28 @@ export function RunMeta({ run }: { run: RunSummary }) {
         <RunField label="tokens in/out">
           <span className="tabular-nums">{formatTokenPair(run.tokensIn, run.tokensOut)}</span>
         </RunField>
-        <RunField label="context">
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="bg-muted inline-block h-1.5 w-16 overflow-hidden rounded-full">
-              <span className="bg-primary block h-full" style={{ width: `${contextShare}%` }} />
+        {run.contextWindow > 0 ? (
+          <RunField label="context">
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="bg-muted inline-block h-1.5 w-16 overflow-hidden rounded-full">
+                <span className="bg-primary block h-full" style={{ width: `${contextShare}%` }} />
+              </span>
+              <span className="tabular-nums">{`${formatNumber(run.contextUsed)} / ${formatNumber(run.contextWindow)}`}</span>
             </span>
-            <span className="tabular-nums">{`${formatNumber(run.contextUsed)} / ${formatNumber(run.contextWindow)}`}</span>
-          </span>
-        </RunField>
+          </RunField>
+        ) : null}
         <RunField label="cost">
           <span className="tabular-nums" title={run.costBasis ?? undefined}>
             {formatRunCost(run.costMicros)}
           </span>
         </RunField>
+        {traceLinkable ? (
+          <RunField label="trace">
+            <Link href={`/workflow-runs/${encodeURIComponent(run.runId)}`} className="underline underline-offset-4">
+              View run trace
+            </Link>
+          </RunField>
+        ) : null}
       </dl>
     </div>
   );
@@ -77,6 +96,7 @@ function guardrailStatusOf(entry: ActivityItemEntry): string | undefined {
 
 function ItemContent({ entry, guardrail }: { entry: ActivityItemEntry; guardrail?: ItemGuardrailCounts }) {
   const text = itemText(entry);
+  const structured = entry.kind === 'STRUCTURED' && text ? parseStructured(text) : null;
   const guardrailStatus = guardrailStatusOf(entry);
   // The gateway's marker wins when present; the derived counts are detail (or the fallback without it).
   const showGuardrail = guardrailStatus !== undefined ? guardrailStatus !== 'clean' : !!guardrail && (guardrail.warn > 0 || guardrail.block > 0);
@@ -87,7 +107,9 @@ function ItemContent({ entry, guardrail }: { entry: ActivityItemEntry; guardrail
           <GuardrailItemBadge status={guardrailStatus} warn={guardrail?.warn ?? 0} block={guardrail?.block ?? 0} />
         </div>
       ) : null}
-      {text ? (
+      {structured ? (
+        <StructuredList data={structured} />
+      ) : text ? (
         <p className="line-clamp-4 text-sm whitespace-pre-line">{text}</p>
       ) : (
         <p className="text-muted-foreground text-sm">
