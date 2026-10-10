@@ -447,6 +447,25 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
     expect(lastWrite).toBeLessThan(dispatch);
   });
 
+  it('TASK-1059 D-14: does not re-materialize a prior note already on the consultation', async () => {
+    const notes = [
+      { date: '2026-01-02', title: 'Cardiology review', text: 'Stable on current dose.' },
+      { date: '2026-02-11', text: 'No new complaints.' },
+    ];
+    contextService.getCaseNotes = vi.fn().mockResolvedValue([
+      { id: 'cn-1', content: 'Cardiology review\nStable on current dose.', metadata: { origin: 'open.context', kindKey: PRIOR_NOTES, index: 0 } },
+    ]);
+
+    await buildService().getOrCreate(
+      openRequest({ context: { [ENCOUNTER]: encounter(), [PRIOR_NOTES]: { notes } } as Record<string, unknown> }),
+      null as unknown as string,
+    );
+
+    const caseNotes = contextService.addContext.mock.calls.filter(([, request]: [string, any]) => request.type === ContextItemType.CASE_NOTE);
+    expect(caseNotes).toHaveLength(1);
+    expect(caseNotes[0][1].content).toBe('No new complaints.');
+  });
+
   it('opens the consultation even when a context item cannot be persisted', async () => {
     contextService.addContext.mockRejectedValue(new Error('transit unavailable'));
 
