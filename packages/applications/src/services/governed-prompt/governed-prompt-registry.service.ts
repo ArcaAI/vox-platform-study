@@ -6,6 +6,10 @@
  * and its verdict recorded against `sha256(text)` under guardrail's policy version. Call time: a
  * system message is governed iff every piece digest is PASS under the CURRENT policy version.
  *
+ * TASK-1059 C-3 (owner OD-2): the same screen also asks guardrail's medical-scope judge
+ * (`scope: "prompt"`), so prompts are judged for medical scope here, before saving, and never at
+ * runtime. Off scope is `PROMPT_SCREENING_UNSAFE` with `check: medical_scope`.
+ *
  * Fail-closed throughout (OD-4): a guardrail that cannot answer, a check that could not run, or an
  * unknown policy version yields `PROMPT_SCREENING_UNAVAILABLE` and registers nothing, so a piece is
  * never governed without a verdict. No text is stored or logged — digests, codes and check names.
@@ -64,6 +68,8 @@ const DEFAULT_BACKFILL_RETRY_MAX_MS = 900_000;
 const DEFAULT_BACKFILL_INITIAL_DELAY_MS = 60_000;
 /** The check guardrail names an injection/jailbreak verdict by (`INBOUND_TASKS`). */
 const INJECTION_CHECK = 'jailbreak_detection';
+/** TASK-1059 C-3 — the build-time medical-scope judge, reported under this check name. */
+const MEDICAL_SCOPE_CHECK = 'medical_scope';
 
 type FindingCode = GovernedPieceFinding['code'];
 
@@ -71,6 +77,8 @@ type FindingCode = GovernedPieceFinding['code'];
 interface PieceCode {
   readonly code: FindingCode;
   readonly checks: readonly string[];
+  /** Set for a medical-scope refusal: the off-scope region keys. */
+  readonly regions?: readonly string[];
 }
 
 interface DistinctPiece {
@@ -614,10 +622,34 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
    * alone, the block is attributed to all of them (fail closed). PII is attributed by region.
    */
   private async screen(tenantId: string, pieces: readonly DistinctPiece[]): Promise<Map<string, PieceCode[] | 'unavailable'>> {
-    const outcome = await this.screenClient.screenRegions(
-      tenantId,
-      pieces.map((one) => ({ key: one.regionKey, text: one.piece.text })),
-    );
+    const regions = pieces.map((one) => ({ key: one.regionKey, text: one.piece.text }));
+    // TASK-1059 C-3 (owner OD-2): the medical-scope judge runs beside the inbound screen, at build time
+    // only. Either one unavailable is PromptScreeningUnavailableError for the whole screen (fail closed).
+    const [outcome, medical] = await Promise.all([
+      this.screenClient.screenRegions(tenantId, regions),
+      this.screenClient.validateMedicalScope(tenantId, regions),
+    ]);
+    const result = await this.attribute(tenantId, pieces, outcome);
+    if (medical.isMedical) return result;
+    // Off scope with no attributable region is attributed to every piece (fail closed).
+    const known = new Set(pieces.map((one) => one.regionKey));
+    const offScope = medical.offScopeRegions.filter((key) => known.has(key));
+    const refused = offScope.length > 0 ? new Set(offScope) : known;
+    this.logger.warn({ message: 'governed-prompt.medical.off_scope', tenantId, regions: [...refused] });
+    for (const one of pieces) {
+      const codes = result.get(one.digest);
+      if (codes === 'unavailable' || !refused.has(one.regionKey)) continue;
+      result.set(one.digest, [...(codes ?? []), { code: 'PROMPT_SCREENING_UNSAFE', checks: [MEDICAL_SCOPE_CHECK], regions: [one.regionKey] }]);
+    }
+    return result;
+  }
+
+  /** The inbound screen's verdict per piece (the TASK-1047 attribution rules below). */
+  private async attribute(
+    tenantId: string,
+    pieces: readonly DistinctPiece[],
+    outcome: PromptScreenOutcome,
+  ): Promise<Map<string, PieceCode[] | 'unavailable'>> {
     const result = new Map<string, PieceCode[] | 'unavailable'>();
     if (outcome.undetermined) {
       for (const one of pieces) result.set(one.digest, 'unavailable');
@@ -686,8 +718,11 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
               ? `injection/jailbreak detected (${INJECTION_CHECK})`
               : entry.code === 'PROMPT_INJECTION_ADVISORY'
                 ? `injection classifier flagged the text (${INJECTION_CHECK}) — advisory: authored instructions often trip it`
-                : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
-    return { code: entry.code, pieceKind: one.piece.kind, pieceKey: one.piece.sourceKey, digest: one.digest, reason };
+                : entry.regions
+                  ? `off medical scope (check: ${MEDICAL_SCOPE_CHECK}; regions: ${entry.regions.join(', ')})`
+                  : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
+    const base = { code: entry.code, pieceKind: one.piece.kind, pieceKey: one.piece.sourceKey, digest: one.digest, reason };
+    return entry.regions ? { ...base, check: MEDICAL_SCOPE_CHECK, regions: entry.regions } : base;
   }
 
   private unavailable(one: DistinctPiece, reason: string): GovernedPieceFinding {

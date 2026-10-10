@@ -34,6 +34,8 @@ function makeHarness(settings: Record<string, unknown> = {}) {
   };
   const client = {
     screenRegions: vi.fn(async () => allow as unknown),
+    // TASK-1059 C-3: the build-time medical-scope judge, in scope unless a test says otherwise.
+    validateMedicalScope: vi.fn(async (): Promise<unknown> => ({ isMedical: true, offScopeRegions: [] })),
     fetchPolicyVersion: vi.fn(async () => 'pv-1' as string | null),
   };
   const events = { emit: vi.fn() };
