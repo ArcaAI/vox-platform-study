@@ -26,6 +26,7 @@ import { LivePreSummaryModule } from '../summary/live-pre-summary.module';
 import { ConfigResolverModule } from '../../config-resolver/config-resolver.module';
 import { HarnessInternalServiceModule } from '../harness/harness-internal.service.module';
 import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
+import { ContextMedicalJudgeServiceModule } from '../../guardrail-context-judge/context-medical-judge.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -60,6 +61,8 @@ import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
   // AgentTrajectoryServiceModule resolves the @Optional
   // IAgentTrajectoryService emitter dep so the per-flush trajectory goes live.
   imports: [
+    // TASK-1059 C-0 — the runtime medical judge over the flush's narrative context.
+    ContextMedicalJudgeServiceModule,
     HttpModule,
     ConfigModule,
     CoreDatabaseModule,

@@ -1651,7 +1651,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * A bound, not a budget: a warm start that settled already costs nothing, and one that hangs can
    * delay the terminal marker by at most this much. Not `readonly` only so a test can shorten it.
    */
-  private ON_START_SETTLE_MS = 120_000;
+  private ON_START_SETTLE_MS = 20_000; // TASK-1059 orchestrator: 120 s delayed finalize past the broker's 180 s note budget; ALaaS also reads a late pre-summary on terminal
 
   /** The one running stop per consultation; a second stop joins it. */
   private readonly stopsInFlight = new Map<string, Promise<LiveSummaryEventDto | null>>();
