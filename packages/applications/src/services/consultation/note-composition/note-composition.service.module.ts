@@ -10,6 +10,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { NoteInputComposerService } from './note-input-composer.service';
 import { NoteTokenCounterToken, TextTokenCountClient } from './text-token-count.client';
 import { GovernedPromptServiceModule } from '../../governed-prompt/governed-prompt.service.module';
+import { ContextMedicalJudgeServiceModule } from '../../guardrail-context-judge/context-medical-judge.service.module';
 
 /**
  * The note input composer and its token counter. The composer reads the record model through
@@ -29,6 +30,8 @@ import { GovernedPromptServiceModule } from '../../governed-prompt/governed-prom
     RedisCacheModule.register(),
     // TASK-1047 FC-3/FC-4 — the governed-prompt registry (a leaf module: no cycle).
     GovernedPromptServiceModule,
+    // TASK-1059 C-0 — the runtime context medical judge (a leaf module: no cycle).
+    ContextMedicalJudgeServiceModule,
   ],
   providers: [NoteInputComposerService, TextTokenCountClient, { provide: NoteTokenCounterToken, useExisting: TextTokenCountClient }],
   exports: [NoteInputComposerService, NoteTokenCounterToken],
