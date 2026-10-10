@@ -447,10 +447,22 @@ All e2e test loads (Gemma 4 E4B, Kokoro, Silero VAD, Whisper medical q8_0) were 
 3. **Rows offered for load whose weights do not exist** (`qwen3guard-gen-0.6b` GGUF not on the LM Studio disk; `arcaai-whisper-large-ml-en-gguf-q8_0` q8_0 file not published): the catalogue should show "weights not published" (`loadBlockedReason` from availability) instead of failing at load time.
 4. **`out-of-band/hope-models-publish.yaml` Job lacks the `environment: dev` pod label** that `allow-intra-platform` requires, so a Job rendered from base cannot reach MinIO (two attempts failed before the label was added by hand).
 
+### 10.8 Follow-ups 1–4 fixed (2026-10-11, cluster build `c50182c3`, CI #1437 green; deployment `7a0a227`)
+
+| # | Fix | Cluster evidence |
+|---|---|---|
+| 1 | Models-bucket s3fs mounts run with `-o disable_noobj_cache` (deployment `a4a3709`; verified in s3fs 1.95 source) | hope-nlp's s3fs runs with the flag; mount healthy |
+| 2 | An ensure `LOAD_FAILED` is non-retryable and answers 503 with its cause (`27d210a3e`) | `qwen3guard-gen-0.6b` request: 503 in 0.2 s, "LM Studio could not load model … carries no loadable model" (was 9.6 s of retries → generic 502) |
+| 3 | The inventory understands the HF-cache tree (incl. a quant check for whisper.cpp/llama.cpp via `computeType`) and the LM Studio GGUF tier; the console refuses a load whose weights a CHECKED inventory found MISSING (`21d6e7350`) | inventory: 17 AVAILABLE / 11 MISSING / 8 N/A. PG2, Medical NER, GLiGuard, Kokoro, Silero, both medical/ml-en Whisper f16/q8 builds that load → AVAILABLE; `arcaai-whisper-large-ml-en-gguf-q8_0` MISSING ("no snapshot file matches quantization 'q8_0' (files seen: …-f16.bin)"), `qwen3guard-gen-0.6b` MISSING ("no 'qwen3guard-gen-0.6b-gguf/' prefix"). The Load dialog for those two shows "This model can't be loaded from the console" + the reason, with no Load button. |
+| 4 | Not a manifest defect — the Job template already carries `environment: dev`; my hand-built Jobs had replaced the label set | — |
+
+CI note: the `uv.lock` change of TASK-1060 forced a cold `llama-cpp-python` compile in three Python images at once; they contended for the shared uv cache lock and `build-nlp` hit its 30 m wall. `build-nlp` now has the 90 m wall `build-nlp-gpu` already had (`5fd7d4ed5`, local).
+
 ## 9. Change history
 
 | Date | Change |
 |---|---|
+| 2026-10-11 | Follow-ups 1–3 fixed and verified on the cluster (§10.8); follow-up 4 retracted. |
 | 2026-10-10 | Wave 3 pushed (owner: push all 51 incl. TASK-1057) — CI #1429 green, deployment `15abac6`; cluster e2e §10.7 passed G1/G2/G3; Prompt Guard 2 published (`hope-models-publish-pg2c`) and screening restored (guard/classify 649× 200). Follow-ups 1–4 recorded. Status Review. |
 | 2026-10-10 | Wave 3 merged locally (6 lanes + text agent-URL fix), gate green for this wave (§10.5); prompt-screening incident root-caused (§10.6), owner chose to publish Prompt Guard 2; all deploys on hold for the TASK-1058 e2e. |
 | 2026-10-09 | Owner: every agent kind loads on request OR by the platform admin, never needing an agent to load. Audit + plan §10 (G1 LM Studio profile on request, G2 stt model-only console loads, G3 tts console control); decisions W3-1..4 taken as recommended. Status In Progress. |
