@@ -22,10 +22,12 @@ structural rather than conventional:
   `AiRuntimeProfile`, floored by `JUDGE_LANE_FLOOR`). A saturated user-facing
   pool cannot starve a judgement, and a wedged judgement cannot consume the
   user-facing budget. The judge lane also
-  deliberately consults NO rate limiter and NO request queue: a tenant that has
-  exhausted its own generation rate limit must not be able to throttle the
-  safety plane, and queueing a call that is already on a user-facing request's
-  critical path only converts a fast 503 into a slow one.
+  deliberately consults NO rate limiter and NO shared request queue: a tenant that
+  has exhausted its own generation rate limit must not be able to throttle the
+  safety plane. It does wait for its own permit, in a BOUNDED queue (TASK-1059
+  OD-6, :func:`acquire_judge_permit`): shedding the moment every slot was busy
+  failed whole validations under ordinary bursts (TASK-1058 RC-3), while a full
+  queue is still a fast 503.
 
 What the judge lane deliberately does NOT do: no task manager (a judgement has
 no streaming/polling lifecycle), no idempotency cache (guardrail's verdict cache
@@ -47,6 +49,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+import weakref
 from typing import Any, Literal
 
 import structlog.contextvars
@@ -283,6 +286,36 @@ def _ensure_semaphore(
     return semaphore
 
 
+#: Callers waiting for a judge permit, per semaphore (TASK-1059 OD-6). Keyed by the semaphore
+#: itself, which lives for the process (or the test app) that owns it.
+_JUDGE_WAITING: weakref.WeakKeyDictionary[ResizableSemaphore, int] = weakref.WeakKeyDictionary()
+
+
+async def acquire_judge_permit(
+    semaphore: ResizableSemaphore, budget: LaneBudget, provider: str
+) -> None:
+    """Take one judge permit, waiting in a BOUNDED queue (TASK-1059 OD-6, RC-3).
+
+    A free permit is taken at once. Otherwise the call waits up to ``acquire_timeout_s``,
+    but only while fewer than ``queue_max_size`` callers are already waiting: a call that
+    finds the queue full is refused immediately with ``CONCURRENCY_LIMIT`` (503), and so is
+    one whose wait runs out. Guardrail then retries that one window on its own; the lane
+    never grows an unbounded backlog of judgements.
+    """
+    waiting = _JUDGE_WAITING.get(semaphore, 0)
+    if semaphore.in_flight >= semaphore.limit and waiting >= budget.queue_max_size:
+        raise ConcurrencyLimitError("Judge lane queue is full — try again later", provider=provider)
+    _JUDGE_WAITING[semaphore] = waiting + 1
+    try:
+        await asyncio.wait_for(semaphore.acquire(), timeout=budget.acquire_timeout_s)
+    except TimeoutError:
+        raise ConcurrencyLimitError(
+            "Judge lane is at capacity — try again later", provider=provider
+        ) from None
+    finally:
+        _JUDGE_WAITING[semaphore] -= 1
+
+
 def _ensure_breaker(
     breakers: dict[str, CircuitBreaker], provider: str, budget: LaneBudget
 ) -> CircuitBreaker:
@@ -430,15 +463,9 @@ async def _run_judge(
         )
 
     semaphore = _ensure_semaphore(judge_semaphores, provider_name, budget)
-    try:
-        await asyncio.wait_for(semaphore.acquire(), timeout=budget.acquire_timeout_s)
-    except TimeoutError:
-        # Fail fast rather than queue: guardrail's own bounded retry decides what
-        # a saturated judge lane means for the verdict.
-        raise ConcurrencyLimitError(
-            "Judge lane is at capacity — try again later",
-            provider=provider_name,
-        ) from None
+    # A bounded wait (OD-6): a full queue or an expired wait is a fast 503, and guardrail
+    # retries that one window rather than failing the whole validation.
+    await acquire_judge_permit(semaphore, budget, provider_name)
 
     start = time.monotonic()
     # DERIVED, never stamped: the funding tier AND the connection both come from the

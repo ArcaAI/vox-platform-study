@@ -465,9 +465,13 @@ async def sync_client(mock_task_manager):
     registry.get.return_value = provider
 
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(
+    app = _make_app(registry, mock_task_manager, guardrail)
+    # TASK-1059 (OD-2/OD-5): no runtime medical judge — guardrail's spend rides back on
+    # the inbound SCREEN's verdict (an enabled inbound judge lane is what spends).
+    guardrail.screen_inbound = AsyncMock(
         return_value={
             "allowed": True,
+            "pii_spans": [],
             "raw": {
                 "stats": {
                     "provider": "lm-studio",
@@ -480,8 +484,6 @@ async def sync_client(mock_task_manager):
             },
         }
     )
-
-    app = _make_app(registry, mock_task_manager, guardrail)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

@@ -2,21 +2,39 @@
 
 Verifies the guardrail is called per generate, the consultation X-Tenant-Id is
 forwarded, and the posture: a content rejection is a 422 and a missing
-``allowed`` key fails closed, while allowed content proceeds. A sustained judge
-OUTAGE no longer fails the call (TASK-1050 §9.8.1, OD-23): it continues with a
-``guardrail.unverified`` notice. These tests drive
-the MEDICAL JUDGE half of the inbound gate; the inbound screen and the output
-screen are stubbed to allow (TASK-1035 covers them in `test_task1035_*`). The
-guardrail client is mocked — no network.
+``allowed`` key fails closed, while allowed content proceeds. A sustained screen
+OUTAGE on a local provider does not fail the call (TASK-1050 §9.8.1, OD-23): it
+continues with a ``guardrail.unverified`` notice.
+
+TASK-1059 (OD-2/OD-5): the gate has no runtime MEDICAL judge any more — these tests
+drive the inbound SCREEN, whose own ``medical_validation`` check (an enabled inbound
+judge lane) is still what a ``CONTENT_BLOCKED_NOT_MEDICAL`` comes from. The output
+screen is stubbed to allow. The guardrail client is mocked — no network.
 """
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+
+_ALLOW = {"allowed": True, "reason": "screened", "pii_spans": []}
+
+
+def _medical_block(reason: str = "medical_validation") -> dict[str, Any]:
+    return {
+        "allowed": False,
+        "decision": "block",
+        "reason": reason,
+        "pii_spans": [],
+        "raw": {
+            "reasons": ["medical_validation"],
+            "checks": [{"name": "medical_validation", "actionTaken": "block"}],
+        },
+    }
 
 
 @pytest.fixture
@@ -46,18 +64,16 @@ def mock_task_manager():
     return tm
 
 
-def _make_app(registry, task_manager, guardrail_client):
+def _make_app(registry, task_manager, guardrail_client, screen):
     from text.main import create_app
 
     app = create_app()
     app.state.provider_registry = registry
     app.state.task_manager = task_manager
     if guardrail_client is not None:
-        # TASK-1035: the inbound screen runs beside the judge on every call.
-        guardrail_client.screen_inbound = AsyncMock(
-            return_value={"allowed": True, "reason": "screened", "pii_spans": []}
-        )
+        guardrail_client.screen_inbound = AsyncMock(return_value=screen)
         guardrail_client.screen_output = AsyncMock(return_value={"allowed": True})
+        guardrail_client.validate = AsyncMock(return_value={"allowed": True})
     app.state.guardrail_client = guardrail_client
     return app
 
@@ -66,8 +82,10 @@ def _make_app(registry, task_manager, guardrail_client):
 async def _client_factory(mock_registry, mock_task_manager):
     clients = []
 
-    async def _build(guardrail_client):
-        app = _make_app(mock_registry, mock_task_manager, guardrail_client)
+    async def _build(guardrail_client, screen=None):
+        app = _make_app(
+            mock_registry, mock_task_manager, guardrail_client, _ALLOW if screen is None else screen
+        )
         transport = ASGITransport(app=app)
         c = AsyncClient(transport=transport, base_url="http://test")
         clients.append(c)
@@ -79,16 +97,11 @@ async def _client_factory(mock_registry, mock_task_manager):
 
 
 @pytest.mark.asyncio
-async def test_blocked_content_rejected_with_422(_client_factory, mock_provider):
-    # A genuine content rejection (guardrail reachable, verdict not-allowed) is a 422.
-    # `is_medical: False` is the REAL shape `ExternalGuardrailClient.validate()._parse`
-    # always sets on a reachable rejection (TASK-969 WS-3) — it is the signal the
-    # gate uses to pick `CONTENT_BLOCKED_NOT_MEDICAL`, never the free-text `reason`.
+async def test_a_medical_scope_block_from_the_screen_is_422_not_medical(
+    _client_factory, mock_provider
+):
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(
-        return_value={"allowed": False, "reason": "not_medical", "is_medical": False}
-    )
-    client = await _client_factory(guardrail)
+    client = await _client_factory(guardrail, _medical_block())
 
     resp = await client.post("/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello"})
 
@@ -102,7 +115,6 @@ async def test_blocked_content_rejected_with_422(_client_factory, mock_provider)
 @pytest.mark.asyncio
 async def test_allowed_content_proceeds(_client_factory, mock_provider):
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(return_value={"allowed": True})
     client = await _client_factory(guardrail)
 
     resp = await client.post(
@@ -115,9 +127,8 @@ async def test_allowed_content_proceeds(_client_factory, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_tenant_id_header_propagated_to_guardrail(_client_factory):
+async def test_tenant_id_reaches_the_screen_and_no_medical_judge_runs(_client_factory):
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(return_value={"allowed": True})
     client = await _client_factory(guardrail)
 
     await client.post(
@@ -126,11 +137,9 @@ async def test_tenant_id_header_propagated_to_guardrail(_client_factory):
         headers={"X-Tenant-Id": "tenant-42"},
     )
 
-    guardrail.validate.assert_awaited_once()
-    kwargs = guardrail.validate.await_args.kwargs
-    assert kwargs["tenant_id"] == "tenant-42"
-    # TASK-1036 OD-1: the judge never sees the system prompt (TASK-1047: regions).
-    assert kwargs["regions"] == [{"key": "user", "text": "patient note"}]
+    guardrail.screen_inbound.assert_awaited_once()
+    assert guardrail.screen_inbound.await_args.kwargs["tenant_id"] == "tenant-42"
+    guardrail.validate.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -149,17 +158,15 @@ async def test_no_guardrail_client_skips_validation(_client_factory, mock_provid
 
 
 @pytest.mark.asyncio
-async def test_sustained_judge_outage_degrades_to_unverified_and_generates(
+async def test_sustained_screen_outage_on_a_local_provider_degrades_and_generates(
     _client_factory, mock_provider
 ):
-    # TASK-1050 §9.8.1 / OD-23: a sustained medical-judge outage (unavailable verdict)
-    # is no longer a 503 — nothing was judged, so the call continues and the response
-    # carries a `guardrail.unverified` notice naming the check that could not run.
+    # TASK-1050 §9.8.1 / OD-23: nothing was judged, so the call continues and the response
+    # carries a `guardrail.unverified` notice naming the checks that could not run.
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(
-        return_value={"allowed": False, "reason": "external_guardrail_unavailable"}
+    client = await _client_factory(
+        guardrail, {"allowed": False, "reason": "external_guardrail_unavailable"}
     )
-    client = await _client_factory(guardrail)
 
     resp = await client.post(
         "/api/v1/generate", json={"provider": "lm-studio", "prompt": "patient note", "model": "m"}
@@ -169,17 +176,14 @@ async def test_sustained_judge_outage_degrades_to_unverified_and_generates(
     mock_provider.generate.assert_called_once()
     (notice,) = resp.json()["guardrail_notices"]
     assert notice["type"] == "guardrail.unverified"
-    assert notice["checks"] == [{"checkId": "medical_validation", "severity": "low"}]
 
 
 @pytest.mark.asyncio
 async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
     # A malformed verdict with no ``allowed`` key must default to fail-CLOSED
-    # (reject), never proceed. No ``is_medical`` key either, so this is the
-    # generic (not-specifically-non-medical) content-blocked branch.
+    # (reject), never proceed — the generic content-blocked branch.
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(return_value={"reason": "malformed"})
-    client = await _client_factory(guardrail)
+    client = await _client_factory(guardrail, {"reason": "malformed"})
 
     resp = await client.post(
         "/api/v1/generate", json={"provider": "lm-studio", "prompt": "patient note", "model": "m"}
@@ -194,14 +198,19 @@ async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
 async def test_generic_content_block_when_not_specifically_non_medical(
     _client_factory, mock_provider
 ):
-    # A reachable, blocked verdict that does NOT say `is_medical: False` (e.g. a
-    # future guardrail check unrelated to medical relevance) gets the generic
+    # A block on a check unrelated to medical relevance gets the generic
     # `CONTENT_BLOCKED` code, never the `_NOT_MEDICAL` variant.
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(
-        return_value={"allowed": False, "reason": "some_other_policy", "is_medical": True}
+    client = await _client_factory(
+        guardrail,
+        {
+            "allowed": False,
+            "decision": "block",
+            "reason": "jailbreak_detection",
+            "pii_spans": [],
+            "raw": {"reasons": ["jailbreak_detection"]},
+        },
     )
-    client = await _client_factory(guardrail)
 
     resp = await client.post("/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello"})
 
@@ -214,16 +223,12 @@ async def test_generic_content_block_when_not_specifically_non_medical(
 async def test_content_rejection_never_leaks_the_free_text_reasoning(
     _client_factory, mock_provider
 ):
-    # The REAL bug (TASK-969): `reason` here mirrors guardrail's `reasoning`
-    # field, which can quote the prompt back verbatim. The response `detail`
-    # must be a FIXED sentence — the PHI-shaped reason must never appear
-    # anywhere in the HTTP response body.
+    # The REAL bug (TASK-969): a verdict's free text can quote the prompt back
+    # verbatim. The response `detail` must be a FIXED sentence — the PHI-shaped
+    # reason must never appear anywhere in the HTTP response body.
     phi_shaped_reason = "the prompt discusses patient Jane Doe, DOB 1990-01-01, SSN 123-45-6789"
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(
-        return_value={"allowed": False, "reason": phi_shaped_reason, "is_medical": False}
-    )
-    client = await _client_factory(guardrail)
+    client = await _client_factory(guardrail, _medical_block(phi_shaped_reason))
 
     resp = await client.post("/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello"})
 

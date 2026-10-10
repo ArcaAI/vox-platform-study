@@ -15,6 +15,10 @@ than one window per peer call, on any path:
 
 Spans found in a window are re-based to REGION offsets; the duplicates two
 overlapping windows both see are resolved longest-span-wins.
+
+TASK-1059 C-1: the medical judge PACKS instead (:func:`pack_regions`) — small regions share a
+window up to the geometry's size and only a region longer than a window is cut — and a window the
+judge lane SHED is retried on its own (:func:`is_shed_judge_error`, OD-6).
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from guardrail.core.errors import REASON_ENGINE_ERROR, GuardrailUndeterminedError
 from guardrail.core.metrics import (
     observe_window_latency,
     record_screen_chars_computed,
@@ -83,6 +88,72 @@ def region_windows(region: str | None, text: str, geometry: WindowGeometry) -> l
     ]
 
 
+#: Joins the regions packed into one window. Counted against the window size.
+PACK_SEPARATOR = "\n\n"
+
+
+@dataclass(frozen=True)
+class PackedWindow:
+    """One window of the size-packed plan. ``members`` index the input regions it carries."""
+
+    text: str
+    members: tuple[int, ...]
+
+
+def pack_regions(
+    regions: Sequence[tuple[str, str]], geometry: WindowGeometry
+) -> list[PackedWindow]:
+    """Size-based windows over ``(key, text)`` regions (TASK-1059 C-1, amendment A-1).
+
+    A region longer than ``geometry.size`` is cut into its own windows from its own start (so an
+    append-only transcript keeps byte-identical earlier windows). Every other region goes, in
+    request order, into the FIRST window that still has room (first-fit), joined by
+    :data:`PACK_SEPARATOR`; a new window opens only when none has. A short region therefore never
+    gets a window of its own when it can share one. Empty regions yield nothing.
+    """
+    size = max(1, int(geometry.size))
+    slots: list[tuple[list[int], list[str]]] = []
+    packable: list[int] = []
+    for index, (key, text) in enumerate(regions):
+        if not text:
+            continue
+        if len(text) > size:
+            slots.extend(([index], [w.text]) for w in region_windows(key, text, geometry))
+            continue
+        for slot in packable:
+            members, texts = slots[slot]
+            used = sum(len(t) for t in texts) + len(PACK_SEPARATOR) * len(texts)
+            if used + len(text) <= size:
+                members.append(index)
+                texts.append(text)
+                break
+        else:
+            packable.append(len(slots))
+            slots.append(([index], [text]))
+    return [PackedWindow(PACK_SEPARATOR.join(texts), tuple(members)) for members, texts in slots]
+
+
+#: OD-6 — a window the judge lane shed is retried on its own this many times, with a linear
+#: backoff (attempt N waits N x the backoff), before it fails the request closed.
+SHED_RETRIES = 2
+SHED_RETRY_BACKOFF_S = 1.0
+
+
+def is_shed_judge_error(exc: BaseException) -> bool:
+    """True when the judge client's failure was a 503 from text ``/internal/judge``.
+
+    A 503 there (``CONCURRENCY_LIMIT``: the judge lane's bounded queue is full; or the lane's
+    breaker) started no judgement, so asking again cannot stack load. A TIMEOUT is never a shed:
+    that judgement is still running on the shared GPU. The judge client folds the HTTP error into
+    :class:`GuardrailUndeterminedError`'s detail, which is the only place the status survives.
+    """
+    return (
+        isinstance(exc, GuardrailUndeterminedError)
+        and exc.reason == REASON_ENGINE_ERROR
+        and "'503 " in exc.detail
+    )
+
+
 def dedupe_longest(spans: Sequence[RegionSpan]) -> list[RegionSpan]:
     """Resolve intersecting spans of ONE region longest-span-wins (ties: higher score).
 
@@ -133,6 +204,7 @@ class WindowRunner:
         *,
         project: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         complete: Callable[[dict[str, Any]], bool] | None = None,
+        retry: Callable[[BaseException], bool] | None = None,
     ) -> list[dict[str, Any]]:
         """One verdict per text, in order. Any failing window fails the whole run.
 
@@ -166,12 +238,21 @@ class WindowRunner:
             misses = list(range(len(texts)))
 
         async def _one(index: int) -> None:
-            async with self._semaphore:
-                started = time.monotonic()
+            attempt = 0
+            while True:
                 try:
-                    value = await compute(texts[index])
-                finally:
-                    observe_window_latency(family, time.monotonic() - started)
+                    async with self._semaphore:
+                        started = time.monotonic()
+                        try:
+                            value = await compute(texts[index])
+                        finally:
+                            observe_window_latency(family, time.monotonic() - started)
+                    break
+                except Exception as exc:
+                    if retry is None or attempt >= SHED_RETRIES or not retry(exc):
+                        raise
+                    attempt += 1
+                    await asyncio.sleep(SHED_RETRY_BACKOFF_S * attempt)
             results[index] = value
             key = keys[index]
             if cache is not None and key is not None and (complete is None or complete(value)):

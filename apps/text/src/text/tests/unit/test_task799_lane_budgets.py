@@ -55,10 +55,10 @@ class TestTheFloors:
         assert JUDGE_LANE_FLOOR.acquire_timeout_s < USER_LANE_FLOOR.acquire_timeout_s
         assert JUDGE_LANE_FLOOR.timeout_s < USER_LANE_FLOOR.timeout_s
 
-    def test_the_judge_lane_has_no_queue(self):
-        """Queueing here would add latency to a call already on the critical path
-        of a user-facing generation; guardrail owns the safety plane's retries."""
-        assert JUDGE_LANE_FLOOR.queue_max_size == 0
+    def test_the_judge_lane_queue_is_bounded(self):
+        """TASK-1059 OD-6: the judge lane waits in a BOUNDED queue (shedding at once
+        failed whole validations); a full queue is still a fast 503."""
+        assert 0 < JUDGE_LANE_FLOOR.queue_max_size <= 4 * JUDGE_LANE_FLOOR.max_concurrent
 
     def test_the_breaker_nullables_preserve_pre_wiring_behaviour(self):
         """`None` is the deliberate no-op sentinel: unlimited HALF_OPEN trials and

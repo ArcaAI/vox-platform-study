@@ -507,7 +507,8 @@ class TestNonStreamingPath:
 
         assert resp.status_code == 200, resp.text
         assert resp.json()["content"] == "ok"
-        guardrail.validate.assert_awaited_once()
+        guardrail.validate.assert_not_awaited()  # TASK-1059: no runtime medical judge
+        guardrail.screen_inbound.assert_awaited_once()
         guardrail.screen_output.assert_awaited_once()
         kwargs = guardrail.screen_output.await_args.kwargs
         assert kwargs["response"] == "ok"
@@ -591,7 +592,8 @@ class TestNonStreamingPath:
         )
 
         assert resp.status_code == 200, resp.text
-        guardrail_byo.validate.assert_awaited_once()
+        guardrail_byo.validate.assert_not_awaited()  # TASK-1059: no runtime medical judge
+        guardrail_byo.screen_inbound.assert_awaited_once()
         guardrail_byo.screen_output.assert_awaited_once()
         byo = dict(guardrail_byo.screen_output.await_args.kwargs)
         builtin = dict(guardrail_builtin.screen_output.await_args.kwargs)

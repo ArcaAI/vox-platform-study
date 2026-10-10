@@ -51,10 +51,13 @@ def test_the_medical_response_contract_is_unchanged() -> None:
         "error",
         "stats",
         "screened_regions",
+        # TASK-1059 C-1: added, backward compatible.
+        "region_verdicts",
     ]
     assert list(MedicalValidationRequest.model_fields) == [
         "text",
         "regions",
+        "scope",
         "request_id",
         "include_reasoning",
         "provider_overrides",
@@ -245,10 +248,13 @@ async def test_with_no_safety_lane_enabled_the_medical_judge_is_unchanged() -> N
     )
     assert response.is_medical is True
     assert response.screened_regions == ["system", "transcript"]
-    assert [c["system_prompt"] for c in http.calls] == ["WINDOW", "WINDOW"]
+    # TASK-1059 C-1: two small regions, one packed window.
+    assert [c["system_prompt"] for c in http.calls] == ["WINDOW"]
 
 
-async def test_with_inbound_lanes_on_data_windows_get_one_combined_call() -> None:
+async def test_with_inbound_lanes_the_packed_window_asks_the_medical_lane_only() -> None:
+    # TASK-1059 C-1: the two small regions share ONE window, and a packed window has no twin on
+    # the screen route, so the runner is asked the medical lane alone (no combined call).
     http = _Text()
     response = await validate_medical_context(
         MedicalValidationRequest(regions=REGIONS),
@@ -258,13 +264,13 @@ async def test_with_inbound_lanes_on_data_windows_get_one_combined_call() -> Non
     )
     assert response.is_medical is True
     assert response.screened_regions == ["system", "transcript"]
-    assert response.stats is not None and response.stats["total_tokens"] == 28
-    combined = [c for c in http.calls if '<section id="injection_judge">' in c["system_prompt"]]
-    medical_only = [c for c in http.calls if c["system_prompt"] == "WINDOW"]
-    assert len(combined) == 1 and "chest pain" in combined[0]["prompt"]  # the data window
-    assert (
-        len(medical_only) == 1 and "SOAP" in medical_only[0]["prompt"]
-    )  # instruction: medical only
+    assert [(v.key, v.is_medical) for v in response.region_verdicts] == [
+        ("system", True),
+        ("transcript", True),
+    ]
+    assert response.stats is not None and response.stats["total_tokens"] == 14
+    assert [c["system_prompt"] for c in http.calls] == ["WINDOW"]
+    assert "SOAP" in http.calls[0]["prompt"] and "chest pain" in http.calls[0]["prompt"]
 
 
 async def test_the_combined_path_still_answers_not_medical_and_503() -> None:
@@ -277,7 +283,7 @@ async def test_the_combined_path_still_answers_not_medical_and_503() -> None:
     )
     assert response.is_medical is False
     assert response.context_type == "general"
-    assert response.reasoning == "2 window(s) judged; 1 off scope"
+    assert response.reasoning == "1 window(s) judged; 1 off scope"
 
     class _Down(_Text):
         async def post(self, url: str, **kwargs: Any) -> _Resp:

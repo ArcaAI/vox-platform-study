@@ -323,7 +323,8 @@ class TestCycleGuard:
         )
 
         assert result.guardrail_usage is None  # verdict carried no stats
-        guardrail.validate.assert_awaited_once()
+        # TASK-1059 (OD-2/OD-5): the gate runs the screen only — no runtime medical judge.
+        guardrail.validate.assert_not_awaited()
         guardrail.screen_inbound.assert_awaited_once()
 
     def test_judge_scope_does_not_leak_out_of_its_block(self):
@@ -370,7 +371,11 @@ class TestPoolIsolation:
             # The judge semaphore follows its lane budget live (TASK-1031), so
             # the one-permit lane is expressed as a served budget, not only as
             # a hand-built object the floor would grow.
-            app.state.lane_budgets = {(_PROVIDER, "judge"): {"max_concurrent": 1}}
+            # TASK-1059 OD-6: the lane now waits in a bounded queue; a short served wait
+            # keeps this test fast while still proving the wedged permit is not the user's.
+            app.state.lane_budgets = {
+                (_PROVIDER, "judge"): {"max_concurrent": 1, "acquire_timeout_s": 0.05}
+            }
 
         client, _ = await client_factory(configure=configure)
 
@@ -606,14 +611,27 @@ class TestJudgeMetering:
 # --------------------------------------------------------------------------
 
 
+def _screen(verdict):
+    """TASK-1059: the gate's verdict is the inbound SCREEN's (no runtime medical judge)."""
+
+    def configure(app):
+        app.state.guardrail_client.screen_inbound = AsyncMock(return_value=verdict)
+
+    return configure
+
+
 class TestPublicGeneratePathUnchanged:
     """The gate moved into a helper; its observable behaviour must not."""
 
     @pytest.mark.asyncio
     async def test_content_rejection_is_422(self, client_factory, mock_provider):
         guardrail = AsyncMock()
-        guardrail.validate = AsyncMock(return_value={"allowed": False, "reason": "not_medical"})
-        client, _ = await client_factory(guardrail_client=guardrail)
+        client, _ = await client_factory(
+            guardrail_client=guardrail,
+            configure=_screen(
+                {"allowed": False, "decision": "block", "reason": "prompt_safety", "pii_spans": []}
+            ),
+        )
 
         resp = await client.post(
             "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
@@ -628,13 +646,13 @@ class TestPublicGeneratePathUnchanged:
         self, client_factory, mock_provider
     ):
         # The PUBLIC /generate path (the judge lane calls no guardrail at all): since
-        # TASK-1050 §9.8.1 / OD-23 a judge outage continues with a `guardrail.unverified`
-        # notice instead of a 503.
+        # TASK-1050 §9.8.1 / OD-23 a screen outage on a local provider continues with a
+        # `guardrail.unverified` notice instead of a 503.
         guardrail = AsyncMock()
-        guardrail.validate = AsyncMock(
-            return_value={"allowed": False, "reason": "external_guardrail_unavailable"}
+        client, _ = await client_factory(
+            guardrail_client=guardrail,
+            configure=_screen({"allowed": False, "reason": "external_guardrail_unavailable"}),
         )
-        client, _ = await client_factory(guardrail_client=guardrail)
 
         resp = await client.post(
             "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
@@ -647,8 +665,9 @@ class TestPublicGeneratePathUnchanged:
     @pytest.mark.asyncio
     async def test_missing_allowed_key_fails_closed(self, client_factory, mock_provider):
         guardrail = AsyncMock()
-        guardrail.validate = AsyncMock(return_value={"reason": "malformed"})
-        client, _ = await client_factory(guardrail_client=guardrail)
+        client, _ = await client_factory(
+            guardrail_client=guardrail, configure=_screen({"reason": "malformed"})
+        )
 
         resp = await client.post(
             "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
@@ -660,21 +679,24 @@ class TestPublicGeneratePathUnchanged:
     @pytest.mark.asyncio
     async def test_guardrail_usage_still_rides_back_on_the_response(self, client_factory):
         guardrail = AsyncMock()
-        guardrail.validate = AsyncMock(
-            return_value={
-                "allowed": True,
-                "raw": {
-                    "stats": {
-                        "provider": "lm-studio",
-                        "model": "guardian",
-                        "request_id": "r-1",
-                        "prompt_tokens": 2,
-                        "predicted_tokens": 1,
-                    }
-                },
-            }
+        client, _ = await client_factory(
+            guardrail_client=guardrail,
+            configure=_screen(
+                {
+                    "allowed": True,
+                    "pii_spans": [],
+                    "raw": {
+                        "stats": {
+                            "provider": "lm-studio",
+                            "model": "guardian",
+                            "request_id": "r-1",
+                            "prompt_tokens": 2,
+                            "predicted_tokens": 1,
+                        }
+                    },
+                }
+            ),
         )
-        client, _ = await client_factory(guardrail_client=guardrail)
 
         resp = await client.post(
             "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}

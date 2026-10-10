@@ -181,12 +181,10 @@ async def test_the_inbound_gate_degrades_a_local_call_on_a_coverage_gap() -> Non
         locality="local",
     )
 
-    # Both calls missed a key (the stub echoes `transcript` only): two unverified notices.
-    assert [n["type"] for n in result.outcome.notices] == ["guardrail.unverified"] * 2
-    assert [n["checks"][0]["checkId"] for n in result.outcome.notices] == [
-        "jailbreak_detection",
-        "medical_validation",
-    ]
+    # The screen missed a key (the stub echoes `transcript` only): one unverified notice.
+    # TASK-1059 (OD-2/OD-5): there is no runtime medical judge call to miss one too.
+    assert [n["type"] for n in result.outcome.notices] == ["guardrail.unverified"]
+    assert [n["checks"][0]["checkId"] for n in result.outcome.notices] == ["jailbreak_detection"]
 
 
 async def test_the_output_gate_degrades_a_coverage_gap_to_unverified() -> None:

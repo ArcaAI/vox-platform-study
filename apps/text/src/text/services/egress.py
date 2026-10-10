@@ -4,14 +4,12 @@
 
 1. **classify locality** per provider actually called (`core/locality.py`);
 2. **inbound gate** — guardrail ``/screen/inbound`` (prompt safety + GLiNER2 PII
-   spans) over every UNTRUSTED region the provider receives, CONCURRENTLY with the
-   medical judge (``/api/medical/validate``) over the data regions only; a
-   ``block`` from either stops the call, ``warn`` / ``unverified`` continue with
+   spans) over every UNTRUSTED region the provider receives; a ``block`` stops the call, ``warn`` / ``unverified`` continue with
    their notices, and an outage degrades to ``guardrail.unverified`` — except the
    screen before a CLOUD call, whose PII spans the pseudonymiser needs: then the
    call is refused (``EGRESS_REDACTION_UNAVAILABLE``, TASK-1050 §9.8.1). PII spans
-   are requested only off LOCAL (TASK-1049 F8). The judge is skipped only for
-   ``medical_exempt: "internal"``.
+   are requested only off LOCAL (TASK-1049 F8). There is no runtime medical judge here
+   (TASK-1059 OD-2/OD-5): the gateway judges the CONTEXT before composing it.
    A system prompt is untrusted unless its ``system_governance`` digest verifies
    (TASK-1047 FC-4): GOVERNED text is static, registry-screened at authoring time,
    and is neither screened nor judged per call;
@@ -31,7 +29,6 @@ and dies with the request: it is never logged, cached or serialised.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -449,34 +446,27 @@ def _item_ids(items: RegionItems | None) -> list[str]:
 def _block_error(
     verdict: dict[str, Any],
     *,
-    medical: bool,
     outcome: GuardrailOutcome,
     item_ids: list[str],
 ) -> ContentBlockedError:
-    """The fixed, non-PHI 422 for a block — guardrail's own notice, or one synthesised.
+    """The fixed, non-PHI 422 for a screen block — guardrail's own notice, or one synthesised.
 
-    ``CONTENT_BLOCKED_NOT_MEDICAL`` when the medical judge said "not medical", or (W2a2)
-    when the screen's own blocking check is ``medical_validation``: the combined judge
-    call can now block on medical scope from the screen.
+    ``CONTENT_BLOCKED_NOT_MEDICAL`` (W2a2) when the screen's own blocking check is
+    ``medical_validation``: with an inbound judge lane enabled, the combined judge call
+    can block on medical scope from the screen.
     """
     notice = next(
         (n for n in valid_notices(verdict.get("notices")) if n["type"] == "guardrail.blocked"),
         None,
     )
-    if medical:
-        checks = [{"checkId": MEDICAL_CHECKS[0], "severity": "high"}]
-        not_medical = verdict.get("is_medical") is False
-    else:
-        raw = verdict.get("raw")
-        checks = blocked_checks(raw if isinstance(raw, dict) else verdict) or blocked_checks(
-            {"reasons": [verdict.get("reason")]}
-        )
-        # Guardrail blocked but named no check id: the screen as a whole.
-        checks = checks or [
-            {"checkId": check, "severity": "high"} for check in INBOUND_SCREEN_CHECKS
-        ]
-        named = checks if notice is None else notice["checks"]
-        not_medical = any(check["checkId"] == MEDICAL_CHECKS[0] for check in named)
+    raw = verdict.get("raw")
+    checks = blocked_checks(raw if isinstance(raw, dict) else verdict) or blocked_checks(
+        {"reasons": [verdict.get("reason")]}
+    )
+    # Guardrail blocked but named no check id: the screen as a whole.
+    checks = checks or [{"checkId": check, "severity": "high"} for check in INBOUND_SCREEN_CHECKS]
+    named = checks if notice is None else notice["checks"]
+    not_medical = any(check["checkId"] == MEDICAL_CHECKS[0] for check in named)
     if notice is None:
         key = "guardrail.blocked.not_medical" if not_medical else "guardrail.blocked.inbound"
         notice = blocked_notice("inbound", key, checks, item_ids, _policy_version(verdict))
@@ -512,16 +502,21 @@ async def run_inbound_gate(
     caller: str | None = None,
     agent_slug: str | None = None,
 ) -> InboundResult:
-    """Run the inbound screen and the medical judge CONCURRENTLY; enforce their decisions.
+    """Run the inbound screen and enforce its decision.
+
+    TASK-1059 (owner OD-2 / OD-5 / OD-10): this gate no longer runs a runtime MEDICAL judge.
+    Prompts are judged for medical scope at build time (the governed-prompt registry), and the
+    runtime context is judged by the gateway BEFORE it is composed with the prompt, so the
+    composed message reaching this service is never judged again. ``tenant_policy`` and
+    ``prompt`` are still accepted from the callers and are unused here; ``medical_exempt``
+    still maps to the screen's ``medical_internal`` exemption.
 
     ``segments`` are the texts the provider will receive; segment 0 is the system
     prompt unless ``system`` is ``absent``. The screen gets the UNTRUSTED regions
     (FC-5): every block body by its name, caller text outside blocks as ``user``,
     and the system prompt as ``system`` unless it is ``governed`` (digest verified,
     FC-4). Its PII spans come back region-relative and are re-based per segment, so
-    the cloud pseudonymiser covers every untrusted stretch. The medical judge keeps
-    OD-1's scope: the data regions only, never the system prompt, governed or not.
-    A client that is not wired is only ever a process the lifespan did not build
+    the cloud pseudonymiser covers every untrusted stretch. A client that is not wired is only ever a process the lifespan did not build
     (the unit harness): nothing to call, no spans.
 
     The cycle tripwire holds: guardrail delegates its judgement to this service,
@@ -529,7 +524,7 @@ async def run_inbound_gate(
 
     TASK-1050 (README §9.7.1, §9.8.1) — guardrail decides, this gate enforces:
 
-    * ``block`` (either verdict) raises the 422 ``ContentBlockedError`` it always
+    * ``block`` raises the 422 ``ContentBlockedError`` it always
       did, now carrying the ``GuardrailNotice`` and the evaluation ids;
     * ``warn`` / ``unverified`` continue; their notices are collected on
       ``InboundResult.outcome``;
@@ -552,7 +547,7 @@ async def run_inbound_gate(
     assert_not_in_judge_scope("egress.run_inbound_gate")
 
     regions = _screen_regions(segments, system=system, outside_trust=outside_trust)
-    screen = guardrail_client.screen_inbound(
+    screen_verdict = await guardrail_client.screen_inbound(
         regions=_screen_wire(regions, region_items),
         tenant_id=tenant_id,
         include_pii_spans=locality != LOCAL,
@@ -562,52 +557,24 @@ async def run_inbound_gate(
         exempt="medical_internal" if medical_exempt == "internal" else None,
         provider_overrides=serialize_provider_overrides(provider_overrides),
     )
-    if medical_exempt == "internal":
-        screen_verdict = await screen
-        medical_verdict: dict[str, Any] | None = None
-    else:
-        judged = _wire(
-            _screen_regions(
-                segments,
-                system="absent" if system == "absent" else "governed",
-                outside_trust=outside_trust,
-            ),
-            region_items,
-        )
-        # An empty context is nothing to judge; the judge then gets the direct prompt.
-        judge = guardrail_client.validate(
-            regions=judged or [{"key": USER_REGION, "text": prompt}],
-            tenant_id=tenant_id,
-            tenant_policy=tenant_policy,
-            # The connection the gateway injected, forwarded so guardrail's judge
-            # has one (TASK-890). Serialized: `SecretStr` masks itself on dump.
-            provider_overrides=serialize_provider_overrides(provider_overrides),
-            locality=locality,
-        )
-        screen_verdict, medical_verdict = await asyncio.gather(screen, judge)
 
     # Usage is lifted BEFORE the allow/deny branch: a rejected prompt still burned
-    # guardrail tokens. The judge is the call that spends; the screen runs local
-    # weights and reports none.
-    usage = guardrail_usage_from_verdict(medical_verdict) if medical_verdict else None
-    if usage is None and isinstance(screen_verdict, dict):
-        usage = guardrail_usage_from_verdict(screen_verdict)
+    # guardrail tokens (an enabled inbound judge lane spends; local weights report none).
+    usage = (
+        guardrail_usage_from_verdict(screen_verdict) if isinstance(screen_verdict, dict) else None
+    )
     # FC-5b: recorded whatever the outcome — a data flag never blocks, but it is
     # always visible.
     data_findings = _record_data_findings(screen_verdict, regions)
 
     outcome = GuardrailOutcome()
     outcome.add_verdict(screen_verdict)
-    outcome.add_verdict(medical_verdict)
     item_ids = _item_ids(region_items)
     screen_down = _unavailable(screen_verdict)
-    medical_down = medical_verdict is not None and _unavailable(medical_verdict)
 
     # A judged block first: a missing ``allowed`` key is a rejection, as before.
-    if medical_verdict is not None and not medical_down and not medical_verdict.get("allowed"):
-        raise _block_error(medical_verdict, medical=True, outcome=outcome, item_ids=item_ids)
     if not screen_down and not screen_verdict.get("allowed", False):
-        raise _block_error(screen_verdict, medical=False, outcome=outcome, item_ids=item_ids)
+        raise _block_error(screen_verdict, outcome=outcome, item_ids=item_ids)
     if screen_down:
         if locality != LOCAL:
             # Privacy, not a safety verdict: no spans, so nothing goes to a cloud model.
@@ -617,9 +584,6 @@ async def run_inbound_gate(
             )
         outcome.add_notice(unverified_notice("inbound", INBOUND_SCREEN_CHECKS, item_ids))
         logger.warning("text.egress.inbound_unverified", check="screen", locality=locality)
-    if medical_down:
-        outcome.add_notice(unverified_notice("inbound", MEDICAL_CHECKS, item_ids))
-        logger.warning("text.egress.inbound_unverified", check="medical", locality=locality)
 
     spans = screen_verdict.get("pii_spans") if isinstance(screen_verdict, dict) else None
     return InboundResult(

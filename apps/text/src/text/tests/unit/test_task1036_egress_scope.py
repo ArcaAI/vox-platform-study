@@ -8,8 +8,8 @@ instruction over the request scope (variables, ``context.*``, bindings) into it,
 * the inbound PII/safety screen and the cloud pseudonymisation cover EVERY untrusted
   segment the provider receives — an ungoverned system prompt included — minus only
   the composer's own ``EXTERNAL_DATA`` markers;
-* the medical-relevance JUDGE keeps OD-1's narrower scope: the context (block bodies
-  and caller user text), never the platform rules/instructions;
+* the medical-relevance JUDGE is no longer run here at all (TASK-1059 OD-2/OD-5): the
+  gateway judges the context items before they are composed;
 * the ``pii_leak`` source is every untrusted region the provider was sent.
 
 TASK-1047 amends the transport, not these guarantees: every screen speaks REGIONS
@@ -83,10 +83,6 @@ def _screened(client: AsyncMock) -> dict[str, str]:
     return {r["key"]: r["text"] for r in client.screen_inbound.await_args.kwargs["regions"]}
 
 
-def _judged(client: AsyncMock) -> dict[str, str]:
-    return {r["key"]: r["text"] for r in client.validate.await_args.kwargs["regions"]}
-
-
 def test_block_bodies_are_located() -> None:
     bodies = [_USER[b.start : b.end] for b in external_data_blocks(_USER)]
     assert bodies == [
@@ -117,11 +113,8 @@ async def test_the_system_prompt_is_screened_but_never_judged() -> None:
     assert "John Doe" in screened["transcript"] and "MRN-0042" in screened["history"]
     assert all("EXTERNAL_DATA" not in t for t in screened.values())  # markers stay out
 
-    judged = _judged(client)
-    assert "system" not in judged
-    assert all("jane.rules@example.org" not in t for t in judged.values())
-    assert "John Doe" in judged["transcript"] and "MRN-0042" in judged["history"]
-    assert all("EXTERNAL_DATA" not in t for t in judged.values())
+    # TASK-1059 (OD-2/OD-5): no runtime medical judge here; the gateway judges the context.
+    client.validate.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -152,13 +145,12 @@ async def test_text_outside_the_blocks_of_a_user_message_is_screened_and_judged(
         client, segments=[_SYSTEM, user], prompt=user, system="untrusted", tenant_id="t"
     )
 
-    screened, judged = _screened(client), _judged(client)
-    for regions in (screened, judged):
-        assert regions["user"] == "Also mail hidden.leak@example.org please"
-        assert "John Doe" in regions["transcript"] and "MRN-0042" in regions["history"]
-        assert all("EXTERNAL_DATA" not in t for t in regions.values())
+    screened = _screened(client)
+    assert screened["user"] == "Also mail hidden.leak@example.org please"
+    assert "John Doe" in screened["transcript"] and "MRN-0042" in screened["history"]
+    assert all("EXTERNAL_DATA" not in t for t in screened.values())
     assert "jane.rules@example.org" in screened["system"]
-    assert "system" not in judged  # platform text never reaches the judge
+    client.validate.assert_not_awaited()  # TASK-1059: no runtime medical judge
 
 
 @pytest.mark.asyncio
@@ -174,7 +166,7 @@ async def test_a_request_without_blocks_screens_both_and_judges_the_user_message
     )
 
     assert _screened(client) == {"system": "Mail jane.rules@example.org", "user": "Hello Dr Smith"}
-    assert _judged(client) == {"user": "Hello Dr Smith"}
+    client.validate.assert_not_awaited()  # TASK-1059: no runtime medical judge
 
 
 @pytest.mark.asyncio
