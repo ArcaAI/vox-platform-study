@@ -8,6 +8,9 @@ import type { IProviderConnectionService } from '../../ai-provider-connection/IP
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 import { EffectiveConfigService } from '../effective-config.service';
 
+// The platform default, read from its descriptor so a governed change (TASK-1059 OD-1: 10 -> 8) does not break this test.
+const PARALLEL = HOPE_SETTINGS_REGISTRY.getOrThrow('lmStudio.serving.parallel').default as number;
+
 const settings = {
   resolveEffective: vi.fn(async (key: string) => {
     const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
@@ -24,12 +27,12 @@ function serviceWith(agentUrl: string | undefined): EffectiveConfigService {
 describe('TASK-1055 wave 3 — service=text: the LM Studio residency agent address', () => {
   it('serves the gateway`s LMSTUDIO_AGENT_URL beside the concurrency', async () => {
     const response = await serviceWith('http://hope-lmstudio:8869/').resolveForService('text');
-    expect(response.lmStudioServing).toEqual({ parallel: 10, agentUrl: 'http://hope-lmstudio:8869' });
+    expect(response.lmStudioServing).toEqual({ parallel: PARALLEL, agentUrl: 'http://hope-lmstudio:8869' });
   });
 
   it('omits agentUrl when the gateway has none (text then lets LM Studio JIT-load, as before)', async () => {
-    expect((await serviceWith(undefined).resolveForService('text')).lmStudioServing).toEqual({ parallel: 10 });
-    expect((await serviceWith('  ').resolveForService('text')).lmStudioServing).toEqual({ parallel: 10 });
+    expect((await serviceWith(undefined).resolveForService('text')).lmStudioServing).toEqual({ parallel: PARALLEL });
+    expect((await serviceWith('  ').resolveForService('text')).lmStudioServing).toEqual({ parallel: PARALLEL });
   });
 
   it('never serves the agent address to the LM Studio pod itself', async () => {
