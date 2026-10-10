@@ -143,4 +143,14 @@ describe('AgentLineageDrawer — blocking validation (C-10)', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Model is not ready')));
     expect(toast.success).not.toHaveBeenCalledWith('Validation complete');
   });
+
+  it('C-16: a VALIDATED draft whose report still blocks is not called ready to publish', async () => {
+    const row = agent({ status: 'VALIDATED', validationReport: BLOCKING });
+    stubFetch([row]);
+    renderWithProviders(<AgentLineageDrawer slug="clinic-summarizer" lineage={lineageFor(row)} onOpenChange={vi.fn()} />);
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Draft' }), { button: 0 });
+    expect(await screen.findByText(/not validated yet/)).toBeTruthy();
+    expect(screen.queryByText(/validated and ready to publish/)).toBeNull();
+  });
 });

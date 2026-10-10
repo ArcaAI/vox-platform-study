@@ -155,12 +155,23 @@ interface VersionNaming {
  * twelve versions still reads as a list of versions and not as twelve configuration dumps. Models
  * are named in words; the checksum and the editor's user id are support data (super admin only).
  */
+/** C-16 — one reading of "validated" for every tab: a VALIDATED row whose own report still blocks is not ready. */
+function settledStatus(version: Agent): Agent['status'] {
+  return version.status === 'VALIDATED' && version.validationReport?.blocking ? 'DRAFT' : version.status;
+}
+
+/** The draft tab and the Versions tab read two queries; take whichever copy of the draft is newer. */
+function freshestDraft(draft: Agent, rows: readonly Agent[]): Agent {
+  const other = rows.find((row) => row.id === draft.id);
+  return other && other.updatedAt > draft.updatedAt ? other : draft;
+}
+
 function toVersionRow(version: Agent, naming: VersionNaming): VersionRow {
   const fallbacks = [...version.fallbacks].sort((a, b) => a.priority - b.priority);
   return {
     id: version.id,
     versionNumber: version.versionNumber,
-    status: version.status,
+    status: settledStatus(version),
     label: version.name,
     isActive: version.isActive,
     createdAt: version.createdAt,
@@ -168,7 +179,7 @@ function toVersionRow(version: Agent, naming: VersionNaming): VersionRow {
     publishedAt: version.publishedAt,
     deprecatedAt: version.deprecatedAt,
     updatedAt: version.updatedAt,
-    ...(naming.elevated ? { by: version.updatedBy ?? version.createdBy, checksum: version.compiledConfigChecksum } : {}),
+    ...(naming.elevated ? { by: version.updatedByName ?? version.createdByName ?? version.updatedBy ?? version.createdBy, checksum: version.compiledConfigChecksum } : {}),
     detail: (
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
         <dt className="text-muted-foreground">Model</dt>
@@ -805,7 +816,7 @@ export function AgentLineageDrawer({
               ) : (
                 <>
                   <p className="text-muted-foreground text-sm">
-                    Continue draft v{draftAgent.versionNumber} — {draftAgent.status === 'VALIDATED' ? 'validated and ready to publish' : 'not validated yet'}.
+                    Continue draft v{draftAgent.versionNumber} — {settledStatus(freshestDraft(draftAgent, versionRows)) === 'VALIDATED' ? 'validated and ready to publish' : 'not validated yet'}.
                   </p>
                   {/* AG-5 — a 412 gets the inline alert, not a toast: only a reload can succeed. */}
                   <OccConflictAlert error={update.error} onReload={() => void reloadAfterConflict()} />
