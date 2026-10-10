@@ -1,4 +1,4 @@
-import type { ActivityKind } from '@arcaai/types';
+import type { ActivityEntry, ActivityKind } from '@arcaai/types';
 import { formatNumber } from '@/shared/format';
 
 const EM_DASH = '—';
@@ -64,4 +64,17 @@ export function formatTokenPair(tokensIn: number, tokensOut: number): string {
 export function formatRecordingOffset(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Items a person edited. The feed's `edited` flag also fires for machine re-versions (an AI
+ * rewrite, a derived full transcript), so an item counts only when its newest version came from a
+ * person (`changeSource` `manual`); a collapsed segment run carries only the flag.
+ */
+export function countHumanEdits(entries: readonly ActivityEntry[]): number {
+  return entries.filter((entry) => {
+    if (entry.entryType === 'item') return entry.edited && entry.latestVersion.changeSource === 'manual';
+    if (entry.entryType === 'segment_run') return entry.edited;
+    return false;
+  }).length;
 }

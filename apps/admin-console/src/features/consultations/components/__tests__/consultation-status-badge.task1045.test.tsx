@@ -36,3 +36,27 @@ describe('ConsultationStatusBadge note ready', () => {
     expect(consultationStatusMeta('STOPPED', 'IDLE', 'NOTE_READY').processing).toEqual({ label: 'Note ready', role: 'success' });
   });
 });
+
+// TASK-1059 C-03 — every processingReason is visible, in human words.
+describe('ConsultationStatusBadge processing reasons', () => {
+  it.each([
+    ['GUARDRAIL_HOLD', 'Guardrail hold'],
+    ['NOTE_GENERATION_FAILED', 'Note generation failed'],
+    ['NOTE_COVERAGE_GAPS:3', 'Note coverage gaps (3)'],
+    ['SOMETHING_NEW', 'Something new'],
+  ])('shows %s as "%s"', (reason, label) => {
+    renderWithProviders(<ConsultationStatusBadge status="STOPPED" processing="AWAITING_REVIEW" processingReason={reason} />);
+    expect(screen.getByText('Awaiting review')).toBeDefined();
+    expect(screen.getByText(label)).toBeDefined();
+  });
+
+  it('shows the reason chip on an IDLE consultation too', () => {
+    renderWithProviders(<ConsultationStatusBadge status="STOPPED" processing="IDLE" processingReason="NOTE_COVERAGE_GAPS:1" />);
+    expect(screen.getByText('Note coverage gaps (1)')).toBeDefined();
+  });
+
+  it('does not duplicate NOTE_READY as a reason chip', () => {
+    renderWithProviders(<ConsultationStatusBadge status="STOPPED" processing="IDLE" processingReason="NOTE_READY" />);
+    expect(screen.getAllByText(/note ready/i)).toHaveLength(1);
+  });
+});

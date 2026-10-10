@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { IconArrowRight } from '@tabler/icons-react';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
+import { useFeatureGates } from '@/shared/feature-gates/use-feature-gates';
 import type { GoverningRun } from '../api/types';
 
 const RUN_STATUS_META: Record<GoverningRun['status'], { label: string; role: StatusColorRole }> = {
@@ -37,6 +38,10 @@ function chipFor(run: GoverningRun): { label: string; role: StatusColorRole } {
 }
 
 export function ConsultationWorkflowMeta({ run }: { run: GoverningRun | null | undefined }) {
+  // `/workflow-runs/*` is a 404 unless the Workflow & Harness domain is on: link only then, otherwise
+  // the run id is plain text (TASK-1059 C-05).
+  const { gates } = useFeatureGates();
+  const runLinkable = gates['console.workflowHarness.enabled'] === true;
   return (
     <div className="col-span-2 flex flex-col gap-0.5">
       <dt className="text-muted-foreground text-xs">Workflow</dt>
@@ -51,13 +56,19 @@ export function ConsultationWorkflowMeta({ run }: { run: GoverningRun | null | u
                 const chip = chipFor(run);
                 return <StatusBadge label={chip.label} colorRole={chip.role} icon={<StatusDot colorRole={chip.role} size="sm" />} />;
               })()}
-              <Link
-                href={`/workflow-runs/${encodeURIComponent(run.workflowRunId)}`}
-                className="inline-flex items-center gap-1 underline underline-offset-4"
-              >
-                View run
-                <IconArrowRight aria-hidden className="size-3" />
-              </Link>
+              {runLinkable ? (
+                <Link
+                  href={`/workflow-runs/${encodeURIComponent(run.workflowRunId)}`}
+                  className="inline-flex items-center gap-1 underline underline-offset-4"
+                >
+                  View run
+                  <IconArrowRight aria-hidden className="size-3" />
+                </Link>
+              ) : (
+                <span className="text-muted-foreground text-xs">
+                  Run <span className="font-mono">{run.workflowRunId}</span>
+                </span>
+              )}
             </span>
             {run.status === 'FAILED' ? (
               <>

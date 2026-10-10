@@ -310,7 +310,7 @@ describe('ConsultationsScreen', () => {
     expect(within(dialog).getByText('Not governed by a workflow')).toBeDefined();
   });
 
-  it('surfaces a FAILED governing run in the detail, with the run link and the raw reason', async () => {
+  it('surfaces a FAILED governing run in the detail, with the run id and the raw reason', async () => {
     stubConsultations((call, parsed) => {
       if (call.method === 'GET' && parsed.pathname === '/api/hope/admin/consultations/c_9f2ka7aa11') {
         return Response.json({
@@ -336,11 +336,9 @@ describe('ConsultationsScreen', () => {
     expect(within(dialog).getByText('Failed')).toBeDefined();
     expect(within(dialog).getByText(/This consultation ran without its workflow/)).toBeDefined();
     expect(within(dialog).getByText('/referral: not declared in the bound version v2')).toBeDefined();
-    expect(
-      within(dialog)
-        .getByRole('link', { name: /View run/ })
-        .getAttribute('href'),
-    ).toBe('/workflow-runs/wr-77');
+    // The harness gate is off in this fixture (no `features/effective` answer), so the run is text only.
+    expect(within(dialog).getByText('wr-77')).toBeDefined();
+    expect(within(dialog).queryByRole('link', { name: /View run/ })).toBeNull();
   });
 
   it('shows the filtered empty state with a clear-filters action', async () => {

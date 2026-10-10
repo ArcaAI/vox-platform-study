@@ -7,11 +7,26 @@
  * while the drawer holding that id is open).
  */
 
+import type { ActivityEntry } from '@arcaai/types';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { GatewayError } from '@/shared/api';
 import { ErrorState } from '@/shared/state/error-state';
+import { useConsultationActivity } from '../../api/activity';
 import { useConsultationTelemetry } from '../../api/telemetry';
-import { ConsultationTelemetryBlocks } from './telemetry-blocks';
+import { ConsultationTelemetryBlocks, type TelemetryRunFallback } from './telemetry-blocks';
+
+/** The newest AI run per kind from the first activity page (best effort: any failure -> no fallback). */
+function runsFromActivity(pages: { items?: unknown }[] | undefined): TelemetryRunFallback {
+  const newest = new Map<string, { at: string; run: NonNullable<Extract<ActivityEntry, { entryType: 'item' }>['run']> }>();
+  for (const page of pages ?? []) {
+    for (const entry of Array.isArray(page.items) ? (page.items as ActivityEntry[]) : []) {
+      if (entry.entryType !== 'item' || !entry.run) continue;
+      const seen = newest.get(entry.kind);
+      if (!seen || entry.occurredAt >= seen.at) newest.set(entry.kind, { at: entry.occurredAt, run: entry.run });
+    }
+  }
+  return { preSummary: newest.get('PRE_SUMMARY')?.run, finalSummary: newest.get('NOTE')?.run };
+}
 
 function TelemetrySkeleton() {
   return (
@@ -28,6 +43,9 @@ function TelemetrySkeleton() {
 
 export function ConsultationTelemetrySection({ consultationId }: { consultationId: string }) {
   const telemetry = useConsultationTelemetry(consultationId);
+  // The activity runs already carry model / tokens / duration; they back the telemetry source where
+  // it is null (TASK-1059 C-04). A failure there never blocks the telemetry itself.
+  const activity = useConsultationActivity(consultationId, { aiRuns: true });
 
   if (telemetry.isPending) return <TelemetrySkeleton />;
 
@@ -42,5 +60,5 @@ export function ConsultationTelemetrySection({ consultationId }: { consultationI
     return <ErrorState title={'Couldn’t load telemetry'} error={telemetry.error} onRetry={() => void telemetry.refetch()} />;
   }
 
-  return <ConsultationTelemetryBlocks telemetry={telemetry.data} />;
+  return <ConsultationTelemetryBlocks telemetry={telemetry.data} runs={runsFromActivity(activity.data?.pages)} />;
 }

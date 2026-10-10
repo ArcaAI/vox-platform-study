@@ -3,11 +3,13 @@ import type { Paginated } from '@/shared/api';
 import {
   CONSULTATION_STATUSES,
   normalizeLegacyConsultationStatus,
+  type ConsultationLifecycleFields,
   type ConsultationProcessing,
   type ConsultationStatus,
 } from '@arcaai/types';
 
 export { CONSULTATION_STATUSES };
+export type { ApprovalSummary, EncounterSummary } from '@arcaai/types';
 export type { ActivityEntry, ActivityKind, ActivityRunRecord, ConsultationActivityPage, ConsultationProcessing, ConsultationStatus, EncounterBlock, ItemVersionDetail, ItemVersionSummary, RunSummary } from '@arcaai/types';
 
 /**
@@ -87,6 +89,24 @@ export interface Consultation {
   /** Why `processing` is what it is — `NOTE_READY` on `IDLE` means a written note. */
   processingReason?: string | null;
   metadata?: Record<string, unknown>;
+  /**
+   * Lifecycle DTO fields (C-02). All optional: a gateway that predates a field, or a legacy row,
+   * omits it, and the drawer hides every section whose fields are all absent.
+   */
+  approval?: ConsultationLifecycleFields['approval'];
+  closedReason?: ConsultationLifecycleFields['closedReason'];
+  closedAt?: ConsultationLifecycleFields['closedAt'];
+  reopenCount?: ConsultationLifecycleFields['reopenCount'];
+  reopenAllowed?: ConsultationLifecycleFields['reopenAllowed'];
+  recordable?: ConsultationLifecycleFields['recordable'];
+  currentEncounterSeq?: ConsultationLifecycleFields['currentEncounterSeq'];
+  encounters?: ConsultationLifecycleFields['encounters'];
+  lastActivityAt?: ConsultationLifecycleFields['lastActivityAt'];
+  autoCloseAt?: ConsultationLifecycleFields['autoCloseAt'];
+  /** The caller's external reference (visit id) for the consultation, when one was stated at open. */
+  externalRef?: string | null;
+  /** The SPOKEN (source) language, e.g. `ml-en`. */
+  language?: string | null;
   /** `null` = ungoverned; absent = a gateway that predates the field, read the same way. */
   governingRun?: GoverningRun | null;
   /** Only populated by the :id detail (findWithRelations includes them). */

@@ -2,6 +2,8 @@
 
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
+import Link from 'next/link';
+import { useFeatureGates } from '@/shared/feature-gates/use-feature-gates';
 import { formatNumber } from '@/shared/format';
 import {
   guardrailActionTakenMeta,
@@ -17,6 +19,8 @@ import { formatDuration, formatRunCost, formatTokenPair } from './activity-forma
 /** The AI runs that produced the viewed version, one row per workflow step. */
 export function RunDetail({ consultationId, itemId, version }: { consultationId: string; itemId: string; version: number }) {
   const runs = useItemRuns(consultationId, itemId, version);
+  const { gates } = useFeatureGates();
+  const traceLinkable = gates['console.workflowHarness.enabled'] === true;
   if (runs.isPending) return <Skeleton className="h-16 w-full" />;
   if (runs.isError || runs.data.length === 0) return null;
   return (
@@ -50,11 +54,19 @@ export function RunDetail({ consultationId, itemId, version }: { consultationId:
           <tbody>
             {runs.data.map((run) => (
               <tr key={run.id} className="border-t">
-                <td className="px-2.5 py-1.5">{run.nodeLabel ?? run.nodeId}</td>
-                <td className="px-2.5 py-1.5 font-mono">{run.agentSlug}</td>
+                <td className="px-2.5 py-1.5">
+                  {traceLinkable && run.runId ? (
+                    <Link href={`/workflow-runs/${encodeURIComponent(run.runId)}`} className="underline underline-offset-4">
+                      {run.nodeLabel ?? run.nodeId}
+                    </Link>
+                  ) : (
+                    (run.nodeLabel ?? run.nodeId)
+                  )}
+                </td>
+                <td className="px-2.5 py-1.5 font-mono">{run.agentSlug || '\u2014'}</td>
                 <td className="px-2.5 py-1.5 text-right tabular-nums">{formatDuration(run.durationMs)}</td>
                 <td className="px-2.5 py-1.5 text-right tabular-nums">{formatTokenPair(run.tokensIn, run.tokensOut)}</td>
-                <td className="px-2.5 py-1.5 tabular-nums">{`${formatNumber(run.contextUsed)} / ${formatNumber(run.contextWindow)}`}</td>
+                <td className="px-2.5 py-1.5 tabular-nums">{run.contextWindow > 0 ? `${formatNumber(run.contextUsed)} / ${formatNumber(run.contextWindow)}` : '\u2014'}</td>
                 <td className="px-2.5 py-1.5 text-right tabular-nums">{formatRunCost(run.costMicros)}</td>
               </tr>
             ))}

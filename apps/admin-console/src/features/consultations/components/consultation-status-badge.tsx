@@ -32,14 +32,34 @@ export const PROCESSING_META: Record<Exclude<ConsultationProcessing, 'IDLE'>, { 
 /** STOPPED + IDLE + NOTE_READY: the note is finished and waiting to be read. */
 export const NOTE_READY_META: { label: string; role: StatusColorRole } = { label: 'Note ready', role: 'success' };
 
+const REASON_LABEL: Record<string, { label: string; role: StatusColorRole }> = {
+  GUARDRAIL_HOLD: { label: 'Guardrail hold', role: 'warning' },
+  EGRESS_REDACTION_UNAVAILABLE: { label: 'Patient-detail protection unavailable', role: 'warning' },
+  NOTE_GENERATION_FAILED: { label: 'Note generation failed', role: 'destructive' },
+  NOTE_COVERAGE_GAPS: { label: 'Note coverage gaps', role: 'warning' },
+};
+
+/**
+ * The human words for a `processingReason` (an open string column; some carry a `:n` count, e.g.
+ * `NOTE_COVERAGE_GAPS:3`). Known reasons get a role; an unknown one is humanised, never hidden.
+ * `NOTE_READY` is not a reason chip — it is the "Note ready" status chip.
+ */
+export function processingReasonMeta(reason: string | null | undefined): { label: string; role: StatusColorRole } | null {
+  if (!reason || reason === NOTE_READY_REASON) return null;
+  const [code, count] = reason.split(':', 2);
+  const known = REASON_LABEL[code ?? ''];
+  const words = known?.label ?? (code ?? reason).toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  return { label: count ? `${words} (${count})` : words, role: known?.role ?? 'neutral' };
+}
+
 export function consultationStatusMeta(status: string | undefined, processing?: string, processingReason?: string | null) {
   const explicit = (CONSULTATION_PROCESSING as readonly string[]).includes(processing ?? '') ? (processing as ConsultationProcessing) : undefined;
   const normalized = normalizeConsultationStatus(status, explicit);
-  if (!normalized) return { status: { label: status || 'Unknown', role: 'neutral' as StatusColorRole }, processing: null };
+  if (!normalized) return { status: { label: status || 'Unknown', role: 'neutral' as StatusColorRole }, processing: null, reason: processingReasonMeta(processingReason) };
   const reason = processingReason ?? normalized.processingReason;
   const noteReady = normalized.status === 'STOPPED' && normalized.processing === 'IDLE' && reason === NOTE_READY_REASON;
   const chip = noteReady ? NOTE_READY_META : normalized.processing === 'IDLE' ? null : PROCESSING_META[normalized.processing];
-  return { status: STATUS_META[normalized.status], processing: chip };
+  return { status: STATUS_META[normalized.status], processing: chip, reason: processingReasonMeta(reason) };
 }
 
 export function ConsultationStatusBadge({
@@ -56,6 +76,7 @@ export function ConsultationStatusBadge({
     <span className="inline-flex flex-wrap items-center gap-1">
       <StatusBadge label={meta.status.label} colorRole={meta.status.role} icon={<StatusDot colorRole={meta.status.role} size="sm" />} />
       {meta.processing ? <StatusBadge label={meta.processing.label} colorRole={meta.processing.role} /> : null}
+      {meta.reason ? <StatusBadge label={meta.reason.label} colorRole={meta.reason.role} /> : null}
     </span>
   );
 }

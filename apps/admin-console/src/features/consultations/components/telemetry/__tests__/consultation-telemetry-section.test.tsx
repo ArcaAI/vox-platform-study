@@ -81,7 +81,7 @@ describe('ConsultationTelemetrySection', () => {
     expect(guardrail!.textContent).not.toMatch(/\b0\b/);
   });
 
-  it('renders a null field inside an available block as an em dash, never a zero', async () => {
+  it('renders a null field inside an available block as "not recorded", never a zero or blank', async () => {
     stubFetch(
       buildTelemetry({
         finalSummary: { available: true, source: 'summary-meta', data: { inputTokens: null, outputTokens: 40, model: null, provider: null, durationMs: null } },
@@ -90,10 +90,42 @@ describe('ConsultationTelemetrySection', () => {
     renderWithProviders(<ConsultationTelemetrySection consultationId="c-1" />);
 
     const finalSummary = (await heading('Final summary')).closest('section');
-    // Every unmeasured field is an em dash — never a "0" masquerading as a real count.
-    expect(finalSummary!.textContent).toContain('—');
+    // Every unmeasured field says so — never a "0" masquerading as a real count, never a blank.
+    expect(finalSummary!.textContent).toContain('not recorded');
     expect(finalSummary!.textContent).not.toMatch(/\b0\b/);
     expect(finalSummary!.textContent).toContain('40'); // the one field that WAS measured still renders
+  });
+
+  // TASK-1059 C-04: the activity runs back the telemetry where its source is null.
+  it('fills null model / tokens / duration from the activity run, and an unavailable block too', async () => {
+    const telemetry = buildTelemetry({
+      preSummary: { available: false, source: 'summary-meta', reason: 'NOT_RECORDED' },
+      finalSummary: { available: true, source: 'summary-meta', data: { inputTokens: null, outputTokens: 40, model: null, provider: null, durationMs: null } },
+    });
+    const run = (model: string, tokensIn: number, durationMs: number) => ({
+      runId: 'r', workflowSlug: 'w', workflowVersion: 1, agentSlug: 'a', agentVersion: 1, model, provider: 'lmstudio', durationMs, tokensIn, tokensOut: 7,
+      contextUsed: 1, contextWindow: 10, costMicros: null, costBasis: null, stopReason: null, startedAt: '2026-09-22T09:00:00.000Z',
+    });
+    const item = (kind: string, r: ReturnType<typeof run>) => ({ entryType: 'item', id: kind, kind, occurredAt: '2026-09-22T09:00:00.000Z', run: r });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        if (String(input).includes('/activity')) {
+          return Response.json({ items: [item('PRE_SUMMARY', run('pre-model', 111, 2222)), item('NOTE', run('final-model', 333, 4444))], encounters: [], hasMore: false, nextCursor: null });
+        }
+        return Response.json(telemetry);
+      }),
+    );
+    renderWithProviders(<ConsultationTelemetrySection consultationId="c-1" />);
+
+    const finalSummary = (await heading('Final summary')).closest('section');
+    await waitFor(() => expect(finalSummary!.textContent).toContain('final-model'));
+    expect(finalSummary!.textContent).toContain('333');
+    expect(finalSummary!.textContent).toContain('40'); // the measured field is kept, not overwritten
+    expect(finalSummary!.textContent).not.toContain('not recorded');
+    const preSummary = (await heading('Pre-summary')).closest('section');
+    expect(preSummary!.textContent).toContain('pre-model');
+    expect(preSummary!.textContent).toContain('111');
   });
 
   it('renders PRUNED distinctly from NO_ACTIVITY', async () => {
