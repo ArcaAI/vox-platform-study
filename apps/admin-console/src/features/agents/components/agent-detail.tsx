@@ -73,6 +73,7 @@ import { AgentConfigurationSummary, AgentOverview, FindingsList } from './agent-
 import { taskSwitchFacts } from './agent-summary';
 import { FallbackModelsField } from './fallback-models-field';
 import { AgentHiddenBadge, AgentTaskBadge } from './agent-status-badge';
+import { blockingSummary } from '../lib/validation-summary';
 import { AgentPublishDialog } from './agent-publish-dialog';
 import { DraftTestPanel } from './draft-test-panel';
 import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
@@ -397,6 +398,20 @@ export function AgentLineageDrawer({
     }
   }
 
+  const publishBlockedReason = blockingSummary(draftAgent?.validationReport);
+
+  /** C-10 — a validation that came back blocking is a failure, not "complete". */
+  async function validateDraft(id: string) {
+    try {
+      const result = await validate.mutateAsync(id);
+      const blocking = blockingSummary(result.validationReport);
+      if (blocking) toast.error(`Validation found blocking problems: ${blocking}`);
+      else toast.success('Validation complete');
+    } catch (error) {
+      problemToast(error, 'Validation failed.');
+    }
+  }
+
   async function saveDraft() {
     if (!draftAgent || !draft || !draftEtag) return;
     let instruction: Record<string, unknown> | undefined;
@@ -670,14 +685,19 @@ export function AgentLineageDrawer({
                     type="button"
                     variant="outline"
                     disabled={busy || !draftAgent}
-                    onClick={() => draftAgent && void run(() => validate.mutateAsync(draftAgent.id), 'Validation complete', 'Validation failed.')}
+                    onClick={() => draftAgent && void validateDraft(draftAgent.id)}
                   >
                     {validate.isPending ? <Spinner /> : <IconShieldCheck aria-hidden className="size-4" />}
                     Validate
                   </Button>
+                  {publishBlockedReason ? (
+                    <span role="status" className="text-destructive mr-auto max-w-prose text-xs">
+                      Publish is disabled: {publishBlockedReason}
+                    </span>
+                  ) : null}
                   <Button
                     type="button"
-                    disabled={busy || !draftAgent}
+                    disabled={busy || !draftAgent || !!publishBlockedReason}
                     onClick={() => {
                       setPublished(null);
                       setPublishing(true);
