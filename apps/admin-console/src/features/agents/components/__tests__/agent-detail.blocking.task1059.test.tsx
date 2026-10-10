@@ -59,7 +59,6 @@ const CATALOGUE = {
   ],
 };
 const TEMPLATE = { id: 'tpl-1', name: 'SOAP note', status: 'APPROVED', category: 'SUMMARY', approvedVersionNumber: 2, currentVersionNumber: 2, contentPreview: 'Write a note', declaredVariables: [] };
-const TENANT_DEFAULT_ROW = { id: 'as-1', tenantId: 'tnt-1', scope: 'TENANT', scopeId: null, task: 'TEXT_GENERATION', agentSlug: 'clinic-summarizer', selectorTags: [], version: 1, createdAt: '2026-09-01T10:00:00.000Z', updatedAt: '2026-09-01T10:00:00.000Z' };
 
 /**
  * TASK-965 WS-4 — the drawer is keyed by the lineage SLUG, not by a version row id, so a test
