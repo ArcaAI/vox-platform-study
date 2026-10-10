@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress — owner go 2026-10-10 |
+| Status | Review — deployed 2026-10-10; N-1 follow-up required |
 | Type | bugfix (+ config) |
 | Branch | dev-2.2 (lanes in worktrees); ALaaS `refactor-hope-integaration`; deployment repo `main` |
 | Source | [TASK-1058 report](../TASK-1058-E2E-ALaaS-SDK5-And-Tenant-Admin-Authoring/README.md) — RC-1..RC-13, defects D/A/C |
@@ -108,3 +108,43 @@ _(pending go)_
 - 2026-10-10 — owner: OD-4 publish PG2 weights; OD-5 judge context before composition. W1-B split into B1 (gateway context judge) and B2 (text/guardrail); OD-8..OD-10 defaults added.
 - 2026-10-10 — owner **go** ("maximise parallel"); contract C-0..C-3 frozen; 12 parallel lanes.
 - 2026-10-10 — contract amendments A-1 (prompt scope also size-packed) and A-2 (build-time medical judge on authored prompts only, never platform pieces), after lane C flagged that short platform pieces judged alone would fail and leave composed prompts ungoverned.
+
+## Implementation Summary — rollout and acceptance (2026-10-10)
+
+**Deployed:** dev-2.2 `c50182c3a` (gateway `0.0.0-dev-2-2.c50182c3`); deployment `main` `7799716`; SDK family **5.0.1** published (local runbook); ALaaS `185a093` on vox-node 5.0.1. LM Studio rolled: gemma-4-e2b **65536 × 8**; granite 16384 (row now parallel 8, applies on next load; still on GPU 1). Platform `lmStudio.serving.parallel = 8`. Extra fixes found during gate/rollout: stale pins (OD-1/OD-6), null ASR fallback (TASK-1048), lint, model slug accepts a dot (seeded `granite-guardian-4.1-8b` was un-editable, 500), TASK-1060 psutil revert (uv.lock broke every Python image build).
+
+### Acceptance — clinical (AC1, broker :4001, 5 consultations, 15:45–15:55Z)
+
+| Metric | TASK-1058 | TASK-1059 |
+|---|---|---|
+| NER entities | never | 7–13 per consultation |
+| Pre-summary with content | never | 12–13 s after open (penicillin, father MI) |
+| First live snapshot | 58–108 s, after stop, empty | 30–44 s during recording (alone); 54–59 s after stop at ×3 |
+| stop → note.final | 173–215 s, 3/7 stranded | 68–78 s alone, 138–148 s at ×3, 0 stranded |
+| Unverified screening | 94 % | 0 |
+| Medical judge calls / generation | 8.6–12 | ~0.5 |
+| Text latency p50 / p95 | 20 / 54.5 s | 12.3 / 28.2 s |
+| CONCURRENCY_LIMIT / CONTENT_BLOCKED_NOT_MEDICAL | 99 / many | 0 / 0 |
+| Case-note upload mid-recording | failed | works |
+| Encounter 2 processing | inherited | IDLE |
+
+### Acceptance — authoring (AC2)
+Approve/publish unblocked; non-medical template refused 409 with `findings[].check = "medical_scope"`; C-09, C-10, C-11, C-12 (reason), C-17, C-01/02/05 pass. Socket and SSE transports pass.
+
+### Open after acceptance
+| Id | Sev | Defect |
+|---|---|---|
+| N-1 | **blocker (clinical safety)** | Style-reference few-shot exemplars ("APPROVED NOTES FROM DIFFERENT PATIENTS") are attached to pre-summary and live prompts; the 2B model copied another patient's facts (metformin 1000, amlodipine, review in 4 weeks) into a new patient's pre-summary and live note. `prompt-assembly.service.ts:637-650`, `style-reference.ts:33`; exemplar redaction partial |
+| N-2 | major | KV exhaustion at ×3 persists at 65536 × 8 (8 generations failed together); live notes appear only after stop at ×3 |
+| N-3 | major | Prompt Guard 2 false positives: inbound record-only jailbreak flags on live prompts; outbound `jailbreak_detection` BLOCKED benign clinical workflow output in 2/3 runs; `response_safety` warning on every final note |
+| N-4 | major | Agent Integration snippets put context variables under `variables` (gateway wants `context`) → 400 / INPUT_INVALID verbatim; documented scopes omit `agent:definition:read` |
+| N-5 | major | Published agent Test run has no context input → cannot test a context-bound agent |
+| N-6 | minor | `text_generation_total` does not count failed generations |
+| N-7 | minor | Refusal `check`/`regions` not shown in the console toast; approver shown as UUID; drawer guardrail/telemetry residue (C-04) |
+| N-8 | minor | Sandbox run rows stay RUNNING (C-12 backend); empty agent output (256 tokens) unflagged; input schema error coded OUTPUT_INVALID; wizard prompt pin not persisted; C-18 doc leak |
+| carried | minor | D-18 "Unknown" speaker; region labels survive EMR copy; `&amp;`; NEUR note omits HbA1c/LDL; "Patient Demographics: Not discussed" |
+| not re-tested | — | hold persistence / resume → note.final (no hold occurred) |
+
+Artifacts: `.e2e-tools/t1059/acc/` (AC1 runs/api, AC2 `ac2/`).
+
+- 2026-10-10 — rolled out to dev; acceptance AC1/AC2 run; status **Review** (N-1 needs a follow-up ticket).
