@@ -21,7 +21,9 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { capabilitiesOf, hasEditablePath, type WithCapabilities } from '@/shared/agent-wizard/capabilities';
-import { useDocumentTemplateCatalog, useContextSchemaCatalog } from '@/shared/catalog';
+import { useDocumentTemplateCatalog, useContextSchemaCatalog, useContextSchemaDefinition } from '@/shared/catalog';
+import { contextCompletionPaths } from '@/shared/template-editor';
+import { withPathSuggestions } from '../lib/path-suggestion';
 import { formatDateTime } from '@/shared/format';
 import { usePromptTemplateQuickView } from '@/shared/prompt-picker';
 import { AGENT_TASK_LABEL, instructionForm, readFragments, type Agent, type AgentLineage, type PromptFragment } from '../api';
@@ -129,19 +131,27 @@ function EffectiveContextSchemaValue({ agent }: { agent: Agent }) {
 
 /** A version's publish check, in words. The machine code stays on hover for whoever has to report it. */
 export function FindingsList({ agent }: { agent: Agent }) {
+  const effective =
+    agent.effectiveContextSchema !== undefined
+      ? agent.effectiveContextSchema
+      : agent.contextSchemaId
+        ? { id: agent.contextSchemaId, versionNumber: agent.contextSchemaVersionNumber }
+        : null;
+  const { definition } = useContextSchemaDefinition(effective?.id ?? null, effective?.versionNumber ?? null);
   const report = agent.validationReport;
   if (!report) return null;
+  const findings = withPathSuggestions(report.findings, contextCompletionPaths(definition));
   return (
     <section className="flex flex-col gap-2" aria-label="Validation findings">
       <h3 className="flex items-center gap-2 text-sm font-medium">
         {report.blocking ? <IconAlertTriangle aria-hidden className="text-destructive size-4" /> : <IconShieldCheck aria-hidden className="text-success size-4" />}
         {report.blocking ? 'Needs fixing before it can be published' : 'Checked'} · {formatDateTime(report.checkedAt)}
       </h3>
-      {report.findings.length === 0 ? (
+      {findings.length === 0 ? (
         <p className="text-muted-foreground text-sm">No problems found.</p>
       ) : (
         <ul className="flex flex-col gap-1">
-          {report.findings.map((finding, index) => (
+          {findings.map((finding, index) => (
             <li key={`${finding.path}-${index}`} className="flex items-start gap-2 text-sm">
               <Badge variant={finding.severity === 'ERROR' ? 'destructive' : 'secondary'} title={finding.code}>
                 {finding.severity === 'ERROR' ? 'Must fix' : 'Warning'}

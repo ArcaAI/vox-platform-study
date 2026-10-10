@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@arcaai/ui';
+import { withPathSuggestions } from '../lib/path-suggestion';
 import { useContextSchemaDefinition, useContextSchemaOptions } from '@/shared/catalog';
 import {
   TemplateField,
@@ -123,7 +124,7 @@ function useSchemaAssist(
       openRoots: pending ? ['input', 'context', 'trigger'] : ['input'],
       platform: true,
     });
-    return { paths, lint: templateLint(declared), findings };
+    return { paths, lint: templateLint(declared), findings: withPathSuggestions(findings, paths) };
   }, [definition, names, schemaId, findings]);
 }
 
