@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — merged locally on `dev-2.2`, gates green; cluster proof done (pipeline #1437); two display follow-ups open |
+| **Status** | Review — deployed to dev (pipeline #1437, `c50182c3a`); cluster proof done; two display follow-ups open |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
