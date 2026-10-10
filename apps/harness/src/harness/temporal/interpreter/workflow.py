@@ -1535,6 +1535,14 @@ class WorkflowInterpreter:
         )
         if offload_min is not None:
             v2_fields["output_offload_min_bytes"] = offload_min
+        # TASK-1059 (TASK-1058 RC-8) — a run that SUPERSEDED a hold resumed `acknowledged` sends
+        # that notice's override on its node calls. No `workflow.patched`: it adds no command, it
+        # only fills an activity-input field from the run's own recorded input, and every input
+        # recorded before this field existed carries `None` (so the field stays unset, and
+        # excluded from the size measure, exactly as before).
+        supersede_override = guardrail_hold.supersede_override(inp.guardrail_override_notice_ids)
+        if supersede_override is not None:
+            v2_fields["guardrail_override"] = supersede_override
         activity_input = NodeActivityInput(
             node_id=node.node_id,
             node_type=node.type,
@@ -1684,9 +1692,13 @@ class WorkflowInterpreter:
             scope = f"hold:{rounds}"
             activity_input = activity_input.model_copy(
                 update={
+                    # TASK-1059 — a resolution that sends no override of its own keeps a
+                    # superseding run's acknowledged notice (else that finding blocks again).
+                    # The run input carries none before TASK-1059, so `or` changes nothing there.
                     "guardrail_override": guardrail_hold.hold_override(
                         hold.kind, resolution.resolution, notice_id
-                    ),
+                    )
+                    or guardrail_hold.supersede_override(inp.guardrail_override_notice_ids),
                     # The re-run's steps take their own seq base, and its events their own dedupe
                     # scope: the refused attempt's must not swallow them.
                     "trajectory": (

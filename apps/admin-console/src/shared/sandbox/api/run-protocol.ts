@@ -170,7 +170,15 @@ export interface RunEventDataMap {
   /** TASK-1050: the standard client message. Envelope `nodeId` is optional (a consultation-level notice has none). */
   'guardrail.notice': RunGuardrailNotice;
   'node.started': { kind: string; label?: string; attempt?: number };
-  'node.completed': { status: 'COMPLETED' | 'DEGRADED' | 'SKIPPED'; durationMs: number; tokens?: RunTokens; warnings?: number };
+  /** TASK-1059: a `DEGRADED` node names why — the fixed run-error code and its fixed label (never free text). */
+  'node.completed': {
+    status: 'COMPLETED' | 'DEGRADED' | 'SKIPPED';
+    durationMs: number;
+    tokens?: RunTokens;
+    warnings?: number;
+    errorCode?: string;
+    errorMessage?: string;
+  };
   'node.failed': { durationMs: number; error: RunError; attempt?: number; willRetry?: boolean };
   'output.text.delta': { field: string; text: string };
   'output.audio.delta': { field: string; chunk: string; format: string; sampleRate?: number };

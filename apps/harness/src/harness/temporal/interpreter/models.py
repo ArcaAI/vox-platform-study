@@ -391,6 +391,13 @@ class InterpreterInput(BaseModel):
     # keeps those histories deserialising and replaying unchanged: the walk's live-audio wait is
     # guarded on this field FIRST, so `workflow.patched` is never consulted for them.
     live_audio: LiveAudioBinding | None = None
+    # TASK-1059 (TASK-1058 RC-8), additive-optional. The guardrail notices a clinician resumed
+    # `acknowledged` after the run they held was no longer paused, so the gateway SUPERSEDED the
+    # governing run instead of signalling it. This run's node calls send the notice as
+    # `X-Hope-Guardrail-Override` (`guardrail_hold.supersede_override`), exactly as the paused
+    # node's re-run would have; guardrail verifies it and downgrades only that notice's finding.
+    # `None` on every run started before TASK-1059 and on every other run.
+    guardrail_override_notice_ids: list[str] | None = None
 
 
 class InterpreterResult(BaseModel):

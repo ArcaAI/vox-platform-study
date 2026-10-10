@@ -222,9 +222,10 @@ def _enum(*values: str) -> dict[str, Any]:
 
 
 _TOKENS = _closed({"in": _INT0, "out": _INT0}, ["in", "out"])
+_ERROR_CODE = {"type": "string", "pattern": r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$", "maxLength": 64}
 _ERROR = _closed(
     {
-        "code": {"type": "string", "pattern": r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$", "maxLength": 64},
+        "code": _ERROR_CODE,
         "message": _STR,
         "nodeId": _STR1,
         "detail": {"type": "string", "maxLength": 4000},
@@ -410,6 +411,10 @@ RUN_EVENT_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
             "durationMs": _INT0,
             "tokens": _TOKENS,
             "warnings": _INT0,
+            # TASK-1059 — a DEGRADED node names why: the fixed run-error code and its fixed label
+            # (`RUN_ERROR_MESSAGES`), never the free-text reason. Absent on a healthy completion.
+            "errorCode": _ERROR_CODE,
+            "errorMessage": _STR,
         },
         ["status", "durationMs"],
     ),
