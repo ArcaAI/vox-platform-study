@@ -347,10 +347,14 @@ export class ConsultationHandle {
         query: this.#eventsSince > 0 ? { since: this.#eventsSince } : undefined,
         dispatch: (payload) => {
           const event = payload as LifecycleEvent;
-          if (typeof event.seq === 'number') {
-            if (event.seq <= this.#eventsSince) return;
-            this.#eventsSince = event.seq;
+          // Heartbeats (`{"type":"heartbeat"}`) and any frame without a `seq` are keep-alive only: they prove the
+          // connection is live but carry no status, so they must never reach state or `status` listeners.
+          if (typeof event?.seq !== 'number') {
+            this.#eventsIdle = 0;
+            return;
           }
+          if (event.seq <= this.#eventsSince) return;
+          this.#eventsSince = event.seq;
           this.#eventsIdle = 0;
           this.#apply({ status: event.status, processing: event.processing, processingReason: event.processingReason, version: event.version });
           this.#emit('status', event);
@@ -792,6 +796,18 @@ export class ConsultationHandle {
     throw lastError;
   }
 
+  async #uploadViaGateway(attachmentId: string, bytes: Uint8Array, input: AttachmentInput, signal?: AbortSignal): Promise<AttachmentCompleteResponse> {
+    const form = new FormData();
+    form.append('file', new Blob([bytes as unknown as ArrayBuffer], { type: input.mime }), input.name ?? 'upload');
+    return this.#transport.request<AttachmentCompleteResponse>({
+      method: 'POST',
+      path: this.#path(`/attachments/${encodePathSegment(attachmentId)}/content`),
+      body: form,
+      hasIdempotencyKey: true,
+      signal,
+    });
+  }
+
   async #complete(attachmentId: string, signal?: AbortSignal): Promise<AttachmentCompleteResponse> {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -868,20 +884,23 @@ export class ConsultationHandle {
     let done: AttachmentCompleteResponse;
     if (intent.uploadUrl) {
       onProgress?.('uploading', intent.attachmentId);
-      await this.#putObject(intent, bytes, signal);
-      onProgress?.('completing', intent.attachmentId);
-      done = await this.#complete(intent.attachmentId, signal);
+      let viaGateway = false;
+      try {
+        await this.#putObject(intent, bytes, signal);
+      } catch (error) {
+        // Only a NETWORK failure (storage unreachable from here) falls back to the gateway; an HTTP refusal does not.
+        if (!(error instanceof AttachmentUploadError) || error.status !== undefined || signal?.aborted) throw error;
+        viaGateway = true;
+      }
+      if (viaGateway) {
+        done = await this.#uploadViaGateway(intent.attachmentId, bytes, input, signal);
+      } else {
+        onProgress?.('completing', intent.attachmentId);
+        done = await this.#complete(intent.attachmentId, signal);
+      }
     } else {
       onProgress?.('uploading', intent.attachmentId);
-      const form = new FormData();
-      form.append('file', new Blob([bytes as unknown as ArrayBuffer], { type: input.mime }), input.name ?? 'upload');
-      done = await this.#transport.request<AttachmentCompleteResponse>({
-        method: 'POST',
-        path: this.#path(`/attachments/${encodePathSegment(intent.attachmentId)}/content`),
-        body: form,
-        hasIdempotencyKey: true,
-        signal,
-      });
+      done = await this.#uploadViaGateway(intent.attachmentId, bytes, input, signal);
     }
     const ready = await this.#awaitReady(done, options);
     onProgress?.('ready', intent.attachmentId);
