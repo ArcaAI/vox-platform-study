@@ -44,7 +44,22 @@ Live verification 2026-10-10 (ALaaS web_ui + audio-stream-svc at `185a093` → l
 - Verification comment posted: https://github.com/ArcaAI/project-hope/issues/17#issuecomment-6099037507
 - Seen in passing, out of scope: `closeStreamSession` 404 after stop (BUG-036), and the note run failed `NOTE_GENERATION_FAILED` (`execute_note_plan`) while the consultation continued (BUG-041 pattern).
 
+Cluster verification 2026-10-11 (local ALaaS web_ui + broker worktree `ALaaSv3.0-e2e-1053` @ `66e89f8` — contains `f5f9ee6`, which is also in the `refactor-hope-integaration` tip `6605485` — → deployed HOPE `https://api.taphuynh.dev`, ArcaAI working tenant, stand-in `mmr_agent` playing `.e2e-tools/audio/e1.wav`, mock patient 777888 / consultant 234, Chrome-pane at 1280x900):
+
+| Step | Observed on the cluster | Result |
+|---|---|---|
+| Start #1 | Consultation `01a12a17-ae40-7434-a0de-916503d7d12c` created (`externalRef` `1745575862`, encounter seq 1 `new-visit`), clinician auto-provisioned (`doctorId` `01a12a17-addd-79d2-a028-a4acbd1b1715`); live transcript + live summary streamed (WHISPER_CPP, English) | No identity banner; DOM text has neither "attached to an existing consultation" nor "clinician account was provisioned" |
+| Stop #1 | Final transcript, "Writing the case note", `STOPPED`/`SUMMARIZING` | no banner |
+| Start #2 (no reload) | UI reused the open consultation: new STT session only, no `consultations/open`, no marker | no notice — expected UI behaviour |
+| Reload + Start #3 | Open re-joined the same consultation → `identity.reattached` | "This recording was attached to an existing consultation from earlier today." shown, **no provisioning banner** |
+| Click × (`Dismiss notice`) | notice removed immediately; still absent 10 s later while transcripts kept arriving | dismissible and sticky |
+
+Side observations, out of scope: the reattached consultation then hit a guardrail hold (`PAUSED`/`AWAITING_REVIEW`, "Safety check paused the note") and still shows a single encounter on the cluster, unlike the 2026-10-10 local run (encounter 2) — noted, not investigated; another session's consultation (`externalRef` `bug009-ev1`) was live on the same cluster. Pane trap re-hit: coordinate clicks miss the × (screenshot vs CSS-viewport scale) — click by element ref.
+
+Landing: no code changed in any repo for this verification — `hope-v2` carries only this README (`dev-2.2`), `hope-v2-deployment` (`main`) and `ALaaSv3.0` (`refactor-hope-integaration`, fix already at `f5f9ee6`) are untouched; no worktree or branch was created by this work.
+
 ## Change History
 
 - 2026-10-06 — Ticket created from GitHub issue #17 (read-only investigation).
 - 2026-10-10 — Verified live end to end and comment posted on the GitHub issue; status Completed.
+- 2026-10-11 — Re-verified against the DEPLOYED cluster (local ALaaS web_ui + broker `ALaaSv3.0-e2e-1053` @ `66e89f8`, contains `f5f9ee6`, → `api.taphuynh.dev`, stand-in mmr_agent). First Start: new clinician auto-provisioned (`doctorId` `01a12a17-addd-…`), no provisioning banner. After a page reload, Start on the same patient/day → "attached to an existing consultation" notice shown, × dismissed it and it stayed dismissed while transcripts streamed. Note: a second Start WITHOUT reloading reuses the open consultation in the UI (no `open` call, no marker, no notice) — expected, not a regression. The reattached consultation then hit a guardrail hold (`PAUSED`/`AWAITING_REVIEW`), unrelated to BUG-017.
