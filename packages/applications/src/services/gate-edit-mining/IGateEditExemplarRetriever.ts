@@ -10,7 +10,8 @@
 export interface GateEditExemplarForPrompt {
   /**
    * The signed note's STRUCTURE only (TASK-1061 OD-2): headings, order and line shape, every value a
-   * typed placeholder. The only field a prompt may ever show.
+   * typed placeholder. The only field a prompt may ever show. Since TASK-1062 D-3 its value is the
+   * stored `GateEditExemplar.structureAfter` column — never derived from `redactedAfter` at read.
    */
   redactedAfter?: string | null;
   qualitySignal?: string | null;

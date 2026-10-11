@@ -71,6 +71,10 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
     const filters: Record<string, unknown> = {
       tenantId: params.tenantId,
       qualitySignal: params.qualitySignal,
+      // TASK-1062 D-3: a prompt reads ONLY the structure-only column, so a row without one (mined
+      // before the column existed and not yet backfilled) is never a candidate — and never takes
+      // a top-K slot from a row that has one.
+      structureAfter: { not: null },
     };
 
     if (params.departmentId) {

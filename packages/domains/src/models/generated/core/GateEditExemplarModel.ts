@@ -18,6 +18,7 @@ export class GateEditExemplar extends BaseTenantDataModel {
   public timeToSignSeconds: number | null;
   public redactedBefore: string | null;
   public redactedAfter: string | null;
+  public structureAfter: string | null;
   public contextItemId: string | null;
   public modelName: string | null;
   public promptTemplateId: string | null;
@@ -39,6 +40,7 @@ export class GateEditExemplar extends BaseTenantDataModel {
     this.timeToSignSeconds = data.timeToSignSeconds;
     this.redactedBefore = data.redactedBefore;
     this.redactedAfter = data.redactedAfter;
+    this.structureAfter = data.structureAfter;
     this.contextItemId = data.contextItemId;
     this.modelName = data.modelName;
     this.promptTemplateId = data.promptTemplateId;

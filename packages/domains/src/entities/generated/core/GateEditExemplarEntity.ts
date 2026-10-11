@@ -25,6 +25,12 @@ export interface IGateEditExemplarEntity extends IBaseTenantEntity {
   timeToSignSeconds?: number | null;
   redactedBefore?: string | null;
   redactedAfter?: string | null;
+  /**
+   * TASK-1062 D-3 — `redactedAfter` as a structure-only skeleton (headings, order, line shape; every
+   * value a typed placeholder), written at save time. The ONLY column the few-shot retriever reads;
+   * `redactedAfter` stays for the SME corpus, fine-tune and golden-case exports.
+   */
+  structureAfter?: string | null;
   contextItemId?: string | null;
   modelName?: string | null;
   promptTemplateId?: string | null;
@@ -53,6 +59,7 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
   private _timeToSignSeconds?: IGateEditExemplarEntity['timeToSignSeconds'];
   private _redactedBefore?: IGateEditExemplarEntity['redactedBefore'];
   private _redactedAfter?: IGateEditExemplarEntity['redactedAfter'];
+  private _structureAfter?: IGateEditExemplarEntity['structureAfter'];
   private _contextItemId?: IGateEditExemplarEntity['contextItemId'];
   private _modelName?: IGateEditExemplarEntity['modelName'];
   private _promptTemplateId?: IGateEditExemplarEntity['promptTemplateId'];
@@ -74,6 +81,7 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
     this._timeToSignSeconds = init.timeToSignSeconds;
     this._redactedBefore = init.redactedBefore;
     this._redactedAfter = init.redactedAfter;
+    this._structureAfter = init.structureAfter;
     this._contextItemId = init.contextItemId;
     this._modelName = init.modelName;
     this._promptTemplateId = init.promptTemplateId;
@@ -164,6 +172,14 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
 
   public set redactedAfter(value: IGateEditExemplarEntity['redactedAfter']) {
     this.setProperty('redactedAfter', value);
+  }
+
+  public get structureAfter(): IGateEditExemplarEntity['structureAfter'] {
+    return this._structureAfter;
+  }
+
+  public set structureAfter(value: IGateEditExemplarEntity['structureAfter']) {
+    this.setProperty('structureAfter', value);
   }
 
   public get contextItemId(): IGateEditExemplarEntity['contextItemId'] {
