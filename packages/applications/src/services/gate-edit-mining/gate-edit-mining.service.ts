@@ -318,6 +318,7 @@ export class GateEditMiningService extends BaseService {
         timeToSignSeconds: burden.timeToSignSeconds,
         redactedBefore,
         redactedAfter,
+        structureAfter: structureOf(redactedAfter),
         contextItemId: candidate.contextItemId ?? null,
         modelName: candidate.modelName ?? null,
         promptTemplateId: candidate.promptTemplateId ?? null,
@@ -399,6 +400,7 @@ export class GateEditMiningService extends BaseService {
         existing.editDistanceRatio = burden?.editDistanceRatio ?? null;
         existing.redactedBefore = redactedBefore;
         existing.redactedAfter = redactedAfter;
+        existing.structureAfter = structureOf(redactedAfter);
         existing.reasonCodes = reasonCodes;
         await this.exemplarRepository.update(existing.id, existing);
         return;
@@ -415,6 +417,7 @@ export class GateEditMiningService extends BaseService {
         editDistanceRatio: burden?.editDistanceRatio ?? null,
         redactedBefore,
         redactedAfter,
+        structureAfter: structureOf(redactedAfter),
         contextItemId: candidate.contextItemId ?? null,
         modelName: candidate.modelName ?? null,
         source: FEEDBACK_EXEMPLAR_SOURCE,
@@ -467,10 +470,12 @@ export class GateEditMiningService extends BaseService {
    * Returns `[]` on any failure: a retrieval outage must degrade the prompt to
    * its zero-shot form, never fail the generation.
    *
-   * TASK-1061 OD-2 — this is the ONE read that hands a stored note to a prompt, so it hands over
-   * the note's STRUCTURE only ({@link toStructureOnlyExemplar}): headings, order and line shape with
-   * every value a typed placeholder. The stored `redactedAfter` keeps its content (the SME corpus,
-   * the fine-tuning set and golden cases are built from it); a prompt never sees it.
+   * TASK-1061 OD-2 / TASK-1062 D-3 — this is the ONE read that hands a stored exemplar to a prompt,
+   * and it reads ONLY the `structureAfter` column: the note's STRUCTURE, written at save time
+   * ({@link toStructureOnlyExemplar}) — headings, order and line shape with every value a typed
+   * placeholder. `redactedAfter` is never read here (the SME corpus, the fine-tuning set and golden
+   * cases are built from it); a row without `structureAfter` — mined before the column, not yet
+   * backfilled — is skipped.
    */
   async retrieveExemplars(params: { tenantId: string; departmentId?: string | null; limit: number }): Promise<GateEditExemplarForPrompt[]> {
     try {
@@ -498,14 +503,15 @@ export class GateEditMiningService extends BaseService {
             // Belt-and-braces on the tenant boundary: the repository and the
             // tenant-scope extension both enforce it, but an exemplar crossing
             // tenants would be a PHI leak laundered through a model, so re-check
-            // rather than trust. Rows with no usable snippet are dropped too.
-            (row) => row.tenantId === params.tenantId && !!row.redactedAfter,
+            // rather than trust. Rows with no structure-only exemplar are dropped too.
+            (row) => row.tenantId === params.tenantId && !!row.structureAfter,
           )
-          // Project explicitly — never the entity, whose `redactedAfter` is the full note.
+          // Project explicitly — never the entity, whose `redactedAfter` is the full note. The
+          // port's field keeps its name; its value is the stored skeleton.
           .map((row) => ({
             tenantId: row.tenantId,
             qualitySignal: row.qualitySignal,
-            redactedAfter: toStructureOnlyExemplar(row.redactedAfter as string),
+            redactedAfter: row.structureAfter as string,
           }))
       );
     } catch (error) {
@@ -841,7 +847,17 @@ export class GateEditMiningService extends BaseService {
     entity.timeToSignSeconds = next.burden.timeToSignSeconds;
     entity.redactedBefore = next.redactedBefore;
     entity.redactedAfter = next.redactedAfter;
+    entity.structureAfter = structureOf(next.redactedAfter);
   }
+}
+
+/**
+ * TASK-1062 D-3 — the structure-only skeleton stored beside `redactedAfter` at save time. It is the
+ * ONLY text {@link GateEditMiningService.retrieveExemplars} hands a prompt; `null` when there is no
+ * after-text (a thumbs-down feedback row).
+ */
+function structureOf(redactedAfter: string | null): string | null {
+  return redactedAfter ? toStructureOnlyExemplar(redactedAfter) : null;
 }
 
 /**

@@ -26,6 +26,7 @@ const row = (overrides: Record<string, unknown> = {}) => ({
   id: 'ex-1',
   tenantId: TENANT,
   redactedAfter: 'REDACTED-NOTE',
+  structureAfter: 'STRUCTURE-ONLY',
   qualitySignal: 'APPROVED_CLEAN',
   curationStatus: ExemplarCurationStatus.PENDING,
   version: 4,

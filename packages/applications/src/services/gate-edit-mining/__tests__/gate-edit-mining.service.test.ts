@@ -174,8 +174,8 @@ describe('GateEditMiningService — retrieval', () => {
     // The repository + tenant-scope extension enforce this; the service must not
     // undo it by passing a caller-supplied tenant through unchecked.
     repository.findTopForRetrieval.mockResolvedValue([
-      { tenantId: OTHER_TENANT, redactedAfter: 'leaked', qualitySignal: 'APPROVED_CLEAN' },
-      { tenantId: TENANT, redactedAfter: 'ok', qualitySignal: 'APPROVED_CLEAN' },
+      { tenantId: OTHER_TENANT, structureAfter: 'leaked', qualitySignal: 'APPROVED_CLEAN' },
+      { tenantId: TENANT, structureAfter: 'ok', qualitySignal: 'APPROVED_CLEAN' },
     ]);
 
     const result = await buildService().retrieveExemplars({ tenantId: TENANT, departmentId: 'dept-1', limit: 3 });
@@ -190,10 +190,10 @@ describe('GateEditMiningService — retrieval', () => {
     await expect(buildService().retrieveExemplars({ tenantId: TENANT, departmentId: 'dept-1', limit: 3 })).resolves.toEqual([]);
   });
 
-  it('omits exemplars with no redacted content — nothing to show the model', async () => {
+  it('omits exemplars with no structure-only content — nothing to show the model (TASK-1062 D-3)', async () => {
     repository.findTopForRetrieval.mockResolvedValue([
-      { tenantId: TENANT, redactedAfter: null, qualitySignal: 'APPROVED_CLEAN' },
-      { tenantId: TENANT, redactedAfter: 'usable', qualitySignal: 'APPROVED_CLEAN' },
+      { tenantId: TENANT, redactedAfter: 'full note', structureAfter: null, qualitySignal: 'APPROVED_CLEAN' },
+      { tenantId: TENANT, structureAfter: 'usable', qualitySignal: 'APPROVED_CLEAN' },
     ]);
 
     const result = await buildService().retrieveExemplars({ tenantId: TENANT, departmentId: 'dept-1', limit: 3 });

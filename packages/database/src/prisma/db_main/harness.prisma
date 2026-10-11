@@ -496,6 +496,11 @@ model GateEditExemplar {
   // PHI-redacted before/after snippets. Redaction happens BEFORE persistence.
   redactedBefore String? @db.Text
   redactedAfter  String? @db.Text
+  // TASK-1062 D-3: the signed note's STRUCTURE only (toStructureOnlyExemplar of
+  // `redactedAfter`) — headings, order and line shape, every value a typed
+  // placeholder. Written at save time; the ONLY column a prompt may read.
+  // `redactedAfter` stays for the SME corpus, fine-tune and golden-case exports.
+  structureAfter String? @db.Text
 
   // Provenance for corpus export + regression attribution.
   contextItemId    String?

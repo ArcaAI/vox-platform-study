@@ -122,8 +122,11 @@ describe('toStructureOnlyExemplar — (b) patient A`s note keeps its layout and 
 });
 
 describe('the retriever hands a prompt STRUCTURE only, even for an exemplar stored in full', () => {
-  it('strips every fact from a stored redactedAfter', async () => {
-    const findTopForRetrieval = vi.fn(async () => [{ tenantId: TENANT, qualitySignal: 'APPROVED_CLEAN', redactedAfter: PATIENT_A_NOTE }]);
+  // TASK-1062 D-3: the skeleton is stored at save time (`structureAfter`) and is the only column read.
+  it('returns the stored structure and none of the stored redactedAfter facts', async () => {
+    const findTopForRetrieval = vi.fn(async () => [
+      { tenantId: TENANT, qualitySignal: 'APPROVED_CLEAN', redactedAfter: PATIENT_A_NOTE, structureAfter: toStructureOnlyExemplar(PATIENT_A_NOTE) },
+    ]);
     const service = new GateEditMiningService({ findTopForRetrieval } as never, { emit: vi.fn() } as never, { get: vi.fn() } as never);
 
     const rows = await service.retrieveExemplars({ tenantId: TENANT, limit: 3 });
@@ -132,6 +135,13 @@ describe('the retriever hands a prompt STRUCTURE only, even for an exemplar stor
     expect(rows[0]!.tenantId).toBe(TENANT);
     expect(rows[0]!.redactedAfter).toBe(toStructureOnlyExemplar(PATIENT_A_NOTE));
     expectNoFacts(rows[0]!.redactedAfter as string);
+  });
+
+  it('skips a row stored before structureAfter existed rather than reading its redactedAfter', async () => {
+    const findTopForRetrieval = vi.fn(async () => [{ tenantId: TENANT, qualitySignal: 'APPROVED_CLEAN', redactedAfter: PATIENT_A_NOTE, structureAfter: null }]);
+    const service = new GateEditMiningService({ findTopForRetrieval } as never, { emit: vi.fn() } as never, { get: vi.fn() } as never);
+
+    await expect(service.retrieveExemplars({ tenantId: TENANT, limit: 3 })).resolves.toEqual([]);
   });
 });
 

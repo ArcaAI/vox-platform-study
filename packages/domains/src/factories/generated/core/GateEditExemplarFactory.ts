@@ -14,6 +14,8 @@ export interface CreateGateEditExemplarProps extends BaseEntityFactoryCreateProp
   timeToSignSeconds?: IGateEditExemplarEntity['timeToSignSeconds'];
   redactedBefore?: IGateEditExemplarEntity['redactedBefore'];
   redactedAfter?: IGateEditExemplarEntity['redactedAfter'];
+  /** TASK-1062 D-3 — the structure-only skeleton of `redactedAfter`; the only text a prompt may read. */
+  structureAfter?: IGateEditExemplarEntity['structureAfter'];
   contextItemId?: IGateEditExemplarEntity['contextItemId'];
   modelName?: IGateEditExemplarEntity['modelName'];
   promptTemplateId?: IGateEditExemplarEntity['promptTemplateId'];
@@ -56,6 +58,7 @@ export class GateEditExemplarFactory {
       timeToSignSeconds: props.timeToSignSeconds ?? null,
       redactedBefore: props.redactedBefore ?? null,
       redactedAfter: props.redactedAfter ?? null,
+      structureAfter: props.structureAfter ?? null,
       contextItemId: props.contextItemId ?? null,
       modelName: props.modelName ?? null,
       promptTemplateId: props.promptTemplateId ?? null,
