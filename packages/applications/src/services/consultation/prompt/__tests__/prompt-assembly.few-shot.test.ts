@@ -1,6 +1,13 @@
 /**
  * PromptAssemblyService — per-department few-shot exemplars.
  *
+ * TASK-1061 OD-1 SUPERSEDES the injection below: a model copied another patient's facts from these
+ * exemplars into a new patient's note, so NO prompt this assembly builds carries them any more (the
+ * finalizer never did). What stays true: the prompt is byte-identical with or without a wired,
+ * populated or broken retriever. Regression suite: `prompt-assembly.exemplar-leak.task1061.test.ts`.
+ *
+ * Original intent, for the record:
+ *
  * The clinician approve-vs-edit signal now reaches the prompt: `APPROVED_CLEAN`
  * exemplars for the caller's department are injected as few-shot examples of the
  * house note style. Explicitly NOT fine-tuning.
@@ -70,29 +77,28 @@ describe('PromptAssemblyService — few-shot exemplars', () => {
     mockDnaWritingStyleRepository.findById.mockResolvedValue(null);
   });
 
-  it('injects retrieved exemplars into the prompt', async () => {
+  it('TASK-1061 OD-1: never injects retrieved exemplars into the prompt', async () => {
     const { service } = await buildService({ exemplars: [exemplar('EXEMPLAR-ONE'), exemplar('EXEMPLAR-TWO')] });
 
     const { userPrompt } = await assemble(service as never);
 
-    expect(userPrompt).toContain('EXEMPLAR-ONE');
-    expect(userPrompt).toContain('EXEMPLAR-TWO');
+    expect(userPrompt).not.toContain('EXEMPLAR-ONE');
+    expect(userPrompt).not.toContain('EXEMPLAR-TWO');
   });
 
-  it('retrieves for the caller tenant + department', async () => {
+  it('TASK-1061 OD-1: never even reads the exemplar store', async () => {
     const { service, retrieveExemplars } = await buildService({ exemplars: [exemplar('E')] });
 
     await assemble(service as never);
 
-    expect(retrieveExemplars).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, departmentId: DEPARTMENT }));
+    expect(retrieveExemplars).not.toHaveBeenCalled();
   });
 
-  it('places the exemplar block BEFORE the transcript (prefix-cache stability)', async () => {
-    const { service } = await buildService({ exemplars: [exemplar('EXEMPLAR-ONE')] });
+  it('a populated store and an unwired one produce the same prompt', async () => {
+    const populated = await buildService({ exemplars: [exemplar('EXEMPLAR-ONE')] });
+    const unwired = await buildService({ wired: false });
 
-    const { userPrompt } = await assemble(service as never);
-
-    expect(userPrompt.indexOf('EXEMPLAR-ONE')).toBeLessThan(userPrompt.indexOf('TRANSCRIPT-MARKER'));
+    expect((await assemble(populated.service as never)).userPrompt).toBe((await assemble(unwired.service as never)).userPrompt);
   });
 
   it('adds NOTHING when there are no exemplars (byte-identical zero-shot prompt)', async () => {
@@ -116,14 +122,12 @@ describe('PromptAssemblyService — few-shot exemplars', () => {
     expect(a.userPrompt).toBe(b.userPrompt);
   });
 
-  it('labels the block as style reference, not clinical content', async () => {
-    // The model must not mistake another encounter's note for THIS patient's
-    // history — that would be a fabrication vector.
+  it('carries no exemplar section label at all', async () => {
+    // The old label ("APPROVED NOTES FROM DIFFERENT PATIENTS") did not stop a model copying them.
     const { service } = await buildService({ exemplars: [exemplar('EXEMPLAR-ONE')] });
 
-    const { userPrompt } = await assemble(service as never);
-    const block = userPrompt.slice(0, userPrompt.indexOf('EXEMPLAR-ONE'));
+    const { userPrompt, systemPrompt } = await assemble(service as never);
 
-    expect(block).toMatch(/different patient|not.*this patient|style/i);
+    expect(`${systemPrompt}\n${userPrompt}`).not.toMatch(/approved notes|different patients|note structure examples/i);
   });
 });

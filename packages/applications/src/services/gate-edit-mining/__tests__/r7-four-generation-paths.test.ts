@@ -66,7 +66,7 @@ function realPromptAssembly(retriever: unknown) {
   );
 }
 
-describe('R7 — an APPROVED_CLEAN exemplar reaches an assembled prompt on every generation path', () => {
+describe('R7 — the retriever is wired on every generation path; since TASK-1061 OD-1 no prompt carries an exemplar', () => {
   it('finds the three live-generation providers of PromptAssemblyService', async () => {
     const names = (await modulesProviding(PromptAssemblyService)).map(([name]) => name).sort();
 
@@ -89,7 +89,9 @@ describe('R7 — an APPROVED_CLEAN exemplar reaches an assembled prompt on every
     }
   });
 
-  it('injects the exemplar text into the prompt when the token is wired (every path)', async () => {
+  it('TASK-1061 OD-1: a wired token no longer puts the exemplar into the prompt (every path)', async () => {
+    // Superseded: a model copied another patient's facts from these exemplars into a new
+    // patient's note, so no prompt the assembly builds carries them; the store is not even read.
     const { service, findTopForRetrieval } = realRetrieverOverOneCleanExemplar();
 
     const assembled = await realPromptAssembly(service).assemble({
@@ -99,9 +101,9 @@ describe('R7 — an APPROVED_CLEAN exemplar reaches an assembled prompt on every
       transcript: 'Doctor: what brings you in today?',
     } as never);
 
-    expect(assembled.userPrompt).toContain('STYLE REFERENCE');
-    expect(assembled.userPrompt).toContain('review in one week.');
-    expect(findTopForRetrieval).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, qualitySignal: 'APPROVED_CLEAN' }));
+    expect(assembled.userPrompt).not.toContain('STYLE REFERENCE');
+    expect(assembled.userPrompt).not.toContain('review in one week.');
+    expect(findTopForRetrieval).not.toHaveBeenCalled();
   });
 
   it('produces the pre-R7 zero-shot prompt when the token is NOT wired — the exact silent defect', async () => {

@@ -29,6 +29,14 @@ export interface ComposedPromptRecordInput {
   locality: ComposedPromptLocality;
   system: string;
   user: string;
+  /**
+   * TASK-1061 — the fingerprint of the approved-note exemplar set attached to this prompt, if any.
+   * Absent ⇒ none was attached, and the record SAYS so (`null`), so an audit proves it without a
+   * decrypt. Since OD-1 only a final-note finalizer may ever attach one.
+   */
+  exemplarSetVersion?: string | null;
+  /** How many exemplars that set held. Ignored without {@link exemplarSetVersion}. */
+  exemplarCount?: number;
 }
 
 /** Writes allowed in flight at once; beyond it a record is dropped rather than queued. */
@@ -98,14 +106,35 @@ export class ComposedPromptRecorder extends BaseService {
       keyVersion: system.keyVersion ?? user.keyVersion,
       sha256: composedPromptDigest(input.system, input.user),
     });
+    const exemplarSetVersion = input.exemplarSetVersion || null;
+    const exemplarCount = exemplarSetVersion ? (input.exemplarCount ?? 0) : 0;
     return this.clsService.run({ ifNested: 'inherit' }, async () => {
       this.clsService.set('tenantId', input.tenantId);
       const saved = await this.repository.create(entity);
       // Metadata only on the event: the messages are PHI and stay in the ciphertext columns.
+      // `exemplarSetVersion` is stated on EVERY record — `null` is the audit's proof that no
+      // approved-note exemplar set reached this prompt (TASK-1061).
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: saved.id,
-        data: { phase: input.phase, provider: input.provider, locality: input.locality, consultationId: input.consultationId ?? null },
+        data: {
+          phase: input.phase,
+          provider: input.provider,
+          locality: input.locality,
+          consultationId: input.consultationId ?? null,
+          exemplarSetVersion,
+          exemplarCount,
+        },
       });
+      if (exemplarSetVersion) {
+        // Ids and the set fingerprint only — never an exemplar's text.
+        this.logger.log({
+          message: 'prompt.exemplars.attached',
+          phase: input.phase,
+          consultationId: input.consultationId ?? null,
+          setVersion: exemplarSetVersion,
+          count: exemplarCount,
+        });
+      }
       return saved;
     });
   }

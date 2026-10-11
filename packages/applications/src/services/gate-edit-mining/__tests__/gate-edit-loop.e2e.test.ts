@@ -64,7 +64,7 @@ const cls = () => ({
 });
 
 describe('clinician edit -> mined exemplar -> assembled prompt', () => {
-  it('runs the whole loop: a signed edit becomes a redacted exemplar that reaches a prompt', async () => {
+  it('runs the whole loop: a signed edit becomes a redacted exemplar — which no generation prompt carries (TASK-1061 OD-1)', async () => {
     // ── the store the loop writes into and later reads back out of ──────────
     const persisted: Record<string, unknown>[] = [];
     const exemplarRepository = {
@@ -186,7 +186,7 @@ describe('clinician edit -> mined exemplar -> assembled prompt', () => {
     // They are genuinely the two DIFFERENT versions, not the same text twice.
     expect(exemplar.redactedBefore).not.toBe(exemplar.redactedAfter);
 
-    // ── STAGE 3: the exemplar reaches an assembled prompt ───────────────────
+    // ── STAGE 3: the exemplar does NOT reach an assembled prompt (TASK-1061) ─
     const promptAssembly = new PromptAssemblyService(
       { resolve: vi.fn().mockResolvedValue({ promptId: null, content: 'Summarize the transcript.', resolvedFrom: 'default' }) } as never,
       { findById: vi.fn().mockResolvedValue(null) } as never,
@@ -203,16 +203,13 @@ describe('clinician edit -> mined exemplar -> assembled prompt', () => {
       transcript: 'Doctor: what brings you in today?',
     } as never);
 
-    // DoD: an APPROVED_CLEAN exemplar actually reaches the prompt.
-    expect(assembled.userPrompt).toContain('STYLE REFERENCE');
-    expect(assembled.userPrompt).toContain('review in one week.');
-    // The AI draft's wording is NOT what was injected.
+    // TASK-1061 OD-1 supersedes the old DoD ("an APPROVED_CLEAN exemplar reaches the prompt"): a
+    // model copied another patient's facts from it, so no prompt carries one and the store is not
+    // read on the generation path. The stored exemplar above still feeds the curated corpora.
+    expect(assembled.userPrompt).not.toContain('STYLE REFERENCE');
+    expect(assembled.userPrompt).not.toContain('review in one week.');
     expect(assembled.userPrompt).not.toContain('review in two weeks.');
-    // ...and only the REDACTED signed note does. The AI draft is never shown to
-    // the model, and no identifier survives into the prompt.
     expect(assembled.userPrompt).not.toContain('John Smith');
-    expect(exemplarRepository.findTopForRetrieval).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: TENANT, qualitySignal: 'APPROVED_CLEAN' }),
-    );
+    expect(exemplarRepository.findTopForRetrieval).not.toHaveBeenCalled();
   });
 });

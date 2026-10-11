@@ -41,13 +41,7 @@ import {
 } from '@arcaai/workflow-contract';
 import type { GovernedPieceInput } from '../../governed-prompt/IGovernedPromptRegistry';
 import { platformPiecesOf, type OutputContractPart } from '../../text-request/system-governance';
-import {
-  DNA_REDACTION_GUIDANCE,
-  DNA_STYLE_GUIDANCE,
-  STYLE_REFERENCE_BLOCK,
-  STYLE_REFERENCE_EXEMPLARS_GUIDANCE,
-  styleReferenceContent,
-} from './style-reference';
+import { DNA_REDACTION_GUIDANCE, DNA_STYLE_GUIDANCE, STYLE_REFERENCE_BLOCK, styleReferenceContent } from './style-reference';
 // TASK-890 §3.4 — the legacy bridge: the SYSTEM schema that DECLARES the v1 prompt vocabulary,
 // cloned into every tenant by the reference set. The slug is imported, never re-typed.
 import { LEGACY_CONTEXT_SCHEMA_SLUG, payloadSchemaFromDefinition } from '../../consultation-context-schema/context-schema-definition';
@@ -99,15 +93,6 @@ function bareName(path: string): string {
 }
 
 /**
- * How many approved notes are shown as style examples.
- *
- * Small on purpose: each exemplar is a whole clinical note, so the block costs
- * real prompt budget, and few-shot returns diminish quickly. The mining service
- * caps this independently — this is the prompt side's own ceiling.
- */
-const FEW_SHOT_EXEMPLAR_LIMIT = 3;
-
-/**
  * The non-authoritative framing for carried prior-visit content (F-18).
  *
  * Platform-authored guidance, so it sits in the SYSTEM message — the prior note itself is the
@@ -142,20 +127,6 @@ export const NOTE_INPUTS_GUIDANCE = [
   'Clinician-edited sections are the clinician’s own wording: keep their meaning. The previous AI draft is a draft to check against the sources, never a source on its own.',
   'Cite every statement with the labels of the lines it comes from.',
 ].join('\n');
-
-/**
- * Stable 32-bit fingerprint of the exemplar set, used only to VERSION the
- * few-shot block. It lets a cached prefix be attributed to a known exemplar set
- * (and makes a set change visible in logs) without embedding row ids — which
- * would leak which encounters were mined.
- */
-function fingerprintExemplarSet(input: string): string {
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = (hash * 31 + input.charCodeAt(i)) | 0;
-  }
-  return (hash >>> 0).toString(36);
-}
 
 /**
  * The bare names an instruction references, in the ONE grammar, with the namespace prefixes the
@@ -499,9 +470,9 @@ export class PromptAssemblyService {
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
     @Optional() @Inject(ClsService) private readonly cls?: ClsService<IActiveUserContext>,
-    // The gate-edit learning loop's READ half. Optional and
-    // trailing for the same reason as the one above: absent ⇒ zero-shot, which
-    // is exactly the pre-B6 prompt.
+    // The gate-edit learning loop's READ half. Since TASK-1061 OD-1 NO prompt this assembly builds
+    // carries approved-note exemplars, so it is never read here; the parameter stays so the DI
+    // wiring and every positional fixture keep their arity.
     @Optional() @Inject(IGateEditExemplarRetriever) private readonly exemplarRetriever?: IGateEditExemplarRetriever,
     // DNA writing-style decryption. The styleText column is
     // Vault-Transit ciphertext (plaintext dropped in Phase 6), and the generic
@@ -526,57 +497,6 @@ export class PromptAssemblyService {
     @Inject(ConsultationContextSchemaVersionRepository)
     private readonly contextSchemaVersionRepository?: ConsultationContextSchemaVersionRepository,
   ) {}
-
-  /**
-   * The few-shot style section, or `null` when there is nothing to add.
-   *
-   * Three properties this method must never lose:
-   *
-   *  * **Silent degradation.** No retriever, no tenant, no rows, or a throwing
-   *    store all return `null`. A learning-loop outage must not become a
-   *    generation outage.
-   *  * **Redacted text only.** `redactedAfter` is the sole field read; it is the
-   *    only one the mining store guarantees is PHI-free.
-   *  * **Framed as style, not history.** The notes belong to OTHER encounters,
-   *    so the guidance (system message) and the section label both say so — an
-   *    unlabelled block is a fabrication vector, since the model would be free to
-   *    read another patient's findings as this patient's.
-   */
-  private async buildFewShotExemplars(params: PromptAssemblyParams): Promise<{ version: string; text: string } | null> {
-    if (!this.exemplarRetriever) return null;
-
-    const tenantId = params.tenantId ?? this.cls?.get('tenantId');
-    if (!tenantId) return null;
-
-    let rows;
-    try {
-      rows = await this.exemplarRetriever.retrieveExemplars({
-        tenantId,
-        departmentId: params.departmentId ?? null,
-        limit: FEW_SHOT_EXEMPLAR_LIMIT,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `Gate-edit exemplar retrieval failed; falling back to a zero-shot prompt: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return null;
-    }
-
-    const snippets = (rows ?? [])
-      .map((row) => row?.redactedAfter?.trim())
-      .filter((snippet): snippet is string => !!snippet)
-      .slice(0, FEW_SHOT_EXEMPLAR_LIMIT);
-
-    if (snippets.length === 0) return null;
-
-    // NUL joiner: a separator that cannot occur inside a note, so two different
-    // exemplar SETS can never fingerprint identically by concatenation.
-    // Written as the ESCAPE, never a literal NUL byte — a raw NUL makes this
-    // whole file `binary` to grep/ripgrep, which silently drops it from every
-    // tree-wide search and hides the few-shot code from anyone auditing it.
-    const version = fingerprintExemplarSet(snippets.join('\u0000'));
-    return { version, text: snippets.join('\n\n- - -\n\n') };
-  }
 
   async assemble(params: PromptAssemblyParams): Promise<AssembledPrompt> {
     const resolved = await this.promptResolutionService.resolve({
@@ -634,19 +554,23 @@ export class PromptAssemblyService {
     // DATA → the USER message. Each section is wrapped in the spotlighting delimiters the
     // platform rules describe (F-03); a section with nothing in it is skipped by the composer.
     // A composed note plan replaces every per-encounter section with its own blocks.
+    //
+    // TASK-1061 OD-1 — NO approved-note exemplar on any prompt this assembly builds. They were added
+    // to every pre-summary, live and legacy summary prompt as "style" examples, and a model copied
+    // another patient's medications and follow-up into a new patient's note. The finalizer (the
+    // composed note plan) never carried them. The doctor's OWN style and redaction rules stay: they
+    // are preferences, not patient data.
     const noteInputs = params.noteInputBlocks;
-    const fewShot = noteInputs ? null : await this.buildFewShotExemplars(params);
     const styleReference = noteInputs
       ? null
       : styleReferenceContent({
           style: dnaPlacedByBody ? null : values.dna_style_text,
           rules: rulesPlacedByBody ? null : values.dna_redaction_rules_text,
-          exemplars: fewShot,
         });
     const dataBlocks: ComposeDataBlock[] = noteInputs
       ? noteInputs.map((block) => ({ key: block.key, label: block.label, content: block.content }))
       : [
-          // Placed first, so the engine's prefix cache still hits across flushes for one doctor and exemplar set.
+          // Placed first, so the engine's prefix cache still hits across flushes for one doctor.
           ...(styleReference ? [{ key: STYLE_REFERENCE_BLOCK.key, label: STYLE_REFERENCE_BLOCK.label, content: styleReference }] : []),
           ...DATA_SECTIONS.map((section) => ({ key: section.key, label: section.label, content: values[section.variable] ?? null })),
         ];
@@ -667,7 +591,6 @@ export class PromptAssemblyService {
     // the data sections (TASK-1047 D1 — never a runtime value; the doctor's style and rules are in
     // the STYLE REFERENCE section, and only what to do with them is said here).
     const contractParts: OutputContractPart[] = [
-      fewShot ? { key: 'style-reference-exemplars', text: STYLE_REFERENCE_EXEMPLARS_GUIDANCE } : null,
       noteInputs ? { key: 'note-inputs', text: NOTE_INPUTS_GUIDANCE } : null,
       values.prior_visit_summary || noteInputs?.some((block) => block.key === 'prior_visit_summary')
         ? { key: 'prior-visit-summary', text: PRIOR_VISIT_SUMMARY_GUIDANCE }
@@ -727,7 +650,7 @@ export class PromptAssemblyService {
   /**
    * TASK-1047 D1 — the STYLE REFERENCE block's content for a caller that composes the USER message
    * itself (the note plan): the doctor's DNA writing style and redaction rules, or `null` when
-   * neither applies. A composed note plan carries no few-shot exemplars, as on the assembly.
+   * neither applies. A composed note plan carries no few-shot exemplars (TASK-1061 OD-1: no prompt does).
    */
   async styleReference(params: Pick<PromptAssemblyParams, 'dnaStyleId' | 'dnaRedactionRulesText'>): Promise<string | null> {
     const style = params.dnaStyleId ? await this.resolveDnaStyleText(params.dnaStyleId) : null;
