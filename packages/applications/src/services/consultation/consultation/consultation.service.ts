@@ -1301,6 +1301,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
     }
 
     const open = await this.consultationRepository.findOpenByKey(openKey);
+    if (open && this.closesForNextVisit(open, request.parentConsultationId ?? null, externalRef)) {
+      // BUG-009 (OD-1, OD-4) — the next visit gets its OWN consultation chained to this one. The
+      // open-key unique index admits one non-closed row per key, so the parent is closed first
+      // (APPROVED → CLOSED_COMPLETE, STOPPED → CLOSED_INCOMPLETE), in the clinician's name. Its
+      // note and signature are untouched.
+      await this.lifecycle.close(open.id, { clinicianUserId: open.doctorId });
+      return this.createEpisode({ ...input, request: { ...request, parentConsultationId: open.id } as OpenConsultationRequest });
+    }
     if (open) {
       const statedVisitType = resolveVisitTypeKey(visitTypes, tenantId, metadata, request.parentConsultationId);
       const append = externalRef !== null || (statedVisitType === 'revisit' && Boolean((await this.encounters.currentEncounter(open))?.endedAt));
@@ -1323,6 +1331,19 @@ export class ConsultationService extends BaseService implements IConsultationSer
       }
       throw error;
     }
+  }
+
+  /**
+   * BUG-009 — does this open start the NEXT visit as a consultation of its own, after closing
+   * `open`? Yes when the caller names `open` as the previous visit (OD-1), or when `open` is
+   * signed and the caller brings a new encounter id (a signed visit cannot take another
+   * encounter, which used to be a 409). Never while `open` is still capturing or has not been
+   * recorded yet: closing it would cut a live visit short.
+   */
+  private closesForNextVisit(open: ConsultationEntity, namedParentId: string | null, externalRef: string | null): boolean {
+    if (open.status !== ConsultationStatus.APPROVED && open.status !== ConsultationStatus.STOPPED) return false;
+    if (namedParentId === open.id) return true;
+    return open.status === ConsultationStatus.APPROVED && externalRef !== null;
   }
 
   /**

@@ -602,6 +602,21 @@ describe(' accessibility — 0 axe violations on every new/changed state', () =>
 describe('CaseNoteColumn — TASK-932 pre-summary panel', () => {
   const panel = () => screen.queryByTestId('pre-summary-panel');
 
+  // BUG-009 OD-3 — on a revisit the warm start summarises the PREVIOUS visit; testers read the
+  // bare "Pre-summary" heading as this visit's summary.
+  it('on a revisit, names the panel as the previous visit, not this one', () => {
+    const ready = { status: 'ready' as const, content: '- Seen for chest pain', error: null, agentSlug: null, updatedAt: null };
+    render(<CaseNoteColumn {...baseProps({ preSummary: ready, isRevisit: true })} />);
+    expect(screen.getByRole('heading', { name: 'Pre-summary — previous visit' })).toBeTruthy();
+    expect(panel()?.getAttribute('aria-label')).toBe('Pre-summary — previous visit');
+  });
+
+  it('on a first visit, keeps the plain "Pre-summary" heading', () => {
+    const ready = { status: 'ready' as const, content: '- Diabetes', error: null, agentSlug: null, updatedAt: null };
+    render(<CaseNoteColumn {...baseProps({ preSummary: ready })} />);
+    expect(screen.getByRole('heading', { name: 'Pre-summary' })).toBeTruthy();
+  });
+
   it('renders nothing at all before an event arrives — absence is not an empty box', () => {
     render(<CaseNoteColumn {...baseProps()} />);
     expect(panel()).toBeNull();

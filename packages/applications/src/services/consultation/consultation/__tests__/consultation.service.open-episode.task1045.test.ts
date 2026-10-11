@@ -365,7 +365,8 @@ describe('ConsultationService — TASK-1045 open resolves the encounter of an ep
     it.each([
       [ConsultationStatus.RECORDING, 'ENCOUNTER_CAPTURE_ACTIVE'],
       [ConsultationStatus.PAUSED, 'ENCOUNTER_CAPTURE_ACTIVE'],
-      [ConsultationStatus.APPROVED, 'CONSULTATION_APPROVED'],
+      // BUG-009 — APPROVED no longer refuses a new ref: a signed visit cannot take another
+      // encounter, so the next visit becomes its own consultation chained to it (see below).
     ])('%s → 409 %s, nothing written', async (status, code) => {
       const c = seed(consultation({ status }));
       consultationRepository.findOpenByKey.mockResolvedValue(c);
@@ -387,6 +388,77 @@ describe('ConsultationService — TASK-1045 open resolves the encounter of an ep
 
       expect(result.id).toBe(c.id);
       expect(result.recordable).toBe(false);
+    });
+  });
+
+  // ── BUG-009 — a revisit that names its previous visit gets its OWN consultation ─────────
+  //
+  // Owner decisions 2026-10-10/11: naming a parent always creates a new linked consultation
+  // (OD-1), and the parent is CLOSED first so the open-key unique index has room for the child
+  // (OD-4). Before this, the open-key match won: an APPROVED parent answered 409
+  // CONSULTATION_APPROVED (console, API and ALaaS all confirmed live) and a STOPPED one got a
+  // second encounter appended, so the revisit never had a consultation of its own.
+  describe('BUG-009 — a named previous visit is closed and the revisit is a new consultation', () => {
+    const openNaming = (parentId: string, extra: Partial<OpenConsultationRequest> = {}) => {
+      const service = buildService();
+      (service as any).consultationRepository.findFirst = vi.fn(async () => rowsById.get(parentId) ?? null);
+      return service.getOrCreate({ patientId: PATIENT, parentConsultationId: parentId, ...extra } as OpenConsultationRequest, DOCTOR);
+    };
+
+    it.each([
+      [ConsultationStatus.APPROVED, { approvedAt: new Date('2026-10-05T09:00:00Z') }],
+      [ConsultationStatus.STOPPED, {}],
+    ])('a %s open match named as the parent is closed, then a NEW chained consultation is created', async (status, extra) => {
+      const parent = seed(consultation({ status, ...extra }), []);
+      encountersByConsultation.set(parent.id, [encounter(parent, { endedAt: new Date('2026-10-05T09:00:00Z') })]);
+      consultationRepository.findOpenByKey.mockResolvedValue(parent);
+
+      const result = await openNaming(parent.id, { metadata: { visitType: 'revisit' } } as any);
+
+      expect(lifecycle.close).toHaveBeenCalledWith(parent.id, { clinicianUserId: DOCTOR });
+      const created: ConsultationEntity = consultationRepository.create.mock.calls[0][0];
+      expect(created.id).not.toBe(parent.id);
+      expect(created.parentConsultationId).toBe(parent.id);
+      expect(result.id).toBe(created.id);
+      expect(result.isNew).toBe(true);
+      expect(result.encounterAppended).toBe(false);
+      // Nothing is appended to the parent: its note and signature stay as they were.
+      expect(encounterRepository.create.mock.calls.every((call: any[]) => call[0].consultationId === created.id)).toBe(true);
+    });
+
+    it('an APPROVED open match with a NEW externalRef (the ALaaS revisit) is closed and chained, not 409', async () => {
+      const parent = seed(consultation({ status: ConsultationStatus.APPROVED, approvedAt: new Date('2026-10-05T09:00:00Z') }));
+      consultationRepository.findOpenByKey.mockResolvedValue(parent);
+
+      const result = await open({ metadata: { externalRef: 'EVT-REVISIT' } });
+
+      expect(lifecycle.close).toHaveBeenCalledWith(parent.id, { clinicianUserId: DOCTOR });
+      const created: ConsultationEntity = consultationRepository.create.mock.calls[0][0];
+      expect(created.parentConsultationId).toBe(parent.id);
+      expect(result.id).toBe(created.id);
+      const first: ConsultationEncounterEntity = encounterRepository.create.mock.calls[0][0];
+      expect(first.externalRef).toBe('EVT-REVISIT');
+    });
+
+    it('a parent still capturing is NOT closed out from under the clinician (RECORDING → returned as before)', async () => {
+      const parent = seed(consultation({ status: ConsultationStatus.RECORDING }));
+      consultationRepository.findOpenByKey.mockResolvedValue(parent);
+
+      const result = await openNaming(parent.id);
+
+      expect(lifecycle.close).not.toHaveBeenCalled();
+      expect(consultationRepository.create).not.toHaveBeenCalled();
+      expect(result.id).toBe(parent.id);
+    });
+
+    it('a plain re-open of an APPROVED visit (no parent named, no new ref) still returns it untouched', async () => {
+      const c = seed(consultation({ status: ConsultationStatus.APPROVED, approvedAt: new Date('2026-10-05T09:00:00Z') }));
+      consultationRepository.findOpenByKey.mockResolvedValue(c);
+
+      const result = await open({});
+
+      expect(lifecycle.close).not.toHaveBeenCalled();
+      expect(result.id).toBe(c.id);
     });
   });
 

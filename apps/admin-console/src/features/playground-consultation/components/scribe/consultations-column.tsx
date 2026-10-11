@@ -27,6 +27,8 @@ export interface ConsultationListRow {
   patientId: string;
   status: string;
   createdAt?: string;
+  /** BUG-009 — the previous visit this one follows; set on a revisit. */
+  parentConsultationId?: string | null;
 }
 
 const STATUS_META: Record<string, { label: string; role: StatusColorRole }> = {

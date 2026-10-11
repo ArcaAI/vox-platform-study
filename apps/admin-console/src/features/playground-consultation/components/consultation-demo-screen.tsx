@@ -438,8 +438,14 @@ function ScribeWorkspace() {
     queryKey: [...playgroundConsultationKeys.root, 'scribe-list'],
     queryFn: async (): Promise<ConsultationListRow[]> => {
       const page = await sdkSession.listConsultations({ limit: 50 });
-      const items: Array<{ id: string; patientId: string; status?: unknown; createdAt?: string }> = page?.data ?? [];
-      return items.map((item) => ({ id: item.id, patientId: item.patientId, status: String(item.status ?? 'OPEN'), createdAt: item.createdAt }));
+      const items: Array<{ id: string; patientId: string; status?: unknown; createdAt?: string; parentConsultationId?: string | null }> = page?.data ?? [];
+      return items.map((item) => ({
+        id: item.id,
+        patientId: item.patientId,
+        status: String(item.status ?? 'OPEN'),
+        createdAt: item.createdAt,
+        parentConsultationId: item.parentConsultationId ?? null,
+      }));
     },
   });
   const rows = listQuery.data ?? [];
@@ -497,6 +503,7 @@ function ScribeWorkspace() {
         patientId: loaded.patientId,
         status: String(loaded.status ?? row.status),
         createdAt: loaded.createdAt ?? row.createdAt,
+        parentConsultationId: (loaded as { parentConsultationId?: string | null }).parentConsultationId ?? row.parentConsultationId ?? null,
       });
     } catch (error) {
       toast.error(errorMessage(error, 'Could not open the consultation'));
@@ -543,10 +550,17 @@ function ScribeWorkspace() {
         patientId: opened.patientId,
         status: String(opened.status ?? 'OPEN'),
         createdAt: typeof opened.createdAt === 'string' ? opened.createdAt : new Date().toISOString(),
+        parentConsultationId: (opened as { parentConsultationId?: string | null }).parentConsultationId ?? null,
       };
       selectConsultation(row);
       void listQuery.refetch();
-      toast.success('Consultation opened');
+      // BUG-009 — a revisit must land on its OWN consultation. Should the gateway ever hand back
+      // the previous visit itself, say so rather than read its note as this visit's.
+      if (options.parentConsultationId && opened.id === options.parentConsultationId) {
+        toast.warning('The previous visit was reopened instead of starting a new one.');
+      } else {
+        toast.success('Consultation opened');
+      }
     } catch (error) {
       toast.error(errorMessage(error, 'Could not open the consultation'));
       throw error;
@@ -926,6 +940,7 @@ function ScribeWorkspace() {
               onConfirmSection={handleConfirmSection}
               confirmSectionPending={confirmSection.isPending}
               preSummary={preSummaryStream.preSummary}
+              isRevisit={Boolean(consultation?.parentConsultationId)}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

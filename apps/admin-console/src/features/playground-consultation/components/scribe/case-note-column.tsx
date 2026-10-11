@@ -389,14 +389,17 @@ const PRE_SUMMARY_REASONS: Record<string, string> = {
   empty_pre_summary: 'The assistant returned an empty pre-summary.',
 };
 
-function PreSummaryPanel({ preSummary }: { preSummary: PreSummaryView | null }) {
+function PreSummaryPanel({ preSummary, isRevisit = false }: { preSummary: PreSummaryView | null; isRevisit?: boolean }) {
   if (!preSummary) return null;
+
+  // BUG-009 OD-3 — on a revisit the warm start summarises the PREVIOUS visit, not this one.
+  const title = isRevisit ? 'Pre-summary — previous visit' : 'Pre-summary';
 
   const isBenign = preSummary.status === 'degraded' && preSummary.error === 'no_case_notes';
 
   return (
     <section
-      aria-label="Pre-summary"
+      aria-label={title}
       data-testid="pre-summary-panel"
       data-status={preSummary.status}
       className="flex flex-col gap-2 rounded-md border p-3"
@@ -404,7 +407,7 @@ function PreSummaryPanel({ preSummary }: { preSummary: PreSummaryView | null }) 
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-sm font-medium">
           <IconClipboardCheck aria-hidden className="size-4" />
-          Pre-summary
+          {title}
         </h3>
         {preSummary.status === 'running' ? (
           <span className="text-muted-foreground flex items-center gap-1.5 text-xs" aria-live="polite">
@@ -478,6 +481,8 @@ export interface CaseNoteColumnProps {
    * warm start shows no empty box.
    */
   preSummary?: PreSummaryView | null;
+  /** BUG-009 — this consultation follows a previous visit (it has a parent), so the pre-summary is about that visit. */
+  isRevisit?: boolean;
   draft: SummaryResult | null;
   draftLoading: boolean;
   progress: HarnessProgressSnapshot | null;
@@ -582,6 +587,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     onConfirmSection,
     confirmSectionPending = false,
     preSummary = null,
+    isRevisit = false,
     draft,
     draftLoading,
     progress,
@@ -741,7 +747,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" tabIndex={0}>
         {guardrailSlot}
         <AssuranceStrip progress={progress} assurance={assurance} />
-        <PreSummaryPanel preSummary={preSummary} />
+        <PreSummaryPanel preSummary={preSummary} isRevisit={isRevisit} />
 
         {!hasConsultation ? (
           <EmptyState icon={IconFileText} title="No case note" description="Select a consultation to see its note." />
