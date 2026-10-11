@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { IconAlertTriangle, IconPlayerPlayFilled, IconPlayerStopFilled, IconRefresh } from '@tabler/icons-react';
+import { IconAlertTriangle, IconRefresh } from '@tabler/icons-react';
 import { useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -100,32 +100,14 @@ function ScreenBody() {
     void live.start({ ...(agentSlug ? { agentSlug } : {}), ...(language ? { language } : {}), tenantId });
   }
 
-  function handleStop() {
-    void live.stop();
-  }
-
   return (
     <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'streaming' ? null : next)}>
       <ScreenTemplate
         header={
           <div className="mx-auto w-full max-w-[1100px] px-4">
-            <CanvasHeader
-              title="Live Transcription"
-              description={'Streaming session \u00b7 runs under your own account'}
-              actions={
-                busy ? (
-                  <Button variant="outline" onClick={handleStop} disabled={live.status === 'stopping'}>
-                    <IconPlayerStopFilled aria-hidden />
-                    Stop session
-                  </Button>
-                ) : (
-                  <Button onClick={handleStart} disabled={!canStart}>
-                    <IconPlayerPlayFilled aria-hidden />
-                    Start session
-                  </Button>
-                )
-              }
-            />
+            {/* BUG-026: no header actions \u2014 Start lives in the streaming tab's
+                empty state / previous-session row, Stop in its session controls card. */}
+            <CanvasHeader title="Live Transcription" description={'Streaming session \u00b7 runs under your own account'} />
           </div>
         }
         toolbar={

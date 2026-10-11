@@ -395,6 +395,35 @@ describe('LiveTranscriptionScreen', () => {
     expect(screen.getByText(/~320 ms/)).toBeDefined();
   });
 
+  it('offers exactly one Start session control while idle, inside the empty state (BUG-026)', async () => {
+    stubScreen();
+    renderWithProviders(<LiveTranscriptionScreen />);
+    await screen.findByText('No live session');
+
+    const starts = screen.getAllByRole('button', { name: /start session/i });
+    expect(starts).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /stop session/i })).toBeNull();
+  });
+
+  it('shows only Stop session while streaming and exactly one Start session after stopping with a transcript (BUG-026)', async () => {
+    stubScreen();
+    renderWithProviders(<LiveTranscriptionScreen />);
+    await screen.findByLabelText('Transcription agent');
+
+    const ws = await startSession();
+    await screen.findByText('Streaming');
+    act(() => ws.handlers.transcript?.({ type: 'transcript', text: 'Patient reports morning headaches.', isFinal: true, startTime: 1, endTime: 3, seq: 1 }));
+
+    expect(screen.getAllByRole('button', { name: /stop session/i })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /start session/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /stop session/i }));
+    await screen.findByText('Previous session transcript shown below.');
+
+    expect(screen.getAllByRole('button', { name: /start session/i })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /stop session/i })).toBeNull();
+  });
+
   it('renders the designed 429 quota panel when the tenant is at maxConcurrentSessions', async () => {
     stubScreen((call) => {
       const path = new URL(call.url, 'http://test.local').pathname;
