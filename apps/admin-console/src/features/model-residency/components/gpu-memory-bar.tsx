@@ -12,11 +12,13 @@ export const SERVICE_SWATCH: Record<string, string> = {
   'stt-worker': 'bg-chart-3',
   'lm-studio': 'bg-chart-2',
   nlp: 'bg-chart-4',
-  tts: 'bg-chart-5',
+  // TASK-1060 — tts takes the `hope-strong` orange so it no longer shares a grey with `other` in the CPU bar;
+  // the gateway (near-black / near-white) and `other` (mid-grey) are the only neutrals.
+  tts: 'bg-hope-strong',
   gateway: 'bg-primary',
-  other: 'bg-secondary-foreground/60',
+  other: 'bg-chart-5',
 };
-const FALLBACK_SWATCH = 'bg-chart-5';
+const FALLBACK_SWATCH = 'bg-muted-foreground';
 
 export const SERVICE_LEGEND_LABEL: Record<string, string> = {
   stt: 'Speech-to-text',
