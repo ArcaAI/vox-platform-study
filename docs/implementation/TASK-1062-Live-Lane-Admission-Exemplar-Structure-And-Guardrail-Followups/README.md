@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress — owner go 2026-10-11 |
+| Status | Review — deployed 2026-10-11; acceptance partial (see Implementation Summary) |
 | Type | bugfix / hardening |
 | Branch | dev-2.2 (lanes in worktrees); ALaaS `refactor-hope-integaration` for D-5.2/D-5.3 |
 | Source | [TASK-1061](../TASK-1061-Cross-Patient-Exemplar-Leak-And-Guardrail-False-Positives/README.md) §Implementation Summary "Remaining" R-1..R-9 + follow-ups |
@@ -42,8 +42,25 @@ Orchestrator: contract freeze (live-lane marker name + setting key), DB migratio
 - D-2B incremental live prompt (delta transcript + running note).
 
 ## Implementation Summary
-_(pending go)_
+
+**Merged:** P `9861f05ac`, R `f54481f8b`, C `b67c1e29f`, S `ca7ab63f3`, L `e18e6b1fd`, ALaaS `acc6ab7`+`f4144ab` (EMR HTML escapes raw tags), regenerated OpenAPI. Gate green (guardrail, text 2,292, domains 2,112, types 245, applications+db+contracts 22,074, console 145, typecheck, lint, ALaaS broker 1,354, web_ui 816). Pushed `e05a1a00e` (also carried BUG-026..028 from another session) and ALaaS `6605485`; deployed; migration applied; backfill skipped (0 rows).
+
+**Cluster data (AC4):** SYSTEM availability v3 `response_toxicity.categoryActions = {privacy_violation: ignore}`; `piiLeakQuasiIdentifierLabels` v2 (+`api_key`, `encounter_id`); `fact-ledger-extraction` republished (Global v2, SYSTEM v2 via promote, ArcaAI v2); ArcaAI `casenote-finalization` v2 published. **Global `casenote-finalization` v2 publish REFUSED** by build-time medical_scope (fragment `clinical_note` + `output_language_policy` judged off scope) — left DRAFT, SYSTEM not promoted.
+
+**Acceptance AC4 (03:52–03:58Z):**
+| Check | Result |
+|---|---|
+| No `response_toxicity:privacy_violation` banner | PASS |
+| EMR copy has no `&amp;` | PASS |
+| Live snapshot during recording (×3) | **FAIL** — no live flush fired before stop (35 s recordings, also single visit); at stop, 2 of 3 live flushes 503 `CONCURRENCY_LIMIT` after ~31 s on the 2-slot live lane |
+| No `pii_leak:api_key` banner | **FAIL** — now `warn` with acknowledgement required (quasi downgrade is block→warn, not ignore) |
+| Exemplar `structureAfter` | **not testable** — 0 rows: pre-existing fail-closed check drops any note the redactor leaves unchanged when `/\b[A-Z][a-z]+ [A-Z][a-z]+\b/` matches (every heading) — `gate-edit-mining.service.ts:825,869` (TASK-532) |
+| stop→note.final ×3 | 128–138 s (TASK-1061: 123–148 s) |
+
+**Open (owner decisions needed):** live-lane sizing/queueing at stop; flush cadence before stop; `pii_leak` quasi labels → ignore vs warn; build-time medical_scope false positive on Global finalizer + output-language template; exemplar capture fail-closed heuristic; `pii_leak` engine 20 s timeout under ×3; `prompt_safety:unsafe` warns (2/3); R-2 registry jailbreak evaluations still recorded.
+
 
 ## Change History
 - 2026-10-11 — opened from TASK-1061 R-1..R-9; owner decisions D-1A, D-2C, D-3A, D-4A, D-5 yes, E-1/E-2 yes.
 - 2026-10-11 — owner go; contract frozen (X-Hope-Lane header, lmStudio.serving.liveLaneSlots); six lanes started.
+- 2026-10-11 — merged, gate green, pushed + deployed; AC4 data writes and acceptance; open items recorded.
