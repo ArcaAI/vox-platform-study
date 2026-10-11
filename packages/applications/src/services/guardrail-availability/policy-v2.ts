@@ -43,7 +43,7 @@ export const GUARDRAIL_CHECK_LOCKED = 'GUARDRAIL_CHECK_LOCKED';
 export const GUARDRAIL_SCREEN_DIRECTIONS: readonly GuardrailScreenDirection[] = Object.freeze(['inbound', 'outbound']);
 const ACTIONS: readonly GuardrailViolationAction[] = Object.freeze(['ignore', 'warn', 'block']);
 const SET_BY: readonly GuardrailPolicySetBy[] = Object.freeze(['platform_admin', 'tenant_admin']);
-const CHECK_FIELDS = Object.freeze(['enabled', 'action', 'locked', 'minScore', 'dataRegionAction', 'setBy']);
+const CHECK_FIELDS = Object.freeze(['enabled', 'action', 'locked', 'minScore', 'dataRegionAction', 'categoryActions', 'setBy']);
 
 /** The fields one tier STATED for one check. `setBy` is server-stamped. */
 export interface StatedGuardrailCheck {
@@ -52,6 +52,8 @@ export interface StatedGuardrailCheck {
   locked?: boolean;
   minScore?: number;
   dataRegionAction?: GuardrailViolationAction;
+  /** `{ label: action }` (TASK-1061 OD-5b, TASK-1062 E-1): labels trimmed + case-folded, actions within `allowedActions`. */
+  categoryActions?: Record<string, GuardrailViolationAction>;
   setBy?: GuardrailPolicySetBy;
 }
 
@@ -77,6 +79,8 @@ export interface EffectiveGuardrailCheck {
   /** Whether the CALLER the view was built for may switch it on/off. */
   editable: boolean;
   dataRegionAction?: GuardrailViolationAction;
+  /** Label-by-label cascade: catalogue default, then SYSTEM, then the tenant. Absent where none. */
+  categoryActions?: Record<string, GuardrailViolationAction>;
   minScore?: number;
   /** `true` when the tenant row states no `enabled` for it (it follows the platform). */
   inherited: boolean;
@@ -97,6 +101,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isAction(value: unknown): value is GuardrailViolationAction {
   return typeof value === 'string' && (ACTIONS as readonly string[]).includes(value);
+}
+
+/** Lenient read: labels trimmed + case-folded, an action outside `allowed` dropped; empty ⇒ undefined. */
+function readCategoryActions(raw: unknown, allowed: readonly GuardrailViolationAction[]): Record<string, GuardrailViolationAction> | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const out: Record<string, GuardrailViolationAction> = {};
+  for (const [label, action] of Object.entries(raw)) {
+    const key = label.trim().toLowerCase();
+    if (key && isAction(action) && allowed.includes(action)) out[key] = action;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function isScore(value: unknown): value is number {
@@ -131,6 +146,10 @@ export function toStoredGuardrailPolicyV2(raw: unknown): StoredGuardrailPolicyV2
     if (v2 && typeof entry.locked === 'boolean') stated.locked = entry.locked;
     if (isScore(entry.minScore) && descriptor.threshold) stated.minScore = entry.minScore;
     if (v2 && isAction(entry.dataRegionAction)) stated.dataRegionAction = entry.dataRegionAction;
+    if (v2) {
+      const categoryActions = readCategoryActions(entry.categoryActions, descriptor.allowedActions);
+      if (categoryActions) stated.categoryActions = categoryActions;
+    }
     if (v2 && typeof entry.setBy === 'string' && (SET_BY as readonly string[]).includes(entry.setBy))
       stated.setBy = entry.setBy as GuardrailPolicySetBy;
     if (Object.keys(stated).length > 0) out.checks[descriptor.id] = stated;
@@ -194,6 +213,12 @@ export function effectiveGuardrailPolicy(
     };
     const dataRegionAction = pick(tiers, 'dataRegionAction') ?? descriptor.platformDefaultDataRegionAction;
     if (dataRegionAction !== undefined) entry.dataRegionAction = dataRegionAction;
+    const categoryActions = {
+      ...descriptor.platformDefaultCategoryActions,
+      ...platform?.categoryActions,
+      ...own?.categoryActions,
+    };
+    if (Object.keys(categoryActions).length > 0) entry.categoryActions = categoryActions;
     const minScore = pick(tiers, 'minScore');
     if (minScore !== undefined) entry.minScore = minScore;
     if (descriptor.locked) {
@@ -287,6 +312,20 @@ function parseEntry(descriptor: GuardrailPolicyDescriptor, raw: unknown, legacy:
         }
         entry.dataRegionAction = value;
         break;
+      case 'categoryActions': {
+        if (!isPlainObject(value)) refuse(`Policy '${id}'.categoryActions must be an object of { label: action }`);
+        const parsed: Record<string, GuardrailViolationAction> = {};
+        for (const [label, action] of Object.entries(value)) {
+          const key = label.trim().toLowerCase();
+          if (!key) refuse(`Policy '${id}'.categoryActions has an empty label`);
+          if (!isAction(action) || !descriptor.allowedActions.includes(action)) {
+            refuse(`Policy '${id}'.categoryActions['${label}'] must be one of ${descriptor.allowedActions.join(', ')}`);
+          }
+          parsed[key] = action;
+        }
+        entry.categoryActions = parsed;
+        break;
+      }
       case 'minScore': {
         const spec = descriptor.threshold;
         if (!spec || spec.field !== 'minScore') refuse(`Policy '${id}' has no strictness to set; remove 'minScore'`);
@@ -403,6 +442,13 @@ export function applyGuardrailPolicyChanges(
   return next;
 }
 
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
 /** A platform REPLACE: every entry that differs from what was stored (or carries no author) is stamped `platform_admin`. */
 export function stampPlatformGuardrailPolicyWrite(stored: StoredGuardrailPolicyV2, next: StoredGuardrailPolicyV2): StoredGuardrailPolicyV2 {
   const out: StoredGuardrailPolicyV2 = { directions: { ...next.directions }, checks: {} };
@@ -411,10 +457,12 @@ export function stampPlatformGuardrailPolicyWrite(stored: StoredGuardrailPolicyV
     const before = stored.checks[id];
     const fields: StatedGuardrailCheck = { ...entry };
     delete fields.setBy;
+    // An empty override map states nothing (clearing every override), so it is not stored.
+    if (fields.categoryActions && Object.keys(fields.categoryActions).length === 0) delete fields.categoryActions;
     const unchanged =
       before !== undefined &&
       Object.keys(fields).length === Object.keys(before).filter((key) => key !== 'setBy').length &&
-      Object.entries(fields).every(([key, value]) => (before as unknown as Record<string, unknown>)[key] === value);
+      Object.entries(fields).every(([key, value]) => sameValue((before as unknown as Record<string, unknown>)[key], value));
     // An unchanged entry keeps its author; an unattributed (legacy) one is re-asserted by this platform write.
     out.checks[id] = { ...fields, setBy: unchanged && before.setBy ? before.setBy : 'platform_admin' };
   }

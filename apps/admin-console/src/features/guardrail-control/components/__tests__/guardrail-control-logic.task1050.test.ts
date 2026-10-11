@@ -142,4 +142,18 @@ describe('error mapping', () => {
     expect(modelNotResident(new GatewayError(409, 'not resident', undefined, details))).toEqual(details);
     expect(modelNotResident(new GatewayError(409, 'other', undefined, { code: 'X' }))).toBeNull();
   });
+
+  it('writes categoryActions as a stated field only when the draft changed them (TASK-1062 E-1)', () => {
+    const view = {
+      ...VIEW,
+      checks: VIEW.checks.map((c) => (c.checkId === 'injection_judge' ? { ...c, categoryActions: { role_play: 'warn' as const } } : c)),
+    };
+    const untouched = draftFromView(view);
+    expect(buildPolicyWrite({ directions: {}, checks: {} }, view, untouched).checks).toEqual({});
+    const draft = draftFromView(view);
+    draft.checks.injection_judge = { ...draft.checks.injection_judge!, categoryActions: { role_play: 'ignore', jailbreak: 'block' } };
+    expect(buildPolicyWrite({ directions: {}, checks: {} }, view, draft).checks).toEqual({
+      injection_judge: { categoryActions: { role_play: 'ignore', jailbreak: 'block' } },
+    });
+  });
 });

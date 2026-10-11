@@ -48,7 +48,7 @@ describe('GuardrailAvailabilityService', () => {
     updateWithVersion: ReturnType<typeof vi.fn>;
   };
   let eventEmitter: { emit: ReturnType<typeof vi.fn> };
-  let cls: { get: ReturnType<typeof vi.fn> };
+  let cls: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
   let service: GuardrailAvailabilityService;
   let roles: string[];
 
@@ -67,6 +67,7 @@ describe('GuardrailAvailabilityService', () => {
         if (key === 'tenantId') return SYSTEM_TENANT_ID;
         return undefined;
       }),
+      set: vi.fn(),
     };
     service = new GuardrailAvailabilityService(repository as never, eventEmitter as never, cls as never);
   });

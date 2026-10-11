@@ -24,6 +24,7 @@ export interface GuardrailCatalogueEntry {
   locked?: boolean;
   defaultEnabled?: boolean;
   platformDefaultDataRegionAction?: GuardrailAction | null;
+  platformDefaultCategoryActions?: Record<string, GuardrailAction>;
 }
 
 /** One check as it is IN FORCE for a tenant (W2b `GuardrailCheckStateResponse`). */
@@ -39,6 +40,8 @@ export interface GuardrailEffectiveCheck {
   lockReason: 'catalogue' | 'platform' | null;
   editable: boolean;
   dataRegionAction?: GuardrailAction;
+  /** `{ label: action }`, label by label: catalogue default, SYSTEM, tenant (TASK-1062 E-1). */
+  categoryActions?: Record<string, GuardrailAction>;
   minScore?: number;
   inherited: boolean;
   setBy: 'platform_admin' | 'tenant_admin' | null;
@@ -71,6 +74,7 @@ export interface GuardrailStatedCheck {
   locked?: boolean;
   minScore?: number;
   dataRegionAction?: GuardrailAction;
+  categoryActions?: Record<string, GuardrailAction>;
 }
 
 export interface GuardrailStoredPolicy {

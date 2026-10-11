@@ -112,8 +112,8 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
 
   async getForTenant(tenantId: string): Promise<GuardrailAvailabilityResponse> {
     this.assertSuperAdmin('read guardrail availability');
-    const row = await this.repository.findByTenantId(tenantId);
-    const systemRow = tenantId === SYSTEM_TENANT_ID ? row : await this.repository.findByTenantId(SYSTEM_TENANT_ID);
+    const row = await this.readRow(tenantId);
+    const systemRow = tenantId === SYSTEM_TENANT_ID ? row : await this.readRow(SYSTEM_TENANT_ID);
     const response = this.toResponse(tenantId, row, systemRow);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
@@ -136,8 +136,8 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
     }
 
     const isSystem = tenantId === SYSTEM_TENANT_ID;
-    const existing = await this.repository.findByTenantId(tenantId);
-    const systemRow = isSystem ? existing : await this.repository.findByTenantId(SYSTEM_TENANT_ID);
+    const existing = await this.readRow(tenantId);
+    const systemRow = isSystem ? existing : await this.readRow(SYSTEM_TENANT_ID);
 
     if (!existing && request.expectedVersion !== 0) {
       // No row yet — a create. `If-Match: "0"` declares that intent, exactly as the platform
@@ -177,13 +177,15 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
     const confirmation = this.confirmations?.assert('guardrailAvailability.update', { value: request.reason });
 
     if (!existing) {
-      const created = await this.repository.create(
-        TenantGuardrailPolicyFactory.CreateTenantGuardrailPolicy({
-          tenantId,
-          policies: next as unknown as Record<string, unknown>,
-          reason: request.reason ?? null,
-          createdBy: this.requestUserId ?? undefined,
-        }),
+      const created = await this.asTenant(tenantId, () =>
+        this.repository.create(
+          TenantGuardrailPolicyFactory.CreateTenantGuardrailPolicy({
+            tenantId,
+            policies: next as unknown as Record<string, unknown>,
+            reason: request.reason ?? null,
+            createdBy: this.requestUserId ?? undefined,
+          }),
+        ),
       );
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: created.id,
@@ -205,7 +207,7 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
     }
 
     existing.updatedBy = this.requestUserId ?? undefined;
-    const saved = await this.repository.updateWithVersion(existing.id, existing, request.expectedVersion as number);
+    const saved = await this.asTenant(tenantId, () => this.repository.updateWithVersion(existing.id, existing, request.expectedVersion as number));
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: existing.id,
@@ -225,6 +227,31 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
   }
 
   // -- internals ------------------------------------------------------------
+
+  /** One tenant's row, read as that tenant (see {@link asTenant}). */
+  private readRow(tenantId: string): Promise<TenantGuardrailPolicyEntity | null> {
+    return this.asTenant(tenantId, () => this.repository.findByTenantId(tenantId));
+  }
+
+  /**
+   * TASK-1062 E-2 — run `work` with CLS bound to `tenantId`, restoring the caller's binding afterwards.
+   *
+   * The tenant-scope Prisma extension pins every `TenantGuardrailPolicy` query to the CLS tenant, and a
+   * super admin with a working tenant has that tenant in CLS. Reading or writing ANOTHER tenant's row —
+   * notably SYSTEM — then reads as empty (version 0) and a save would try to CREATE a second row. The
+   * platform plane addresses a row by its `:tenantId` path param, never by the session, so the row's own
+   * tenant is bound for the repository call only (same shape as `TenantService.runForTenant`); the audit
+   * broadcast that follows is attributed to the caller's context. Only reachable after `assertSuperAdmin`.
+   */
+  private async asTenant<T>(tenantId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.clsService.get('tenantId');
+    this.clsService.set('tenantId', tenantId);
+    try {
+      return await work();
+    } finally {
+      this.clsService.set('tenantId', previous);
+    }
+  }
 
   /**
    * The response for one row: the raw stored blob, the v2 effective view (field by field, as guardrail

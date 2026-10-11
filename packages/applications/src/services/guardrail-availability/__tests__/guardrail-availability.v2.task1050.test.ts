@@ -45,7 +45,7 @@ describe('GuardrailAvailabilityService — v2 platform control', () => {
   let publisher: { policyChanged: ReturnType<typeof vi.fn> };
   let user: { id: string; tenantId: string; roles: string[] };
   let workingTenant: string;
-  let cls: { get: ReturnType<typeof vi.fn> };
+  let cls: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
   let service: GuardrailAvailabilityService;
 
   beforeEach(() => {
@@ -67,7 +67,11 @@ describe('GuardrailAvailabilityService — v2 platform control', () => {
     publisher = { policyChanged: vi.fn(async () => undefined) };
     user = { id: 'root', tenantId: SYSTEM_TENANT_ID, roles: ['SUPER_ADMIN'] };
     workingTenant = SYSTEM_TENANT_ID;
-    cls = { get: vi.fn((key: string) => (key === 'user' ? user : key === 'tenantId' ? workingTenant : undefined)) };
+    cls = { get: vi.fn((key: string) => (key === 'user' ? user : key === 'tenantId' ? workingTenant : undefined)),
+      set: vi.fn((key: string, value: string) => {
+        if (key === 'tenantId') workingTenant = value;
+      }),
+    };
     service = new GuardrailAvailabilityService(repository as never, { emit: vi.fn() } as never, cls as never, publisher as never);
   });
 
@@ -168,5 +172,65 @@ describe('GuardrailAvailabilityService — v2 platform control', () => {
   it('the catalogue lists the v2 fields a console needs', () => {
     const medical = service.catalogue().find((entry) => entry.id === 'medical_validation');
     expect(medical).toMatchObject({ locked: true, allowedActions: ['block'], platformDefaultAction: 'block', defaultEnabled: true });
+  });
+
+  // TASK-1062 E-1 / E-2
+  it('E-1: the platform write persists categoryActions per check', async () => {
+    const saved = await service.putForTenant(TENANT_A, {
+      policies: { checks: { prompt_safety: { action: 'warn', categoryActions: { Violence: 'ignore' } } } },
+      expectedVersion: 0,
+    });
+    const stored = (repository.create.mock.calls[0][0] as { policies: { checks: Record<string, unknown> } }).policies;
+    expect(stored.checks.prompt_safety).toMatchObject({ categoryActions: { violence: 'ignore' } });
+    expect(JSON.stringify(saved)).toContain('violence');
+  });
+
+  it('E-1: a tenant admin changing categoryActions is 403 GUARDRAIL_FIELD_PLATFORM_ONLY', async () => {
+    user = { id: 'admin-a', tenantId: TENANT_A, roles: ['TENANT_ADMIN'] };
+    workingTenant = TENANT_A;
+    const tenantPlane = new GuardrailTenantPolicyService(repository as never, { emit: vi.fn() } as never, cls as never, publisher as never);
+    const error = await tenantPlane
+      .putOwn({ checks: { prompt_safety: { enabled: true, categoryActions: { violence: 'ignore' } } }, expectedVersion: 0 } as never)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect((error as ForbiddenException).getResponse()).toMatchObject({ code: 'GUARDRAIL_FIELD_PLATFORM_ONLY', fields: ['checks.prompt_safety.categoryActions'] });
+  });
+
+  describe('E-2: SYSTEM reads and writes ignore the session working tenant', () => {
+    beforeEach(() => {
+      // The tenant-scope extension: a repository call sees only rows of the CLS tenant at call time.
+      const scoped = <A extends unknown[], R>(tenantOf: (...args: A) => string, fn: (...args: A) => Promise<R>, miss: R) =>
+        vi.fn(async (...args: A) => (tenantOf(...args) === workingTenant ? fn(...args) : miss));
+      repository.findByTenantId = scoped((id: string) => id, async (id: string) => rows.get(id) ?? null, null);
+      const create = repository.create;
+      repository.create = scoped((e: { tenantId: string }) => e.tenantId, (e: { tenantId: string }) => create(e), null) as never;
+      const update = repository.updateWithVersion;
+      repository.updateWithVersion = scoped((_id: string, e: { tenantId: string }) => e.tenantId, (id: string, e: never) => update(id, e), null) as never;
+      workingTenant = TENANT_A;
+    });
+
+    it('GET of the SYSTEM row reads version 1 while a working tenant is set, and restores the working tenant', async () => {
+      rows.set(SYSTEM_TENANT_ID, entity(SYSTEM_TENANT_ID, { directions: {}, checks: {} }, 1));
+      const response = await service.getForTenant(SYSTEM_TENANT_ID);
+      expect(response.version).toBe(1);
+      expect(workingTenant).toBe(TENANT_A);
+    });
+
+    it('GET of a tenant row still reads its SYSTEM floor', async () => {
+      rows.set(SYSTEM_TENANT_ID, entity(SYSTEM_TENANT_ID, { directions: {}, checks: { prompt_safety: { action: 'block', setBy: 'platform_admin' } } }, 1));
+      rows.set(TENANT_A, entity(TENANT_A, { directions: {}, checks: {} }, 2));
+      const response = await service.getForTenant(TENANT_A);
+      expect(response.version).toBe(2);
+      expect(JSON.stringify(response)).toContain('block');
+    });
+
+    it('PUT to the SYSTEM row updates it instead of creating a second one', async () => {
+      rows.set(SYSTEM_TENANT_ID, entity(SYSTEM_TENANT_ID, { directions: {}, checks: {} }, 1));
+      const saved = await service.putForTenant(SYSTEM_TENANT_ID, { policies: { checks: { leakage_judge: { enabled: true } } }, expectedVersion: 1 });
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(repository.updateWithVersion).toHaveBeenCalled();
+      expect(saved.version).toBe(2);
+      expect(workingTenant).toBe(TENANT_A);
+    });
   });
 });

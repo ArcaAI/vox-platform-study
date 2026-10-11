@@ -94,10 +94,11 @@ describe('field-level guard — a tenant admin changes only `enabled` flags', ()
     expect(fields).toContain('checks.pii_leak.minScore');
     expect(fields).toContain('checks.prompt_safety.action');
     expect(fields).toContain('checks.prompt_safety.locked');
+    expect(fields).toContain('checks.prompt_safety.categoryActions');
     expect(fields).toContain('checks.jailbreak_detection.dataRegionAction');
     expect(fields.filter((field) => field.startsWith('checks.medical_validation.'))).toEqual([]);
     expect(fields.some((field) => field.endsWith('.setBy'))).toBe(false);
-    expect(fields).toHaveLength(2 + (GUARDRAIL_CHECK_IDS.length - 1) * 5);
+    expect(fields).toHaveLength(2 + (GUARDRAIL_CHECK_IDS.length - 1) * 6);
   });
 
   it('a platform round-trip that restates the catalogue-locked check unchanged is not a change (e2e S3)', () => {
