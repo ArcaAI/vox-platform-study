@@ -55,6 +55,12 @@ export interface TenantOwnedResourceOptions {
    *                        session is not a tenant-wide resource.
    */
   lookup?: 'id' | 'name' | 'session';
+  /**
+   * BUG-036 — `StreamSession` only: also accept the short-lived finalized marker a stop / socket
+   * close leaves behind (same tenant + owner rule), so the owner's close is idempotent. Only the
+   * DELETE route sets it; refresh-ticket and the engine switches must keep 404 on a closed session.
+   */
+  allowFinalized?: boolean;
   scope?: 'tenant' | 'creator' | 'super-admin';
 }
 

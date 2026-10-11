@@ -1295,7 +1295,9 @@ export class TranscriptionJobController {
    */
   @Delete('stream/session/:sessionId')
   @HttpCode(204)
-  @TenantOwnedResource({ modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' })
+  // BUG-036 — idempotent for the owner: after a stop / socket close (which finalizes the session and
+  // clears its binding) this answers 204, not 404. `removeSession` already treats an STT 404 as done.
+  @TenantOwnedResource({ modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session', allowFinalized: true })
   @ApiOperation({ summary: 'Close a WebSocket streaming session' })
   @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
   async closeStreamSession(@Param('sessionId') sessionId: string): Promise<void> {

@@ -49,7 +49,7 @@ interface MockRepoSet {
 interface MockServices {
   consultationJob: { getJobStatus: ReturnType<typeof vi.fn> };
   // Mocks the `StreamSession` resolver branch.
-  streamSessionTenantBinding: { lookup: ReturnType<typeof vi.fn>; lookupBinding: ReturnType<typeof vi.fn> };
+  streamSessionTenantBinding: { lookup: ReturnType<typeof vi.fn>; lookupBinding: ReturnType<typeof vi.fn>; lookupFinalized: ReturnType<typeof vi.fn> };
 }
 
 function buildHarness(opts: { reflectorReturns?: unknown; clsState?: Record<string, unknown>; params?: Record<string, string> }) {
@@ -87,6 +87,7 @@ function buildHarness(opts: { reflectorReturns?: unknown; clsState?: Record<stri
     streamSessionTenantBinding: {
       lookup: vi.fn(),
       lookupBinding: vi.fn(),
+      lookupFinalized: vi.fn().mockResolvedValue(null),
     },
   };
 
@@ -600,6 +601,48 @@ describe('TenantOwnedResourceInterceptor', () => {
       expect(result).toBe(NEXT_VALUE);
       expect(harness.services.streamSessionTenantBinding.lookupBinding).toHaveBeenCalledWith('sess-1');
       expect(harness.next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    // BUG-036 — the DELETE route (`allowFinalized`) accepts the finalized marker a stop leaves
+    // behind, under the SAME tenant + owner rule; every other route keeps 404 on a closed session.
+    const DELETE_ROUTE = { modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session', allowFinalized: true };
+
+    it('BUG-036: DELETE passes on a finalized session for the same tenant and owner', async () => {
+      const harness = buildHarness({ reflectorReturns: DELETE_ROUTE, clsState: { tenantId: SENTINEL_TENANT_A, user: { id: SENTINEL_USER_OWNER } }, params: { sessionId: 'sess-1' } });
+      harness.services.streamSessionTenantBinding.lookupBinding.mockResolvedValueOnce(null);
+      harness.services.streamSessionTenantBinding.lookupFinalized.mockResolvedValueOnce(bindingFor(SENTINEL_TENANT_A, SENTINEL_USER_OWNER));
+
+      const result = await firstValueFrom(await harness.interceptor.intercept(harness.ctx, harness.next));
+      expect(result).toBe(NEXT_VALUE);
+    });
+
+    it('BUG-036: DELETE on another tenant\u2019s finalized session is still 404', async () => {
+      const harness = buildHarness({ reflectorReturns: DELETE_ROUTE, clsState: { tenantId: SENTINEL_TENANT_A, user: { id: SENTINEL_USER_OWNER } }, params: { sessionId: 'sess-1' } });
+      harness.services.streamSessionTenantBinding.lookupBinding.mockResolvedValueOnce(null);
+      harness.services.streamSessionTenantBinding.lookupFinalized.mockResolvedValueOnce(bindingFor(SENTINEL_TENANT_B, SENTINEL_USER_OWNER));
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
+    });
+
+    it('BUG-036: DELETE on a colleague\u2019s finalized session is still 404', async () => {
+      const harness = buildHarness({ reflectorReturns: DELETE_ROUTE, clsState: { tenantId: SENTINEL_TENANT_A, user: { id: 'someone-else' } }, params: { sessionId: 'sess-1' } });
+      harness.services.streamSessionTenantBinding.lookupBinding.mockResolvedValueOnce(null);
+      harness.services.streamSessionTenantBinding.lookupFinalized.mockResolvedValueOnce(bindingFor(SENTINEL_TENANT_A, SENTINEL_USER_OWNER));
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
+    });
+
+    it('BUG-036: a route WITHOUT allowFinalized never reads the marker (refresh-ticket stays 404)', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' },
+        clsState: { tenantId: SENTINEL_TENANT_A, user: { id: SENTINEL_USER_OWNER } },
+        params: { sessionId: 'sess-1' },
+      });
+      harness.services.streamSessionTenantBinding.lookupBinding.mockResolvedValueOnce(null);
+      harness.services.streamSessionTenantBinding.lookupFinalized.mockResolvedValueOnce(bindingFor(SENTINEL_TENANT_A, SENTINEL_USER_OWNER));
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
+      expect(harness.services.streamSessionTenantBinding.lookupFinalized).not.toHaveBeenCalled();
     });
 
     it('throws 404 on cross-tenant probe (bound tenant != caller)', async () => {

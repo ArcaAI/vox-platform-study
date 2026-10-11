@@ -112,6 +112,23 @@ describe('SttResource#closeStreamSession', () => {
     expect(url).toBe('http://localhost:8868/api/v1/audio/transcription-jobs/stream/session/sess-1');
     expect(init.method).toBe('DELETE');
   });
+
+  // BUG-036 — a stop (or the socket closing) already finalized the session, so a follow-up close can
+  // meet a 404 from a gateway without the idempotent DELETE. Closing is best-effort: "already gone" is
+  // success; any other failure still surfaces.
+  it('BUG-036: treats 404 (already closed) as closed', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(404, { statusCode: 404, message: 'Resource not found' }));
+    const stt = new SttResource(transportWith(fetchImpl));
+
+    await expect(stt.closeStreamSession('sess-1')).resolves.toBeUndefined();
+  });
+
+  it('BUG-036: still throws on any other failure', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(403, { statusCode: 403, message: 'Forbidden' }));
+    const stt = new SttResource(transportWith(fetchImpl));
+
+    await expect(stt.closeStreamSession('sess-1')).rejects.toThrow();
+  });
 });
 
 describe('SttResource#socket', () => {

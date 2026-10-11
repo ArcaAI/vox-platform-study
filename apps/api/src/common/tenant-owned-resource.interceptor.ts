@@ -178,7 +178,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
         // SessionId → { tenantId, userId } lookup via the
         // gateway-side binding service (the session itself lives in
         // STT / Redis, not Prisma — there is no repository to call).
-        await this.assertStreamSessionOwnership(paramValue, callerTenantId);
+        await this.assertStreamSessionOwnership(paramValue, callerTenantId, opts.allowFinalized === true);
         return;
       default:
         // Exhaustiveness — the union covers every branch. Throwing the
@@ -210,8 +210,11 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
    * There is deliberately no super-admin bypass: a live clinical audio socket
    * is precisely the surface where a silent extra listener is the harm.
    */
-  private async assertStreamSessionOwnership(sessionId: string, callerTenantId: string): Promise<void> {
-    const binding = await this.streamSessionTenantBinding.lookupBinding(sessionId);
+  private async assertStreamSessionOwnership(sessionId: string, callerTenantId: string, allowFinalized = false): Promise<void> {
+    const live = await this.streamSessionTenantBinding.lookupBinding(sessionId);
+    // BUG-036 — the owner's DELETE after a stop finds the live binding already cleared; it may fall
+    // back to the finalized marker, under exactly the same tenant + owner comparison below.
+    const binding = live ?? (allowFinalized ? await this.streamSessionTenantBinding.lookupFinalized(sessionId) : null);
     if (binding === null || binding.tenantId !== callerTenantId) {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
     }

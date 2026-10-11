@@ -85,6 +85,15 @@ export const STREAM_SESSION_META_KEY_PREFIX = 'stream-session-meta:';
  */
 export const STREAM_SESSION_MARKS_KEY_PREFIX = 'stream-session-marks:';
 
+/**
+ * BUG-036 — what `clear()` leaves behind: the finalized session's `{ tenantId, userId }`, for long
+ * enough that the owner's best-effort `DELETE stream/session/:id` (sent right after stop, or after the
+ * socket closed) answers 204 instead of 404. Read ONLY by routes that opt in (`allowFinalized`, the
+ * DELETE) — a ticket refresh or engine switch on a finalized session still 404s.
+ */
+export const STREAM_SESSION_FINALIZED_KEY_PREFIX = 'stream-session-finalized:';
+export const STREAM_SESSION_FINALIZED_TTL_SECONDS = 60 * 60; // 1h
+
 export interface StreamSessionMeta {
   sampleRate: number;
   /**
@@ -175,7 +184,18 @@ export class StreamSessionTenantBindingService {
     if (!this.isValidSessionId(sessionId)) {
       return null;
     }
-    const raw = await this.cache.get(this.key(sessionId));
+    return this.parseBinding(await this.cache.get(this.key(sessionId)));
+  }
+
+  /** BUG-036 — the owner of a session `clear()` finalized within the last hour, or null. */
+  async lookupFinalized(sessionId: string): Promise<StreamSessionBinding | null> {
+    if (!this.isValidSessionId(sessionId)) {
+      return null;
+    }
+    return this.parseBinding(await this.cache.get(this.finalizedKey(sessionId)));
+  }
+
+  private parseBinding(raw: unknown): StreamSessionBinding | null {
     if (typeof raw !== 'string' || raw.length === 0) {
       return null;
     }
@@ -310,6 +330,11 @@ export class StreamSessionTenantBindingService {
       return;
     }
     try {
+      // BUG-036 — keep the owner for the finalized marker before the live binding goes.
+      const binding = await this.lookupBinding(sessionId);
+      if (binding) {
+        await this.cache.setex(this.finalizedKey(sessionId), STREAM_SESSION_FINALIZED_TTL_SECONDS, JSON.stringify(binding));
+      }
       await this.cache.del(this.key(sessionId));
     } catch (err) {
       // Non-fatal: the binding TTL will reclaim it. We log and proceed so
@@ -332,6 +357,10 @@ export class StreamSessionTenantBindingService {
 
   private metaKey(sessionId: string): string {
     return `${STREAM_SESSION_META_KEY_PREFIX}${sessionId}`;
+  }
+
+  private finalizedKey(sessionId: string): string {
+    return `${STREAM_SESSION_FINALIZED_KEY_PREFIX}${sessionId}`;
   }
 
   private marksKey(sessionId: string): string {

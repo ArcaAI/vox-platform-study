@@ -30,6 +30,7 @@
  * not a bug in your session id.
  */
 
+import { NotFoundError } from '../core/errors';
 import { RealtimeSttSocket } from '../core/realtime-stt-socket';
 import type { RealtimeSttSocketOptions } from '../core/realtime-stt-socket';
 import type { Transport } from '../core/transport';
@@ -113,11 +114,18 @@ export class SttResource {
    * TTL (24h) is the only other thing that would.
    */
   async closeStreamSession(sessionId: string, options: SttRequestOptions = {}): Promise<void> {
-    await this.transport.request<void>({
-      method: 'DELETE',
-      path: `${SESSION_BASE}/${encodePathSegment(sessionId)}`,
-      signal: options.signal,
-    });
+    try {
+      await this.transport.request<void>({
+        method: 'DELETE',
+        path: `${SESSION_BASE}/${encodePathSegment(sessionId)}`,
+        signal: options.signal,
+      });
+    } catch (error) {
+      // A stop or a closed socket finalizes the session server-side; an older gateway then answers
+      // this close with 404. Closing is best-effort, and "already gone" is the outcome asked for.
+      if (error instanceof NotFoundError) return;
+      throw error;
+    }
   }
 
   /**

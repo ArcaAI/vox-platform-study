@@ -645,11 +645,14 @@ describe('TranscriptionJobController', () => {
 
     // closeStreamSession IS now annotated with
     // the new `StreamSession` resolver branch.
-    it('closeStreamSession IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"}', () => {
+    // BUG-036 — and it alone accepts the finalized marker (`allowFinalized`), so the owner's close
+    // after a stop is a 204; refreshStreamTicket below stays pinned WITHOUT it.
+    it('closeStreamSession IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session", allowFinalized: true}', () => {
       expect(meta('closeStreamSession')).toEqual({
         modelName: 'StreamSession',
         paramName: 'sessionId',
         lookup: 'session',
+        allowFinalized: true,
       });
     });
 

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  STREAM_SESSION_FINALIZED_KEY_PREFIX,
+  STREAM_SESSION_FINALIZED_TTL_SECONDS,
   STREAM_SESSION_META_KEY_PREFIX,
   STREAM_SESSION_TENANT_KEY_PREFIX,
   StreamSessionTenantBindingService,
@@ -68,6 +70,23 @@ describe('StreamSessionTenantBindingService', () => {
     await service.clear('sess-x');
 
     expect(await service.lookupBinding('sess-x')).toBeNull();
+  });
+
+  // BUG-036 — finalize (WS close, FINALIZE, consultation stop) clears the binding BEFORE a client's
+  // best-effort DELETE, which then 404'd for a session the same owner had just used. `clear()` now
+  // leaves a short-lived finalized marker carrying the same owner, which only the DELETE route reads.
+  it('BUG-036: clear() leaves a finalized marker with the same owner', async () => {
+    await service.bind('sess-f', 'tenant-F', 'user-F', 600);
+    await service.clear('sess-f');
+
+    expect(await service.lookupBinding('sess-f')).toBeNull();
+    expect(await service.lookupFinalized('sess-f')).toEqual({ tenantId: 'tenant-F', userId: 'user-F' });
+    expect(cache.mock.setex).toHaveBeenCalledWith(`${STREAM_SESSION_FINALIZED_KEY_PREFIX}sess-f`, STREAM_SESSION_FINALIZED_TTL_SECONDS, JSON.stringify({ tenantId: 'tenant-F', userId: 'user-F' }));
+  });
+
+  it('BUG-036: clear() of a session that was never bound leaves no marker', async () => {
+    await service.clear('sess-none');
+    expect(await service.lookupFinalized('sess-none')).toBeNull();
   });
 
   // ===========================================================================
