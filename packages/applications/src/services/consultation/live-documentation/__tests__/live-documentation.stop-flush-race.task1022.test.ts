@@ -17,9 +17,13 @@
  *
  * ## The rule this file pins
  *
- * Once `stop()` has begun draining, NOTHING but the drain may run a generation: no trailing
- * re-run, no idle/throttle timer, no ingest-triggered flush. Every transcript part not yet flushed
- * at stop — including a final that lands DURING the drain — is flushed before the handoff.
+ * Once `stop()` has begun, NOTHING may run a generation: no trailing re-run, no idle/throttle timer,
+ * no ingest-triggered flush.
+ *
+ * TASK-1063 1a (owner decision 2026-10-11) — and the stop itself no longer runs one either: it
+ * supersedes the generation in flight and closes on the last good note. The transcript spoken after
+ * the last generation is the finalizer's (TASK-1045 note plan), which is why the follow-up above is
+ * no longer the live lane's to fold.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { LiveDocumentationService } from '../live-documentation.service';
@@ -129,12 +133,11 @@ function buildService(http: unknown, cache: ReturnType<typeof cacheMock>, env: R
 const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-describe('TASK-1022 D-FLUSH — stop() always flushes the un-flushed transcript before the handoff', () => {
-  it('a trailing coalesced re-run scheduled by the superseded in-flight generation cannot supersede the stop flush', async () => {
+describe('TASK-1022 D-FLUSH / TASK-1063 1a — no generation after stop()', () => {
+  it('a trailing coalesced re-run scheduled by the superseded in-flight generation never fires after stop', async () => {
     const cache = cacheMock();
     const http = gatedTextHttpMock();
-    // A short min interval so the trailing re-run fires WHILE the stop flush is still generating —
-    // the run3 timing (8 s window, stop generation ~46 s) compressed to test scale.
+    // A short min interval so a trailing re-run, if one were scheduled, would fire inside the wait.
     const service = buildService(http, cache, { LIVE_DOC_MIN_INTERVAL_MS: '30' });
 
     service.start({ consultationId: CID, tenantId: TENANT });
@@ -149,24 +152,19 @@ describe('TASK-1022 D-FLUSH — stop() always flushes the un-flushed transcript 
     // The last spoken final lands just before the clinician stops.
     service.ingestSegment(CID, { text: LATE, isFinal: true, segmentId: 's2' });
 
-    const stopped = service.stop(CID, { persistSnapshot: false });
-    // The stop's forced generation is call #1; hold it open past the trailing re-run's window.
-    await http.callStarted(1);
+    const finalPayload = await service.stop(CID, { persistSnapshot: false });
     await inFlight;
     await sleep(120);
-    http.release(1);
-    // Any further call (there must be none that supersedes) is released immediately.
-    for (let i = 2; i < 6; i++) http.release(i);
-    const finalPayload = await stopped;
+    for (let i = 0; i < 6; i++) http.release(i);
 
-    expect(finalPayload, 'the stop flush was superseded (dropStale → null) and the closing frame carried an empty note').not.toBeNull();
-    const closed = cache.published.find((p) => p.closed === true) as { sections?: unknown[]; runningSummary?: string } | undefined;
+    expect(http.generateCalls(), 'a generation ran after stop').toBe(1);
+    // Nothing completed before stop, so there is no last good note to close on.
+    expect(finalPayload).toBeNull();
+    const closed = cache.published.find((p) => p.closed === true);
     expect(closed, 'no closing frame was published').toBeDefined();
-    expect((closed?.sections ?? []).length, 'the closing frame carried no sections').toBeGreaterThan(0);
-    expect(http.prompts[1], 'the stop flush prompt must carry the final spoken after the last generation').toContain('Come back in four weeks');
   });
 
-  it('a final that lands DURING the stop drain is still flushed before the handoff', async () => {
+  it('a final that lands during the stop starts no generation', async () => {
     const cache = cacheMock();
     const http = gatedTextHttpMock();
     const service = buildService(http, cache, { LIVE_DOC_MIN_INTERVAL_MS: '30' });
@@ -176,21 +174,11 @@ describe('TASK-1022 D-FLUSH — stop() always flushes the un-flushed transcript 
     service.ingestSegment(CID, { text: 'your hemoglobin is 10.2 which is low', isFinal: true, segmentId: 's1' });
 
     const stopped = service.stop(CID, { persistSnapshot: false });
-    await http.callStarted(0);
-    // The STT finalize delivers the last final while the stop's first drain generation runs.
+    // The STT finalize delivers the last final while the stop runs.
     service.ingestSegment(CID, { text: LATE, isFinal: true, segmentId: 's2' });
+    await stopped;
     await sleep(80);
-    for (let i = 0; i < 6; i++) http.release(i);
-    // A second drain generation, if any, must be released too.
-    await http.callStarted(1).then(() => http.release(1));
-    const finalPayload = await stopped;
 
-    expect(finalPayload).not.toBeNull();
-    expect(
-      http.prompts.some((p) => p.includes('Come back in four weeks')),
-      'the final that arrived during the drain never reached a generation',
-    ).toBe(true);
-    // Exactly two generations: the drain's first pass and the catch-up pass. No timer-driven extra.
-    expect(http.generateCalls()).toBe(2);
+    expect(http.generateCalls(), 'the stop or the late final started a generation').toBe(0);
   });
 });

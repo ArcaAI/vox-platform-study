@@ -5,8 +5,9 @@
  * background (F-7 / OD-2). Two things in THIS service make that safe:
  *
  *  1. `stop()` is SINGLE-FLIGHT per consultation. A second stop (a client retry, the shutdown
- *     hook, the loop's `livedoc.stop`) while a drain is running JOINS it — it never starts a
- *     second forced-flush loop over the same session.
+ *     hook, the loop's `livedoc.stop`) while a drain is running JOINS it — it never races a
+ *     second snapshot/handoff write over the same session. (TASK-1063 1a: the drain runs no
+ *     generation any more; what it awaits is the snapshot and handoff writes, gated below.)
  *  2. The live handoff can be marked PENDING before the status leaves RECORDING. The durable
  *     run polls `readLiveHandoff` from consultation open, and it reads `DRAINING` with no record
  *     as "ended with nothing" — so without the marker, a poll landing inside the drain would
@@ -77,6 +78,7 @@ type SessionShape = {
   transcriptParts: string[];
   flushedTranscriptCount: number;
   sttSubscription?: { unsubscribe: () => void };
+  lastPayload?: { runningSummary: string };
 };
 
 function sessions(service: LiveDocumentationService): Map<string, SessionShape> {
@@ -95,6 +97,19 @@ function seedSession(service: LiveDocumentationService, overrides: Partial<Sessi
   return session;
 }
 
+/**
+ * TASK-1063 1a — hold the stop on its handoff write (the drain no longer awaits a generation).
+ * The real write still runs once the gate opens, so the handoff record lands as before.
+ */
+function gateHandoff(service: LiveDocumentationService, gate: Promise<unknown>) {
+  const target = service as unknown as { persistLiveHandoff: (session: unknown) => Promise<void> };
+  const original = target.persistLiveHandoff.bind(service);
+  return vi.spyOn(target, 'persistLiveHandoff').mockImplementation(async (session: unknown) => {
+    await gate;
+    return original(session);
+  });
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -106,13 +121,10 @@ function deferred<T>() {
 describe('TASK-1003 — stop() is single-flight per consultation', () => {
   it('a second stop while a drain is running JOINS it and never starts a second drain', async () => {
     const { service } = buildService();
-    const session = seedSession(service);
+    seedSession(service);
     const gate = deferred<null>();
-    const flush = vi.spyOn(service, 'flush').mockImplementation(async () => {
-      await gate.promise;
-      session.flushedTranscriptCount = session.transcriptParts.length;
-      return null;
-    });
+    const handoff = gateHandoff(service, gate.promise);
+    const flush = vi.spyOn(service, 'flush');
 
     const first = service.stop(CID, { persistSnapshot: false });
     const second = service.stop(CID, { persistSnapshot: false });
@@ -120,13 +132,14 @@ describe('TASK-1003 — stop() is single-flight per consultation', () => {
     expect(second).toBe(first);
     gate.resolve(null);
     await expect(Promise.all([first, second])).resolves.toEqual([null, null]);
-    expect(flush).toHaveBeenCalledTimes(1);
+    expect(handoff).toHaveBeenCalledTimes(1);
+    // TASK-1063 1a — and the stop runs no generation of its own.
+    expect(flush).not.toHaveBeenCalled();
   });
 
   it('a stop AFTER the in-flight one settled runs on its own (the guard is released)', async () => {
     const { service } = buildService();
     seedSession(service);
-    vi.spyOn(service, 'flush').mockResolvedValue(null);
 
     const first = service.stop(CID);
     await first;
@@ -138,8 +151,8 @@ describe('TASK-1003 — stop() is single-flight per consultation', () => {
 
   it('a failing drain rejects every joined caller and still releases the guard', async () => {
     const { service } = buildService();
-    seedSession(service);
-    vi.spyOn(service, 'flush').mockResolvedValue({ runningSummary: 'S: cough' } as never);
+    // TASK-1063 1a — the stop closes on the session's last good note.
+    seedSession(service, { lastPayload: { runningSummary: 'S: cough' } });
     vi.spyOn(service as unknown as { persistDurableSnapshot: () => Promise<void> }, 'persistDurableSnapshot').mockRejectedValue(new Error('db down'));
 
     const first = service.stop(CID, { persistSnapshot: true });
@@ -166,7 +179,7 @@ describe('TASK-1003 — a resumed recording waits for the previous stop to finis
     const { service } = buildService();
     seedSession(service);
     const gate = deferred<null>();
-    vi.spyOn(service, 'flush').mockImplementation(async () => gate.promise);
+    gateHandoff(service, gate.promise);
 
     const draining = service.stop(CID);
     let settled = false;
@@ -207,7 +220,7 @@ describe('TASK-1003 — the handoff is PENDING while the stop drains', () => {
     const { service, stored } = buildService({ status: 'DRAINING' });
     seedSession(service);
     const gate = deferred<null>();
-    vi.spyOn(service, 'flush').mockImplementation(async () => gate.promise);
+    gateHandoff(service, gate.promise);
 
     await service.markHandoffPending(CID);
     const draining = service.stop(CID, { persistSnapshot: false });
@@ -224,8 +237,7 @@ describe('TASK-1003 — the handoff is PENDING while the stop drains', () => {
 
   it('clears the marker even when the drain fails, so the run reads the honest empty instead of waiting', async () => {
     const { service, stored } = buildService({ status: 'DRAINING' });
-    seedSession(service);
-    vi.spyOn(service, 'flush').mockResolvedValue({ runningSummary: 'S: cough' } as never);
+    seedSession(service, { lastPayload: { runningSummary: 'S: cough' } });
     vi.spyOn(service as unknown as { persistDurableSnapshot: () => Promise<void> }, 'persistDurableSnapshot').mockRejectedValue(new Error('db down'));
 
     await service.markHandoffPending(CID);

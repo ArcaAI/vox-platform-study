@@ -238,11 +238,12 @@ describe('the live ASR agent publishes per-utterance timing, not a bare string',
     stream.emit(frame({ text: 'cough since monday', startTime: 0, endTime: 2 }));
     await service.flush(CID);
 
-    // A SECOND utterance, flushed by `stop()`'s drain. The capture node publishes only what the
-    // cursor has not covered, so this turn's `transcript` is "no fever" alone — and a segment
-    // built against the SESSION transcript would carry `charStart: 19`, pointing past the end of
-    // the 8-character string the node actually published.
+    // A SECOND utterance, flushed by a second turn (TASK-1063 1a: `stop()` no longer drains). The
+    // capture node publishes only what the cursor has not covered, so this turn's `transcript` is
+    // "no fever" alone — and a segment built against the SESSION transcript would carry
+    // `charStart: 19`, pointing past the end of the 8-character string the node actually published.
     stream.emit(frame({ text: 'no fever', startTime: 2.5, endTime: 3.25, utteranceIndex: 1 }));
+    await service.flush(CID, { force: true });
     await service.stop(CID, { persistSnapshot: false });
 
     const output = captureOutput(cache);
