@@ -35,6 +35,7 @@ with workflow.unsafe.imports_passed_through():
         load_live_outputs,
         read_consultation,
         resolve_context_path,
+        run_error_code_of,
     )
     from harness.temporal.interpreter.compiled_config import (
         CompiledGate,
@@ -570,6 +571,34 @@ def _is_empty_review_payload(payload: dict[str, Any]) -> bool:
     return True
 
 
+def _run_failure_cause(stages: list[StageResult]) -> str | None:
+    """The reason that names WHY a run failed (pure, replay-safe): the first FAILED node's.
+
+    BUG-041 — one exception. When that node is an output whose schema misses a REQUIRED field and
+    an EARLIER node degraded with a classifiable cause (a note plan whose calls failed, a model
+    error, a downstream outage), the missing field is the symptom and the degraded node is the
+    cause. Reporting `OUTPUT_INVALID` there sent operators to the schema instead of the outage.
+    """
+    for failed_stage, stage in enumerate(stages):
+        failed = next((n for n in stage.nodes if n.status == "FAILED"), None)
+        if failed is None:
+            continue
+        reason = failed.reason
+        if run_error_code_of(reason) != "OUTPUT_INVALID" or "is a required property" not in (
+            reason or ""
+        ):
+            return reason
+        for earlier in stages[:failed_stage]:
+            for node in earlier.nodes:
+                if node.status == "DEGRADED" and run_error_code_of(node.reason) not in (
+                    "INTERNAL_ERROR",
+                    "OUTPUT_INVALID",
+                ):
+                    return node.reason
+        return reason
+    return None
+
+
 def _settled_node_counts(stages: list[StageResult]) -> tuple[int, int, int, int]:
     """``(nodeCount, failedNodeCount, degradedNodeCount, skippedNodeCount)`` across every
     settled node in `stages` — including the HITL gate, which `run()` appends as one more
@@ -921,10 +950,7 @@ class WorkflowInterpreter:
         if self._v2:
             if reason is None and status == "FAILED":
                 # The run's cause, for the fixed error code: the first node that failed it.
-                reason = next(
-                    (n.reason for st in self._stages for n in st.nodes if n.status == "FAILED"),
-                    None,
-                )
+                reason = _run_failure_cause(self._stages)
             elapsed = (
                 (workflow.now() - self._run_started_at).total_seconds()
                 if self._run_started_at is not None

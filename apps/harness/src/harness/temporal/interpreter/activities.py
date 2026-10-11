@@ -765,9 +765,15 @@ def run_error_code_of(reason: str | None) -> str:
         return "AGENT_VERSION_UNAVAILABLE"
     if "TextServiceError" in text or "text generate failed" in text:
         return "MODEL_ERROR"
+    # BUG-041 — a note plan whose calls failed, were cut off, or wrote nothing: no note exists.
+    if any(
+        code in text for code in ("note_plan_call_failed", "note_output_truncated", "note_empty")
+    ):
+        return "MODEL_ERROR"
     if "ApiServiceError" in text or "unavailable" in text:
         return "DOWNSTREAM_UNAVAILABLE"
-    if "SchemaViolation" in text or "schema" in text:
+    # BUG-041 — a violation, not any text that merely mentions a schema.
+    if any(m in text for m in ("SchemaViolation", "schema_violation", "output schema")):
         return "OUTPUT_INVALID"
     return "INTERNAL_ERROR"
 
