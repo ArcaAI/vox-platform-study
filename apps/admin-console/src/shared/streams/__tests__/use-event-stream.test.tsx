@@ -44,6 +44,18 @@ class FakeEventSource {
   fail(): void {
     this.onerror?.();
   }
+
+  /**
+   * What a real EventSource does on a transport failure (a 404, a dropped connection): a plain
+   * `Event('error')` with NO `data` goes to `addEventListener('error')` listeners AND `onerror`.
+   */
+  failNative(): void {
+    const event = new Event('error') as unknown as MessageEvent;
+    for (const listener of this.listeners.get('error') ?? []) {
+      listener(event);
+    }
+    this.onerror?.();
+  }
 }
 
 let ticketCounter = 0;
@@ -112,6 +124,37 @@ describe('useEventStream', () => {
       ['progress', '{"progress":40}'],
       ['message', 'plain'],
     ]);
+  });
+
+  it('BUG-031: a native transport error is not forwarded as an event named "error", and does not reset the retry budget', async () => {
+    // A real EventSource hands its transport-failure Event to `addEventListener('error')` listeners
+    // too. Forwarding it made a 404'd DNA stream read as a server `error` (job failed), and reset
+    // the TASK-999 budget on every cycle. Same cycle as the TASK-999 test, with the native event.
+    vi.useFakeTimers();
+    stubTicketMint();
+    const received: Array<[string, string]> = [];
+    const { result } = renderHook(() =>
+      useEventStream({ ...OPTIONS, maxRetries: 2, eventNames: ['status', 'error'], onEvent: (type, data) => received.push([type, data]) }),
+    );
+
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => FakeEventSource.instances[0].open());
+    act(() => FakeEventSource.instances[0].failNative());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    act(() => FakeEventSource.instances[1].open());
+    act(() => FakeEventSource.instances[1].failNative());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(3));
+    act(() => FakeEventSource.instances[2].open());
+    act(() => FakeEventSource.instances[2].failNative());
+
+    await vi.waitFor(() => expect(result.current.status).toBe('error'));
+    expect(received).toEqual([]);
   });
 
   it('suppresses the native retry and reconnects with a FRESH single-use ticket', async () => {

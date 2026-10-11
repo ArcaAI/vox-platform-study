@@ -138,6 +138,10 @@ export function useEventStream({ path, scope, eventNames = [], onEvent, maxRetri
         setStatus('open');
       };
       const forward = (type: string) => (event: MessageEvent) => {
+        // BUG-031 — EventSource also hands its own transport-failure `Event('error')` (no `data`) to
+        // `addEventListener('error')` listeners. That is `onerror`'s business below; forwarding it
+        // made a dropped/404'd stream read as a server-sent `error` and reset the budget here.
+        if (!('data' in event) || event.data === undefined) return;
         // TASK-999 — the retry budget resets HERE, on a DELIVERED event, not in `onopen`. A
         // server that completes the response right after a terminal frame (e.g. reconnecting to
         // a job that already finished) produces an open -> one frame -> error cycle that opens

@@ -128,7 +128,9 @@ export function useUpdateDnaSettings() {
 /** Fallback poll cadence while the SSE stream is down and the job is non-terminal. */
 const JOB_POLL_MS = 2_000;
 
-const DNA_JOB_EVENTS = ['status', 'progress', 'result', 'error'] as const;
+// BUG-031 — the server's terminal failure event is `failed` (an event named `error` collided with
+// EventSource's own transport-failure event, so a dropped stream read as a failed job).
+const DNA_JOB_EVENTS = ['status', 'progress', 'result', 'failed'] as const;
 
 function isTerminalDnaJobState(status: string | null | undefined): boolean {
   return status === 'completed' || status === 'failed';
@@ -233,7 +235,7 @@ export function useDnaJobProgress(jobId: string | null, { onTerminal }: UseDnaJo
         closeRef.current?.();
         return;
       }
-      if (type === 'error') {
+      if (type === 'failed') {
         const failure = parseJson<{ jobId: string; error?: string }>(data);
         setSse((previous) => ({
           job: {

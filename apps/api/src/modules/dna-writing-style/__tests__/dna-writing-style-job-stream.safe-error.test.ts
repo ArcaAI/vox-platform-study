@@ -92,7 +92,7 @@ describe('streamDnaJobStatus (SSE emission) — agrees with the poll route', () 
     const last = (await lastValueFrom(streamDnaJobStatus(queueWithFailure(RAW_PRISMA_LIKE_REASON), '1', ACCESS))) as MessageEvent;
     const parsed = JSON.parse(last.data as string) as { jobId: string; error: string };
 
-    expect(last.type).toBe('error');
+    expect(last.type).toBe('failed');
     expect(parsed.error).toBe(GENERIC_MESSAGE);
     expect(parsed.error).not.toMatch(/\//);
     expect(parsed.error).not.toContain('doctorId');
@@ -104,7 +104,7 @@ describe('streamDnaJobStatus (SSE emission) — agrees with the poll route', () 
     const last = (await lastValueFrom(streamDnaJobStatus(queueWithFailure(KNOWN_DOMAIN_MESSAGE), '1', ACCESS))) as MessageEvent;
     const parsed = JSON.parse(last.data as string) as { jobId: string; error: string };
 
-    expect(last.type).toBe('error');
+    expect(last.type).toBe('failed');
     expect(parsed.error).toBe(KNOWN_DOMAIN_MESSAGE);
   });
 });

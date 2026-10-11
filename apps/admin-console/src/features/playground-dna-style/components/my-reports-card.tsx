@@ -15,10 +15,19 @@ import { formatDateTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useEraseMyReport, useMyReports, useMyVersions, useSetDefaultReport } from '../api';
+import type { DnaVersion } from '../api/types';
 import { erasureSummary } from './dna-erasure-card';
 
-/** GET :reportId/versions — the DnaVersion history, newest first (frame 53). */
-function VersionTimeline({ reportId }: { reportId: string }) {
+/** GET :reportId/versions — the DnaVersion history, newest first (frame 53). A row selects that version. */
+function VersionTimeline({
+  reportId,
+  selectedVersionId,
+  onSelect,
+}: {
+  reportId: string;
+  selectedVersionId: string | null;
+  onSelect: (version: DnaVersion) => void;
+}) {
   const versions = useMyVersions(reportId);
 
   if (versions.isPending) {
@@ -40,14 +49,25 @@ function VersionTimeline({ reportId }: { reportId: string }) {
   return (
     <ol aria-label="Version history" className="flex flex-col">
       {rows.map((version) => (
-        <li key={version.id} className="flex items-baseline gap-2 border-b py-1.5 text-xs last:border-0">
-          <span className="font-medium tabular-nums">v{version.versionNumber}</span>
-          <time dateTime={version.createdAt} className="text-muted-foreground shrink-0">
-            {formatDateTime(version.createdAt, 'date')}
-          </time>
-          <span className="text-muted-foreground min-w-0 flex-1 truncate" title={version.changeReason}>
-            {version.changeReason || 'auto-generate'}
-          </span>
+        <li key={version.id} className="border-b py-0.5 text-xs last:border-0">
+          <button
+            type="button"
+            aria-label={`Show the style text of v${version.versionNumber}`}
+            aria-pressed={version.id === selectedVersionId}
+            onClick={() => onSelect(version)}
+            className={cn(
+              'focus-visible:ring-ring/50 hover:bg-accent flex w-full min-w-0 cursor-pointer items-baseline gap-2 rounded-md px-2 py-1 text-left focus-visible:ring-[3px] focus-visible:outline-none',
+              version.id === selectedVersionId && 'bg-accent',
+            )}
+          >
+            <span className="font-medium tabular-nums">v{version.versionNumber}</span>
+            <time dateTime={version.createdAt} className="text-muted-foreground shrink-0">
+              {formatDateTime(version.createdAt, 'date')}
+            </time>
+            <span className="text-muted-foreground min-w-0 flex-1 truncate" title={version.changeReason}>
+              {version.changeReason || 'auto-generate'}
+            </span>
+          </button>
         </li>
       ))}
     </ol>
@@ -74,8 +94,11 @@ export function MyReportsCard({
   const setDefault = useSetDefaultReport();
   const erase = useEraseMyReport();
   const [selected, setSelected] = useState<string | null>(null);
+  // BUG-031 — the version whose style text is shown; null shows the selected report's current text.
+  const [selectedVersion, setSelectedVersion] = useState<DnaVersion | null>(null);
   const [eraseTarget, setEraseTarget] = useState<string | null>(null);
   const selectedId = selected ?? myStyleReportId;
+  const selectedReport = reports.data?.find((report) => report.id === selectedId) ?? null;
 
   /**
    * `PATCH :reportId/default` requires `If-Match`; the validator is the row
@@ -142,7 +165,10 @@ export function MyReportsCard({
                 type="button"
                 aria-label={`Show versions of ${report.id}`}
                 aria-pressed={isSelected}
-                onClick={() => setSelected(report.id)}
+                onClick={() => {
+                  setSelected(report.id);
+                  setSelectedVersion(null);
+                }}
                 className={cn(
                   'focus-visible:ring-ring/50 hover:bg-accent flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 rounded-md px-2 py-1 text-left text-xs focus-visible:ring-[3px] focus-visible:outline-none',
                   isSelected && 'bg-accent',
@@ -197,11 +223,29 @@ export function MyReportsCard({
         <div className="flex flex-col gap-2">
           <h3 className="text-xs font-medium">Version history</h3>
           {selectedId ? (
-            <VersionTimeline reportId={selectedId} />
+            <VersionTimeline reportId={selectedId} selectedVersionId={selectedVersion?.id ?? null} onSelect={setSelectedVersion} />
           ) : (
             <p className="text-muted-foreground text-xs">Select a report to browse its versions.</p>
           )}
         </div>
+        {/* Shown once a report or version is PICKED — the default report's text is already in My style. */}
+        {selectedReport && (selected !== null || selectedVersion !== null) ? (
+          <section aria-label="Report style text" className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium">
+              Report style text{' '}
+              <span className="text-muted-foreground font-normal">
+                {selectedVersion ? `v${selectedVersion.versionNumber}` : `current (v${selectedReport.currentVersionNumber})`}
+              </span>
+            </h3>
+            {(selectedVersion ? selectedVersion.styleText : selectedReport.styleText) ? (
+              <p className="text-muted-foreground bg-muted max-h-64 overflow-y-auto rounded-md p-2 text-sm whitespace-pre-wrap">
+                {selectedVersion ? selectedVersion.styleText : selectedReport.styleText}
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-xs">No style text recorded for this {selectedVersion ? 'version' : 'report'}.</p>
+            )}
+          </section>
+        ) : null}
       </CardContent>
       <ConfirmDialog
         open={eraseTarget !== null}

@@ -155,6 +155,24 @@ describe('useDnaJobProgress (playground)', () => {
     expect(calls.every((call) => call.url === '/api/auth/stream-ticket')).toBe(true);
   });
 
+  it('BUG-031: the server terminal "failed" event marks the job failed with its message and closes the stream', async () => {
+    stubNetwork(() => Response.json(processing(10)));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDnaJobProgress('j-1'), { wrapper: Wrapper });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+    act(() => {
+      source.open();
+      source.emit('status', JSON.stringify(processing(40)));
+      source.emit('failed', JSON.stringify({ jobId: 'j-1', error: 'The analyst could not read the notes' }));
+    });
+
+    await waitFor(() => expect(result.current.isTerminal).toBe(true));
+    expect(result.current.job).toMatchObject({ jobId: 'j-1', status: 'failed', error: 'The analyst could not read the notes' });
+    expect(source.closed).toBe(true);
+  });
+
   it('falls back to the 2s poll ONLY after the stream exhausts its retry budget', async () => {
     vi.useFakeTimers();
     const calls = stubNetwork(() => Response.json({ jobId: 'j-1', status: 'completed', progress: 100, result: null }));

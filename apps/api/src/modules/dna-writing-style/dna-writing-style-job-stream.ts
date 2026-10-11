@@ -217,7 +217,9 @@ export function streamDnaJobStatus(dnaQueue: Queue, jobId: string, access: DnaJo
 
         if (status.status === 'failed') {
           subscriber.next({
-            type: 'error',
+            // BUG-031 — named `failed`, not `error`: an SSE event called `error` collides with EventSource's
+            // own transport-failure event, so a dropped or refused stream read as a failed job.
+            type: 'failed',
             // `status.error` already went through `safeJobError` inside
             // `getDnaJobStatus` above, so it is allow-list-safe by the time it
             // reaches here. `redactTopology` stays in the chain as a first

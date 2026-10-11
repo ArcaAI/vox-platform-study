@@ -389,6 +389,27 @@ describe('MyDnaStyleScreen', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Default report updated'));
   });
 
+  it('BUG-031: shows the style text of the selected report, and of a selected version', async () => {
+    stubDna((call) => {
+      const path = pathnameOf(call);
+      if (call.method === 'GET' && path === '/api/hope/dna-writing-styles/mine') {
+        return Response.json([MINE[0], { ...MINE[1], styleText: 'Older report: terse bullet points.' }]);
+      }
+      if (call.method === 'GET' && path === '/api/hope/dna-writing-styles/rep-0/versions') {
+        return Response.json([{ ...OLD_VERSIONS[0], styleText: 'Version one: long narrative paragraphs.' }]);
+      }
+      return undefined;
+    });
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show versions of rep-0' }));
+    const panel = await screen.findByRole('region', { name: 'Report style text' });
+    await waitFor(() => expect(panel.textContent).toContain('Older report: terse bullet points.'));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the style text of v1' }));
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Report style text' }).textContent).toContain('Version one: long narrative paragraphs.'));
+  });
+
   it('generates from text samples: POST -> SSE progress -> terminal result refreshes my-style', async () => {
     const calls = stubDna();
     renderWithProviders(<MyDnaStyleScreen />);
