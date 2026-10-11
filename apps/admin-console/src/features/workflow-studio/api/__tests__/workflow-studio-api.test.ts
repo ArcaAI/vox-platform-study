@@ -211,3 +211,44 @@ describe('listAgentOptions (TASK-974 §4.7)', () => {
     expect(options.map((agent) => agent.slug)).toEqual(['realtime-transcription']);
   });
 });
+
+// BUG-027 — `GET admin/agents` returns one row per VERSION (it ignores `status`/`limit`), so the
+// picker listed `saaras-test` three times. The options are the version each slug's run resolves:
+// PUBLISHED + active, one per slug; a lineage with no such version is not offered at all.
+describe('listAgentOptions (BUG-027)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('keeps one row per slug — the active PUBLISHED version — and drops draft-only / deprecated-only lineages', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: [
+            { slug: 'saaras-test', name: 'Saaras', task: 'SPEECH_TO_TEXT', versionNumber: 4, status: 'DRAFT', isActive: false },
+            { slug: 'saaras-test', name: 'Saaras', task: 'SPEECH_TO_TEXT', versionNumber: 3, status: 'PUBLISHED', isActive: true },
+            { slug: 'saaras-test', name: 'Saaras', task: 'SPEECH_TO_TEXT', versionNumber: 2, status: 'PUBLISHED', isActive: false },
+            { slug: 'draft-only', name: 'Draft only', task: 'TEXT_GENERATION', versionNumber: 1, status: 'DRAFT', isActive: false },
+            { slug: 'retired', name: 'Retired', task: 'TEXT_GENERATION', versionNumber: 2, status: 'DEPRECATED', isActive: false },
+            { slug: 'retired', name: 'Retired', task: 'TEXT_GENERATION', versionNumber: 1, status: 'PUBLISHED', isActive: false },
+          ],
+        }),
+      ),
+    );
+    const options = await listAgentOptions();
+    expect(options.map((agent) => [agent.slug, agent.versionNumber])).toEqual([['saaras-test', 3]]);
+  });
+
+  it('folds rows that carry no status fields to the highest version per slug', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json([
+          { slug: 'clinic-summarizer', name: 'Clinic summarizer', task: 'TEXT_GENERATION', versionNumber: 1 },
+          { slug: 'clinic-summarizer', name: 'Clinic summarizer', task: 'TEXT_GENERATION', versionNumber: 2 },
+        ]),
+      ),
+    );
+    const options = await listAgentOptions();
+    expect(options.map((agent) => [agent.slug, agent.versionNumber])).toEqual([['clinic-summarizer', 2]]);
+  });
+});

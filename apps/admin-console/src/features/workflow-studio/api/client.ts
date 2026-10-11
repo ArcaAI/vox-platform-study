@@ -296,7 +296,24 @@ export async function listAgentOptions(task?: string): Promise<AgentOption[]> {
   // analyst) is configuration the platform admin owns, not something a tenant's `core.agent`
   // node may reference. `GET admin/agents` deliberately still returns it (the admin `/agents`
   // screen labels it), so the exclusion belongs here, at this picker's own read.
-  return agents.filter((agent) => !agent.hidden);
+  return oneServableVersionPerSlug(agents.filter((agent) => !agent.hidden));
+}
+
+/**
+ * BUG-027 — `GET admin/agents` is one row per VERSION and ignores the `status`/`limit` this read
+ * sends, so every consumer (picker, inspector, composer, step naming) saw each slug several times
+ * and `.find(slug)` hit whichever version came first. Keep the version a run resolves: PUBLISHED
+ * and active, one per slug; a lineage without one is not offered. Rows that carry neither field
+ * (an older envelope) fold to their highest version instead. Server order is preserved.
+ */
+function oneServableVersionPerSlug(agents: AgentOption[]): AgentOption[] {
+  const servable = agents.filter((agent) => (agent.status === undefined && agent.isActive === undefined) || (agent.status === 'PUBLISHED' && agent.isActive === true));
+  const bySlug = new Map<string, AgentOption>();
+  for (const agent of servable) {
+    const kept = bySlug.get(agent.slug);
+    if (!kept || (agent.versionNumber ?? 0) > (kept.versionNumber ?? 0)) bySlug.set(agent.slug, agent);
+  }
+  return servable.filter((agent) => bySlug.get(agent.slug) === agent);
 }
 
 /**
