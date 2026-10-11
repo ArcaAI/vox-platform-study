@@ -56,6 +56,14 @@ export class GuardrailCheckStateResponse {
   })
   dataRegionAction?: string;
 
+  @ApiPropertyOptional({
+    description:
+      '`{ label: action }` — the action a flag whose labels are ALL listed takes instead of `action` (relax only). Label-by-label cascade: catalogue default, SYSTEM, tenant. Writable by a platform admin only.',
+    type: 'object',
+    additionalProperties: { type: 'string', enum: ['ignore', 'warn', 'block'] },
+  })
+  categoryActions?: Record<string, string>;
+
   @ApiPropertyOptional({ description: 'Span floor in [0,1] (`pii_leak`). Platform admin only.' })
   minScore?: number;
 

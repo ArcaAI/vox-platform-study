@@ -93,4 +93,11 @@ export class GuardrailPolicyCatalogueEntryResponse {
 
   @ApiPropertyOptional({ description: 'inbound DATA-region action default (OD-12); null where it does not apply.', nullable: true })
   platformDefaultDataRegionAction!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'The catalogue\'s per-category action overrides (`{ label: action }`); absent where none.',
+    type: 'object',
+    additionalProperties: { type: 'string', enum: ['ignore', 'warn', 'block'] },
+  })
+  platformDefaultCategoryActions?: Record<string, string>;
 }

@@ -140,6 +140,10 @@ export function toStoredPolicy(raw: unknown): GuardrailStoredPolicy {
     if (typeof entry.locked === 'boolean') stated.locked = entry.locked;
     if (typeof entry.minScore === 'number') stated.minScore = entry.minScore;
     if (isAction(entry.dataRegionAction)) stated.dataRegionAction = entry.dataRegionAction;
+    if (isPlainObject(entry.categoryActions)) {
+      const categoryActions = Object.fromEntries(Object.entries(entry.categoryActions).filter(([, action]) => isAction(action))) as Record<string, GuardrailAction>;
+      if (Object.keys(categoryActions).length > 0) stated.categoryActions = categoryActions;
+    }
     if (Object.keys(stated).length > 0) out.checks[id] = stated;
   }
   return out;
@@ -150,6 +154,7 @@ export interface CheckDraft {
   action: GuardrailAction;
   locked: boolean;
   dataRegionAction?: GuardrailAction;
+  categoryActions?: Record<string, GuardrailAction>;
 }
 
 export interface PolicyDraft {
@@ -166,6 +171,7 @@ export function draftFromView(view: GuardrailEffectivePolicy): PolicyDraft {
       action: check.action,
       locked: check.lockReason === 'platform',
       ...(check.dataRegionAction ? { dataRegionAction: check.dataRegionAction } : {}),
+      ...(check.categoryActions ? { categoryActions: { ...check.categoryActions } } : {}),
     };
   }
   return { directions: { inbound: { ...view.directions.inbound }, outbound: { ...view.directions.outbound } }, checks };
@@ -196,6 +202,7 @@ export function buildPolicyWrite(stored: GuardrailStoredPolicy, view: GuardrailE
     if (after.action !== before.action) entry.action = after.action;
     if (after.locked !== before.locked) entry.locked = after.locked;
     if (after.dataRegionAction !== before.dataRegionAction && after.dataRegionAction) entry.dataRegionAction = after.dataRegionAction;
+    if (JSON.stringify(after.categoryActions ?? {}) !== JSON.stringify(before.categoryActions ?? {})) entry.categoryActions = { ...after.categoryActions };
     if (Object.keys(entry).length > 0) next.checks[check.checkId] = entry;
   }
   return next;

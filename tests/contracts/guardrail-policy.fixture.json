@@ -156,6 +156,27 @@
   ],
   "fieldGuard": [
     {
+      "name": "tenant sets a categoryActions override",
+      "caller": "tenant_admin",
+      "before": null,
+      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "warn", "categoryActions": { "violence": "ignore" } } } },
+      "forbidden": ["checks.prompt_safety.categoryActions"]
+    },
+    {
+      "name": "platform admin sets a categoryActions override",
+      "caller": "platform_admin",
+      "before": null,
+      "after": { "checks": { "prompt_safety": { "enabled": true, "action": "warn", "categoryActions": { "violence": "ignore" } } } },
+      "forbidden": []
+    },
+    {
+      "name": "tenant resends the stored categoryActions unchanged",
+      "caller": "tenant_admin",
+      "before": { "checks": { "prompt_safety": { "enabled": true, "action": "warn", "categoryActions": { "violence": "ignore" } } } },
+      "after": { "checks": { "prompt_safety": { "enabled": false, "action": "warn", "categoryActions": { "violence": "ignore" } } } },
+      "forbidden": []
+    },
+    {
       "name": "tenant toggles a check on/off",
       "caller": "tenant_admin",
       "before": null,

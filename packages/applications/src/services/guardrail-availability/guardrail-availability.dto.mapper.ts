@@ -57,6 +57,7 @@ export class GuardrailAvailabilityDtoMapper {
       locked: policy.locked,
       defaultEnabled: policy.defaultEnabled,
       platformDefaultDataRegionAction: policy.platformDefaultDataRegionAction ?? null,
+      ...(policy.platformDefaultCategoryActions ? { platformDefaultCategoryActions: { ...policy.platformDefaultCategoryActions } } : {}),
     }));
   }
 

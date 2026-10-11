@@ -1,11 +1,12 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { IconBuilding, IconLock, IconRestore } from '@tabler/icons-react';
+import { IconBuilding, IconLock, IconPlus, IconRestore, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
+import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/native-select';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
@@ -58,11 +59,101 @@ function viewFromCatalogue(row: GuardrailAvailabilityRow, catalogue: GuardrailCa
         lockReason: entry.locked ? 'catalogue' : null,
         editable: !entry.locked,
         ...(entry.platformDefaultDataRegionAction ? { dataRegionAction: entry.platformDefaultDataRegionAction } : {}),
+        ...(entry.platformDefaultCategoryActions ? { categoryActions: entry.platformDefaultCategoryActions } : {}),
         inherited: row.effectiveSourceTenantId === SYSTEM_TENANT_ID,
         setBy: null,
       };
     }),
   };
+}
+
+/**
+ * TASK-1062 E-1 — per-category action overrides of one check (`{ label: action }`; relax only, platform admin
+ * only — this whole screen is). Lists the labels in force and adds a new one by name.
+ */
+function CategoryActionsEditor({
+  base,
+  allowed,
+  value,
+  disabled,
+  onChange,
+}: {
+  base: string;
+  allowed: GuardrailAction[];
+  value: Record<string, GuardrailAction>;
+  disabled: boolean;
+  onChange: (next: Record<string, GuardrailAction>) => void;
+}) {
+  const [label, setLabel] = useState('');
+  const options = allowed.length > 0 ? allowed : (['ignore', 'warn', 'block'] as GuardrailAction[]);
+  const entries = Object.entries(value);
+  const add = () => {
+    const key = label.trim().toLowerCase();
+    if (!key || key in value) return;
+    onChange({ ...value, [key]: options.includes('ignore') ? 'ignore' : options[0]! });
+    setLabel('');
+  };
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3">
+      <p id={`${base}-categories`} className="text-xs font-medium">
+        Category actions {entries.length > 0 ? `(${entries.length})` : ''}
+      </p>
+      <p className="text-muted-foreground text-xs">
+        A flag whose labels are all listed here takes that action instead of the check&apos;s. It only relaxes.
+      </p>
+      {entries.length > 0 ? (
+        <ul className="flex flex-col gap-2" aria-labelledby={`${base}-categories`}>
+          {entries.map(([name, action]) => (
+            <li key={name} className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
+              <NativeSelect
+                aria-label={`${name} action`}
+                value={action}
+                disabled={disabled}
+                onChange={(event) => onChange({ ...value, [name]: event.target.value as GuardrailAction })}
+              >
+                {options.map((option) => (
+                  <NativeSelectOption key={option} value={option}>
+                    {ACTION_LABEL[option]}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={disabled}
+                aria-label={`Remove ${name}`}
+                onClick={() => onChange(Object.fromEntries(entries.filter(([key]) => key !== name)))}
+              >
+                <IconTrash aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <Input
+          aria-label="New category label"
+          className="max-w-56 font-mono text-xs"
+          placeholder="category label"
+          value={label}
+          disabled={disabled}
+          onChange={(event) => setLabel(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              add();
+            }
+          }}
+        />
+        <Button type="button" variant="outline" size="sm" disabled={disabled || !label.trim()} onClick={add}>
+          <IconPlus aria-hidden />
+          Add category
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function PolicySkeleton() {
@@ -278,6 +369,15 @@ export function PolicyEditor({
                     </div>
                   ) : null}
                 </div>
+                {!catalogueLocked ? (
+                  <CategoryActionsEditor
+                    base={base}
+                    allowed={allowed}
+                    value={value.categoryActions ?? {}}
+                    disabled={mutation.isPending}
+                    onChange={(next) => setCheck(check.checkId, { categoryActions: next })}
+                  />
+                ) : null}
               </Card>
             </li>
           );

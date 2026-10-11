@@ -315,6 +315,7 @@ interface Stub {
   availabilityPut?: 'ok' | 412;
   dryRun?: 'ok' | 409;
   changedSinceEdit?: boolean;
+  categoryActions?: Record<string, string>;
 }
 
 function stubFetch({
@@ -323,7 +324,17 @@ function stubFetch({
   availabilityPut = 'ok',
   dryRun = 'ok',
   changedSinceEdit = false,
+  categoryActions,
 }: Stub = {}): Call[] {
+  const systemRow = categoryActions
+    ? {
+        ...SYSTEM_ROW,
+        effectivePolicy: {
+          ...SYSTEM_ROW.effectivePolicy,
+          checks: [check('injection_judge', { categoryActions }), check('medical_validation')],
+        },
+      }
+    : SYSTEM_ROW;
   const calls: Call[] = [];
   vi.stubGlobal(
     'fetch',
@@ -341,9 +352,9 @@ function stubFetch({
       if (path === `admin/guardrail/availability/${SYSTEM}`) {
         if (method === 'PUT') {
           if (availabilityPut === 412) return Response.json({ statusCode: 412, message: 'Precondition Failed' }, { status: 412 });
-          return Response.json({ ...SYSTEM_ROW, version: 4 }, { headers: { etag: '"4"' } });
+          return Response.json({ ...systemRow, version: 4 }, { headers: { etag: '"4"' } });
         }
-        return Response.json(SYSTEM_ROW, { headers: { etag: '"3"' } });
+        return Response.json(systemRow, { headers: { etag: '"3"' } });
       }
       if (path === 'admin/guardrail/policy-keys') return Response.json(policyKeys(protocol, changedSinceEdit));
       if (path.endsWith('/revisions') && method === 'GET') {
@@ -454,6 +465,27 @@ describe('/guardrails/control — Rules', () => {
     expect(put.ifMatch).toBe('"3"');
     expect(put.body).toEqual({
       policies: { directions: {}, checks: { pii_leak: { minScore: 0.2 }, injection_judge: { enabled: true, action: 'warn' } } },
+      expectedVersion: 3,
+    });
+  });
+
+  it('edits a category action and sends it as categoryActions (TASK-1062 E-1)', async () => {
+    const calls = stubFetch({ categoryActions: { role_play: 'warn' } });
+    renderScreen();
+    const platform = await screen.findByRole('list', { name: 'Platform default per check' });
+    const select = within(platform).getByRole('combobox', { name: 'role_play action' });
+    expect((select as HTMLSelectElement).value).toBe('warn');
+    fireEvent.change(select, { target: { value: 'ignore' } });
+    fireEvent.change(within(platform).getByRole('textbox', { name: 'New category label' }), { target: { value: ' Jailbreak ' } });
+    fireEvent.click(within(platform).getByRole('button', { name: 'Add category' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save platform defaults' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Platform defaults saved'));
+    const put = calls.find((call) => call.method === 'PUT')!;
+    expect(put.body).toEqual({
+      policies: {
+        directions: {},
+        checks: { pii_leak: { minScore: 0.2 }, injection_judge: { categoryActions: { role_play: 'ignore', jailbreak: 'ignore' } } },
+      },
       expectedVersion: 3,
     });
   });

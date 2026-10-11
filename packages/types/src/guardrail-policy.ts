@@ -9,7 +9,7 @@
  * Authority (§11.1): a TENANT ADMIN may change only `directions.<dir>.enabled` ("off" = monitor only, OD-7)
  * and `checks.<id>.enabled` of a check that is neither catalogue-locked (medical validation, OD-9) nor locked
  * for that tenant by a platform admin (`locked: true`). Everything else — `action`, `locked`, `minScore`,
- * `dataRegionAction` — is PLATFORM ADMIN only; any other field a tenant write touches is
+ * `dataRegionAction`, `categoryActions` — is PLATFORM ADMIN only; any other field a tenant write touches is
  * 403 `GUARDRAIL_FIELD_PLATFORM_ONLY` ({@link forbiddenGuardrailPolicyChanges}). A catalogue-locked check is
  * editable by nobody. `setBy` is stamped by the server and never compared.
  *
@@ -171,7 +171,7 @@ export function normalizeTenantGuardrailPolicy(raw: unknown, defaults: Guardrail
 }
 
 /** Per-check fields, in path order. `setBy` is server-stamped and deliberately absent. */
-const CHECK_FIELDS = ['enabled', 'action', 'locked', 'minScore', 'dataRegionAction'] as const;
+const CHECK_FIELDS = ['enabled', 'action', 'locked', 'minScore', 'dataRegionAction', 'categoryActions'] as const;
 type CheckField = (typeof CHECK_FIELDS)[number];
 
 /** The dotted field paths `caller` may change on a policy currently stored as `current`. */
@@ -190,6 +190,11 @@ export function guardrailPolicyEditableFields(
   return fields;
 }
 
+function serialiseCategoryActions(value: Readonly<Record<string, GuardrailAction>> | undefined): string | undefined {
+  const entries = Object.entries(value ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return entries.length > 0 ? JSON.stringify(entries) : undefined;
+}
+
 function effectiveFields(entry: GuardrailCheckPolicy | undefined, fallback: GuardrailCheckDefault): Record<CheckField, unknown> {
   return {
     enabled: entry?.enabled ?? fallback.enabled,
@@ -198,6 +203,8 @@ function effectiveFields(entry: GuardrailCheckPolicy | undefined, fallback: Guar
     locked: entry?.locked ?? fallback.locked ?? false,
     minScore: entry?.minScore,
     dataRegionAction: entry?.dataRegionAction,
+    // An object: compared by a key-sorted serialisation (absent and `{}` are the same "no override").
+    categoryActions: serialiseCategoryActions(entry?.categoryActions),
   };
 }
 
