@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — deployed to dev (pipeline #1437); display follow-ups fixed locally, awaiting push + cluster re-check |
+| **Status** | Review — deployed to dev (pipeline #1441, `6eb7d32b0`); cluster re-check passed; awaiting owner sign-off |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
@@ -176,6 +176,12 @@ Deployment repo: branch `task-1060/deploy` @ `d36e4c7` (worktree `../hope-v2-dep
 ### Follow-ups found in the cluster proof — FIXED 2026-10-11 (owner: fix both under TASK-1060)
 1. **Bar overshoots "used".** Σ services + other = 20.75 GiB > node used 17.05 GiB: cadvisor working set counts active page cache, `MemTotal − MemAvailable` does not. Proposed fix: `other = max(0, node.used − Σ HOPE services)` (and scale the bar to `node.used` when Σ HOPE alone exceeds it), so the segments never exceed the headline figure.
 2. **Per-service "Not attributed" noise.** With no CPU models, every service repeats a "Not attributed — runtime, buffers…" row equal to its whole working set. Proposed fix: render that row only when the service has ≥ 1 CPU model.
+### Cluster re-check after the display fixes (2026-10-11, pipeline #1441 `6eb7d32b0`)
+- `hope-api-f4cc7b659-cnlzl` on `6eb7d32b0`, `POD_NAMESPACE=hope-v2-dev`.
+- Catalogue `cpu.source: "prometheus"`; Σ segments = 18.755 GiB = `node.usedBytes` exactly (`equal: true`); node `unattributedBytes` 0; `other` labelled "Other workloads & system" (2.26 GiB).
+- Rendered panel: 0 "Not attributed" rows (no service holds a CPU model); node card 18.7 GB of 62.8 GB, CPU 4.22 % of 48 cores, per-service cores vs request/limit.
+- Nit (not fixed): the `tts` and `other` swatches are both grey and hard to tell apart in the bar; rows are labelled, so nothing relies on colour alone.
+
 ## 6. Change History
 
 | Date | Change |
