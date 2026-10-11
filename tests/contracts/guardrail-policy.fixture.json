@@ -61,6 +61,38 @@
       }
     },
     {
+      "name": "v2: categoryActions keeps valid labels (trimmed, case-folded) with an allowed action; drops the rest (TASK-1061 OD-5b)",
+      "input": {
+        "checks": {
+          "prompt_toxicity": {
+            "enabled": true,
+            "action": "warn",
+            "categoryActions": { " Privacy_Violation ": "ignore", "regulated_advice": "explode", "": "ignore", "x": 3 }
+          },
+          "prompt_safety": { "enabled": true, "action": "warn", "categoryActions": { "a": "bogus" } },
+          "medical_validation": { "enabled": true, "action": "block", "categoryActions": { "a": "ignore" } },
+          "response_safety": { "enabled": true, "action": "ignore", "categoryActions": ["ignore"] }
+        }
+      },
+      "expected": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
+        "checks": {
+          "prompt_toxicity": { "enabled": true, "action": "warn", "categoryActions": { "privacy_violation": "ignore" } },
+          "prompt_safety": { "enabled": true, "action": "warn" },
+          "medical_validation": { "enabled": true, "action": "block" },
+          "response_safety": { "enabled": true, "action": "ignore" }
+        }
+      }
+    },
+    {
+      "name": "legacy flat entries never carry categoryActions",
+      "input": { "prompt_toxicity": { "enabled": true, "categoryActions": { "privacy_violation": "ignore" } } },
+      "expected": {
+        "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } },
+        "checks": { "prompt_toxicity": { "enabled": true, "action": "warn" } }
+      }
+    },
+    {
       "name": "legacy entry without a boolean enabled is no opinion (dropped)",
       "input": { "prompt_safety": { "enabled": "yes" }, "prompt_toxicity": {} },
       "expected": { "directions": { "inbound": { "enabled": true }, "outbound": { "enabled": true } }, "checks": {} }

@@ -52,6 +52,12 @@ export interface GuardrailCheckPolicy {
   readonly minScore?: number;
   /** Inbound only: what a flag on a DATA region does (OD-12, platform admin only). Absent ⇒ the catalogue default. */
   readonly dataRegionAction?: GuardrailAction;
+  /**
+   * `{ label: action }` — the action a flag whose labels are ALL listed takes instead of `action`
+   * (TASK-1061 OD-5b). It only relaxes; the guardrail cascades it label by label. Labels are trimmed and
+   * case-folded; an entry whose action is outside the check's `allowedActions` is dropped.
+   */
+  readonly categoryActions?: Readonly<Record<string, GuardrailAction>>;
 }
 
 export interface TenantGuardrailPolicyV2 {
@@ -87,6 +93,16 @@ function isAction(value: unknown): value is GuardrailAction {
   return typeof value === 'string' && (GUARDRAIL_ACTIONS as readonly string[]).includes(value);
 }
 
+function normalizeCategoryActions(raw: unknown, allowed: readonly GuardrailAction[], enforce: boolean): Record<string, GuardrailAction> | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const out: Record<string, GuardrailAction> = {};
+  for (const [label, action] of Object.entries(raw)) {
+    const key = label.trim().toLowerCase();
+    if (key && isAction(action) && (!enforce || allowed.includes(action))) out[key] = action;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function knownCheckIds(defaults: GuardrailCheckDefaults): GuardrailCheckId[] {
   return GUARDRAIL_CHECK_IDS.filter((id) => defaults[id] !== undefined);
 }
@@ -118,6 +134,8 @@ function normalizeEntry(
       entry.setBy = raw.setBy as GuardrailPolicySetBy;
     }
     if (isAction(raw.dataRegionAction)) entry.dataRegionAction = raw.dataRegionAction;
+    const categoryActions = normalizeCategoryActions(raw.categoryActions, fallback.allowedActions, enforce);
+    if (categoryActions) entry.categoryActions = categoryActions;
   }
   return entry;
 }
