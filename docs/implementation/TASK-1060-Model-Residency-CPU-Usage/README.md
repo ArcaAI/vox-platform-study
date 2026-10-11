@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — deployed to dev (pipeline #1441, `6eb7d32b0`); cluster re-check passed; awaiting owner sign-off |
+| **Status** | Review — deployed to dev (pipeline #1444, `96398ba7c`); cluster checks passed; awaiting owner sign-off |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
@@ -180,7 +180,7 @@ Deployment repo: branch `task-1060/deploy` @ `d36e4c7` (worktree `../hope-v2-dep
 - `hope-api-f4cc7b659-cnlzl` on `6eb7d32b0`, `POD_NAMESPACE=hope-v2-dev`.
 - Catalogue `cpu.source: "prometheus"`; Σ segments = 18.755 GiB = `node.usedBytes` exactly (`equal: true`); node `unattributedBytes` 0; `other` labelled "Other workloads & system" (2.26 GiB).
 - Rendered panel: 0 "Not attributed" rows (no service holds a CPU model); node card 18.7 GB of 62.8 GB, CPU 4.22 % of 48 cores, per-service cores vs request/limit.
-- Nit: the `tts` and `other` swatches were both grey — fixed 2026-10-11 (see Change History).
+- Nit: the `tts` and `other` swatches were both grey — fixed 2026-10-11 (see Change History); verified on the cluster after pipeline #1444 (`96398ba7c`), dark theme: tts `rgb(240,150,90)`, gateway `rgb(232,232,232)`, other `rgb(148,148,148)`. Light theme checked by computed contrast only.
 
 ## 6. Change History
 
