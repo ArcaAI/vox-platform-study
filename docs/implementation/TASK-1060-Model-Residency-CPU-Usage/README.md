@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — deployed to dev (pipeline #1444, `96398ba7c`); cluster checks passed; awaiting owner sign-off |
+| **Status** | Completed — owner sign-off 2026-10-11; deployed to dev (pipeline #1444, `96398ba7c`) |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
@@ -186,6 +186,7 @@ Deployment repo: branch `task-1060/deploy` @ `d36e4c7` (worktree `../hope-v2-dep
 
 | Date | Change |
 |---|---|
+| 2026-10-11 | **Completed** — owner sign-off. Open (not in scope): live proof of per-model CPU RSS needs a model loaded on CPU (owner approval). |
 | 2026-10-11 | **Swatch fix (owner).** `tts` → `bg-hope-strong` (orange; light `#a8410c`, dark `#f0965a`), `other` → `bg-chart-5` (solid mid-grey), unknown-service fallback → `bg-muted-foreground`. Seven swatches checked: all ≥ 5.5:1 against `--card` in both themes; closest pair now ΔE 20.7 (stt-worker/tts, dark) vs ≈ 1 for the old tts/other greys. New `swatch-palette.task1060.test.ts` (RED: tts was a third neutral → GREEN); panel tests 24/24. |
 | 2026-10-11 | **Display follow-ups fixed.** (1) `other` is now `node.usedBytes − Σ` HOPE workloads (floored at 0), computed in `cpuSummary`; the all-namespace `allContainerMemory` query is removed, so the segments sum to exactly `used` and the Prometheus-source `unattributedBytes` is 0. Label `Other workloads & system`. (2) The per-service "Not attributed" row renders only when the service holds ≥ 1 CPU model. RED→GREEN: `cpu-summary.task1060.test.ts` case 3 rewritten (9/9), `cpu-summary-panel.test.tsx` new case (10/10); catalogue contract test 28/28 with the fixture updated (4 lines); `api:openapi:check`, `api:portal:check`, `gen:admin:check` rc=0; applications + admin-console `tsc --noEmit` clean. |
 | 2026-10-11 | **D-6 reverted (owner decision).** Declaring `psutil` changed `uv.lock`, which invalidated the cached `uv sync` layer of every Python image; each then recompiled `llama-cpp-python` from source and blew the 30-min CI job limit / the shared uv cache lock (pipelines #1434, #1436: `build-nlp` timeout, `build-harness` + `build-nlp-gpu` "Failed to acquire lock on the distribution cache"). `pyproject.toml` + `uv.lock` restored byte-identical to `01fc3f9d2`. RSS is unaffected in the cluster (Linux `/proc/self/statm` fallback) and in local dev (arcaenv ships psutil). D-5 (RSS-first on cpu) stays; lane P tests 21 passed after the revert. Lesson: a `uv.lock` change costs a full native rebuild of every Python image. |
