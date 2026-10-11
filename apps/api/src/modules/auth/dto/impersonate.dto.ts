@@ -26,10 +26,12 @@ export class ImpersonateRequest {
   @IsString()
   targetTenantId?: string;
 
-  // Optional at the DTO layer so a missing reason is the uniform 400 `CONFIRMATION_REQUIRED` from the
-  // handler (TASK-1057: the impersonation reason is a LOCKED action confirmation — always required).
+  // Optional at the DTO layer: whether a reason is demanded is the `impersonation.start` action
+  // confirmation (platform switch, off by default — owner, 2026-10-11); the handler answers 400
+  // `CONFIRMATION_REQUIRED` only when the platform requires one.
   @ApiProperty({
-    description: 'Why the impersonation is needed. Required (owner decision, TASK-1057); recorded on the audit trail, never embedded in the token.',
+    description:
+      'Why the impersonation is needed. Optional unless the platform requires it (`confirmation.impersonation.start`); when omitted the audit trail records "Impersonation". Never embedded in the token.',
     required: false,
     maxLength: 500,
   })
@@ -54,10 +56,10 @@ export class AdminImpersonateRequest {
   @IsString()
   targetTenantId?: string;
 
-  // Optional at the DTO layer so a missing reason is the uniform 400 `CONFIRMATION_REQUIRED` (TASK-1057, locked).
+  // Optional at the DTO layer: demanded only when the platform requires it (`impersonation.start`, off by default).
   @ApiProperty({
     description:
-      'Why the impersonation is needed. Required (owner decision, TASK-1057: 400 `CONFIRMATION_REQUIRED` without it). Recorded on the audit trail (start bracket + forced audit row); never embedded in the token.',
+      'Why the impersonation is needed. Optional unless the platform requires it (`confirmation.impersonation.start`; then 400 `CONFIRMATION_REQUIRED` without it); when omitted the audit trail records "Impersonation". Recorded on the start bracket + forced audit row; never embedded in the token.',
     required: false,
     maxLength: 500,
   })

@@ -33,6 +33,9 @@ import { IActiveUserContext } from '../../interfaces';
 import { type AdoptableRow, SettingsRegistryWriteService, pickBackingRow } from './settings-registry-write.service';
 import { TenantSettingsService } from './tenant-settings.service';
 
+/** Re-exported for the gateway, which has no direct `@arcaai/types` dependency. */
+export { DEFAULT_IMPERSONATION_REASON } from '@arcaai/types';
+
 /** The reserved platform-configuration tier. Never a customer tenant. */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 

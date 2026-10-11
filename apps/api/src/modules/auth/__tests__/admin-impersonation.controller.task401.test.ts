@@ -46,7 +46,8 @@ interface Fixture {
   target?: { id: string; username?: string; resourceStatus?: string; UserProfile?: { email?: string } } | null;
 }
 
-function buildController(opts: { user: ClsUserStub | null; fixture?: Partial<Fixture> }) {
+function buildController(opts: { user: ClsUserStub | null; fixture?: Partial<Fixture>; reasonRequired?: boolean }) {
+  const reasonRequired = opts.reasonRequired === true;
   const fixture: Fixture = {
     actorRoles: [SUPER_ADMIN],
     targetRoles: [{ name: DOCTOR, permissions: ['read:Consultation'] }],
@@ -98,8 +99,8 @@ function buildController(opts: { user: ClsUserStub | null; fixture?: Partial<Fix
     cls as never,
     secretsService as never,
     eventEmitter as never,
-    // `impersonation.start` is a locked row: it never reads a setting.
-    new ActionConfirmationService({} as never, {} as never, {} as never, {} as never),
+    // `impersonation.start` — off by default (owner, 2026-10-11); `reasonRequired` is the platform switch.
+    new ActionConfirmationService({ resolve: () => ({ value: reasonRequired ? 'required' : undefined }) } as never, {} as never, {} as never, {} as never),
   );
 
   return { controller, cls, userRepository, appSettingsService, authService, userRoleAssignmentService, eventEmitter };
@@ -332,15 +333,23 @@ describe('AdminImpersonationController — audit emissions', () => {
     expect((forced?.[1] as { tenantId: string }).tenantId).toBe('tenant-B');
   });
 
-  // TASK-1057 retired 'omits reason from the audit payloads when not provided': the impersonation
-  // reason is LOCKED required, so there is no reason-less start left to audit (see the block below).
+  // Owner, 2026-10-11: the reason is optional by default, and an absent one is recorded as the
+  // default "Impersonation" (see the block below).
 });
 
-describe('AdminImpersonationController — TASK-1057 locked impersonation reason', () => {
+describe('AdminImpersonationController — impersonation reason (platform switch, off by default)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('without a reason is 400 CONFIRMATION_REQUIRED and mints nothing', async () => {
-    const { controller, authService, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: null } });
+  it('without a reason (platform default) impersonates and records the default reason "Impersonation"', async () => {
+    const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: null } });
+    await controller.impersonate('target-B', {}, REQ);
+    const row = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed)?.[1] as { data: Record<string, unknown> };
+    expect(row.data.reason).toBe('Impersonation');
+    expect(row.data.confirmation).toMatchObject({ actionId: 'impersonation.start', mode: 'not-required', locked: false, required: false, provided: false });
+  });
+
+  it('when the platform requires a reason, none is 400 CONFIRMATION_REQUIRED and mints nothing', async () => {
+    const { controller, authService, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: null }, reasonRequired: true });
     const error = await controller.impersonate('target-B', {}, REQ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BadRequestException);
     expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'CONFIRMATION_REQUIRED', actionId: 'impersonation.start', kind: 'reason' });
@@ -348,20 +357,20 @@ describe('AdminImpersonationController — TASK-1057 locked impersonation reason
     expect(eventEmitter.emit.mock.calls.some(([name]) => name === ImpersonationEvents.Started)).toBe(false);
   });
 
-  it('a blank reason is refused too', async () => {
-    const { controller } = buildController({ user: { id: 'admin-A', tenantId: null } });
+  it('a blank reason is refused too when one is required', async () => {
+    const { controller } = buildController({ user: { id: 'admin-A', tenantId: null }, reasonRequired: true });
     await expect(controller.impersonate('target-B', { reason: '   ' }, REQ)).rejects.toThrow(BadRequestException);
   });
 
-  it('with a reason stamps the forced start row (locked, required, provided)', async () => {
-    const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: null } });
+  it('with a required reason stamps the forced start row (required, provided)', async () => {
+    const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: null }, reasonRequired: true });
     await controller.impersonate('target-B', { reason: REASON }, REQ);
     const row = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed)?.[1] as { data: Record<string, unknown> };
     expect(row.data.confirmation).toEqual({
       actionId: 'impersonation.start',
       kind: 'reason',
       mode: 'required',
-      locked: true,
+      locked: false,
       required: true,
       provided: true,
       note: 'reason required',

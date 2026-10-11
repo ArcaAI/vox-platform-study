@@ -28,7 +28,7 @@ interface ClsUserStub {
   exp?: number;
 }
 
-function buildController(user: ClsUserStub | null) {
+function buildController(user: ClsUserStub | null, { reasonRequired = false }: { reasonRequired?: boolean } = {}) {
   const cls = {
     get: vi.fn((key: string) => {
       if (key === 'user') return user;
@@ -79,8 +79,8 @@ function buildController(user: ClsUserStub | null) {
     undefined, // dnaQueue
     undefined, // policyEngine
     undefined, // runTraceAccess
-    // TASK-1057 — `impersonation.start` is a locked row: it never reads a setting.
-    new ActionConfirmationService({} as never, {} as never, {} as never, {} as never),
+    // `impersonation.start` — off by default (owner, 2026-10-11); `reasonRequired` is the platform switch.
+    new ActionConfirmationService({ resolve: () => ({ value: reasonRequired ? 'required' : undefined }) } as never, {} as never, {} as never, {} as never),
   );
 
   return { controller, eventEmitter, jwtRevocationService, userRepository, authService };
@@ -116,18 +116,25 @@ describe('AuthController — legacy /auth/impersonate backports', () => {
     expect(response.impersonatedBy).toBe('admin-A');
   });
 
-  it('TASK-1057: without a reason is 400 CONFIRMATION_REQUIRED (locked) and mints nothing', async () => {
-    const { controller, authService } = buildController({ id: 'admin-A', tenantId: 'tenant-A' });
+  it('without a reason (platform default) impersonates and records the default reason "Impersonation"', async () => {
+    const { controller, eventEmitter } = buildController({ id: 'admin-A', tenantId: 'tenant-A' });
+    await controller.impersonate({ targetUserId: 'target-B' } as never, REQ);
+    const started = eventEmitter.emit.mock.calls.find(([name]) => name === ImpersonationEvents.Started)?.[1];
+    expect(started).toMatchObject({ reason: 'Impersonation', confirmation: { actionId: 'impersonation.start', locked: false, required: false, provided: false } });
+  });
+
+  it('when the platform requires a reason, none is 400 CONFIRMATION_REQUIRED and mints nothing', async () => {
+    const { controller, authService } = buildController({ id: 'admin-A', tenantId: 'tenant-A' }, { reasonRequired: true });
     const error = await controller.impersonate({ targetUserId: 'target-B' } as never, REQ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BadRequestException);
     expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'CONFIRMATION_REQUIRED', actionId: 'impersonation.start' });
     expect(authService.trackAuthentication).not.toHaveBeenCalled();
   });
 
-  it('TASK-1057: with a reason, the start bracket and the started event carry the reason and the stamp', async () => {
-    const { controller, eventEmitter } = buildController({ id: 'admin-A', tenantId: 'tenant-A' });
+  it('with a required reason, the start bracket and the started event carry the reason and the stamp', async () => {
+    const { controller, eventEmitter } = buildController({ id: 'admin-A', tenantId: 'tenant-A' }, { reasonRequired: true });
     await controller.impersonate({ targetUserId: 'target-B', reason: ' support ticket #7 ' } as never, REQ);
-    const stamp = { actionId: 'impersonation.start', locked: true, required: true, provided: true, note: 'reason required' };
+    const stamp = { actionId: 'impersonation.start', locked: false, required: true, provided: true, note: 'reason required' };
     const bracket = eventEmitter.emit.mock.calls.find(([name, payload]) => name !== ImpersonationEvents.Started && (payload as { phase?: string })?.phase === 'START')?.[1];
     expect(bracket).toMatchObject({ reason: 'support ticket #7', confirmation: stamp });
     const started = eventEmitter.emit.mock.calls.find(([name]) => name === ImpersonationEvents.Started)?.[1];

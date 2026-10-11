@@ -1,5 +1,6 @@
 import {
   ActionConfirmationService,
+  DEFAULT_IMPERSONATION_REASON,
   IActiveUserContext,
   IAppSettingsService,
   IAuthService,
@@ -95,7 +96,7 @@ export class AdminImpersonationController {
     private readonly clsService: ClsService<IActiveUserContext>,
     @Inject(SecretsService) private readonly secretsService: SecretsService,
     private readonly eventEmitter: EventEmitter2,
-    // TASK-1057 — the impersonation reason is the LOCKED `impersonation.start` action confirmation.
+    // TASK-1057 — the impersonation reason is the `impersonation.start` action confirmation (platform switch, off by default).
     private readonly confirmations: ActionConfirmationService,
   ) {}
 
@@ -196,8 +197,9 @@ export class AdminImpersonationController {
       throw new BadRequestException('Target user has no tenant assignment. Assign the user to a tenant before impersonating.');
     }
 
-    // TASK-1057 — a reason is mandatory regardless (locked): 400 CONFIRMATION_REQUIRED, after the audited
-    // denial gates above so every refused attempt keeps its own code, and before anything is minted.
+    // TASK-1057 — `impersonation.start`: 400 CONFIRMATION_REQUIRED when the platform requires a reason
+    // (off by default since 2026-10-11), after the audited denial gates above so every refused attempt
+    // keeps its own code, and before anything is minted.
     const confirmation = this.confirmations.assert('impersonation.start', { value: request.reason });
 
     // TASK-944 — the ONE shared resolver, which `JwtStrategy` also verifies with.
@@ -239,7 +241,8 @@ export class AdminImpersonationController {
     const { exp } = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { exp: number };
     const expiresAt = new Date(exp * 1000).toISOString();
     const expiresInSeconds = Math.max(0, exp - Math.floor(Date.now() / 1000));
-    const reason = request.reason?.trim() || undefined;
+    // Owner, 2026-10-11 — no reason given (the platform does not require one) records the default.
+    const reason = request.reason?.trim() || DEFAULT_IMPERSONATION_REASON;
 
     await this.authService.trackAuthentication(actor.id, {
       ip: req.ip || '127.0.0.1',

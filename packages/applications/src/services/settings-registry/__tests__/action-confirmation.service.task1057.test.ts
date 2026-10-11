@@ -26,7 +26,8 @@ describe('action-confirmation descriptors', () => {
       expect(d.globalOnly).toBe(true);
       expect(HOPE_SETTINGS_REGISTRY.get(d.key)).toBeDefined();
     }
-    expect(HOPE_SETTINGS_REGISTRY.get('confirmation.impersonation.start')).toBeUndefined();
+    // Owner, 2026-10-11 — impersonation is no longer locked: the platform admin owns the switch.
+    expect(HOPE_SETTINGS_REGISTRY.get('confirmation.impersonation.start')).toBeDefined();
     expect(HOPE_SETTINGS_REGISTRY.get('confirmation.rbac.breakGlass')).toBeUndefined();
   });
 
@@ -60,9 +61,21 @@ describe('ActionConfirmationService', () => {
 
   it('locked rows are always required, whatever is stored', () => {
     const { service, resolve } = makeService();
-    expect(service.mode('impersonation.start')).toBe('required');
+    expect(service.mode('billing.adjustment')).toBe('required');
     expect(resolve).not.toHaveBeenCalled();
+    expect(() => service.assert('billing.adjustment', { value: '  ' })).toThrow(BadRequestException);
+  });
+
+  it('impersonation asks for no reason by default (owner, 2026-10-11)', () => {
+    const { service } = makeService();
+    expect(service.mode('impersonation.start')).toBe('not-required');
+    expect(service.assert('impersonation.start', {}).required).toBe(false);
+  });
+
+  it('impersonation demands a reason once the platform admin requires one', () => {
+    const { service } = makeService({ 'confirmation.impersonation.start': 'required' });
     expect(() => service.assert('impersonation.start', { value: '  ' })).toThrow(BadRequestException);
+    expect(service.assert('impersonation.start', { value: 'support ticket 4412' }).required).toBe(true);
   });
 
   it('stamps "reason not required" when the switch is off', () => {

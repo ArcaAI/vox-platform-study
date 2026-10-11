@@ -49,7 +49,7 @@ interface RecordedCall {
   body?: unknown;
 }
 
-function stubFetch(options: { impersonateStatus?: number } = {}): RecordedCall[] {
+function stubFetch(options: { impersonateStatus?: number; reasonRequired?: boolean } = {}): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
@@ -59,6 +59,10 @@ function stubFetch(options: { impersonateStatus?: number } = {}): RecordedCall[]
       if (url.includes('/api/hope/admin/users')) {
         const body = { data: [{ id: 'doc-9', username: 'dr-smith', email: 'smith@hope.test' }], count: 1, limit: 8, page: 1 };
         return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/api/hope/admin/settings/action-confirmations/effective')) {
+        const items = options.reasonRequired ? [{ actionId: 'impersonation.start', kind: 'reason', mode: 'required', locked: false }] : [];
+        return new Response(JSON.stringify({ items }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       if (url === '/api/auth/impersonate' && options.impersonateStatus && options.impersonateStatus >= 400) {
         return new Response(JSON.stringify({ message: 'A reason is required for this action.' }), { status: options.impersonateStatus, headers: { 'content-type': 'application/json' } });
@@ -71,8 +75,9 @@ function stubFetch(options: { impersonateStatus?: number } = {}): RecordedCall[]
 }
 
 /**
- * TASK-1057 made `impersonation.start` a LOCKED required reason on the gateway; the picker used to
- * POST without one and the 400 was swallowed. Picking a user now opens the shared confirm dialog.
+ * `impersonation.start` (owner, 2026-10-11): no reason by default — the pick impersonates at once and
+ * the gateway records "Impersonation"; only when the platform admin REQUIRES a reason does the pick
+ * open the shared confirm dialog first.
  */
 async function confirmWithReason(reason: string) {
   const dialog = await screen.findByRole('alertdialog');
@@ -142,17 +147,29 @@ describe('PersonaControl', () => {
     fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
     const option = await screen.findByText('dr-smith');
     fireEvent.click(option);
-    expect(calls.some((c) => c.url === '/api/auth/impersonate')).toBe(false);
-    await confirmWithReason(' testing the scribe as this clinician ');
     await waitFor(() => {
       const post = calls.find((c) => c.url === '/api/auth/impersonate' && c.method === 'POST');
-      expect(post?.body).toEqual({ userId: 'doc-9', reason: 'testing the scribe as this clinician' });
+      expect(post?.body).toEqual({ userId: 'doc-9' });
     });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
-  it('impersonate flow: selecting a user asks for a reason, then POSTs it to the BFF and refreshes', async () => {
+  it('impersonate flow: no reason by default — the pick POSTs at once, without a dialog', async () => {
     const calls = stubFetch();
+    renderWithProviders(<PersonaControl session={session()} />);
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+    fireEvent.click(await screen.findByText('dr-smith'));
+    await waitFor(() => {
+      const post = calls.find((c) => c.url === '/api/auth/impersonate' && c.method === 'POST');
+      expect(post?.body).toEqual({ userId: 'doc-9' });
+    });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('impersonate flow: when the platform requires a reason, the pick asks for one and POSTs it', async () => {
+    const calls = stubFetch({ reasonRequired: true });
     renderWithProviders(<PersonaControl session={session()} />);
     fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
     const option = await screen.findByText('dr-smith');
@@ -221,7 +238,7 @@ describe('PersonaControl', () => {
   });
 
   it('a refused impersonation is shown as an error, not swallowed', async () => {
-    stubFetch({ impersonateStatus: 400 });
+    stubFetch({ impersonateStatus: 400, reasonRequired: true });
     renderWithProviders(<PersonaControl session={session()} />);
     fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
     fireEvent.click(await screen.findByText('dr-smith'));

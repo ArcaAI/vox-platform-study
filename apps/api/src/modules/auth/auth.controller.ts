@@ -13,6 +13,7 @@ import {
   WorkflowRunTraceAccessService,
   SecretsService,
   createJwt,
+  DEFAULT_IMPERSONATION_REASON,
   // Password rotation surfaced at login() (warning-only).
   isPasswordExpired,
   isUuidIdentifier,
@@ -155,7 +156,7 @@ export class AuthController {
     // `workflow_run_trace:` mint. TS-optional + trailing for the positional fixtures; absent, the
     // namespace fails CLOSED (403) — it can never mean "allow".
     private readonly runTraceAccess?: WorkflowRunTraceAccessService,
-    // TASK-1057 — the impersonation reason is the LOCKED `impersonation.start` action confirmation.
+    // TASK-1057 — the impersonation reason is the `impersonation.start` action confirmation (platform switch, off by default).
     // TS-optional + trailing for the positional fixtures; absent, impersonation fails CLOSED (503).
     private readonly confirmations?: ActionConfirmationService,
   ) {}
@@ -741,13 +742,15 @@ export class AuthController {
       }
     }
 
-    // TASK-1057 — a reason is mandatory regardless (locked): 400 CONFIRMATION_REQUIRED, after the audited
-    // denial gates above so every refused attempt keeps its own code, and before anything is minted.
+    // TASK-1057 — `impersonation.start`: 400 CONFIRMATION_REQUIRED when the platform requires a reason
+    // (off by default since 2026-10-11), after the audited denial gates above so every refused attempt
+    // keeps its own code, and before anything is minted.
     if (!this.confirmations) {
       throw new ServiceUnavailableException('Impersonation is unavailable: action confirmations are not wired.');
     }
     const confirmation = this.confirmations.assert('impersonation.start', { value: request.reason });
-    const reason = request.reason?.trim() || undefined;
+    // Owner, 2026-10-11 — no reason given (the platform does not require one) records the default.
+    const reason = request.reason?.trim() || DEFAULT_IMPERSONATION_REASON;
 
     // See login() for the JWT_SECRET_KEY resolution rationale.
     const jwtSecretKey = await this.resolveJwtSecretKey();

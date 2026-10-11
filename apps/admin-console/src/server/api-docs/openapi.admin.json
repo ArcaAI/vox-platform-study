@@ -670,7 +670,7 @@
             "type": "number"
           },
           "reason": {
-            "description": "Why the impersonation is needed. Required (owner decision, TASK-1057: 400 `CONFIRMATION_REQUIRED` without it). Recorded on the audit trail (start bracket + forced audit row); never embedded in the token.",
+            "description": "Why the impersonation is needed. Optional unless the platform requires it (`confirmation.impersonation.start`; then 400 `CONFIRMATION_REQUIRED` without it); when omitted the audit trail records \"Impersonation\". Recorded on the start bracket + forced audit row; never embedded in the token.",
             "maxLength": 500,
             "type": "string"
           },
@@ -13590,6 +13590,18 @@
             },
             "type": "array"
           },
+          "categoryActions": {
+            "additionalProperties": {
+              "enum": [
+                "ignore",
+                "warn",
+                "block"
+              ],
+              "type": "string"
+            },
+            "description": "`{ label: action }` — the action a flag whose labels are ALL listed takes instead of `action` (relax only). Label-by-label cascade: catalogue default, SYSTEM, tenant. Writable by a platform admin only.",
+            "type": "object"
+          },
           "checkId": {
             "description": "The check id (the catalogue / `screening.py` name).",
             "type": "string"
@@ -15196,6 +15208,18 @@
             ],
             "type": "string"
           },
+          "platformDefaultCategoryActions": {
+            "additionalProperties": {
+              "enum": [
+                "ignore",
+                "warn",
+                "block"
+              ],
+              "type": "string"
+            },
+            "description": "The catalogue's per-category action overrides (`{ label: action }`); absent where none.",
+            "type": "object"
+          },
           "platformDefaultDataRegionAction": {
             "description": "inbound DATA-region action default (OD-12); null where it does not apply.",
             "nullable": true,
@@ -16568,7 +16592,7 @@
       "ImpersonateRequest": {
         "properties": {
           "reason": {
-            "description": "Why the impersonation is needed. Required (owner decision, TASK-1057); recorded on the audit trail, never embedded in the token.",
+            "description": "Why the impersonation is needed. Optional unless the platform requires it (`confirmation.impersonation.start`); when omitted the audit trail records \"Impersonation\". Never embedded in the token.",
             "maxLength": 500,
             "type": "string"
           },
@@ -32579,7 +32603,7 @@
           },
           "policies": {
             "additionalProperties": true,
-            "description": "The tenant's whole guardrail policy row (v2): `{ \"directions\": { \"inbound\": { \"enabled\": true } }, \"checks\": { \"<id>\": { \"enabled\", \"action\", \"locked\", \"minScore\", \"dataRegionAction\" } } }` — every field optional (an absent field follows SYSTEM, then the catalogue). The legacy flat shape `{ \"pii_leak\": { \"enabled\": true, \"minScore\": 0.2 } }` is still accepted and stored as v2. Unknown ids are REFUSED (400). `{}` means \"no opinion\".",
+            "description": "The tenant's whole guardrail policy row (v2): `{ \"directions\": { \"inbound\": { \"enabled\": true } }, \"checks\": { \"<id>\": { \"enabled\", \"action\", \"locked\", \"minScore\", \"dataRegionAction\", \"categoryActions\" } } }` — every field optional (an absent field follows SYSTEM, then the catalogue). The legacy flat shape `{ \"pii_leak\": { \"enabled\": true, \"minScore\": 0.2 } }` is still accepted and stored as v2. Unknown ids are REFUSED (400). `{}` means \"no opinion\".",
             "type": "object"
           },
           "reason": {

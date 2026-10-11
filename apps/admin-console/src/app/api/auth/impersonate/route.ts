@@ -76,7 +76,7 @@ export async function POST(request: Request): Promise<Response> {
     : {
         targetUserId: body.userId,
         ...(body.targetTenantId ? { targetTenantId: body.targetTenantId } : {}),
-        // TASK-1057 — `impersonation.start` is a locked reason on BOTH routes.
+        // TASK-1057 — `impersonation.start` reason on BOTH routes (absent ⇒ the gateway records its default).
         ...(body.reason ? { reason: body.reason } : {}),
       };
 

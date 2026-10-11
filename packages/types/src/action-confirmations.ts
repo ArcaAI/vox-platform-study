@@ -10,7 +10,9 @@
  *  - switchable per DOMAIN OPERATION (one row per action), with an "apply to all" per kind on the screen;
  *  - the switch is PLATFORM-ONLY (SYSTEM tier) — there is no tenant override;
  *  - when a requirement is off, the audit event still records that it was not required;
- *  - break-glass, impersonation, password step-up and the billing reason code are LOCKED on;
+ *  - break-glass, password step-up and the billing reason code are LOCKED on;
+ *  - impersonation was locked on too, until the owner reversed it (2026-10-11): the reason is OFF by
+ *    default (the gateway records `DEFAULT_IMPERSONATION_REASON`), and a platform admin may require it;
  *  - typed-name confirmations stay console-only, controlled by the same setting.
  */
 
@@ -82,6 +84,9 @@ function typed(actionId: string, domain: string, label: string, audience: Confir
   return { actionId, domain, label, kind: 'typeToConfirm', audience, enforcement: 'console', default: 'required', modes: ON_OFF, routes: [] };
 }
 
+/** What an impersonation records as its reason when the platform does not require one (owner, 2026-10-11). */
+export const DEFAULT_IMPERSONATION_REASON = 'Impersonation';
+
 export const ACTION_CONFIRMATION_CATALOGUE: readonly ActionConfirmationSpec[] = [
   // ── Model residency & serving (platform) ─────────────────────────────────
   reason('modelResidency.load', 'Model residency', 'Load a model', 'platform', 'when-risky', ['POST admin/model-residency/load'], { modes: RISKY, maxLength: 500 }),
@@ -150,20 +155,13 @@ export const ACTION_CONFIRMATION_CATALOGUE: readonly ActionConfirmationSpec[] = 
     maxLength: 1000,
   }),
 
-  // ── Locked: never switchable ─────────────────────────────────────────────
-  {
-    actionId: 'impersonation.start',
-    domain: 'Access',
-    label: 'Reason to impersonate a user',
-    kind: 'reason',
-    audience: 'platform',
-    enforcement: 'server',
-    default: 'required',
-    modes: LOCKED,
-    locked: true,
+  // Owner, 2026-10-11 — switchable and OFF by default (was locked on, TASK-1057); an absent reason is
+  // recorded as `DEFAULT_IMPERSONATION_REASON`.
+  reason('impersonation.start', 'Access', 'Reason to impersonate a user', 'platform', 'not-required', ['POST admin/users/:id/impersonate', 'POST auth/impersonate'], {
     maxLength: 500,
-    routes: ['POST admin/users/:id/impersonate', 'POST auth/impersonate'],
-  },
+  }),
+
+  // ── Locked: never switchable ─────────────────────────────────────────────
   {
     actionId: 'rbac.breakGlass',
     domain: 'Access',

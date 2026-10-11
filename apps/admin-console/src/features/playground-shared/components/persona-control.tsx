@@ -10,6 +10,7 @@ import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@arcaai/ui/components/shadcn/popover';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { getJson, type Paginated } from '@/shared/api';
+import { useActionConfirmation } from '@/shared/action-confirmations/use-action-confirmation';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { isTenantAdmin } from '@/shared/auth/ability';
 import type { SafeSession } from '@/shared/auth/hooks';
@@ -72,10 +73,13 @@ export function PersonaControl({ session }: { session: SafeSession }) {
     return () => clearTimeout(timer);
   }, [search]);
   const [pending, setPending] = useState(false);
-  // TASK-1057 — `impersonation.start` needs a reason, so a pick opens the confirm dialog first.
+  // `impersonation.start` (owner, 2026-10-11): no reason by default — a pick impersonates at once and
+  // the gateway records "Impersonation". Only when the platform REQUIRES one (or the policy has not
+  // loaded yet) does a pick open the confirm dialog first.
   const [target, setTarget] = useState<PersonaUser | null>(null);
 
   const canImpersonate = session.isElevated || isTenantAdmin(session.user.roles);
+  const reasonPolicy = useActionConfirmation('impersonation.start', { enabled: canImpersonate });
   const impersonating = !!session.impersonatingUserId;
   const targetLabel = session.impersonatingUsername ?? session.impersonatingUserId ?? 'yourself';
   const admin = session.user.username;
@@ -169,8 +173,12 @@ export function PersonaControl({ session }: { session: SafeSession }) {
                   value={user.id}
                   disabled={pending || user.id === session.impersonatingUserId}
                   onSelect={() => {
-                    setTarget(user);
-                    setOpen(false);
+                    if (reasonPolicy.isLoading || reasonPolicy.isRequired()) {
+                      setTarget(user);
+                      setOpen(false);
+                    } else {
+                      void runSessionAction('/api/auth/impersonate', { userId: user.id });
+                    }
                   }}
                 >
                   <div className="flex min-w-0 flex-col">

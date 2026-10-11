@@ -295,11 +295,11 @@ describe('UserDetailScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: /impersonate/i }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText(/audit-flagged/i)).toBeDefined();
-    // TASK-1057 — impersonation.start is a LOCKED required reason: the button stays disabled until one is typed.
+    // impersonation.start (owner, 2026-10-11): the reason is optional unless the platform requires it —
+    // the button is armed at once; a typed reason is still sent (the gateway records "Impersonation" otherwise).
     const confirmButton = within(dialog).getByRole('button', { name: /impersonate/i }) as HTMLButtonElement;
-    expect(confirmButton.disabled).toBe(true);
-    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: ' investigating ticket 4412 ' } });
     expect(confirmButton.disabled).toBe(false);
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: ' investigating ticket 4412 ' } });
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
