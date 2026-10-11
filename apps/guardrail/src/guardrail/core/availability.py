@@ -28,6 +28,14 @@ Three properties are enforced here rather than remembered:
 3. **A threshold can only ever be tightened** (:meth:`GuardrailAvailability.tighten`,
    unchanged from TASK-886).
 
+**Category actions (TASK-1061 OD-5b).** A check may carry `categoryActions`
+(`{label: action}`) — the action a flag whose labels are ALL listed takes instead of the
+check's. It only ever RELAXES: the effective action is the less strict of the region's
+action and the category's, so a category can never raise a record-only data region.
+It cascades catalogue → SYSTEM row → tenant row LABEL by label, so a tenant (or a platform
+admin) raises a relaxed category back by stating it. The platform default records
+`prompt_toxicity:privacy_violation` only (`ignore`) until a calibrated threshold exists.
+
 **Membership rule (TASK-886).** Every id below is a check name in
 ``services/screening.py::_DECLARED_FAIL_MODES``; ``test_task886_availability.py``
 asserts the two sets are equal. The defaults are declared HERE and pinned against
@@ -82,6 +90,8 @@ class CheckDefault:
     enabled: bool
     inbound_regions: tuple[str, ...] = ()
     data_region_action: str | None = None
+    #: `(label, action)` pairs: the platform-default category actions (TASK-1061 OD-5b).
+    category_actions: tuple[tuple[str, str], ...] = ()
 
 
 _ALL: Final = ACTIONS
@@ -89,19 +99,31 @@ _CLASSIFIER_INBOUND: Final = (TRUST_INSTRUCTION, TRUST_DATA)
 
 #: The catalogue, in contract order. Pinned by `test_task1050_screen_policy_v2.py`.
 CATALOGUE_DEFAULTS: Final[dict[str, CheckDefault]] = {
+    # TASK-1061 OD-4: inbound only — an injection classifier for untrusted INPUT, never run on a
+    # model's own output (it blocked benign clinical notes).
     "jailbreak_detection": CheckDefault(
-        ("inbound", "outbound"), _ALL, ACTION_BLOCK, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
+        ("inbound",), _ALL, ACTION_BLOCK, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
     ),
     # Owner 2026-10-09 (TASK-1053): warn by default — the classifier false-flags clinical notes.
     "prompt_safety": CheckDefault(
         ("inbound",), _ALL, ACTION_WARN, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
     ),
     # Owner 2026-10-09 (TASK-1053): warn by default — the classifier false-flags clinical notes.
+    # TASK-1061 OD-5b: `privacy_violation` is recorded only (no clinician notice) until a
+    # calibrated threshold exists — clinical prompts carry sensitive history by design.
     "prompt_toxicity": CheckDefault(
-        ("inbound",), _ALL, ACTION_WARN, False, True, _CLASSIFIER_INBOUND, ACTION_IGNORE
+        ("inbound",),
+        _ALL,
+        ACTION_WARN,
+        False,
+        True,
+        _CLASSIFIER_INBOUND,
+        ACTION_IGNORE,
+        (("privacy_violation", ACTION_IGNORE),),
     ),
-    # Owner 2026-10-08: warn by default — the classifier false-flags clinical notes.
-    "response_safety": CheckDefault(("outbound",), _ALL, ACTION_WARN, False, True),
+    # TASK-1061 OD-5b (owner 2026-10-11): recorded only — `unsafe` fired on 5 of 5 clinical notes.
+    # Was `warn` (owner 2026-10-08). A platform admin may raise it again.
+    "response_safety": CheckDefault(("outbound",), _ALL, ACTION_IGNORE, False, True),
     "response_toxicity": CheckDefault(("outbound",), _ALL, ACTION_WARN, False, True),
     "response_refusal": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, False),
     "pii_leak": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, True),
@@ -253,9 +275,23 @@ def _tier_fields(raw: Any) -> tuple[dict[str, bool], dict[str, dict[str, Any]]]:
                 stated["locked"] = entry["locked"]
             if _is_action(entry.get("dataRegionAction")):
                 stated["dataRegionAction"] = entry["dataRegionAction"]
+            categories = _category_actions(entry.get("categoryActions"))
+            if categories:
+                stated["categoryActions"] = categories
         if stated:
             checks[check_id] = stated
     return directions, checks
+
+
+def _category_actions(raw: Any) -> dict[str, str]:
+    """A stated `categoryActions` map, case-folded; invalid entries are dropped, never guessed."""
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        label.strip().casefold(): action
+        for label, action in raw.items()
+        if isinstance(label, str) and label.strip() and _is_action(action)
+    }
 
 
 def _effective(
@@ -292,6 +328,13 @@ def _effective(
         min_score = _pick("minScore", None)
         if min_score is not None:
             entry["minScore"] = min_score
+        # Label by label: catalogue, then SYSTEM, then tenant (the strongest tier last).
+        categories = _category_actions(dict(default.category_actions))
+        for tier in reversed(tiers):
+            categories.update(tier.get("categoryActions", {}))
+        categories = {k: v for k, v in categories.items() if v in default.allowed_actions}
+        if categories and not default.locked:
+            entry["categoryActions"] = categories
         if default.locked:
             entry.update(enabled=True, action=default.action, locked=True)
         policies[check_id] = entry
@@ -396,6 +439,18 @@ class GuardrailAvailability:
                 return str(data_action)
             return default.data_region_action or str(action)
         return str(action)
+
+    def category_action_for(self, policy_id: str, label: str) -> str | None:
+        """The category action for ``label`` on ``policy_id``, or ``None`` when none is stated.
+
+        Applied by the screener as the LESS strict of this and the region's action — a category
+        relaxes, it never raises (TASK-1061 OD-5b)."""
+        entry = self.policies.get(policy_id)
+        categories = entry.get("categoryActions") if isinstance(entry, dict) else None
+        if not isinstance(categories, dict):
+            return None
+        action = categories.get(label.strip().casefold())
+        return str(action) if _is_action(action) else None
 
     def selected(self, policy_ids: tuple[str, ...]) -> tuple[str, ...]:
         """The subset of ``policy_ids`` this tenant's set turns on, in order."""

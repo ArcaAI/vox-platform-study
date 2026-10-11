@@ -26,14 +26,19 @@
     "  inboundRegions          which inbound region trusts the check screens; the two inbound judges screen DATA regions only (§10.2 A3)",
     "  platformDefaultDataRegionAction  for a check that screens both trusts inbound: what a flag on a DATA region does",
     "                          ('ignore' = today's FC-5b record-only; a platform admin may raise it, OD-12 / §11.1)",
-    "medical_validation and the four judges join the catalogue in TASK-1050; their screening readers land in W2a."
+    "medical_validation and the four judges join the catalogue in TASK-1050; their screening readers land in W2a.",
+    "TASK-1061 (owner OD-4, OD-5b, 2026-10-11):",
+    "  jailbreak_detection is INBOUND only (an injection classifier is not run on model output);",
+    "  response_safety defaults to 'ignore' (recorded, no clinician notice);",
+    "  platformDefaultCategoryActions  {label: action} a flag whose labels are all listed takes instead of",
+    "                          the check's action; it only RELAXES (never raises a region) and cascades label by label",
+    "                          (prompt_toxicity: privacy_violation -> 'ignore')."
   ],
   "policies": [
     {
       "id": "jailbreak_detection",
       "directions": [
-        "inbound",
-        "outbound"
+        "inbound"
       ],
       "allowedActions": [
         "ignore",
@@ -85,7 +90,10 @@
         "instruction",
         "data"
       ],
-      "platformDefaultDataRegionAction": "ignore"
+      "platformDefaultDataRegionAction": "ignore",
+      "platformDefaultCategoryActions": {
+        "privacy_violation": "ignore"
+      }
     },
     {
       "id": "response_safety",
@@ -97,7 +105,7 @@
         "warn",
         "block"
       ],
-      "platformDefaultAction": "warn",
+      "platformDefaultAction": "ignore",
       "locked": false,
       "defaultEnabled": true
     },

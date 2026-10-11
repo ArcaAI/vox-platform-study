@@ -38,6 +38,7 @@ const AVAILABILITY = contract<{
     locked: boolean;
     defaultEnabled: boolean;
     platformDefaultDataRegionAction?: string;
+    platformDefaultCategoryActions?: Record<string, string>;
     threshold?: { field: string };
   }[];
 }>('availability-catalogue.json').policies;
@@ -322,6 +323,14 @@ describe('availability (18): the v2 shape, with the five TASK-1050 checks at the
     expect(entry.enabled).toBe(spec.defaultEnabled);
     expect(entry.action).toBe(spec.platformDefaultAction);
     expect(entry.dataRegionAction).toBe(spec.platformDefaultDataRegionAction);
+    // TASK-1061 OD-5b: the per-category actions travel with the contract too.
+    expect(entry.categoryActions).toEqual(spec.platformDefaultCategoryActions);
+  });
+
+  it('TASK-1061: response_safety records only and prompt_toxicity records privacy_violation only (OD-5b)', () => {
+    expect(policies.checks.response_safety).toEqual({ enabled: true, action: 'ignore' });
+    expect(policies.checks.prompt_toxicity?.categoryActions).toEqual({ privacy_violation: 'ignore' });
+    expect(policies.checks.prompt_toxicity?.action).toBe('warn');
   });
 
   it('ships the four judges OFF (OD-6) and medical validation ON and locked (OD-9)', () => {

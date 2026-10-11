@@ -150,14 +150,11 @@ REGION_PROMPT: Final = "prompt"
 #: The moderation tasks each direction consults. The NAMES are part of the model
 #: contract; the LABELS behind each name come from the registry taxonomy.
 INBOUND_TASKS: Final = ("jailbreak_detection", "prompt_safety", "prompt_toxicity")
-#: `jailbreak_detection` is on BOTH directions (TASK-878/G1), appended so
-#: `reasons[0]` keeps naming `response_safety`.
-OUTBOUND_TASKS: Final = (
-    "response_safety",
-    "response_toxicity",
-    "response_refusal",
-    "jailbreak_detection",
-)
+#: TASK-1061 OD-4 (owner 2026-10-11): `jailbreak_detection` is INBOUND only. TASK-878/G1 ran it on
+#: the response too, but it is an injection classifier for untrusted INPUT — on a model's own
+#: clinical note it blocked benign workflow output. An echoed envelope is still caught by
+#: `containment_echo`, and a leaked/complied response by the outbound judges when enabled.
+OUTBOUND_TASKS: Final = ("response_safety", "response_toxicity", "response_refusal")
 
 #: Every check DECLARES its posture here, once — not at the call site. The name is
 #: kept for the TASK-886 membership rule; since TASK-1050 an undetermined check
@@ -927,7 +924,8 @@ class Screener:
                     if label.lower() not in benign
                 )
                 if flagged:
-                    parts.append((i, data_action if mask[i] else instr_action, flagged))
+                    region_action = data_action if mask[i] else instr_action
+                    parts.append((i, self._label_action(name, region_action, flagged), flagged))
             taken = _strictest_taken([p[1] for p in parts]) if parts else TAKEN_NONE
             deciding = [p for p in parts if not mask[p[0]] or p[1] != ACTION_IGNORE]
             labels = _unique([label for p in deciding for label in p[2]])
@@ -973,6 +971,20 @@ class Screener:
             if reasons:
                 findings.append((index, reasons))
         return outcomes, findings
+
+    def _label_action(self, name: str, region_action: str, labels: Sequence[str]) -> str:
+        """The action a flag with ``labels`` takes: per label, the less strict of the region's
+        action and the label's category action (TASK-1061 OD-5b); the strictest label wins."""
+        per_label = []
+        for label in labels:
+            category = self._availability.category_action_for(name, label)
+            if category is not None and _ACTION_RANK.get(category, 2) < _ACTION_RANK.get(
+                region_action, 2
+            ):
+                per_label.append(category)
+            else:
+                per_label.append(region_action)
+        return max(per_label, key=lambda a: _ACTION_RANK.get(a, 2))
 
     # -- judges -------------------------------------------------------------
 

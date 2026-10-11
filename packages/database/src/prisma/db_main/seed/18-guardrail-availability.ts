@@ -54,6 +54,11 @@ export type PlatformGuardrailCheckSeed = {
   minScore?: number;
   /** Inbound checks that screen BOTH trusts: what a flag on a DATA region does (FC-5b, OD-12). */
   dataRegionAction?: 'ignore' | 'warn' | 'block';
+  /**
+   * TASK-1061 OD-5b: `{label: action}` — what a flag whose labels are all listed does instead of `action`.
+   * It only relaxes (never raises a region) and cascades label by label (`core/availability.py`).
+   */
+  categoryActions?: Record<string, 'ignore' | 'warn' | 'block'>;
 };
 
 /** The v2 `TenantGuardrailPolicy.policies` blob (`TenantGuardrailPolicyV2` of `@arcaai/types`). */
@@ -71,6 +76,9 @@ export type PlatformGuardrailAvailabilitySeed = {
  *   - both directions on (no monitor-only direction);
  *   - the eight classifier checks ON at `block` — except `response_refusal` (see the header) — and the
  *     three inbound ones record-only on DATA regions (`dataRegionAction: 'ignore'`, TASK-1047 FC-5b);
+ *   - TASK-1061 (owner OD-4 / OD-5b, 2026-10-11): `jailbreak_detection` screens the request only (its action is
+ *     inbound); `response_safety` and `prompt_toxicity`'s `privacy_violation` category are recorded only
+ *     (`ignore`, no clinician notice) until a calibrated threshold exists;
  *   - `medical_validation` ON at `block` and LOCKED (OD-9: the platform is for medical use only);
  *   - the four judges OFF (OD-6), at their catalogue actions, so a deploy makes zero judge calls until a
  *     platform admin turns one on.
@@ -83,12 +91,14 @@ export type PlatformGuardrailAvailabilitySeed = {
 export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: PlatformGuardrailAvailabilitySeed = {
   directions: { inbound: { enabled: true }, outbound: { enabled: true } },
   checks: {
+    // TASK-1061 OD-4: inbound only — an injection classifier is never run on a model's own output.
     jailbreak_detection: { enabled: true, action: 'block', dataRegionAction: 'ignore' },
     // Owner 2026-10-09 (TASK-1053): the inbound classifiers warn by default (they false-flag clinical notes).
     prompt_safety: { enabled: true, action: 'warn', dataRegionAction: 'ignore' },
-    prompt_toxicity: { enabled: true, action: 'warn', dataRegionAction: 'ignore' },
-    // Owner 2026-10-08: the outbound classifiers warn by default (they false-flag clinical notes).
-    response_safety: { enabled: true, action: 'warn' },
+    // TASK-1061 OD-5b: `privacy_violation` (sensitive history in a clinical prompt) is recorded only.
+    prompt_toxicity: { enabled: true, action: 'warn', dataRegionAction: 'ignore', categoryActions: { privacy_violation: 'ignore' } },
+    // TASK-1061 OD-5b (owner 2026-10-11): recorded only — `unsafe` fired on every clinical note. Was `warn` (2026-10-08).
+    response_safety: { enabled: true, action: 'ignore' },
     response_toxicity: { enabled: true, action: 'warn' },
     // A refusal is not unsafe content, so it is the one classifier check that ships off.
     response_refusal: { enabled: false, action: 'block' },

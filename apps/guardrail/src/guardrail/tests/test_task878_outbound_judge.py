@@ -9,6 +9,8 @@ exists to catch (owner priority, TASK-870 item 7), and the check was inbound-onl
 It is added to the SAME single delegated `classify` the outbound screen already
 makes, so it costs no extra peer call — and it delegates to `apps/nlp`, never to
 `apps/text`, which is what keeps the `text -> guardrail -> text` cycle broken.
+**REVERSED by TASK-1061 OD-4 (owner, 2026-10-11):** the injection classifier blocked benign
+clinical notes, so it no longer runs on model output; the G1 tests below pin the reversal.
 
 **G2 — `usage_detail` on `ScreenResponse`.** Guardrail is a peer service with no
 gateway in front of it, so a delegated call's spend can only reach the billing
@@ -34,7 +36,6 @@ from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.policy import GuardrailPolicy
 from guardrail.services.screening import (
     DECISION_ALLOW,
-    DECISION_BLOCK,
     OUTBOUND_TASKS,
     OUTCOME_SKIPPED,
     Screener,
@@ -85,19 +86,18 @@ def _screener(analyzer: Any, **kw: Any) -> Screener:
 # ---------------------------------------------------------------------------
 
 
-def test_jailbreak_detection_is_an_outbound_task() -> None:
-    """The owner's first priority: a jailbroken RESPONSE must be detectable."""
-    assert "jailbreak_detection" in OUTBOUND_TASKS
+def test_jailbreak_detection_is_not_an_outbound_task() -> None:
+    """TASK-1061 OD-4: an injection classifier for untrusted INPUT is not run on model output."""
+    assert "jailbreak_detection" not in OUTBOUND_TASKS
 
 
-def test_the_three_response_tasks_keep_their_leading_order() -> None:
-    """`reasons[0]` is the rejection label every `apps/text` consumer reports, so
-    the new check is APPENDED — existing rejections keep the label they had."""
-    assert OUTBOUND_TASKS[:3] == ("response_safety", "response_toxicity", "response_refusal")
+def test_the_three_response_tasks_keep_their_order() -> None:
+    """`reasons[0]` is the rejection label every `apps/text` consumer reports."""
+    assert OUTBOUND_TASKS == ("response_safety", "response_toxicity", "response_refusal")
 
 
 @pytest.mark.asyncio
-async def test_a_jailbroken_response_is_blocked_outbound() -> None:
+async def test_an_outbound_jailbreak_label_no_longer_blocks_a_response() -> None:
     analyzer = _StubAnalyzer(labels={"jailbreak_detection": "jailbreak"})
 
     decision = await _screener(analyzer).screen_outbound(
@@ -105,34 +105,32 @@ async def test_a_jailbroken_response_is_blocked_outbound() -> None:
         source_context="summarise the consultation",
     )
 
-    assert decision.decision == DECISION_BLOCK
-    assert "jailbreak_detection" in decision.reasons
+    assert decision.decision == DECISION_ALLOW
+    assert "jailbreak_detection" not in {c.name for c in decision.checks}
 
 
 @pytest.mark.asyncio
-async def test_the_jailbreak_check_rides_the_one_classify_call_it_already_made() -> None:
-    """No extra peer call, no extra latency budget: one `classify`, four tasks."""
+async def test_the_outbound_screen_stays_one_classify_call_without_jailbreak() -> None:
+    """No extra peer call: one `classify`, the three response tasks only."""
     analyzer = _StubAnalyzer()
 
     await _screener(analyzer).screen_outbound("a clean summary", source_context="notes")
 
     assert len(analyzer.task_calls) == 1, "the outbound screen must stay ONE classify call"
-    assert "jailbreak_detection" in analyzer.task_calls[0]
+    assert "jailbreak_detection" not in analyzer.task_calls[0]
 
 
 @pytest.mark.asyncio
 async def test_a_taxonomy_without_the_task_reports_skipped_rather_than_blocking() -> None:
     """Guardrail never invents a task the registry row did not declare — and a
     task that did not run must not block a clinician's summary."""
-    analyzer = _StubAnalyzer(
-        taxonomy=("response_safety", "response_toxicity", "response_refusal"),
-    )
+    analyzer = _StubAnalyzer(taxonomy=("response_safety", "response_refusal"))
 
     decision = await _screener(analyzer).screen_outbound("a clean summary", source_context="notes")
 
-    jailbreak = next(c for c in decision.checks if c.name == "jailbreak_detection")
-    assert jailbreak.outcome == OUTCOME_SKIPPED
-    assert jailbreak.reason == "not_in_taxonomy"
+    toxicity = next(c for c in decision.checks if c.name == "response_toxicity")
+    assert toxicity.outcome == OUTCOME_SKIPPED
+    assert toxicity.reason == "not_in_taxonomy"
     assert decision.decision == DECISION_ALLOW
 
 
