@@ -667,6 +667,16 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
           ),
     ]);
     const result = await this.attribute(tenantId, pieces, outcome);
+    // TASK-1062 D-4: the injection classifier false-flags static platform text (rules, language, contract
+    // parts — no tenant-authored text), so its verdict is not applied to PLATFORM pieces. Authored pieces keep it.
+    for (const one of pieces) {
+      const codes = result.get(one.digest);
+      if (one.piece.sourceType !== 'PLATFORM' || codes === undefined || codes === 'unavailable') continue;
+      result.set(
+        one.digest,
+        codes.filter((entry) => !entry.checks.includes(INJECTION_CHECK)),
+      );
+    }
     if (medical === null || medical.isMedical) return result;
     // Off scope refuses the unit as a whole; with no attributable region every key is named (fail closed).
     const unitKeys = unit.map((one) => one.regionKey);

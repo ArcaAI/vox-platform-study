@@ -245,6 +245,17 @@ describe('SummaryService — the guardrail disposition on the clinical row', () 
     expect(applyTenantProviderOverrides.mock.calls[0]?.[1]).toMatchObject({ consultationId: 'c-1' });
   });
 
+  it('records the pre-summary composed prompt under phase pre-summary, not finalize (TASK-1062 D-5.1)', async () => {
+    const applyTenantProviderOverrides = vi.fn(async (body: unknown) => body);
+    const { service } = makeGenerationService(undefined, {
+      applyTextRuntimeProfile: vi.fn(async (body: unknown) => body),
+      applyTenantProviderOverrides,
+    });
+    await service.generatePreSummary('c-1', {} as never);
+
+    expect(applyTenantProviderOverrides.mock.calls[0]?.[1]).toMatchObject({ phase: 'pre-summary' });
+  });
+
   it('an unwired enrichment service stamps nothing rather than guessing', async () => {
     const { service, usageLedger } = makeGenerationService(undefined, null);
     await service.generatePreSummary('c-1', {} as never);

@@ -81,13 +81,26 @@ describe('fact-ledger-extraction', () => {
   });
 });
 
+describe('instruction examples are placeholders (TASK-1062 D-5.4)', () => {
+  const DRUG_LITERALS = /metformin|atorvastatin|penicillin|\b500 mg\b|\b1000 mg\b|\b40 mg\b/i;
+
+  it('the finalizer and fact-ledger instructions carry no literal drug or dose example', () => {
+    expect(CASENOTE_FINALIZATION_SYSTEM_PROMPT).not.toMatch(DRUG_LITERALS);
+    expect(FACT_LEDGER_SYSTEM_PROMPT).not.toMatch(DRUG_LITERALS);
+  });
+
+  it('keeps the dose-change example as a placeholder', () => {
+    expect(CASENOTE_FINALIZATION_SYSTEM_PROMPT).toContain('<DRUG> increased from <DOSE> to <DOSE>');
+  });
+});
+
 describe('multi-encounter recall', () => {
   it('the ledger keys every fact `<category>:<term>`, keeps a dose change on the drug key, and lists numbers', () => {
     const prompt = FACT_LEDGER_SYSTEM_PROMPT;
     expect(prompt).toContain('`key` is `<category>:<term>`');
-    expect(prompt).toContain('`allergy:penicillin`, `medication:metformin`');
+    expect(prompt).toContain('`allergy:<allergen>`, `medication:<drug>`');
     expect(prompt).toContain('ONE fact of kind `dose_change` keyed with the drug');
-    expect(prompt).toContain('never a second key such as `metformin_dose_change`');
+    expect(prompt).toContain('never a second key such as `<drug>_dose_change`');
     expect(prompt).toContain('A fact whose statement contains a number never has empty `numbers`');
   });
 
