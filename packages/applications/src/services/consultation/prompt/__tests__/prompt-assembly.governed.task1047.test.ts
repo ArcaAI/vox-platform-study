@@ -174,8 +174,8 @@ describe('the established data-section names survive as blockAliases', () => {
   });
 });
 
-describe('the clinician’s DNA and the few-shot exemplars are DATA in style_reference', () => {
-  it('carries the style, the redaction rules and the exemplars in one style_reference block, placed first', async () => {
+describe('the clinician’s DNA is DATA in style_reference (TASK-1061 OD-1: no few-shot exemplars)', () => {
+  it('carries the style and the redaction rules in one style_reference block, placed first — never an exemplar', async () => {
     resolveBody('Write the note.');
     await (await getService({ exemplars: [{ redactedAfter: EXEMPLAR }] })).assemble({ ...base, dnaStyleId: 'dna-1', dnaRedactionRulesText: RULES });
     const blocks = composerInput().dataBlocks ?? [];
@@ -183,7 +183,7 @@ describe('the clinician’s DNA and the few-shot exemplars are DATA in style_ref
     expect(blocks[0]?.key).toBe('style_reference');
     expect(blocks[0]?.content).toContain(STYLE);
     expect(blocks[0]?.content).toContain(RULES);
-    expect(blocks[0]?.content).toContain(EXEMPLAR);
+    expect(blocks[0]?.content).not.toContain(EXEMPLAR);
     expect(blocks.filter((block) => block.key === 'style_reference')).toHaveLength(1);
   });
 
@@ -191,7 +191,7 @@ describe('the clinician’s DNA and the few-shot exemplars are DATA in style_ref
     resolveBody('Write the note.');
     await (await getService({ exemplars: [{ redactedAfter: EXEMPLAR }] })).assemble({ ...base, dnaStyleId: 'dna-1', dnaRedactionRulesText: RULES });
     const keys = (composerInput().outputContractParts ?? []).map((part) => part.key);
-    expect(keys).toEqual(['style-reference-exemplars', 'dna-style', 'dna-redaction-rules']);
+    expect(keys).toEqual(['dna-style', 'dna-redaction-rules']);
   });
 
   it('the static guidance is byte-identical for two different doctors and exemplar sets', async () => {
@@ -262,7 +262,6 @@ describe('FC-2 / FC-4 — governance travels with the assembled prompt', () => {
     expect(assembled.platformPieces?.map((piece) => [piece.kind, piece.sourceKey])).toEqual([
       ['PLATFORM', expect.stringMatching(/^platform-rules@/)],
       ['LANGUAGE', 'language:English'],
-      ['CONTRACT', 'style-reference-exemplars'],
     ]);
     expect(assembled.platformPieces?.[1]?.text).toBe(outputLanguageStep('English'));
   });

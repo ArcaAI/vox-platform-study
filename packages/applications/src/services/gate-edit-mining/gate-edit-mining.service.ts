@@ -26,6 +26,8 @@ import {
 } from './gate-edit-mining.settings';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { IPhiRedactor } from './IPhiRedactor';
+import type { GateEditExemplarForPrompt } from './IGateEditExemplarRetriever';
+import { toStructureOnlyExemplar } from './exemplar-structure';
 import { IEvalGateCurationSink } from '../consultation/feedback/IEvalGateCurationSink';
 
 /**
@@ -464,8 +466,13 @@ export class GateEditMiningService extends BaseService {
    *
    * Returns `[]` on any failure: a retrieval outage must degrade the prompt to
    * its zero-shot form, never fail the generation.
+   *
+   * TASK-1061 OD-2 — this is the ONE read that hands a stored note to a prompt, so it hands over
+   * the note's STRUCTURE only ({@link toStructureOnlyExemplar}): headings, order and line shape with
+   * every value a typed placeholder. The stored `redactedAfter` keeps its content (the SME corpus,
+   * the fine-tuning set and golden cases are built from it); a prompt never sees it.
    */
-  async retrieveExemplars(params: { tenantId: string; departmentId?: string | null; limit: number }): Promise<GateEditExemplarEntity[]> {
+  async retrieveExemplars(params: { tenantId: string; departmentId?: string | null; limit: number }): Promise<GateEditExemplarForPrompt[]> {
     try {
       // The HUMAN curation gate (F-24), distinct from the mined `qualitySignal`
       // below: `qualitySignal` is what the CLINICIAN's edit behaviour implied,
@@ -485,12 +492,21 @@ export class GateEditMiningService extends BaseService {
         ...(curationMode === 'enforce' ? { curationStatus: ExemplarCurationStatus.APPROVED } : {}),
       });
 
-      return (rows ?? []).filter(
-        // Belt-and-braces on the tenant boundary: the repository and the
-        // tenant-scope extension both enforce it, but an exemplar crossing
-        // tenants would be a PHI leak laundered through a model, so re-check
-        // rather than trust. Rows with no usable snippet are dropped too.
-        (row) => row.tenantId === params.tenantId && !!row.redactedAfter,
+      return (
+        (rows ?? [])
+          .filter(
+            // Belt-and-braces on the tenant boundary: the repository and the
+            // tenant-scope extension both enforce it, but an exemplar crossing
+            // tenants would be a PHI leak laundered through a model, so re-check
+            // rather than trust. Rows with no usable snippet are dropped too.
+            (row) => row.tenantId === params.tenantId && !!row.redactedAfter,
+          )
+          // Project explicitly — never the entity, whose `redactedAfter` is the full note.
+          .map((row) => ({
+            tenantId: row.tenantId,
+            qualitySignal: row.qualitySignal,
+            redactedAfter: toStructureOnlyExemplar(row.redactedAfter as string),
+          }))
       );
     } catch (error) {
       this.logger.warn({

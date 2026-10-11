@@ -8,7 +8,10 @@
  * generation. The learning loop is an enhancement; it is never a prerequisite.
  */
 export interface GateEditExemplarForPrompt {
-  /** The PHI-redacted signed note. The only field a prompt may ever show. */
+  /**
+   * The signed note's STRUCTURE only (TASK-1061 OD-2): headings, order and line shape, every value a
+   * typed placeholder. The only field a prompt may ever show.
+   */
   redactedAfter?: string | null;
   qualitySignal?: string | null;
   tenantId?: string;
