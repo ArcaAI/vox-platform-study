@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending |
+| Status | Review (fix already landed in ALaaS `7d1bcdb`; verified live 2026-10-11, see Implementation Summary) |
 | Type | bugfix |
 | Source | https://github.com/ArcaAI/project-hope/issues/10 |
 | Reporter / date | NeenaPanicker, 2026-09-29 |
@@ -66,10 +66,48 @@ original failure's status code from audio-stream-svc logs (`language-modes relay
 
 ## Implementation Summary
 
-Not started.
+**Correction to the triage above (2026-10-11).** The Current State analysis targeted `useConsultationWorkspace.js` /
+`ConsultationSetupPanel.jsx` (the *Workspace* screen). The screen the reporter uses — UHID header + microphone, served at
+`/?openTab=recording` — is `ClinicalUIPopUp.jsx` + `hooks/useClinicalLogic.js`. That screen was already fixed by ALaaS commit
+**`7d1bcdb`** (`fix(web-ui): popup lifecycle UX -- ..., language-mode retry a11y, ...`), an ancestor of
+`refactor-hope-integaration`. No code change was needed in either repo for this ticket.
+
+What the fix is (`ALaaSv3.0/apps/web_ui/hooks/useClinicalLogic.js:827-846`, `ClinicalUIPopUp.jsx:588-611`):
+`refreshLanguageModes` wraps `getLanguageModes()` in `withRetry(..., { attempts: 3 })`, keeps `modesLoading` / `modesError`
+state, and on exhaustion shows "Couldn't load modes" with a `Retry loading language modes` button instead of an endless
+"Loading modes…". Pinned in `src/functionMap.js` as row `L08`.
+
+### Live verification (2026-10-11, local ALaaS → cluster HOPE)
+
+Setup: local `audio-stream-svc` on :4000 (`HOPE_API_URL=https://api.taphuynh.dev`, i.e. the deployed cluster gateway) and
+`web_ui` on :5173, both run from worktree `ALaaSv3.0-e2e-1053` (its three language-mode files are identical to
+`refactor-hope-integaration`). No model was loaded or changed.
+
+| Check | Result |
+|---|---|
+| Healthy path: 20 × `GET localhost:4000/api/v1/consultation/language-modes` (relay → cluster) | 20/20 HTTP 200; cold first call 0.64 s, rest ~0.14 s; catalog returns `en`, `ml`, … |
+| Failure path: UI loaded from `127.0.0.1:5173` (CORS-blocked → `net::ERR_FAILED`) | 3 failed `GET`s (the 3 attempts), then picker shows "Couldn't load modes" + Retry; no endless "Loading modes…" |
+| Recovery: fetch stubbed to succeed, click Retry | 1 call; picker lists English, Malayalam; Retry button removed |
+
+Limits of this evidence: the failure was injected at the browser (CORS), and recovery used a synthetic catalog, so they
+prove the UI's retry/error/recovery logic, not a real transient relay/tunnel failure. The reporter's HAR / environment is
+still missing, so which hop failed originally remains unconfirmed.
+
+### Remaining / not done
+
+- `audio-stream-svc` `hope-realtime.vox-node.adapter.ts:932` still does a single `serviceAccountGet` (no retry, no 401
+  refresh) — plan item 4 not implemented; the UI retry covers it in practice. Decide whether to add it (ALaaS repo, OD-1).
+- The older Workspace screen (`useConsultationWorkspace.js:198-209`) still fetches once with no error state. OD-2 (start with
+  the agent default language when modes can't load) is unanswered.
+- Gateway/relay logs for real `language-modes relay failed:` occurrences were not pulled.
+
+Landing: this README is the only change (`hope-v2`, `dev-2.2`). No ALaaS or `hope-v2-deployment` change; no worktree was
+created for this work, so none to remove. The `ALaaSv3.0-e2e-1053` worktree is another session's live E2E tree (running dev
+servers, detached HEAD) and was left alone.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-06 | Created from GitHub issue #10 (read-only triage). |
+| 2026-10-11 | Verified live against local ALaaS + deployed cluster; found the reporter's screen already fixed by ALaaS `7d1bcdb`; status → Review; corrected the component analysis. |
