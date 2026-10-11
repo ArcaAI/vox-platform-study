@@ -259,7 +259,7 @@ export function LoginForm({ redirectTo, initialError, sessionExpired = false }: 
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="login-tenant-key">Tenant key (optional for super admins)</Label>
+            <Label htmlFor="login-tenant-key">Tenant key or ID (optional for super admins)</Label>
             <Input id="login-tenant-key" autoComplete="organization" value={tenantKey} onChange={(event) => setTenantKey(event.target.value)} />
           </div>
           <Button type="submit" disabled={submitting}>

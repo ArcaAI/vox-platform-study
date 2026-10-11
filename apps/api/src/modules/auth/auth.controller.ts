@@ -15,6 +15,7 @@ import {
   createJwt,
   // Password rotation surfaced at login() (warning-only).
   isPasswordExpired,
+  isUuidIdentifier,
   resolveJwtSecret,
   resolvePasswordPolicy,
 } from '@arcaai/applications';
@@ -273,7 +274,7 @@ export class AuthController {
       if (isSuperAdmin) {
         // Super Admins can optionally scope to a tenant
         if (request.tenantKey) {
-          const tenant = await this.resolveTenant(request.tenantKey);
+          const tenant = await this.resolveTenant(request.tenantKey, (reason) => (failureReason = reason));
           resolvedTenantId = tenant.id;
           resolvedTenantKey = tenant.key;
         }
@@ -283,7 +284,7 @@ export class AuthController {
           throw new BadRequestException('Tenant key is required for non-admin users');
         }
 
-        const tenant = await this.resolveTenant(request.tenantKey);
+        const tenant = await this.resolveTenant(request.tenantKey, (reason) => (failureReason = reason));
         resolvedTenantId = tenant.id;
         resolvedTenantKey = tenant.key;
 
@@ -1525,18 +1526,32 @@ export class AuthController {
   }
 
   /**
-   * Resolve tenant by key — validates existence and enabled status
+   * Resolve the login tenant by key, or by id when the value is a UUID (BUG-024 OD-1 — the
+   * tenant detail screen shows both, and the id is the easy one to paste). Validates existence and
+   * enabled status. `findFirst` THROWS on a miss: a miss is `400 Invalid or disabled tenant`
+   * (reachable only after a valid password, OD-2), an outage is 503 — never the generic 401.
    */
-  private async resolveTenant(tenantKey: string): Promise<{ id: string; key: string }> {
-    const tenant = await this.tenantRepository.findFirst({
-      filters: {
-        key: tenantKey,
-        resourceStatus: { equals: ResourceStatusType.ENABLED },
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+  private async resolveTenant(tenantKey: string, onFailure: (reason: string) => void): Promise<{ id: string; key: string }> {
+    let tenant: { id: string } | null;
+    try {
+      tenant = await this.tenantRepository.findFirst({
+        filters: {
+          ...(isUuidIdentifier(tenantKey) ? { id: tenantKey } : { key: tenantKey }),
+          resourceStatus: { equals: ResourceStatusType.ENABLED },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+    } catch (error) {
+      if (!this.isLookupMiss(error)) {
+        onFailure('tenant_lookup_failed');
+        this.logger.error({ message: 'Login tenant lookup failed', error });
+        throw new ServiceUnavailableException('Authentication is temporarily unavailable');
+      }
+      tenant = null;
+    }
 
     if (!tenant) {
+      onFailure('tenant_not_found');
       throw new BadRequestException('Invalid or disabled tenant');
     }
 
