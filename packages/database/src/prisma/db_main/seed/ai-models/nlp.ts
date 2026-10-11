@@ -50,6 +50,9 @@ const PII_LEAK_POLICY: Record<string, GuardrailPolicySeedValue> = {
     'transaction_date',
     'healthcare_facility',
     'date_of_service',
+    // TASK-1062 D-1 (owner): false-positive-prone in clinical text, so they warn rather than block.
+    'api_key',
+    'encounter_id',
   ],
 };
 

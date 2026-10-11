@@ -98,7 +98,8 @@ describe('guardrail policy catalogue — the cross-language contract', () => {
     const byId = (id: string) => GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)!;
     expect(byId('jailbreak_detection').directions).toEqual(['inbound']);
     expect(byId('prompt_toxicity').platformDefaultCategoryActions).toEqual({ privacy_violation: 'ignore' });
-    expect(GUARDRAIL_POLICY_CATALOGUE.filter((p) => p.platformDefaultCategoryActions).map((p) => p.id)).toEqual(['prompt_toxicity']);
+    expect(byId('response_toxicity').platformDefaultCategoryActions).toEqual({ privacy_violation: 'ignore' });
+    expect(GUARDRAIL_POLICY_CATALOGUE.filter((p) => p.platformDefaultCategoryActions).map((p) => p.id)).toEqual(['prompt_toxicity', 'response_toxicity']);
   });
 
   it('locks medical validation at block, and the judges default to the README actions', () => {

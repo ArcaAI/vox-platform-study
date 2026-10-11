@@ -208,21 +208,24 @@ describe('gliner2-privacy-filter-pii-multi: piiLeakQuasiIdentifierLabels', () =>
   // function's fall-through default (credentials, postal_code) is deliberately NOT seeded: a leaked secret
   // must stay a block.
   const QUASI = /(date|birth|dob|age|city|state|country|region|location|facility|gender|nationality|religion)/;
+  const EXTRA_QUASI = ['api_key', 'encounter_id']; // TASK-1062 D-1 owner decision, beyond the rule
   const labels = () => meta(PII).labelTaxonomy.labels as string[];
 
   it('is exactly the taxonomy labels the quasi-identifier rule names, in policy and policyDefaults', () => {
-    const expected = labels().filter((l) => QUASI.test(l.toLowerCase()));
+    const expected = labels().filter((l) => QUASI.test(l.toLowerCase()) || EXTRA_QUASI.includes(l));
     expect(expected.length).toBeGreaterThan(0);
-    expect(meta(PII).policy.piiLeakQuasiIdentifierLabels).toEqual(expected);
-    expect(meta(PII).policyDefaults.piiLeakQuasiIdentifierLabels).toEqual(expected);
+    expect([...(meta(PII).policy.piiLeakQuasiIdentifierLabels as string[])].sort()).toEqual([...expected].sort());
+    expect([...(meta(PII).policyDefaults.piiLeakQuasiIdentifierLabels as string[])].sort()).toEqual([...expected].sort());
     expect(meta(PII).policyDefaults).not.toBe(meta(PII).policy);
   });
 
   it('never lists a direct identifier or a credential, and only labels the model declares', () => {
     const list = meta(PII).policy.piiLeakQuasiIdentifierLabels as string[];
     for (const l of list) expect(labels()).toContain(l);
-    for (const l of ['person', 'email', 'phone_number', 'medical_record_number', 'password', 'api_key', 'postal_code']) expect(list).not.toContain(l);
+    for (const l of ['person', 'email', 'phone_number', 'medical_record_number', 'password', 'postal_code']) expect(list).not.toContain(l);
     expect(list).toContain('healthcare_facility');
+    // TASK-1062 D-1: the two false-positive-prone identifiers warn instead of block.
+    expect(list).toEqual(expect.arrayContaining(['api_key', 'encounter_id']));
   });
 });
 
@@ -330,6 +333,7 @@ describe('availability (18): the v2 shape, with the five TASK-1050 checks at the
   it('TASK-1061: response_safety records only and prompt_toxicity records privacy_violation only (OD-5b)', () => {
     expect(policies.checks.response_safety).toEqual({ enabled: true, action: 'ignore' });
     expect(policies.checks.prompt_toxicity?.categoryActions).toEqual({ privacy_violation: 'ignore' });
+    expect(policies.checks.response_toxicity?.categoryActions).toEqual({ privacy_violation: 'ignore' });
     expect(policies.checks.prompt_toxicity?.action).toBe('warn');
   });
 

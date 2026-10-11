@@ -34,7 +34,7 @@ check's. It only ever RELAXES: the effective action is the less strict of the re
 action and the category's, so a category can never raise a record-only data region.
 It cascades catalogue → SYSTEM row → tenant row LABEL by label, so a tenant (or a platform
 admin) raises a relaxed category back by stating it. The platform default records
-`prompt_toxicity:privacy_violation` only (`ignore`) until a calibrated threshold exists.
+`prompt_toxicity:privacy_violation` and `response_toxicity:privacy_violation` only (`ignore`, TASK-1062) until a calibrated threshold exists.
 
 **Membership rule (TASK-886).** Every id below is a check name in
 ``services/screening.py::_DECLARED_FAIL_MODES``; ``test_task886_availability.py``
@@ -124,7 +124,17 @@ CATALOGUE_DEFAULTS: Final[dict[str, CheckDefault]] = {
     # TASK-1061 OD-5b (owner 2026-10-11): recorded only — `unsafe` fired on 5 of 5 clinical notes.
     # Was `warn` (owner 2026-10-08). A platform admin may raise it again.
     "response_safety": CheckDefault(("outbound",), _ALL, ACTION_IGNORE, False, True),
-    "response_toxicity": CheckDefault(("outbound",), _ALL, ACTION_WARN, False, True),
+    # TASK-1062 D-1: the outbound classifier flags `privacy_violation` on a clinical note's own history.
+    "response_toxicity": CheckDefault(
+        ("outbound",),
+        _ALL,
+        ACTION_WARN,
+        False,
+        True,
+        (),
+        None,
+        (("privacy_violation", ACTION_IGNORE),),
+    ),
     "response_refusal": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, False),
     "pii_leak": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, True),
     "containment_echo": CheckDefault(("outbound",), _ALL, ACTION_BLOCK, False, True),

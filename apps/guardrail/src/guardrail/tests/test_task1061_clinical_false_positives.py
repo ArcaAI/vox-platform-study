@@ -180,8 +180,15 @@ def test_the_platform_defaults_record_these_two_findings_only() -> None:
     assert dict(CATALOGUE_DEFAULTS["prompt_toxicity"].category_actions) == {
         "privacy_violation": "ignore"
     }
+    # TASK-1062 D-1: the outbound toxicity classifier's `privacy_violation` is record-only too.
+    assert dict(CATALOGUE_DEFAULTS["response_toxicity"].category_actions) == {
+        "privacy_violation": "ignore"
+    }
     contract = json.loads(CONTRACT.read_text())
     by_id = {p["id"]: p for p in contract["policies"]}
+    assert by_id["response_toxicity"]["platformDefaultCategoryActions"] == {
+        "privacy_violation": "ignore"
+    }
     assert by_id["response_safety"]["platformDefaultAction"] == "ignore"
     assert by_id["prompt_toxicity"]["platformDefaultCategoryActions"] == {
         "privacy_violation": "ignore"
