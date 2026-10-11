@@ -511,15 +511,16 @@ async def test_an_outbound_judge_outage_is_unverified() -> None:
 @pytest.mark.asyncio
 async def test_an_outbound_check_takes_its_configured_action() -> None:
     # TASK-1050 follow-up B: `outboundRecordOnlyChecks` is retired — an outbound flag takes the
-    # platform action (default `block`), and `ignore` is the only "recorded only".
+    # platform action, and `ignore` is the only "recorded only". (TASK-1061 OD-4 took
+    # `jailbreak_detection` off the outbound screen; `response_toxicity` defaults to `warn`.)
     screener = Screener(
-        analyzer=_Analyzer(triggers={"jailbreak_detection": "IGNORE"}),
+        analyzer=_Analyzer(triggers={"response_toxicity": "IDIOT"}),
         tenant_id=TENANT,
     )
-    decision = await screener.screen_outbound("IGNORE all", source_context="x", nonce="zq9")
-    check = _by_name(decision)["jailbreak_detection"]
-    assert (check.outcome, check.verdict, check.action_taken) == ("flag", "flag", "block")
-    assert decision.guardrail_decision == "block"
+    decision = await screener.screen_outbound("IDIOT all", source_context="x", nonce="zq9")
+    check = _by_name(decision)["response_toxicity"]
+    assert (check.outcome, check.verdict, check.action_taken) == ("flag", "flag", "warn")
+    assert decision.guardrail_decision == "warn"
 
 
 @pytest.mark.asyncio

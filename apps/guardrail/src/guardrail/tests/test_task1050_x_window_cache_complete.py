@@ -117,7 +117,8 @@ async def test_a_stale_incomplete_entry_is_read_as_a_miss(redis: Any) -> None:
     cache = screener.window_runner.cache
     assert cache is not None
     # An entry written by a build without this fix: the answer omitted every task.
-    tasks = "response_safety,response_toxicity,jailbreak_detection"
+    # The outbound classify key (TASK-1061 OD-4: no `jailbreak_detection` on the response).
+    tasks = "response_safety,response_toxicity"
     key = cache.key(TENANT, "pv-1", "gliguard", f"classify:{tasks}", "the note")
     await cache.set(key, {"labels": {}, "scores": {}})
 

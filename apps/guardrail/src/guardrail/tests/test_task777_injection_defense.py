@@ -238,15 +238,25 @@ async def test_clean_response_is_allowed() -> None:
 
 @pytest.mark.asyncio
 async def test_harmful_response_label_warns_outbound_by_default() -> None:
-    """The platform default for the outbound classifiers is warn (owner 2026-10-08)."""
-    analyzer = _StubAnalyzer(labels={"response_safety": "harmful"})
+    """The platform default for `response_toxicity` is warn (owner 2026-10-08)."""
+    analyzer = _StubAnalyzer(labels={"response_toxicity": "toxic"})
     decision = await _screener(analyzer).screen_outbound("...", source_context="")
     assert decision.decision == DECISION_ALLOW
     assert decision.guardrail_decision == "warn"
     assert (
-        next(c for c in decision.checks if c.name == "response_safety").effective_action_taken
+        next(c for c in decision.checks if c.name == "response_toxicity").effective_action_taken
         == "warn"
     )
+
+
+@pytest.mark.asyncio
+async def test_an_unsafe_response_safety_label_is_recorded_only_by_default() -> None:
+    """TASK-1061 OD-5b (owner 2026-10-11): `response_safety` records without a notice."""
+    analyzer = _StubAnalyzer(labels={"response_safety": "harmful"})
+    decision = await _screener(analyzer).screen_outbound("...", source_context="")
+    check = next(c for c in decision.checks if c.name == "response_safety")
+    assert (check.effective_verdict, check.effective_action_taken) == ("flag", "ignore")
+    assert decision.guardrail_decision == "allow"
 
 
 @pytest.mark.asyncio

@@ -47,6 +47,8 @@ def test_catalogue_defaults_match_the_availability_catalogue() -> None:
         assert spec.enabled is entry["defaultEnabled"]
         assert spec.inbound_regions == tuple(entry.get("inboundRegions", ()))
         assert spec.data_region_action == entry.get("platformDefaultDataRegionAction")
+        # TASK-1061 OD-5b.
+        assert dict(spec.category_actions) == entry.get("platformDefaultCategoryActions", {})
 
 
 def test_catalogue_defaults_match_the_policy_fixture_defaults() -> None:
@@ -155,7 +157,8 @@ def test_direction_off_runs_every_check_of_that_direction_at_ignore() -> None:
     # Still enabled — monitor only, never skipped (OD-7 (a)).
     assert resolved.is_enabled("response_safety")
     assert resolved.action_for("response_safety", "outbound") == "ignore"
-    # jailbreak_detection is on both directions: only its outbound action moves.
+    # A monitor-only outbound direction never moves an inbound action (jailbreak_detection is
+    # inbound-only since TASK-1061 OD-4).
     assert resolved.action_for("jailbreak_detection", "outbound") == "ignore"
     assert resolved.action_for("jailbreak_detection", "inbound") == "block"
 

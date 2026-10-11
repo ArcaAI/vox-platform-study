@@ -439,7 +439,7 @@ async def test_both_screen_routes_report_the_availability_tier(monkeypatch: Any)
     assert {c["name"] for c in outbound.checks if c["reason"] == "not_selected_for_tenant"} == {
         "response_toxicity",
         "response_refusal",
-        "jailbreak_detection",
+        # `jailbreak_detection` is not an outbound check since TASK-1061 OD-4.
         "pii_leak",
         "containment_echo",
     }

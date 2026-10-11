@@ -180,9 +180,16 @@ async def test_a_clean_pass_still_produces_a_record_without_notices() -> None:
 
 @pytest.mark.asyncio
 async def test_withheld_content_rides_only_an_outbound_block() -> None:
-    blocked = await Screener(analyzer=_Analyzer("BAD"), tenant_id=TENANT).screen_outbound(
-        "a BAD note", source_context="x", nonce="n"
-    )
+    # TASK-1061: no outbound classifier blocks by platform default any more (`jailbreak_detection` left
+    # the outbound screen, `response_safety` records only) — the block is configured here.
+    blocked = await Screener(
+        analyzer=_Analyzer("BAD"),
+        tenant_id=TENANT,
+        availability=GuardrailAvailability.from_tiers(
+            system_blob={"checks": {"response_safety": {"enabled": True, "action": "block"}}},
+            tenant_blob=None,
+        ),
+    ).screen_outbound("a BAD note", source_context="x", nonce="n")
     record = build_evaluation_record(
         blocked,
         tenant_id=TENANT,

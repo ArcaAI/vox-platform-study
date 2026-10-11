@@ -27,7 +27,7 @@ const CONTRACT = JSON.parse(
  */
 const CHECKS = PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY.checks;
 /** The fields of a v2 check entry that are not a strictness threshold. */
-const NON_THRESHOLD_FIELDS = new Set(['enabled', 'action', 'locked', 'dataRegionAction']);
+const NON_THRESHOLD_FIELDS = new Set(['enabled', 'action', 'locked', 'dataRegionAction', 'categoryActions']);
 
 describe('TASK-886 — the SYSTEM guardrail availability seed', () => {
   it('names exactly the policies the contract declares (TASK-1050: +5 — medical validation and the four judges)', () => {
