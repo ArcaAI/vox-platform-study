@@ -100,9 +100,21 @@ still missing, so which hop failed originally remains unconfirmed.
   502/503/504; a 401 clears the cached service-account token so the next attempt re-exchanges; any other non-2xx throws at once.
   Option `retryDelayMs` (tests use 0). TDD: 5 new specs (503, network error, 401 re-exchange, give-up after 3 surfacing the
   last status, no retry on 404) — red first (4 failed), then `hope-realtime.vox-node.adapter.spec.ts` 52/52 green, `tsc --noEmit`
-  clean, re-run green on the primary checkout after the fast-forward merge. Not re-verified against the live cluster (the
-  relay process on :4000 was started before the change and was not restarted); `serviceAccountGet` also serves the other
+  clean, re-run green on the primary checkout after the fast-forward merge. `serviceAccountGet` also serves the other
   service-account GET at line ~859, which now gets the same retry.
+  **Live-verified 2026-10-11 against the cluster:** relay rebuilt (`nest build`) and restarted on :4000 from the primary
+  checkout (`aabf749`; replaced the Oct-9 process that ran from the `ALaaSv3.0-e2e-1053` tree, same `.env`). A local
+  fault proxy (`127.0.0.1:4101`, scratch only, not committed) sat between the relay and `api.taphuynh.dev`, forwarding
+  everything to the real gateway and failing selected language-modes GETs:
+
+  | Injected | Relay result |
+  |---|---|
+  | 503, dropped socket, 502 (all 3 attempts) | 503 after 0.95 s (250 + 500 ms backoff), `language-modes relay failed … 502` warn logged — bounded, by design |
+  | 503, dropped socket, then pass-through | **200 in 1.07 s** with the real cluster catalog (3 GETs seen at the proxy) |
+  | no faults (relay restored to the real URL) | 200 in 0.15–0.24 s |
+
+  Not exercised live: the 401 → token re-exchange path (unit-tested only). Final state: proxy stopped, relay on :4000
+  running from the primary checkout against `https://api.taphuynh.dev`.
 - The older Workspace screen (`useConsultationWorkspace.js:198-209`) still fetches once with no error state. OD-2 (start with
   the agent default language when modes can't load) is unanswered.
 - Gateway/relay logs for real `language-modes relay failed:` occurrences were not pulled.
