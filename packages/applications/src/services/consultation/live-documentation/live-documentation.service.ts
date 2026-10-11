@@ -404,6 +404,12 @@ class LiveContextWindowError extends Error {
 const LM_STUDIO_CONTEXT_LENGTH_KEY: LmStudioServingKey = 'lmStudio.serving.contextLength';
 /** The provider spellings LM Studio arrives under; only its context window is governed by the platform. */
 const LM_STUDIO_PROVIDERS = new Set(['lm-studio', 'lmstudio']);
+/**
+ * TASK-1062 D-2 A — the admission-lane marker on every live-lane TEXT `/generate` call. TEXT admits a
+ * live-marked `lm-studio` generation into the live lane's own budget (`lmStudio.serving.liveLaneSlots`),
+ * so a live flush never queues behind finalize / pre-summary work on the user lane.
+ */
+const LIVE_LANE_HEADERS = { 'X-Hope-Lane': 'live' } as const;
 
 /**
  * TASK-1059 C-0 — the size at which a transcript chunk sent to the context judge is SEALED.
@@ -7773,7 +7779,7 @@ return 0`;
           serviceToken,
           tenantId,
           tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
-          ...(Object.keys(correlation).length > 0 ? { extra: correlation } : {}),
+          extra: { ...correlation, ...LIVE_LANE_HEADERS },
         }),
         signal,
       });

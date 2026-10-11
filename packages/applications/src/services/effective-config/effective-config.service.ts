@@ -39,7 +39,12 @@ import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicySe
 import type { AiModelService } from '../ai-model/aiModel.service';
 import { derivedLocalPath } from '../ai-model/constants';
 import { declaredContextLengthOf, platformServingProfileFrom, resolveServingProfile, servingProfileOf } from '../ai-model/serving-profile.util';
-import { LM_STUDIO_SERVING_DEFAULTS, type LmStudioServingKey } from '../settings-registry/descriptors/lmstudio-serving.descriptors';
+import {
+  LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT,
+  LM_STUDIO_LIVE_LANE_SLOTS_KEY,
+  LM_STUDIO_SERVING_DEFAULTS,
+  type LmStudioServingKey,
+} from '../settings-registry/descriptors/lmstudio-serving.descriptors';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { MODEL_WEIGHT_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../settings-registry/registry';
@@ -456,7 +461,8 @@ export class EffectiveConfigService implements IEffectiveConfigService {
    * LM Studio pod the whole boot plan.
    *
    *  - `text` gets `{ parallel }` — the effective `lmStudio.serving.parallel`, which sizes its
-   *    lm-studio user lane AND internal judge lane (D-1/D-3).
+   *    lm-studio user lane AND internal judge lane (D-1/D-3) — and `liveLaneSlots` (TASK-1062 D-2 A),
+   *    the live-documentation lane's reserved share of it, clamped to `[1, parallel]`.
    *  - `lmstudio` gets the platform defaults plus every `lmStudio.serving.preload` model, its
    *    profile resolved model `_metadata.serving` -> platform default (D-8/D-9). A model that
    *    declares no `gpuSplit` is placed on `defaults.gpu`; one that does owns its placement.
@@ -474,8 +480,11 @@ export class EffectiveConfigService implements IEffectiveConfigService {
   ): Promise<EffectiveLmStudioServingPlan | EffectiveLmStudioServingConcurrency | undefined> {
     if (service === 'text') {
       const parallel = (await this.lmStudioValue('lmStudio.serving.parallel')) as number;
+      // TASK-1062 D-2 A — the live lane's reserved share, never served above `parallel`.
+      const live = (await this.resolveKey(HOPE_SETTINGS_REGISTRY.getOrThrow(LM_STUDIO_LIVE_LANE_SLOTS_KEY))).value;
+      const liveLaneSlots = Math.max(1, Math.min(typeof live === 'number' ? live : LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT, parallel));
       const agentUrl = this.lmStudioAgentUrl();
-      return agentUrl ? { parallel, agentUrl } : { parallel };
+      return agentUrl ? { parallel, liveLaneSlots, agentUrl } : { parallel, liveLaneSlots };
     }
     if (service !== 'lmstudio') return undefined;
 

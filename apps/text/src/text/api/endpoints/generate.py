@@ -70,7 +70,12 @@ from text.core.metrics import (
     TOKENS_PER_SECOND,
     TOKENS_TOTAL,
 )
-from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
+from text.core.runtime_defaults import (
+    LANE_HEADER,
+    LIVE_LANE,
+    LM_STUDIO_PROVIDER,
+    PROVIDER_TIMEOUT_FLOOR_S,
+)
 from text.core.telemetry import set_generation_span_attributes
 from text.models.requests import GenerateRequest, item_refs_wire, region_items_wire
 from text.models.responses import (
@@ -122,7 +127,7 @@ from text.services.retry_handler import (
     retry_after_from,
     should_retry,
 )
-from text.services.runtime_limits import lane_budget
+from text.services.runtime_limits import lane_budget, live_lane_semaphore
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
 
@@ -277,6 +282,11 @@ def _get_provider_timeout(runtime_timeouts: dict[str, int], provider_name: str) 
     return float(served) if served else float(PROVIDER_TIMEOUT_FLOOR_S)
 
 
+def _is_live_lane(marker: str | None) -> bool:
+    """Whether ``X-Hope-Lane`` names the live lane (TASK-1062); anything else is the user lane."""
+    return isinstance(marker, str) and marker.strip().lower() == LIVE_LANE
+
+
 def _classify_provider_failure(exc: BaseException) -> str:
     """The ``error_type`` for a provider exception: one verdict, two readers.
 
@@ -361,6 +371,8 @@ async def generate(
     pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    # TASK-1062 D-2 A — the admission lane the gateway marks (`live` = a live-documentation flush).
+    x_hope_lane: str | None = Header(default=None, alias=LANE_HEADER),
 ) -> Any:
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
@@ -616,7 +628,15 @@ async def generate(
 
     _SEMAPHORE_ACQUIRE_TIMEOUT = 30.0
 
-    semaphore = provider_semaphores.get(request_body.provider)
+    # TASK-1062 D-2 A — a live-marked `lm-studio` generation is admitted into the LIVE
+    # lane's own semaphore (`lmStudio.serving.liveLaneSlots`), so a live flush never
+    # queues behind finalize / pre-summary work on the user lane. Any other marker, no
+    # marker, or any other provider stays on the provider's user-lane semaphore.
+    semaphore: ResizableSemaphore | None = (
+        live_lane_semaphore(app_state)
+        if _is_live_lane(x_hope_lane) and request_body.provider == LM_STUDIO_PROVIDER
+        else provider_semaphores.get(request_body.provider)
+    )
 
     async def _take_permit() -> None:
         """Acquire the provider's concurrency permit, or refuse with a typed 503."""

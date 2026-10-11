@@ -22,7 +22,12 @@
 import { describe, expect, it } from 'vitest';
 import { AI_MODEL_SERVING_GPU_SPLIT_STRATEGIES, AI_MODEL_SERVING_KV_CACHE_QUANTIZATION_TYPES } from '@arcaai/types';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
-import { LM_STUDIO_SERVING_DEFAULTS, LM_STUDIO_SERVING_SETTINGS, type LmStudioServingKey } from '../descriptors/lmstudio-serving.descriptors';
+import {
+  LM_STUDIO_LIVE_LANE_SLOTS_KEY,
+  LM_STUDIO_SERVING_DEFAULTS,
+  LM_STUDIO_SERVING_SETTINGS,
+  type LmStudioServingKey,
+} from '../descriptors/lmstudio-serving.descriptors';
 import { resolveServingProfile, shippedPlatformServingProfile } from '../../ai-model/serving-profile.util';
 
 const ALL_KEYS = Object.keys(LM_STUDIO_SERVING_DEFAULTS) as LmStudioServingKey[];
@@ -42,7 +47,8 @@ describe('LM Studio serving descriptors', () => {
       'lmStudio.jit.modelTtlSeconds',
     ]);
     for (const key of ALL_KEYS) expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(true);
-    expect(LM_STUDIO_SERVING_SETTINGS.map((d) => d.key)).toEqual(ALL_KEYS);
+    // TASK-1062 — plus the text-only live-lane budget, which is not part of the pod's boot plan.
+    expect(LM_STUDIO_SERVING_SETTINGS.map((d) => d.key).filter((key) => key !== LM_STUDIO_LIVE_LANE_SLOTS_KEY)).toEqual(ALL_KEYS);
   });
 
   it('scopes them to the platform: SYSTEM-only, super-admin-editable, global-kv', () => {

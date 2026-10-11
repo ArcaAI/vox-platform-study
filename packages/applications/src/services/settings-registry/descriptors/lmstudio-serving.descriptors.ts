@@ -91,6 +91,15 @@ export const LM_STUDIO_SERVING_DEFAULTS = {
 export type LmStudioServingKey = keyof typeof LM_STUDIO_SERVING_DEFAULTS;
 
 /**
+ * TASK-1062 D-2 A — the live-documentation lane's share of LM Studio's decode slots, consumed by
+ * apps/text only (served as `lmStudioServing.liveLaneSlots` beside `parallel`). Kept OUT of
+ * `LM_STUDIO_SERVING_DEFAULTS` on purpose: that map is the LM Studio pod's boot plan, and this is
+ * not something the engine loads with.
+ */
+export const LM_STUDIO_LIVE_LANE_SLOTS_KEY = 'lmStudio.serving.liveLaneSlots';
+export const LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT = 2;
+
+/**
  * The write-lane gate for one closed-vocabulary key. The vocabularies live in
  * `@arcaai/types` so the descriptor, the row parser and the admin UI share ONE
  * table; they are inlined as a `readonly string[]` here rather than imported so
@@ -254,6 +263,24 @@ export const LM_STUDIO_SERVING_SETTINGS: SettingDescriptor[] = [
       'AiModel slugs LM Studio loads (and pins) when it starts, each with its resolved serving profile (model `_metadata.serving` -> these platform defaults). A preloaded model never pays a cold JIT load on its first request after a restart. An unknown slug is skipped, never fatal. Applies on the next LM Studio restart.',
     default: [...LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.preload']],
     validate: distinctModelIds('Preloaded models'),
+  },
+
+  // ── Live-lane admission in apps/text (TASK-1062 D-2 A) ──────────────────
+  {
+    key: LM_STUDIO_LIVE_LANE_SLOTS_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: CATEGORY,
+    label: 'LM Studio slots reserved for live documentation',
+    description:
+      'How many of apps/text`s `lm-studio` permits are reserved for the live-documentation lane (default 2). The gateway marks every live-lane generation `X-Hope-Lane: live`; text admits those into their own semaphore of this size, so a live flush never queues behind finalize or pre-summary generations, and the user lane keeps `lmStudio.serving.parallel` minus this (never below 1). Never served above `lmStudio.serving.parallel`. Applies live, with no restart. The internal guardrail judge lane is unaffected.',
+    default: LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT,
+    validate: wholeNumberBetween(1, 64, 'Live-lane slots'),
   },
 
   // ── JIT defaults (owner decision D-4) ────────────────────────────────────

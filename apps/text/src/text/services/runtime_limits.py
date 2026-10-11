@@ -24,7 +24,13 @@ import structlog
 from text.core.defaults import apply_generation_defaults
 from text.core.effective_config import EffectiveConfigSnapshot
 from text.core.guardrail_posture import platform_posture
-from text.core.runtime_defaults import LM_STUDIO_PROVIDER, USER_LANE_FLOOR, lane_floor
+from text.core.runtime_defaults import (
+    LIVE_LANE_SLOTS_FLOOR,
+    LM_STUDIO_PROVIDER,
+    USER_LANE_FLOOR,
+    lane_floor,
+    split_lm_studio_slots,
+)
 from text.providers.pool import apply_pool_policy
 from text.services.resizable_semaphore import ResizableSemaphore
 
@@ -47,11 +53,13 @@ def apply_provider_limits(
     # TASK-1031 D-2/D-3 — the governed LM Studio concurrency sizes the
     # `lm-studio` user lane only when the SYSTEM runtime profile carries no
     # `maxConcurrent`: an explicit connection ceiling keeps winning there.
+    # TASK-1062 D-2 A — minus the live lane's reserved share (`apply_live_lane`).
     parallel = snapshot.lm_studio_parallel()
     if parallel is not None and "max_concurrent" not in provider_limits.get(LM_STUDIO_PROVIDER, {}):
         semaphore = semaphores.get(LM_STUDIO_PROVIDER)
         if semaphore is not None:
-            _resize(LM_STUDIO_PROVIDER, semaphore, parallel)
+            user, _ = split_lm_studio_slots(parallel, _live_slots(snapshot))
+            _resize(LM_STUDIO_PROVIDER, semaphore, user)
 
     for provider, limits in provider_limits.items():
         max_concurrent = limits.get("max_concurrent")
@@ -74,6 +82,47 @@ def apply_provider_limits(
             update = getattr(tracker, "update_limits", None)
             if update is not None:
                 update(rpm_limit=limits.get("rpm_limit"), tpm_limit=limits.get("tpm_limit"))
+
+
+def live_lane_semaphore(state: Any) -> ResizableSemaphore:
+    """The ``lm-studio`` LIVE-lane semaphore (TASK-1062 D-2 A), created at its floor.
+
+    Materialised onto ``state`` on first use, never per call: a fresh object per
+    request would hand every live flush its own semaphore — no bound at all. The
+    object is stable for the process's lifetime; `apply_live_lane` moves its limit.
+    """
+    semaphore = getattr(state, "live_lane_semaphore", None)
+    if not isinstance(semaphore, ResizableSemaphore):
+        semaphore = ResizableSemaphore(LIVE_LANE_SLOTS_FLOOR)
+        state.live_lane_semaphore = semaphore
+    return semaphore
+
+
+def apply_live_lane(snapshot: EffectiveConfigSnapshot, state: Any) -> None:
+    """Size the live lane from ``lmStudioServing.liveLaneSlots``, clamped to ``parallel``.
+
+    Generations the gateway marks ``X-Hope-Lane: live`` are admitted here instead of
+    the ``lm-studio`` user lane, so live flushes never queue behind finalize /
+    pre-summary work. Gateway down = keep the live value, like every other limit.
+    """
+    if not snapshot.ok:
+        return
+    parallel = snapshot.lm_studio_parallel()
+    served = snapshot.lm_studio_live_lane_slots()
+    if parallel is None and served is None:
+        return
+    live = (
+        split_lm_studio_slots(parallel, _live_slots(snapshot))[1]
+        if parallel is not None
+        else _live_slots(snapshot)
+    )
+    _resize(f"{LM_STUDIO_PROVIDER}:live", live_lane_semaphore(state), live)
+
+
+def _live_slots(snapshot: EffectiveConfigSnapshot) -> int:
+    """The served live budget, or its floor when the gateway has no opinion."""
+    served = snapshot.lm_studio_live_lane_slots()
+    return served if served is not None else LIVE_LANE_SLOTS_FLOOR
 
 
 def apply_provider_retention(snapshot: EffectiveConfigSnapshot, registry: Any) -> None:
@@ -196,6 +245,7 @@ async def refresh_runtime_limits(state: Any) -> None:
         if registry is not None:
             apply_provider_retention(snapshot, registry)
 
+        apply_live_lane(snapshot, state)
         apply_lane_budgets(snapshot, state)
         apply_platform_posture(snapshot, state)
         # Egress transport shape: per-upstream httpx pool limits, the HTTP/2

@@ -102,7 +102,8 @@ class TestUserLane:
     def test_served_parallel_sizes_the_lm_studio_semaphore(self):
         semaphores = {LM_STUDIO_PROVIDER: ResizableSemaphore(10), "openai": ResizableSemaphore(4)}
         apply_provider_limits(_snapshot(14), semaphores, {})
-        assert semaphores[LM_STUDIO_PROVIDER].limit == 14
+        # TASK-1062 D-2 A — minus the live lane's reserved share (floor 2 when unserved).
+        assert semaphores[LM_STUDIO_PROVIDER].limit == 12
         assert semaphores["openai"].limit == 4
 
     def test_an_explicit_connection_ceiling_keeps_winning(self):

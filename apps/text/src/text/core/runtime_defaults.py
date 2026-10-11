@@ -58,6 +58,31 @@ LM_STUDIO_PROVIDER = "lm-studio"
 #: default so an unreachable gateway still serves the same capacity.
 LM_STUDIO_PARALLEL_FLOOR = 8  # TASK-1059 OD-1: LM Studio serves 8 parallel slots (was 10)
 
+#: TASK-1062 D-2 A — the live-documentation lane's own share of LM Studio's slots.
+#: The gateway marks every live-lane `/generate` call ``X-Hope-Lane: live``; text
+#: admits those into a SEPARATE semaphore of this size, so a live flush never queues
+#: behind finalize / pre-summary generations on the user lane. The governed value is
+#: `lmStudio.serving.liveLaneSlots` (platform admin, default 2), served as
+#: ``lmStudioServing.liveLaneSlots``; this floor equals that default.
+LIVE_LANE_SLOTS_FLOOR = 2
+
+#: The request header that marks a generation's admission lane, and the one value
+#: that selects the live lane. Any other value — or none — is the user lane.
+LANE_HEADER = "X-Hope-Lane"
+LIVE_LANE = "live"
+
+
+def split_lm_studio_slots(parallel: int, live_slots: int) -> tuple[int, int]:
+    """``(user, live)`` permits for ``lm-studio`` out of ``parallel`` decode slots.
+
+    The live lane is clamped to ``[1, parallel]``; the user lane keeps the rest and
+    never drops below one permit, so a live budget at (or above) ``parallel`` can
+    never take the user lane offline.
+    """
+    live = max(1, min(live_slots, parallel))
+    return max(1, parallel - live), live
+
+
 #: Zero means "no client-side rate limiting" — the honest floor, because a
 #: non-zero guess would silently throttle a vendor account whose real quota
 #: nobody told us. Vendor quotas are a property of the account, so they belong on
