@@ -30,6 +30,14 @@ export const FEATURE_GATE_KEYS: readonly FeatureGateKey[] = [
 ];
 
 /**
+ * Gates locked OFF in the console regardless of the backend value — the
+ * feature is parked until further development (TASK-1065: MCP & Tools). The
+ * route and nav entry stay in place behind the gate; removing a key from this
+ * list is the whole re-enable step on the console side.
+ */
+export const LOCKED_OFF_GATES: readonly FeatureGateKey[] = ['console.tools.mcp.enabled'];
+
+/**
  * Resolved gate values, keyed by `FeatureGateKey`. Partial and readonly on
  * purpose: a key absent from the map (loading, errored, or simply not yet
  * returned by the backend) is indistinguishable from `false` to every

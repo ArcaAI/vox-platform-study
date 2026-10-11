@@ -40,7 +40,6 @@ function EffectiveResolveCard({ policy }: { policy: HarnessPolicy }) {
     { label: 'max regen', value: String(policy.maxRegen) },
     // TASK-1001 wave 6 — derived from Settings (`consultation.session.completionTimeoutMinutes`).
     { label: 'completion timeout', value: `${Math.round(policy.gateSlaSeconds / 60)} min \u00b7 set in Settings` },
-    { label: 'tools', value: policy.toolAllowlist && policy.toolAllowlist.length > 0 ? policy.toolAllowlist.join(', ') : 'all allowed' },
   ];
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>

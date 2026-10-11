@@ -2,7 +2,7 @@
 
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { getEffectiveFeatureGates } from './client';
-import type { FeatureGateMap } from './keys';
+import { LOCKED_OFF_GATES, type FeatureGateMap } from './keys';
 
 /** One shared cache entry for the whole session — every consumer (rail, sidebar, ⌘K, route boundaries) dedupes onto it. */
 export const FEATURE_GATES_QUERY_KEY = ['feature-gates'] as const;
@@ -20,7 +20,11 @@ export const FEATURE_GATES_QUERY_KEY = ['feature-gates'] as const;
 export function useFeatureGates(): { gates: FeatureGateMap; isLoading: boolean; isError: boolean } {
   const query = useQuery({
     queryKey: FEATURE_GATES_QUERY_KEY,
-    queryFn: getEffectiveFeatureGates,
+    queryFn: async () => {
+      const gates: Record<string, boolean> = { ...(await getEffectiveFeatureGates()) };
+      for (const key of LOCKED_OFF_GATES) if (key in gates) gates[key] = false;
+      return gates as FeatureGateMap;
+    },
     staleTime: 30_000,
   });
 

@@ -32,7 +32,7 @@ describe('useFeatureGates', () => {
       vi.fn(async () =>
         Response.json({
           items: [
-            { key: 'console.tools.mcp.enabled', value: true, sourceScope: 'system' },
+            { key: 'console.agenticPolicy.enabled', value: true, sourceScope: 'system' },
             { key: 'console.mlflow.enabled', value: false, sourceScope: 'default' },
           ],
         }),
@@ -42,8 +42,20 @@ describe('useFeatureGates', () => {
     const { result } = renderHook(() => useFeatureGates(), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.gates).toEqual({ 'console.tools.mcp.enabled': true, 'console.mlflow.enabled': false });
+    expect(result.current.gates).toEqual({ 'console.agenticPolicy.enabled': true, 'console.mlflow.enabled': false });
     expect(result.current.isError).toBe(false);
+  });
+
+  it('keeps a LOCKED gate closed even when the backend resolves it on (MCP & Tools, TASK-1065)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ items: [{ key: 'console.tools.mcp.enabled', value: true, sourceScope: 'system' }] })),
+    );
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useFeatureGates(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.gates['console.tools.mcp.enabled']).toBe(false);
   });
 
   it('fails closed to an empty map on a fetch error — never undefined, never a stale "on"', async () => {

@@ -83,10 +83,7 @@ export const POLICY_FIELD_GROUPS: PolicyFieldGroup[] = [
   // TASK-1001 wave 6 — the 'Clinician gate' group is gone: the gate SLA IS the consultation completion
   // timeout, owned by Settings (`consultation.session.completionTimeoutMinutes`, tenant → platform, and
   // its first breach closes the session). One authoritative editor per value; this screen shows it read-only.
-  {
-    title: 'Tools',
-    fields: [{ key: 'toolAllowlist', label: 'Tool allowlist', kind: 'list', hint: 'comma-separated ids; empty = all tools allowed' }],
-  },
+  // TASK-1065: the 'Tools' group (`toolAllowlist`) is hidden while MCP & Tools is parked.
 ];
 
 export const POLICY_FIELDS: PolicyField[] = POLICY_FIELD_GROUPS.flatMap((group) => group.fields);

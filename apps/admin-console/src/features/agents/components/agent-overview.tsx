@@ -390,7 +390,6 @@ function TechnicalDetails({ agent, lineage }: { agent: Agent; lineage: AgentLine
         <ReadOnlyJson label="Parameters" value={agent.parameters} />
         <ReadOnlyJson label="Input schema" value={agent.inputSchema} />
         <ReadOnlyJson label="Output schema" value={agent.outputSchema} />
-        {agent.tools?.length ? <ReadOnlyJson label="Tools" value={agent.tools} /> : null}
         {agent.compiledConfig ? <ReadOnlyJson label="Compiled config" value={agent.compiledConfig} /> : null}
       </div>
     </details>
