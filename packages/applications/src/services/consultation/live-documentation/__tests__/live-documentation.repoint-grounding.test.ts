@@ -221,6 +221,8 @@ describe('LiveDocumentationService — live NER re-point + source-grounding', ()
     const { service, contextItemRepository } = buildDeps(httpMock);
     service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-1' });
     service.ingestSegment(CID, { text: 'cough, takes aspirin', isFinal: true, segmentId: 's1' });
+    // TASK-1063 1a — stop runs no generation; it closes on (and persists) the last good note.
+    await service.flush(CID);
 
     const final = await service.stop(CID, { persistSnapshot: true });
 

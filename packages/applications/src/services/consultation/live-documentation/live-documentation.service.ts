@@ -1053,10 +1053,11 @@ interface LiveSession {
   /** TASK-891 B3 — a flush was requested mid-generation; run one trailing re-run on completion. */
   coalescedFlush?: boolean;
   /**
-   * TASK-1022 (D-FLUSH) — set by `runStop` before its drain. From then on only the drain's forced
-   * flushes may run a generation: a non-forced flush, a trailing coalesced re-run and every
-   * idle/throttle timer are refused, because any of them claims a newer generation and so
-   * supersedes (`isStale()` → `dropStale` → `null`) the stop flush that carries the last transcript.
+   * TASK-1022 (D-FLUSH) — set by `runStop` first. From then on no flush may claim a generation: a
+   * non-forced flush, a trailing coalesced re-run and every idle/throttle timer are refused.
+   * TASK-1063 1a — the stop itself runs no generation any more (it closes on the last good note), so
+   * the fence now means "no live TEXT call after stop" outright; only an explicit `flush({ force })`
+   * caller bypasses it.
    */
   stopping?: boolean;
   /** Aborts the in-flight TEXT/NLP HTTP calls when a newer flush supersedes them. */
@@ -3122,7 +3123,8 @@ return 0`;
 
   /**
    * Stop watching. Resilient + cross-instance correct: when this
-   * instance owns the session it flushes a final snapshot, optionally persists it,
+   * instance owns the session it closes on the last good note (TASK-1063 1a — no generation at
+   * stop), optionally persists it,
    * and tears down locally; regardless of ownership it then signals the owner via
    * the control channel, releases the single-owner lock, and publishes the terminal
    * `closed` marker — so a `stop` routed to a non-owner instance still ends the
@@ -3136,20 +3138,20 @@ return 0`;
    * it calls this method. So there is no legacy finalization branch here to gate on the mode;
    * there never was one.
    *
-   * What it does do, in every mode, is drain the backlog and persist the `LIVE_SOAP_SNAPSHOT`
+   * What it does do, in every mode, is persist the last good note as the `LIVE_SOAP_SNAPSHOT`
    * (`persistDurableSnapshot`). That row is the durable engine's INPUT, not a competing draft:
    * `harness.finalize` reads it as `preSummaryText` (`harness-internal.service.ts`
    * `loadLiveSoapSnapshot`), while the durable draft is a `RAW_SUMMARY` marked `HARNESS_DRAFT`.
    * Suppressing it for a governed consultation would delete the warm start the finalizer is
-   * asking for, so `persistSnapshot` is honoured exactly as before. The drain loop is a
-   * `flush(force)` loop, which is where the governed legacy fall-through guard does its work.
+   * asking for, so `persistSnapshot` is honoured exactly as before. It runs NO generation
+   * (TASK-1063 1a): the transcript after the last flush is the finalizer's, not the live lane's.
    *
    * ## One stop at a time
    *
    * Single-flight per consultation: a stop that arrives while one is running (a client retry
    * against the now-fast `recording/stop`, the shutdown hook, the loop's `livedoc.stop`) JOINS it
-   * and resolves or rejects with it. Two forced-flush loops over one session would double the TEXT
-   * spend and race each other's snapshot and handoff writes. The first caller's options win.
+   * and resolves or rejects with it. Two stops over one session would race each other's snapshot
+   * and handoff writes. The first caller's options win.
    */
   stop(consultationId: string, opts?: { persistSnapshot?: boolean }): Promise<LiveSummaryEventDto | null> {
     const inFlight = this.stopsInFlight.get(consultationId);
@@ -3212,12 +3214,9 @@ return 0`;
     const stopStartedAt = Date.now();
 
     if (session) {
-      // TASK-1022 (D-FLUSH) — fence the session BEFORE draining. Replay1020 run3: a non-forced
-      // generation was in flight at stop with a coalesced re-run pending; the drain's forced flush
-      // aborted it, its `finally` scheduled the trailing re-run, and 8 s later that timer claimed a
-      // newer generation and superseded the stop flush. The closing frame carried an empty note and
-      // the follow-up plan spoken last never reached a section. With the fence nothing but the
-      // drain below can claim a generation, and the pending timers are cancelled here.
+      // TASK-1022 (D-FLUSH) — fence the session first and cancel the pending timers. Replay1020 run3:
+      // a coalesced re-run scheduled by a superseded generation claimed a newer generation 8 s after
+      // stop. With the fence nothing can claim a generation after this point (TASK-1063 1a).
       session.stopping = true;
       session.coalescedFlush = false;
       this.clearTimer(session);
@@ -3225,27 +3224,17 @@ return 0`;
         clearTimeout(session.throttleTimer);
         session.throttleTimer = undefined;
       }
-      // Drain the WHOLE backlog before the final snapshot (I-2): one flush is capped
-      // at MAX_DELTA_CHARS, so a > 12k un-flushed backlog at stop would keep only the
-      // head and drop the most-recent transcript (assessment/plan/closing). Flush
-      // repeatedly until the cursor catches up to the full transcript. Bounded twice
-      // over — break as soon as a flush makes no forward progress (cursor stuck, e.g.
-      // TEXT down / nothing new), and a hard iteration cap as a final safety net so a
-      // non-advancing cursor can never loop forever.
-      //
-      // TASK-1022 (D-FLUSH) — the cap is re-read every pass: a final the STT finalize delivers
-      // DURING the drain is appended to `transcriptParts` (ingest keeps accepting it; only its
-      // flush trigger is fenced) and must still get its pass.
-      for (let i = 0; i < session.transcriptParts.length + 1; i++) {
-        const cursorBefore = session.flushedTranscriptCount;
-        finalPayload = await this.flush(consultationId, { force: true }).catch((error) => {
-          this.logger.warn({ message: 'Final flush failed on stop', consultationId, error: error instanceof Error ? error.message : String(error) });
-          return session.lastPayload ?? null;
-        });
-        if (session.flushedTranscriptCount >= session.transcriptParts.length || session.flushedTranscriptCount === cursorBefore) {
-          break; // caught up, or no forward progress → stop draining
-        }
-      }
+      // TASK-1063 1a (owner decision 2026-10-11) — NO live generation at stop. The forced flush that
+      // used to drain the backlog here reached the shared live lane for every stopping consultation
+      // at once (TASK-1062 AC4, ×3: 2 of 3 waited ~31 s on the 2-slot lane, then 503
+      // `CONCURRENCY_LIMIT`), and bought nothing: finalization runs right after stop and writes the
+      // note from the transcript record (TASK-1045 note plan), not from the live text. So the stop
+      // supersedes a generation still in flight — its slot is freed now, and its late answer is
+      // dropped as stale — and closes on the LAST GOOD note. No NER either: the entities of the last
+      // flush ride that note, and the transcript tail is the finalizer's.
+      session.generation += 1;
+      session.abortController?.abort();
+      finalPayload = session.lastPayload ?? null;
 
       // Finalize the durable snapshot: opt-in via `persistSnapshot`, or simply close
       // out the live row if periodic snapshots already created one this session.
@@ -3303,8 +3292,13 @@ return 0`;
       await this.releaseOwnership(consultationId);
     }
 
+    // TASK-1063 1a — a STRICTLY newer clock on the terminal: the last good note was already published
+    // with its own `updatedAt`, and a late joiner replayed that note de-duplicates anything at the same
+    // or an older one (`isDuplicateOfLiveSummarySnapshot`) — a terminal so dropped leaves its stream open.
+    const lastUpdatedMs = Date.parse(finalPayload?.updatedAt ?? '');
     const closed: LiveSummaryEventDto = {
       ...(finalPayload ?? this.emptyPayload(consultationId)),
+      updatedAt: new Date(Number.isNaN(lastUpdatedMs) ? Date.now() : Math.max(Date.now(), lastUpdatedMs + 1)).toISOString(),
       closed: true,
     };
     await this.safePublish(consultationId, closed);
@@ -3472,9 +3466,9 @@ return 0`;
    * folded into the NEXT generation rather than starting a competing one. **A slow model
    * degrades the cadence, never the output.**
    *
-   * `force` (the final flush from `stop()`) deliberately bypasses the gate: there is no
-   * later flush for it to coalesce into, so it must still supersede. That is the genuine
-   * supersession `isStale()` exists for, and it is unchanged.
+   * `force` deliberately bypasses the gate: an explicit caller wants a generation now, so it
+   * supersedes. That is the genuine supersession `isStale()` exists for. (`stop()` no longer
+   * forces one — TASK-1063 1a.)
    */
   async flush(consultationId: string, opts?: { force?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
@@ -3482,8 +3476,8 @@ return 0`;
 
     if (opts?.force) return this.runFlush(consultationId, opts);
 
-    // TASK-1022 (D-FLUSH) — once `stop()` drains, only its forced flushes may claim a generation.
-    // A timer or ingest-triggered flush here would supersede the drain's generation.
+    // TASK-1022 (D-FLUSH) / TASK-1063 1a — once `stop()` began, no timer or ingest-triggered flush
+    // may claim a generation: the live lane makes no TEXT call after stop.
     if (session.stopping) return session.lastPayload ?? null;
 
     if (session.inFlight) {
@@ -3509,8 +3503,8 @@ return 0`;
       session.lastFlushAt = Date.now();
       if (session.coalescedFlush) {
         session.coalescedFlush = false;
-        // TASK-1022 (D-FLUSH) — never schedule the trailing re-run into a stopping session: the
-        // stop drain owns every remaining generation, and this timer was what superseded it.
+        // TASK-1022 (D-FLUSH) — never schedule the trailing re-run into a stopping session: no
+        // generation runs after stop (TASK-1063 1a), and this timer was what superseded the stop.
         // Only for a session that still exists: a `stop()` racing the completion must
         // not leave a timer behind.
         if (this.sessions.get(consultationId) === session && !session.stopping) this.scheduleThrottledFlush(session);
@@ -3520,10 +3514,9 @@ return 0`;
 
   /**
    * Recompute the running summary + entities and publish them. Reached through the
-   * single-flight gate above; `stop()`'s forced final flush is the one caller that
-   * bypasses it.
+   * single-flight gate above; a `force` caller bypasses it.
    *
-   * `force` (used by `stop`) bypasses the min-interval throttle for the final flush.
+   * `force` bypasses the min-interval throttle.
    * Overlapping flushes are made safe by a per-session generation id: a newer flush
    * aborts the prior in-flight TEXT/NLP call and only the latest generation may
    * publish, advance the incremental cursor, or persist.
@@ -3797,6 +3790,11 @@ return 0`;
         .trim();
       if (!transcript && !notes) return session.lastPayload ?? null;
     }
+
+    // TASK-1063 1a — a flush that entered before `stop()` and was still resolving its knobs must not
+    // claim a generation now: the stop runs no generation and supersedes the one in flight, so a claim
+    // here would put a fresh TEXT call on the live lane after the clinician stopped.
+    if (session.stopping && !opts?.force) return session.lastPayload ?? null;
 
     // Supersede any in-flight generation: abort its HTTP calls and claim a new id.
     const myGeneration = ++session.generation;
@@ -6128,7 +6126,7 @@ return 0`;
 
   private scheduleFlush(session: LiveSession): void {
     if (session.timer) return; // a flush is already pending
-    if (session.stopping) return; // TASK-1022 (D-FLUSH) — the stop drain owns every remaining flush
+    if (session.stopping) return; // TASK-1022 (D-FLUSH) / TASK-1063 1a — no flush after stop
     session.timer = setTimeout(() => {
       session.timer = undefined;
       void this.flush(session.consultationId);
@@ -6141,7 +6139,7 @@ return 0`;
    */
   private scheduleThrottledFlush(session: LiveSession): void {
     if (session.throttleTimer) return; // already pending
-    if (session.stopping) return; // TASK-1022 (D-FLUSH) — the stop drain owns every remaining flush
+    if (session.stopping) return; // TASK-1022 (D-FLUSH) / TASK-1063 1a — no flush after stop
     const delay = Math.max(0, this.lastAgenticContext.minIntervalMs - (Date.now() - session.lastFlushAt));
     session.throttleTimer = setTimeout(() => {
       session.throttleTimer = undefined;

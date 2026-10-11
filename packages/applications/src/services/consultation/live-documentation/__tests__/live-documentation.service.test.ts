@@ -634,6 +634,8 @@ describe('LiveDocumentationService', () => {
       const { service, contextItemRepository, cacheService } = buildDeps();
       service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-1' });
       service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 's1' });
+      // TASK-1063 1a — stop runs no generation; it persists the last good note, so make one.
+      await service.flush(CID);
 
       const final = await service.stop(CID, { persistSnapshot: true });
 
@@ -1323,6 +1325,8 @@ describe('LiveDocumentationService', () => {
       // 1) Instance A persists the live snapshot row (T1).
       a.service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-a' });
       a.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' });
+      // TASK-1063 1a — stop persists the last good note and generates none, so flush first.
+      await a.service.flush(CID);
       await a.service.stop(CID, { persistSnapshot: true });
 
       // 2) A NON-live PRE_SUMMARY is minted afterwards (e.g. the pre-summary
@@ -1334,6 +1338,7 @@ describe('LiveDocumentationService', () => {
       //    a SECOND live snapshot; the subType-aware dedup must reuse A's row instead.
       b.service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-b' });
       b.service.ingestSegment(CID, { text: 'more findings', isFinal: true, segmentId: 's2' });
+      await b.service.flush(CID);
       await b.service.stop(CID, { persistSnapshot: true });
 
       // Exactly ONE LIVE_SOAP_SNAPSHOT row exists across the whole consultation.
@@ -1385,12 +1390,14 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // I-2: stop() must drain a > MAX_DELTA_CHARS backlog, not single-flush it —
-  // otherwise the final durable snapshot keeps only the head 12k and drops the
-  // most-recent transcript (assessment / plan / closing).
+  // I-2 (superseded by TASK-1063 1a): stop() used to drain a > MAX_DELTA_CHARS
+  // backlog through the live lane; the backlog is now finalization's.
   // ------------------------------------------------------------------
-  describe('stop() drains the full backlog', () => {
-    it('keeps the most-recent transcript in the final snapshot when the backlog exceeds MAX_DELTA_CHARS', async () => {
+  // TASK-1063 1a (owner decision 2026-10-11) — reversed: stop() no longer drains. Finalization runs
+  // right after stop and writes the note from the transcript record (TASK-1045 note plan), so the
+  // un-flushed backlog is the finalizer's and the live lane makes no TEXT call for it.
+  describe('stop() leaves the un-flushed backlog to finalization', () => {
+    it('makes no TEXT call for a backlog that exceeds MAX_DELTA_CHARS', async () => {
       const prompts: string[] = [];
       const httpMock = {
         axiosRef: {
@@ -1415,13 +1422,10 @@ describe('LiveDocumentationService', () => {
       }
       service.ingestSegment(CID, { text: 'TAILMARKER assessment and plan', isFinal: true, segmentId: 't' });
 
-      // No manual flush — stop() alone must drain the > 12k backlog.
+      // No manual flush — stop() must not generate for the > 12k backlog.
       await service.stop(CID, { persistSnapshot: true });
 
-      // The most-recent content (the tail) reached TEXT — not dropped by a single
-      // head-only flush. (The head is retained by C5-04; the tail is the I-2 case.)
-      expect(prompts.some((p) => p.includes('TAILMARKER assessment and plan'))).toBe(true);
-      expect(prompts.some((p) => p.includes('HEADMARKER chief complaint'))).toBe(true);
+      expect(prompts).toEqual([]);
     });
   });
 

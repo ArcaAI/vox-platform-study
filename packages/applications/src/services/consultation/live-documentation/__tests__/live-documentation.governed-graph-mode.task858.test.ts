@@ -466,8 +466,8 @@ describe(' A2 — stop() on a governed graph-mode session', () => {
     service.ingestSegment(CID, { text: 'patient reports cough and takes aspirin', isFinal: true, segmentId: 's1' });
     await service.stop(CID, { persistSnapshot: true });
 
-    // The drain loop inside stop() is a `flush(force)` loop, so the fall-through guard is what
-    // keeps a hardcoded note off a governed consultation at the one moment it matters most.
+    // stop() runs no generation (TASK-1063 1a) and the session never produced a note, so nothing
+    // — least of all a hardcoded legacy note — is written for a governed consultation at stop.
     expect(generateCalls(post)).toHaveLength(0);
     expect(contextItemRepository.create).not.toHaveBeenCalled();
     expect(contextItemRepository.update).not.toHaveBeenCalled();
