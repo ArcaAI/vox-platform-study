@@ -292,18 +292,29 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
   }
 
   /**
-   * Find latest pre-summary for a consultation
+   * Find latest pre-summary for a consultation.
+   *
+   * BUG-025 — `excludeSubTypes` skips rows by `metaData.subType` (the live note's durable
+   * `LIVE_SOAP_SNAPSHOT` is stored as a PRE_SUMMARY too). Filtered after an ordered read rather than
+   * in SQL: a JSON-path `NOT` would also drop rows with no `subType`, since the comparison is NULL.
    */
-  async findLatestPreSummary(consultationId: string): Promise<ContextItemEntity | null> {
+  async findLatestPreSummary(consultationId: string, options?: { excludeSubTypes?: readonly string[] }): Promise<ContextItemEntity | null> {
     try {
-      const model = await (this as any).db.findFirst({
+      const query = {
         where: {
           consultationId,
           type: ContextItemType.PRE_SUMMARY,
           resourceStatus: ResourceStatusType.ENABLED,
         },
         orderBy: { createdAt: 'desc' },
-      });
+      };
+      const excluded = options?.excludeSubTypes ?? [];
+      const model =
+        excluded.length === 0
+          ? await (this as any).db.findFirst(query)
+          : ((await (this as any).db.findMany(query)) as Array<{ metaData?: unknown }>).find(
+              (row) => !excluded.includes((row.metaData as Record<string, unknown> | null | undefined)?.subType as string),
+            );
       if (!model) return null;
       return (this as any)._mapper.toDomainEntity(model);
     } catch {

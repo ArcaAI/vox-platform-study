@@ -1463,7 +1463,10 @@ export class SummaryService extends BaseService implements ISummaryService {
    * Get latest pre-summary for consultation
    */
   async getLatestPreSummary(consultationId: string): Promise<SummaryResponse | null> {
-    const preSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
+    // BUG-025 — the live note's durable snapshot is stored as a PRE_SUMMARY too; it is the note, not a
+    // pre-summary, and serving it here put a context-free consultation's own live note in the
+    // Pre-summary panel after Stop.
+    const preSummary = await this.contextItemRepository.findLatestPreSummary(consultationId, { excludeSubTypes: ['LIVE_SOAP_SNAPSHOT'] });
     if (!preSummary) return null;
     return SummaryDtoMapper.toResponse(preSummary);
   }

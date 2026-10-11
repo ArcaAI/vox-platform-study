@@ -81,6 +81,7 @@ import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
 import { CaseNoteColumn } from './scribe/case-note-column';
 import { ConsultationsColumn, type ConsultationListRow } from './scribe/consultations-column';
 import type { OpenConsultationOptions } from './scribe/consultations-column';
+import { cancelGenerationErrorMessage } from '../lib/cancel-generation-error';
 import { deriveSummaryLanguages } from '../lib/summary-languages';
 import { GoverningWorkflowMeta } from './scribe/governing-workflow-meta';
 import { LiveSessionColumn, type SdkTranscriptSegment, type TranscriptReviewHighlight } from './scribe/live-session-column';
@@ -672,7 +673,7 @@ function ScribeWorkspace() {
   function handleCancelGenerate() {
     if (!summaryJobId) return;
     cancelSummaryJob.mutate(summaryJobId, {
-      onError: (error) => toast.error(errorMessage(error, 'Could not cancel the generation')),
+      onError: (error) => toast.error(cancelGenerationErrorMessage(error)),
     });
   }
 
