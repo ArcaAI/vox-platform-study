@@ -95,14 +95,21 @@ still missing, so which hop failed originally remains unconfirmed.
 
 ### Remaining / not done
 
-- `audio-stream-svc` `hope-realtime.vox-node.adapter.ts:932` still does a single `serviceAccountGet` (no retry, no 401
-  refresh) — plan item 4 not implemented; the UI retry covers it in practice. Decide whether to add it (ALaaS repo, OD-1).
+- ~~Relay adapter retry (plan item 4)~~ **DONE 2026-10-11** — ALaaS `aabf749` on `refactor-hope-integaration`
+  (`hope-realtime.vox-node.adapter.ts` `serviceAccountGet`): up to 3 attempts with 250 ms × n backoff on network errors and
+  502/503/504; a 401 clears the cached service-account token so the next attempt re-exchanges; any other non-2xx throws at once.
+  Option `retryDelayMs` (tests use 0). TDD: 5 new specs (503, network error, 401 re-exchange, give-up after 3 surfacing the
+  last status, no retry on 404) — red first (4 failed), then `hope-realtime.vox-node.adapter.spec.ts` 52/52 green, `tsc --noEmit`
+  clean, re-run green on the primary checkout after the fast-forward merge. Not re-verified against the live cluster (the
+  relay process on :4000 was started before the change and was not restarted); `serviceAccountGet` also serves the other
+  service-account GET at line ~859, which now gets the same retry.
 - The older Workspace screen (`useConsultationWorkspace.js:198-209`) still fetches once with no error state. OD-2 (start with
   the agent default language when modes can't load) is unanswered.
 - Gateway/relay logs for real `language-modes relay failed:` occurrences were not pulled.
 
-Landing: this README is the only change (`hope-v2`, `dev-2.2`). No ALaaS or `hope-v2-deployment` change; no worktree was
-created for this work, so none to remove. The `ALaaSv3.0-e2e-1053` worktree is another session's live E2E tree (running dev
+Landing: `hope-v2` → `dev-2.2` (this README only); `ALaaSv3.0` → `refactor-hope-integaration` (`aabf749`, fast-forward; the
+temporary worktree `ALaaSv3.0-bug010-relay` and branch `bug-010/relay-retry` were removed after the merge);
+`hope-v2-deployment` untouched. The `ALaaSv3.0-e2e-1053` worktree is another session's live E2E tree (running dev
 servers, detached HEAD) and was left alone.
 
 ## Change History
@@ -111,3 +118,4 @@ servers, detached HEAD) and was left alone.
 |---|---|
 | 2026-10-06 | Created from GitHub issue #10 (read-only triage). |
 | 2026-10-11 | Verified live against local ALaaS + deployed cluster; found the reporter's screen already fixed by ALaaS `7d1bcdb`; status → Review; corrected the component analysis. |
+| 2026-10-11 | Added the relay-adapter retry (ALaaS `aabf749`, plan item 4); worktree + branch removed after merge. |
