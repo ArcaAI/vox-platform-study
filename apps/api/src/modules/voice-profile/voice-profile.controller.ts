@@ -4,7 +4,6 @@ import {
   Body,
   Controller,
   Delete,
-  FileTypeValidator,
   Get,
   Inject,
   MaxFileSizeValidator,
@@ -21,6 +20,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiRespon
 import { ClsService } from 'nestjs-cls';
 import { TenantOwnedResource } from '../../common';
 import { Authorize, ForbidApiKey } from '../../decorators';
+import { AudioUploadTypeValidator } from './audio-upload-type.validator';
 import { EnrollBodyDto, VoiceProfileEnrollmentTargetResponse, VoiceProfileResponse } from './dto';
 
 const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10 MB per file
@@ -77,7 +77,7 @@ export class VoiceProfileController {
   async enroll(
     @UploadedFiles(
       new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: MAX_AUDIO_SIZE }), new FileTypeValidator({ fileType: /^audio\// })],
+        validators: [new MaxFileSizeValidator({ maxSize: MAX_AUDIO_SIZE }), new AudioUploadTypeValidator()],
         fileIsRequired: true,
       }),
     )
