@@ -6,7 +6,7 @@ import {
   TranscriptionJobStatus,
   TranscriptionJobType,
 } from '@arcaai/domains';
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
@@ -19,7 +19,11 @@ import {
   STT_BATCH_DEFAULTS,
   STT_BATCH_REAPER_CRON_KEY,
   STT_BATCH_STALE_PROCESSING_MINUTES_KEY,
+  STT_STREAMING_DEFAULTS,
+  STT_STREAMING_STALE_MINUTES_KEY,
 } from '../../../settings-registry/descriptors/stt-gateway.descriptors';
+import { StreamingSessionService } from '../../streaming/streamingSession.service';
+import { STT_SESSION_GONE_ERROR_CODE } from '../transcriptionJob.service';
 
 const JOB_NAME = 'stt-batch-job-reaper';
 const MS_PER_MINUTE = 60_000;
@@ -44,6 +48,17 @@ export interface SttJobReaperResult {
   reaped: number;
   failed: number;
 }
+
+/** BUG-042 — the streaming pass also counts the rows it deliberately left alone. */
+export interface SttStreamingReaperResult extends SttJobReaperResult {
+  /** STT still has the session: a long consultation, not a stranded row. */
+  live: number;
+  /** STT could not be asked: left for the next tick rather than guessed at. */
+  unknown: number;
+}
+
+/** The one call the streaming pass needs — STT's view of a session (`null` = STT does not have it). */
+type SessionStatusReader = Pick<StreamingSessionService, 'getSessionStatus'>;
 
 /**
  * TASK-992 — the stranded-batch-job sweep.
@@ -102,6 +117,9 @@ export class SttJobReaperService extends BaseService implements OnModuleInit, On
     protected override readonly clsService: ClsService<IActiveUserContext>,
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    // BUG-042 — STT's session view for the STREAMING pass. Optional + trailing so every existing
+    // construction keeps its arity; absent ⇒ the streaming pass does nothing.
+    @Optional() @Inject(StreamingSessionService) private readonly streamingSessions?: SessionStatusReader,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
   }
@@ -143,6 +161,10 @@ export class SttJobReaperService extends BaseService implements OnModuleInit, On
       const result = await this.sweepOnce();
       if (result.eligible > 0) {
         this.logger.warn({ message: 'Stranded STT batch jobs reaped', ...result });
+      }
+      const streaming = await this.sweepStreamingOnce();
+      if (streaming.reaped > 0 || streaming.failed > 0) {
+        this.logger.warn({ message: 'Stranded STT streaming jobs closed', ...streaming });
       }
     } catch (error) {
       this.logger.error(`Stranded-job sweep failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -207,6 +229,87 @@ export class SttJobReaperService extends BaseService implements OnModuleInit, On
     }
 
     return { eligible: eligible.length, reaped, failed };
+  }
+
+  /**
+   * BUG-042 — one pass over realtime-session rows the batch pass skips by design.
+   *
+   * A STREAMING row is written at open and at teardown only, so age alone proves nothing: a
+   * long consultation is old AND live. Each stale candidate is therefore checked against STT:
+   * a session STT no longer has (`null`) — or a row that never got a session id — is failed as
+   * `STT_SESSION_GONE`; a live session is left alone; and an STT that cannot be asked leaves the
+   * row for the next tick (fail safe — never close a session on a guess).
+   */
+  async sweepStreamingOnce(): Promise<SttStreamingReaperResult> {
+    const result: SttStreamingReaperResult = { eligible: 0, reaped: 0, failed: 0, live: 0, unknown: 0 };
+    if (!this.streamingSessions) return result;
+
+    const staleMinutes = this.appSettingsService.getValueWithDefault<number>(
+      STT_STREAMING_STALE_MINUTES_KEY,
+      STT_STREAMING_DEFAULTS[STT_STREAMING_STALE_MINUTES_KEY],
+    );
+    if (staleMinutes < 1) {
+      this.logger.warn({ message: 'STT stranded streaming-job window is non-positive — refusing to sweep', staleMinutes });
+      return result;
+    }
+
+    const candidates = await this.jobRepository.findStaleStreamingJobs(new Date(Date.now() - staleMinutes * MS_PER_MINUTE));
+    result.eligible = candidates.length;
+
+    for (const job of candidates) {
+      if (job.streamSessionId) {
+        try {
+          if ((await this.streamingSessions.getSessionStatus(job.streamSessionId, job.tenantId)) !== null) {
+            result.live++;
+            continue;
+          }
+        } catch (error) {
+          // swallow-ok: STT unreachable is "unknown", counted and retried next tick, never a close.
+          this.logger.debug({
+            message: 'Stranded streaming-job sweep: STT could not be asked',
+            jobId: job.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          result.unknown++;
+          continue;
+        }
+      }
+      try {
+        await this.closeStrandedStream(job, staleMinutes);
+        result.reaped++;
+      } catch (error) {
+        result.failed++;
+        this.logger.warn({
+          message: 'Stranded streaming-job sweep: failed to close a row (non-fatal — the sweep continues with the next row)',
+          jobId: job.id,
+          tenantId: job.tenantId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return result;
+  }
+
+  private async closeStrandedStream(job: TranscriptionJobEntity, staleMinutes: number): Promise<void> {
+    await this.clsService.run(async () => {
+      this.clsService.set('tenantId', job.tenantId);
+      this.clsService.set('user', createWorkerSession({ tenantId: job.tenantId, kind: 'stt-job-reaper' }));
+
+      job.fail(
+        job.streamSessionId
+          ? `The realtime session ended without a teardown summary; STT no longer had it after more than ${staleMinutes} minutes.`
+          : `The realtime session never opened; the row was still ${job.status} after more than ${staleMinutes} minutes.`,
+        STT_SESSION_GONE_ERROR_CODE,
+      );
+      await this.jobRepository.update(job.id, job);
+
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: job.id,
+        responsibleEntityId: job.createdBy || undefined,
+        data: { status: TranscriptionJobStatus.FAILED, errorCode: STT_SESSION_GONE_ERROR_CODE, streamSessionId: job.streamSessionId ?? undefined },
+      });
+    });
   }
 
   /**

@@ -181,6 +181,26 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
   }
 
   /**
+   * BUG-042 — STREAMING rows still open (QUEUED/PROCESSING, no `completedAt`) that were created
+   * before `createdBefore`. Keyed on `createdAt`, not `updatedAt`: a live session's row is not
+   * written between open and teardown, so it has no heartbeat to go stale.
+   */
+  async findStaleStreamingJobs(createdBefore: Date, limit: number = 100): Promise<TranscriptionJobEntity[]> {
+    const models = await (this as any).db.findMany({
+      where: {
+        jobType: TranscriptionJobType.STREAMING,
+        status: { in: [TranscriptionJobStatus.QUEUED, TranscriptionJobStatus.PROCESSING] },
+        completedAt: null,
+        createdAt: { lt: createdBefore },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    });
+
+    return models.map((model: TranscriptionJob) => (this as any)._mapper.toDomainEntity(model));
+  }
+
+  /**
    * Find failed jobs that can be retried
    */
   async findRetryableJobs(tenantId: string): Promise<TranscriptionJobEntity[]> {

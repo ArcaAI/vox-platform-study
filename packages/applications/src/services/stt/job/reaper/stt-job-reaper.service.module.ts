@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 
 import { CommonServiceModule } from '../../../baseServices';
+import { StreamingSessionServiceModule } from '../../streaming/streamingSession.service.module';
 import { SttJobReaperService } from './stt-job-reaper.service';
 
 /**
@@ -15,7 +16,8 @@ import { SttJobReaperService } from './stt-job-reaper.service';
  * provides `TranscriptionJobRepository`.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  // BUG-042 — `StreamingSessionService.getSessionStatus` for the stranded-STREAMING pass.
+  imports: [CommonServiceModule, CoreDatabaseModule, StreamingSessionServiceModule],
   providers: [SttJobReaperService],
   exports: [SttJobReaperService],
 })

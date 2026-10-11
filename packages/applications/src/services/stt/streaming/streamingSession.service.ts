@@ -229,6 +229,20 @@ export class StreamingSessionService implements IStreamingSessionService {
     }
   }
 
+  /** BUG-042 — best-effort, like {@link closeStreamJob}: bookkeeping never fails a teardown. */
+  private async failStreamJob(sessionId: string, message: string): Promise<void> {
+    if (!this.transcriptionJobService) return;
+    try {
+      await this.transcriptionJobService.failStreamSessionJob(sessionId, message);
+    } catch (error) {
+      this.logger.warn({
+        message: 'stt.stream.job_row_close_failed — the session ended without a summary and its TranscriptionJob row was not closed',
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async resolveVoiceProfiles(dto: CreateStreamingSessionRequest): Promise<RuntimeVoiceProfile[]> {
     const spec = dto.resolvedSpec;
     const modelId = spec?.models.embedding?.slug;
@@ -591,6 +605,9 @@ export class StreamingSessionService implements IStreamingSessionService {
           message: 'Session already removed',
           sessionId,
         });
+        // BUG-042 — STT no longer has the session (its own reaper or TTL got there first), so no
+        // summary will ever come. Without this the row stayed PROCESSING ("Running") for good.
+        await this.failStreamJob(sessionId, 'STT answered 404 at teardown: the session was already gone, so no usage summary exists.');
         return;
       }
       throw error;
@@ -613,6 +630,8 @@ export class StreamingSessionService implements IStreamingSessionService {
     // aggregate: a rate that tracks session starts is a metering outage, an occasional one is
     // the idempotent path.
     sttStreamTeardownSummaryMissingTotal.inc({ status: teardownStatus });
+    // BUG-042 — a no-op when an earlier teardown already closed the row (the idempotent 204).
+    await this.failStreamJob(sessionId, `STT answered ${teardownStatus} at teardown with no usage summary.`);
     this.logger.warn({
       message: 'Streaming teardown returned no usage summary — no transcribe.stream row was emitted for this session',
       sessionId,

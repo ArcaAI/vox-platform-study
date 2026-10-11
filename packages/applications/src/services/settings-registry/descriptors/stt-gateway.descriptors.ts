@@ -79,6 +79,9 @@ export const STT_BATCH_STALE_PROCESSING_MINUTES_KEY = 'stt.batch.staleProcessing
 /** TASK-992 — the reaper's scan cadence. */
 export const STT_BATCH_REAPER_CRON_KEY = 'stt.batch.reaper.cron';
 
+/** BUG-042 — how old a QUEUED/PROCESSING STREAMING row must be before the reaper asks STT whether its session still exists (minutes). */
+export const STT_STREAMING_STALE_MINUTES_KEY = 'stt.streaming.staleMinutes';
+
 /**
  * Code defaults for the gateway-side STT budgets — the single source of truth shared by
  * the descriptor below and `StreamingSessionService`, so the two can never disagree
@@ -117,6 +120,13 @@ export const STT_BATCH_DEFAULTS = {
   // write there is nothing left alive to interrupt.
   [STT_BATCH_STALE_PROCESSING_MINUTES_KEY]: 20,
   [STT_BATCH_REAPER_CRON_KEY]: '*/5 * * * *',
+} as const;
+
+/** BUG-042 — code default for the stranded-STREAMING-row check. */
+export const STT_STREAMING_DEFAULTS = {
+  // A live session is never failed by this check — STT is asked first — so the window only
+  // bounds how many rows are polled per tick and how late a stranded one is noticed.
+  [STT_STREAMING_STALE_MINUTES_KEY]: 60,
 } as const;
 
 export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
@@ -344,5 +354,23 @@ export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
       'Cron expression for the stranded-batch-job sweep. Cadence only — how LATE a stranded job is noticed is this ' +
       'plus the stale window above; it does not change which jobs are eligible.',
     default: STT_BATCH_DEFAULTS[STT_BATCH_REAPER_CRON_KEY],
+  },
+  {
+    key: STT_STREAMING_STALE_MINUTES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT stranded streaming-job window (minutes)',
+    description:
+      'How old a realtime-session job row (QUEUED or PROCESSING) must be before the STT job reaper asks apps/stt whether ' +
+      'the session still exists. A session STT no longer has is closed as FAILED with STT_SESSION_GONE; a live one, or ' +
+      'one STT cannot answer for, is left alone — so this window never cuts a long consultation short. It only decides ' +
+      'how late a session that ended without a teardown summary is noticed. Runs on the batch reaper cron.',
+    default: STT_STREAMING_DEFAULTS[STT_STREAMING_STALE_MINUTES_KEY],
   },
 ];

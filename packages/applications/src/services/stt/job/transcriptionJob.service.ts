@@ -38,6 +38,13 @@ import { TranscriptionJobDtoMapper } from './transcriptionJob.dto.mapper';
 import { RunPrincipalAccessService } from '../../workflow-run/run-principal-access';
 import { STREAM_SESSION_OWNER_KEY } from '../../workflow-exposure/run-audio-metadata';
 
+/**
+ * BUG-042 — the `errorCode` of a STREAMING row closed without a teardown summary: STT no longer
+ * had the session (already torn down by its own reaper or TTL, a gateway crash, exhausted
+ * removal retries). The transcript itself lives on the consultation, never on this row.
+ */
+export const STT_SESSION_GONE_ERROR_CODE = 'STT_SESSION_GONE';
+
 @Injectable()
 export class TranscriptionJobService extends BaseService implements ITranscriptionJobService {
   constructor(
@@ -261,6 +268,35 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     });
 
     return { jobId: job.id, resolvedSpec, servedBy, alreadyCompleted: false };
+  }
+
+  /**
+   * BUG-042 — the second close path for a realtime session's row: FAILED + `STT_SESSION_GONE`.
+   *
+   * Used when the session ended without a teardown summary, so there is nothing to complete
+   * the row WITH. Idempotent exactly like {@link completeStreamSessionJob}: a row another path
+   * already closed is left untouched. No usage row is written here (owner OD-2): without the
+   * STT summary there is no measured duration, and an invented bill is worse than none.
+   */
+  async failStreamSessionJob(streamSessionId: string, message: string): Promise<{ jobId: string; alreadyCompleted: boolean } | null> {
+    const [job] = await this.jobRepository.findAll({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- streamSessionId is not in the generated filter type; same lookup as completeStreamSessionJob
+      filters: { streamSessionId } as any,
+      limit: 1,
+      sort: [{ createdAt: 'desc' }],
+    });
+    if (!job) return null;
+    if (job.completedAt) return { jobId: job.id, alreadyCompleted: true };
+
+    job.fail(message, STT_SESSION_GONE_ERROR_CODE);
+    await this.jobRepository.update(job.id, job);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: job.id,
+      data: { status: TranscriptionJobStatus.FAILED, errorCode: STT_SESSION_GONE_ERROR_CODE, streamSessionId },
+    });
+
+    return { jobId: job.id, alreadyCompleted: false };
   }
 
   /**

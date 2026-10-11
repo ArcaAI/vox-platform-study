@@ -84,6 +84,12 @@ export interface ITranscriptionJobService {
   completeStreamSessionJob(streamSessionId: string, input: CompleteStreamSessionJobInput): Promise<CompletedStreamSessionJob | null>;
 
   /**
+   * BUG-042 — close that row as FAILED (`STT_SESSION_GONE`) when the session ended without a
+   * teardown summary. `null` when no row exists; `alreadyCompleted` when another path closed it.
+   */
+  failStreamSessionJob(streamSessionId: string, message: string): Promise<{ jobId: string; alreadyCompleted: boolean } | null>;
+
+  /**
    * Get job by ID
    */
   getById(id: string): Promise<TranscriptionJobResponse | null>;
