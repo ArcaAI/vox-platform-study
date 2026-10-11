@@ -53,6 +53,7 @@ function settings(values: Record<string, unknown>, opts: { throws?: boolean } = 
   return {
     resolveEffective: vi.fn(async (key: string) => {
       if (opts.throws) throw new Error('settings backend down');
+      if (key === 'gateEdit.exemplarCapture.enabled' && !(key in values)) return { key, value: true, tier: 'global-kv', sourceScope: 'system' };
       if (!(key in values)) throw new Error(`no value for ${key}`);
       return { key, value: values[key], tier: 'global-kv', sourceScope: 'system' };
     }),

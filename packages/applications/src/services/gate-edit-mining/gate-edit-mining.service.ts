@@ -26,6 +26,10 @@ import {
 } from './gate-edit-mining.settings';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { IPhiRedactor } from './IPhiRedactor';
+import {
+  GATE_EDIT_EXEMPLAR_CAPTURE_ENABLED_DEFAULT,
+  GATE_EDIT_EXEMPLAR_CAPTURE_ENABLED_KEY,
+} from '../settings-registry/descriptors/gate-edit-exemplar-capture.descriptors';
 import type { GateEditExemplarForPrompt } from './IGateEditExemplarRetriever';
 import { toStructureOnlyExemplar } from './exemplar-structure';
 import { IEvalGateCurationSink } from '../consultation/feedback/IEvalGateCurationSink';
@@ -265,6 +269,7 @@ export class GateEditMiningService extends BaseService {
    */
   async mineFromGateDecision(candidate: GateEditCandidate): Promise<void> {
     try {
+      if (!(await this.isCaptureEnabled(candidate.tenantId))) return;
       const { deliveredContent, signedContent } = candidate;
       if (!deliveredContent || !signedContent) {
         // Nothing to compare yet — the encounter has a draft but no signed note.
@@ -354,6 +359,7 @@ export class GateEditMiningService extends BaseService {
    */
   async mineFromFeedback(candidate: FeedbackExemplarCandidate): Promise<void> {
     try {
+      if (!(await this.isCaptureEnabled(candidate.tenantId))) return;
       const isCorrection = !!candidate.afterContent;
       const isDown = candidate.rating === 'DOWN';
       if (!isDown && !isCorrection) return;
@@ -724,6 +730,26 @@ export class GateEditMiningService extends BaseService {
    * to `off` merely restores the behaviour every deployment had before the gate
    * existed (rows that are still PHI-redacted and still `APPROVED_CLEAN`).
    */
+  /**
+   * Platform switch `gateEdit.exemplarCapture.enabled` (default OFF). Checked before any redaction
+   * or persistence; an unresolvable setting falls back to the default (off).
+   */
+  private async isCaptureEnabled(tenantId: string): Promise<boolean> {
+    let enabled: boolean = GATE_EDIT_EXEMPLAR_CAPTURE_ENABLED_DEFAULT;
+    if (this.effectiveSettings) {
+      try {
+        const resolved = await this.effectiveSettings.resolveEffective(GATE_EDIT_EXEMPLAR_CAPTURE_ENABLED_KEY, { tenantId });
+        enabled = resolved.value === true || resolved.value === 'true';
+      } catch {
+        enabled = GATE_EDIT_EXEMPLAR_CAPTURE_ENABLED_DEFAULT;
+      }
+    }
+    if (!enabled) {
+      this.logger.debug({ message: 'Gate-edit exemplar capture is off (gateEdit.exemplarCapture.enabled) — nothing mined', tenantId });
+    }
+    return enabled;
+  }
+
   private async resolveCurationMode(tenantId: string): Promise<FewShotCurationMode> {
     if (!this.effectiveSettings) return AGENTIC_FEWSHOT_CURATION_MODE_DEFAULT;
     try {

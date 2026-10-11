@@ -61,6 +61,7 @@ import { STT_GATEWAY_SETTINGS } from './descriptors/stt-gateway.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
 import { TRAINING_CAPTURE_SETTINGS } from './descriptors/training-capture.descriptors';
+import { GATE_EDIT_EXEMPLAR_CAPTURE_SETTINGS } from './descriptors/gate-edit-exemplar-capture.descriptors';
 import { USER_IDENTITY_SETTINGS } from './descriptors/user-identity.descriptors';
 import { DNA_REGEN_SETTINGS } from './descriptors/dna-regeneration.descriptors';
 import { CONSOLE_PUBLIC_URL_SETTINGS } from './descriptors/console-public-url.descriptors';
@@ -312,6 +313,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // purpose: a sibling lane appending its own block conflicts here trivially
   // rather than by re-indenting the whole array.
   ...TRAINING_CAPTURE_SETTINGS,
+  ...GATE_EDIT_EXEMPLAR_CAPTURE_SETTINGS,
 
   // ── LM Studio serving control ────────────────────────────────────────────
   // TASK-996 Phase 2b (owner decision D-7) — the PLATFORM tier of the serving

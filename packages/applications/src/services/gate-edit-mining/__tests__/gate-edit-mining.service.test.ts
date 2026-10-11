@@ -41,8 +41,11 @@ const workingRedactor = {
   redact: vi.fn(async (text: string) => text.replace(/John Smith|1985-02-03/g, '[REDACTED]')),
 };
 
+/** Platform switch `gateEdit.exemplarCapture.enabled` resolved ON (it defaults OFF). */
+const CAPTURE_ON = { resolveEffective: vi.fn(async (key: string) => ({ key, value: true, tier: 'global-kv', sourceScope: 'system' })) };
+
 function buildService(redactor: { redact: ReturnType<typeof vi.fn> } = workingRedactor) {
-  return new GateEditMiningService(repository as never, { emit: vi.fn() } as never, cls as never, redactor as never);
+  return new GateEditMiningService(repository as never, { emit: vi.fn() } as never, cls as never, redactor as never, CAPTURE_ON as never);
 }
 
 const candidate = (overrides: Record<string, unknown> = {}) => ({
