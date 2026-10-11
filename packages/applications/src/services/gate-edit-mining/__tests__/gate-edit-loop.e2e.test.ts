@@ -84,6 +84,7 @@ describe('clinician edit -> mined exemplar -> assembled prompt', () => {
       { emit: vi.fn() } as never,
       cls() as never,
       redactor as never,
+      { resolveEffective: vi.fn(async (key: string) => ({ key, value: true, tier: 'global-kv', sourceScope: 'system' })) } as never,
     );
 
     // ── STAGE 1: the clinician signs ────────────────────────────────────────

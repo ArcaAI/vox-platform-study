@@ -36,8 +36,11 @@ const cls = { get: vi.fn(), set: vi.fn(), run: vi.fn(async (cb: () => unknown) =
 /** The note has no direct identifiers, so an identity redactor is a valid, verified redaction. */
 const redactor = { redact: vi.fn(async (text: string) => text) };
 
+/** Platform switch `gateEdit.exemplarCapture.enabled` resolved ON (it defaults OFF). */
+const CAPTURE_ON = { resolveEffective: vi.fn(async (key: string) => ({ key, value: true, tier: 'global-kv', sourceScope: 'system' })) };
+
 function build() {
-  return new GateEditMiningService(repository as never, { emit: vi.fn() } as never, cls as never, redactor as never);
+  return new GateEditMiningService(repository as never, { emit: vi.fn() } as never, cls as never, redactor as never, CAPTURE_ON as never);
 }
 
 const gateCandidate = (overrides: Record<string, unknown> = {}) => ({

@@ -20,8 +20,11 @@ const cls = { get: vi.fn(), set: vi.fn(), run: vi.fn(async (cb: () => unknown) =
 const sink = { onFeedbackExemplar: vi.fn(async () => undefined) };
 const redactor = { redact: vi.fn(async (text: string) => text.replace(/John Smith/g, '[REDACTED]')) };
 
+/** Platform switch `gateEdit.exemplarCapture.enabled` resolved ON (it defaults OFF). */
+const CAPTURE_ON = { resolveEffective: vi.fn(async (key: string) => ({ key, value: true, tier: 'global-kv', sourceScope: 'system' })) };
+
 function build(r: { redact: ReturnType<typeof vi.fn> } | null = redactor, s: unknown = sink) {
-  return new GateEditMiningService(repository as never, { emit: vi.fn() } as never, cls as never, (r ?? undefined) as never, undefined, s as never);
+  return new GateEditMiningService(repository as never, { emit: vi.fn() } as never, cls as never, (r ?? undefined) as never, CAPTURE_ON as never, s as never);
 }
 
 const base = {
