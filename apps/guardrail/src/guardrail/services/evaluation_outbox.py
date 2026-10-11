@@ -129,6 +129,20 @@ def _check_record(check: Any) -> dict[str, Any]:
         entry["reason"] = str(check.reason)
     elif verdict == "flag" and entry["actionTaken"] == "ignore":
         entry["reason"] = REASON_RECORDED_AS_FINDING
+    if verdict == "flag":
+        # TASK-1063 item 5b (additive): which regions flagged, with their trust, label and score
+        # — keys and labels only, never text. A check that carries no per-region detail names
+        # the regions it acted on (else screened) under its category.
+        regions = [region.to_dict() for region in getattr(check, "region_verdicts", ()) or ()]
+        if not regions:
+            label = str(check.category or check.name)
+            score = float(check.score) if check.score is not None else None
+            keys = list(check.flagged_regions) or list(check.region_keys)
+            regions = [
+                {"key": str(key), "trust": None, "label": label, "score": score} for key in keys
+            ]
+        if regions:
+            entry["flaggedRegions"] = regions
     if getattr(check, "override_notice_id", None):
         # Additive (contract amendment 5d0760a60): this block was downgraded to a warn by
         # a VERIFIED `X-Hope-Guardrail-Override` naming this resolved notice.

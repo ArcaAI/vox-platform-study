@@ -22,6 +22,7 @@ import {
   GUARDRAIL_CHECK_VERDICTS,
   GUARDRAIL_DECISIONS,
   GUARDRAIL_DIRECTIONS,
+  GUARDRAIL_REGION_TRUSTS,
 } from '../guardrail-vocabulary.js';
 
 const fixture = JSON.parse(readFileSync(path.resolve(__dirname, '../../../../tests/contracts/guardrail-evaluation.fixture.json'), 'utf8')) as {
@@ -62,6 +63,7 @@ const CHECK_KEYS = new Set<keyof GuardrailEvaluationCheck>([
   'regionKeys',
   'items',
   'reason',
+  'flaggedRegions',
 ]);
 
 describe('guardrail evaluation batch — fixture conforms to the frozen shape', () => {
@@ -106,5 +108,31 @@ describe('guardrail evaluation check — reason (TASK-1050 follow-up H)', () => 
   it('the fixture exercises both a skipped and an undetermined reason', () => {
     expect(checks.some((check) => check.verdict === 'skipped' && check.reason)).toBe(true);
     expect(checks.some((check) => check.verdict === 'undetermined' && check.reason)).toBe(true);
+  });
+});
+
+describe('guardrail evaluation check — flaggedRegions (TASK-1063 item 5b)', () => {
+  const checks = fixture.batch.evaluations.flatMap((record) => record.checks);
+
+  it('only a flag carries flaggedRegions, each a {key, trust, label, score} with no text', () => {
+    for (const check of checks) {
+      if (check.verdict !== 'flag') {
+        expect(check.flaggedRegions, check.checkId).toBeUndefined();
+        continue;
+      }
+      for (const region of check.flaggedRegions ?? []) {
+        expect(Object.keys(region).sort()).toEqual(['key', 'label', 'score', 'trust']);
+        expect(typeof region.key).toBe('string');
+        expect(typeof region.label).toBe('string');
+        if (region.trust !== null) expect(GUARDRAIL_REGION_TRUSTS).toContain(region.trust);
+        if (region.score !== null) expect(region.score >= 0 && region.score <= 1).toBe(true);
+      }
+    }
+  });
+
+  it('the fixture exercises an inbound (trusted) and an outbound (null-trust) flagged region', () => {
+    const regions = checks.flatMap((check) => check.flaggedRegions ?? []);
+    expect(regions.some((region) => region.trust !== null)).toBe(true);
+    expect(regions.some((region) => region.trust === null)).toBe(true);
   });
 });
