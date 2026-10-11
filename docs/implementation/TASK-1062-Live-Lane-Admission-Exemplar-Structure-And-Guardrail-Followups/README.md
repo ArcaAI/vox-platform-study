@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending — owner decisions recorded 2026-10-11; awaiting **go** |
+| Status | In Progress — owner go 2026-10-11 |
 | Type | bugfix / hardening |
 | Branch | dev-2.2 (lanes in worktrees); ALaaS `refactor-hope-integaration` for D-5.2/D-5.3 |
 | Source | [TASK-1061](../TASK-1061-Cross-Patient-Exemplar-Leak-And-Guardrail-False-Positives/README.md) §Implementation Summary "Remaining" R-1..R-9 + follow-ups |
@@ -19,6 +19,11 @@
 | D-5 **yes** | (1) pre-summary composed record phase `pre-summary` (not `finalize`); (2) ALaaS broker notification timestamps in UTC; (3) ALaaS stops HTML-escaping `&` in save/EMR copy; (4) finalize + fact-ledger instruction examples use placeholders (`<DRUG> <DOSE> → <DOSE>`) instead of literal "metformin 500 → 1000 mg" |
 | E-1 **yes** | `categoryActions` writable through the platform guardrail API, **platform-admin-only** (added to the field guard like `action`), plus a console editor in the guardrail availability screen |
 | E-2 **yes** | Platform guardrail availability screen/API ignores the session working tenant for SYSTEM reads/writes (today a working tenant makes the SYSTEM row read as empty and a save tries to create a duplicate) |
+
+## Frozen contract (orchestrator, before lanes)
+- **Live-lane marker:** every gateway → text `/generate` call made by the live lane (`live-documentation` flushes) carries header `X-Hope-Lane: live`. Absent header = the existing user lane.
+- **Live-lane budget:** platform setting `lmStudio.serving.liveLaneSlots` (`global-kv`, number, default **2**, min 1, max = `lmStudio.serving.parallel`), served to text through `GET internal/effective-config?service=text` as `lmStudioServing.liveLaneSlots`. Text admits live-marked lm-studio requests into a separate semaphore of that size; the user lane keeps `parallel − liveLaneSlots`.
+- **Migration:** lane S writes the schema change and the migration SQL WITHOUT a database (`prisma migrate diff --from-schema <old> --to-schema <new> --script`); the orchestrator applies it. No lane touches a database.
 
 ## Implementation Plan — lanes (file-disjoint, parallel)
 
@@ -41,3 +46,4 @@ _(pending go)_
 
 ## Change History
 - 2026-10-11 — opened from TASK-1061 R-1..R-9; owner decisions D-1A, D-2C, D-3A, D-4A, D-5 yes, E-1/E-2 yes.
+- 2026-10-11 — owner go; contract frozen (X-Hope-Lane header, lmStudio.serving.liveLaneSlots); six lanes started.
