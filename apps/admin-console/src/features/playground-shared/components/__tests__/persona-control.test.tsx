@@ -236,3 +236,71 @@ describe('PersonaControl', () => {
     });
   });
 });
+
+/**
+ * BUG-023 — the picker asked for 8 users and nothing more, so a tenant with more than 8 users
+ * looked as if the rest did not exist. D1: a "Showing N of M" line and a Load more item that
+ * appends the next page; D2: a visible scrollbar on this picker's list only.
+ */
+describe('PersonaControl — paging (BUG-023)', () => {
+  const TOTAL = 12;
+  const users = Array.from({ length: TOTAL }, (_, i) => ({ id: `u-${i}`, username: `user-${String(i).padStart(2, '0')}` }));
+
+  function stubPagedFetch(): string[] {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        urls.push(url);
+        const params = new URL(url, 'http://test.local').searchParams;
+        // The real repository's offset rule: skip = max(0, (page - 1) * limit) — so 0 and 1 overlap.
+        const page = Number(params.get('page') ?? 0);
+        const limit = Number(params.get('limit') ?? 10);
+        const skip = Math.max(0, (page - 1) * limit);
+        const body = { data: users.slice(skip, skip + limit), count: TOTAL, limit, page };
+        return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+      }),
+    );
+    return urls;
+  }
+
+  it('shows how many users of the total are listed and loads the next page on demand', async () => {
+    const urls = stubPagedFetch();
+    renderWithProviders(<PersonaControl session={session()} />);
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+
+    await screen.findByText('user-07');
+    expect(screen.queryByText('user-08')).toBeNull();
+    expect(screen.getByText(/showing 8 of 12/i)).toBeDefined();
+    const first = urls.find((u) => u.includes('/api/hope/admin/users'))!;
+    expect(first).toContain('page=1');
+    expect(first).toContain('limit=8');
+
+    fireEvent.click(screen.getByText(/load more/i));
+    await screen.findByText('user-11');
+    expect(urls.some((u) => u.includes('/api/hope/admin/users') && u.includes('page=2'))).toBe(true);
+    const listed = screen.getAllByText(/^user-\d\d$/).map((node) => node.textContent);
+    expect(listed).toHaveLength(TOTAL);
+    expect(new Set(listed).size).toBe(TOTAL);
+    expect(screen.queryByText(/load more/i)).toBeNull();
+  });
+
+  it('shows no count line or Load more when every user already fits', async () => {
+    stubFetch();
+    renderWithProviders(<PersonaControl session={session()} />);
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+    await screen.findByText('dr-smith');
+    expect(screen.queryByText(/showing \d+ of \d+/i)).toBeNull();
+    expect(screen.queryByText(/load more/i)).toBeNull();
+  });
+
+  it('keeps the list scrollbar visible on this picker (not the shared CommandList)', async () => {
+    stubPagedFetch();
+    renderWithProviders(<PersonaControl session={session()} />);
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+    await screen.findByText('user-00');
+    const list = document.querySelector('[data-slot="command-list"]');
+    expect(list?.className).toContain('[&::-webkit-scrollbar]:w-2');
+  });
+});

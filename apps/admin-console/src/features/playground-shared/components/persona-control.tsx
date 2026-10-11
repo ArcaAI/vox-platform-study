@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { IconChevronDown, IconInfoCircle, IconSpy } from '@tabler/icons-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@arcaai/ui/components/shadcn/popover';
+import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { getJson, type Paginated } from '@/shared/api';
 import { isTenantAdmin } from '@/shared/auth/ability';
 import type { SafeSession } from '@/shared/auth/hooks';
@@ -29,6 +30,18 @@ interface PersonaUser {
  * throw at runtime the moment a caller typed anything.
  */
 const PERSONA_SEARCH_FIELDS = 'username,externalId';
+
+/** Users per page; BUG-023 — further pages load on demand ("Load more"). */
+const PERSONA_PAGE_SIZE = 8;
+
+/**
+ * BUG-023 D2 — overlay scrollbars (macOS) stay invisible until scrolled, so a long list read
+ * as complete. Styled here only, not on the shared `CommandList` (~20 other consumers).
+ * Deliberately NO `scrollbar-width`: once that standard property is set, Chromium ignores
+ * `::-webkit-scrollbar` and falls back to the hidden overlay scrollbar.
+ */
+const VISIBLE_SCROLLBAR =
+  '[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40';
 
 /**
  * Playground persona control (artboard 4a). The playground runs
@@ -83,17 +96,25 @@ export function PersonaControl({ session }: { session: SafeSession }) {
     }
   }
 
-  const usersQuery = useQuery({
+  // BUG-023 D1 — paged. `page` is 1-BASED in practice: the repository skips `(page - 1) * limit`
+  // (`repository.helpers.ts`), so 0 and 1 are the same first page whatever `PaginatedQuery`'s
+  // doc says. The next page comes from the envelope's `count`, never its echoed `limit` (F-02).
+  const usersQuery = useInfiniteQuery({
     queryKey: ['playground', 'persona', 'user-search', debouncedSearch],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       getJson<Paginated<PersonaUser>>('admin/users', {
         search: debouncedSearch || undefined,
         searchFields: PERSONA_SEARCH_FIELDS,
-        limit: 8,
+        page: pageParam,
+        limit: PERSONA_PAGE_SIZE,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, pages) => (pages.length * PERSONA_PAGE_SIZE < lastPage.count ? pages.length + 1 : undefined),
     enabled: open && canImpersonate,
     staleTime: 30_000,
   });
+  const users = usersQuery.data?.pages.flatMap((page) => page.data) ?? [];
+  const totalUsers = usersQuery.data?.pages.at(-1)?.count ?? 0;
 
   const underAdmin = <span className="text-muted-foreground shrink-0 truncate text-xs">under {admin}</span>;
 
@@ -129,9 +150,9 @@ export function PersonaControl({ session }: { session: SafeSession }) {
         <PopoverContent align="start" className="w-72 p-0">
           <Command shouldFilter={false}>
             <CommandInput placeholder="Search users to act as…" value={search} onValueChange={setSearch} />
-            <CommandList>
+            <CommandList className={VISIBLE_SCROLLBAR}>
               <CommandEmpty>{usersQuery.isFetching ? 'Searching…' : 'No users found.'}</CommandEmpty>
-              {(usersQuery.data?.data ?? []).map((user) => (
+              {users.map((user) => (
                 <CommandItem
                   key={user.id}
                   value={user.id}
@@ -144,6 +165,22 @@ export function PersonaControl({ session }: { session: SafeSession }) {
                   </div>
                 </CommandItem>
               ))}
+              {usersQuery.hasNextPage ? (
+                <>
+                  <p className="text-muted-foreground px-2 pt-1.5 text-xs">
+                    Showing {users.length} of {totalUsers} — type to narrow
+                  </p>
+                  <CommandItem
+                    value="__load-more__"
+                    disabled={usersQuery.isFetchingNextPage}
+                    onSelect={() => void usersQuery.fetchNextPage()}
+                    className="justify-center"
+                  >
+                    {usersQuery.isFetchingNextPage ? <Spinner /> : null}
+                    Load more
+                  </CommandItem>
+                </>
+              ) : null}
             </CommandList>
             {impersonating ? (
               <div className="border-t p-1.5">
