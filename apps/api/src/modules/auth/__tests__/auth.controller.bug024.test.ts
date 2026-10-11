@@ -57,6 +57,11 @@ function build(opts: { tenantFindFirst: ReturnType<typeof vi.fn>; roles?: string
 const failureReasons = (emitter: { emit: ReturnType<typeof vi.fn> }) =>
   emitter.emit.mock.calls.filter((c) => c[0] === EventTypes.UserAuthenticationFailed).map((c) => c[1].reason);
 
+/** The `findFirst` query the controller sends for the tenant (typed so call args can be read). */
+interface TenantQuery {
+  filters: Record<string, unknown>;
+}
+
 const login = (tenantKey: string) => ({ username: 'homeo_doc', password: 'secret', tenantKey }) as any;
 
 describe('login tenant resolution (BUG-024)', () => {
@@ -84,21 +89,21 @@ describe('login tenant resolution (BUG-024)', () => {
   });
 
   it('a tenant ID (UUID) resolves by id; membership is still enforced', async () => {
-    const tenantFindFirst = vi.fn(async () => ({ id: TENANT_ID, key: 'homeo-clinic' }));
+    const tenantFindFirst = vi.fn(async (_query: TenantQuery) => ({ id: TENANT_ID, key: 'homeo-clinic' }));
     const { controller, userRoleAssignmentService } = build({ tenantFindFirst });
 
     // No role assignment in the tenant ⇒ the existing membership 401, proving resolution succeeded.
     await expect(controller.login(login(TENANT_ID), request)).rejects.toThrow(UnauthorizedException);
-    expect(tenantFindFirst.mock.calls[0][0].filters).toMatchObject({ id: TENANT_ID });
-    expect(tenantFindFirst.mock.calls[0][0].filters).not.toHaveProperty('key');
+    expect(tenantFindFirst.mock.calls[0]?.[0].filters).toMatchObject({ id: TENANT_ID });
+    expect(tenantFindFirst.mock.calls[0]?.[0].filters).not.toHaveProperty('key');
     expect(userRoleAssignmentService.findActiveAssignmentForUserInTenant).toHaveBeenCalledWith('user-1', TENANT_ID);
   });
 
   it('a tenant key still resolves by key', async () => {
-    const tenantFindFirst = vi.fn(async () => ({ id: TENANT_ID, key: 'homeo-clinic' }));
+    const tenantFindFirst = vi.fn(async (_query: TenantQuery) => ({ id: TENANT_ID, key: 'homeo-clinic' }));
     const { controller } = build({ tenantFindFirst });
 
     await expect(controller.login(login('homeo-clinic'), request)).rejects.toThrow(UnauthorizedException);
-    expect(tenantFindFirst.mock.calls[0][0].filters).toMatchObject({ key: 'homeo-clinic' });
+    expect(tenantFindFirst.mock.calls[0]?.[0].filters).toMatchObject({ key: 'homeo-clinic' });
   });
 });
