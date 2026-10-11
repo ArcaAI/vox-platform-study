@@ -229,18 +229,21 @@ describe('TASK-1060 — the catalogue`s CPU summary (lane G)', () => {
     expect(cpu?.services.find((s) => s.service === 'nlp')?.memoryBytes).toBeNull();
   });
 
-  it('3. `other` = every container on the node − the HOPE workloads matched; unattributed floors at 0', async () => {
+  it('3. `other` = node used − the HOPE workloads matched, so the segments sum to `used` and never overshoot it', async () => {
     const h = build({ namespace: NS });
     const { cpu } = await h.service.getCatalogue();
     const other = cpu?.services.find((s) => s.service === 'other');
-    // 40 GiB over all namespaces − (2 + 3 + 5 + 10 + 1) GiB matched
-    expect(other).toMatchObject({ label: 'Other workloads', memoryBytes: 19 * GiB, models: [], cpuCores: null });
-    // node used 58 GiB − Σ services 40 GiB
-    expect(cpu?.unattributedBytes).toBe(18 * GiB);
+    // node used 58 GiB − (2 + 3 + 5 + 10 + 1) GiB matched. A container's working set counts active page cache,
+    // `MemTotal − MemAvailable` does not, so "every container − HOPE" overshot the headline figure (cluster proof).
+    expect(other).toMatchObject({ label: 'Other workloads & system', memoryBytes: 37 * GiB, models: [], cpuCores: null });
+    expect(cpu?.services.reduce((sum, s) => sum + (s.memoryBytes ?? 0), 0)).toBe(cpu?.node.usedBytes);
+    expect(cpu?.unattributedBytes).toBe(0);
+    // the all-namespace working-set query is gone: every container query is scoped to the namespace
+    const containerQueries = h.prometheus.instantVector.mock.calls.map(([q]: [string]) => q).filter((q: string) => q.includes('container_'));
+    expect(containerQueries.every((q: string) => q.includes(`namespace="${NS}"`))).toBe(true);
 
     const h2 = build({ namespace: NS });
-    h2.state.series!.memAvailable = [sample(60 * GiB)]; // node used 4 GiB < the 40 GiB the containers report
-    h2.state.series!.allMemory = [sample(15 * GiB)]; // fewer than the 21 GiB matched
+    h2.state.series!.memAvailable = [sample(60 * GiB)]; // node used 4 GiB < the 21 GiB the HOPE containers report
     const floored = (await h2.service.getCatalogue()).cpu;
     expect(floored?.unattributedBytes).toBe(0);
     expect(floored?.services.find((s) => s.service === 'other')?.memoryBytes).toBe(0);

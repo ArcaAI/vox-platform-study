@@ -25,7 +25,7 @@ export const SERVICE_LEGEND_LABEL: Record<string, string> = {
   nlp: 'Medical NLP',
   tts: 'Text-to-speech',
   gateway: 'API gateway',
-  other: 'Other workloads',
+  other: 'Other workloads & system',
 };
 
 /** Diagonal stripes over the swatch: the non-colour cue for an estimate / the unattributed remainder. */

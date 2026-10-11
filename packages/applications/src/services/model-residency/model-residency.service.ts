@@ -273,12 +273,11 @@ const PROMQL = {
   workerBytes: 'max by (model, device) (model_resident_bytes{job="stt-worker"})',
   // TASK-1060 — the display-only CPU panel. ONE node is assumed (the dev cluster has exactly one): the node
   // series are taken `max` across scrapes, never split per node. Pod series are scoped to the gateway's own
-  // namespace (`POD_NAMESPACE`); `allContainerMemory` spans every namespace, for the "Other workloads" segment.
+  // namespace (`POD_NAMESPACE`). "Other workloads & system" is derived from node used, not queried (catalogue `cpuSummary`).
   nodeMemTotal: 'max(node_memory_MemTotal_bytes)',
   nodeMemAvailable: 'max(node_memory_MemAvailable_bytes)',
   nodeCpuUtil: '100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))',
   nodeCpuCores: 'count(count by (cpu) (node_cpu_seconds_total))',
-  allContainerMemory: 'sum(container_memory_working_set_bytes{container!="",container!="POD"})',
   podMemory: (ns: string) => `sum by (pod) (container_memory_working_set_bytes{namespace="${ns}",container!="",container!="POD"})`,
   podCpu: (ns: string) => `sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="${ns}",container!="",container!="POD"}[5m]))`,
   podCpuRequests: (ns: string) => `sum by (pod) (kube_pod_container_resource_requests{namespace="${ns}",resource="cpu"})`,
@@ -2750,12 +2749,11 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         .instantVector(q)
         .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'CPU metric read failed', meta: { query: q } }));
     const ns = promLabel(namespace);
-    const [total, available, util, cores, allMemory, memory, cpu, requests, cpuLimits, memoryLimits, workloads] = await Promise.all([
+    const [total, available, util, cores, memory, cpu, requests, cpuLimits, memoryLimits, workloads] = await Promise.all([
       query(PROMQL.nodeMemTotal),
       query(PROMQL.nodeMemAvailable),
       query(PROMQL.nodeCpuUtil),
       query(PROMQL.nodeCpuCores),
-      query(PROMQL.allContainerMemory),
       query(PROMQL.podMemory(ns)),
       query(PROMQL.podCpu(ns)),
       query(PROMQL.podCpuRequests(ns)),
@@ -2792,18 +2790,6 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         cpuCores: cpuBy.get(service) ?? null,
         cpuRequestCores: requestsBy.get(service) ?? null,
         cpuLimitCores: cpuLimitsBy.get(service) ?? null,
-      };
-    }
-    // "Other workloads": every container on the node that is not a matched HOPE workload.
-    const everything = allMemory[0]?.value;
-    if (finite(everything)) {
-      const matched = [...memoryBy.values()].reduce((sum, v) => sum + v, 0);
-      services.other = {
-        memoryBytes: Math.max(0, Math.round(everything - matched)),
-        memoryLimitBytes: null,
-        cpuCores: null,
-        cpuRequestCores: null,
-        cpuLimitCores: null,
       };
     }
     const cpuCores = cores[0]?.value;

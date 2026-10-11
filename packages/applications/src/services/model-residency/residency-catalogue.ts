@@ -178,7 +178,7 @@ export interface CpuReading {
 
 /** The CPU panel's segments, in display order: the catalogue groups, then the gateway, then everything else on the node. */
 const CPU_SEGMENTS: readonly ResidencyCpuServiceName[] = [...CATALOGUE_SERVICES, 'gateway', 'other'];
-const CPU_SEGMENT_LABELS: Record<'gateway' | 'other', string> = { gateway: 'Gateway', other: 'Other workloads' };
+const CPU_SEGMENT_LABELS: Record<'gateway' | 'other', string> = { gateway: 'Gateway', other: 'Other workloads & system' };
 
 const STATUS_ORDER: Record<CatalogueModelStatus, number> = { loaded: 0, loading: 1, unloading: 2, failed: 3, not_loaded: 4 };
 const SUGGESTION_LIMIT = 20;
@@ -370,8 +370,19 @@ function cpuSummary(reading: CpuReading, devices: ModelResidencyCatalogueDevice[
   const { totalBytes, freeBytes, cpuCores, utilisationPercent } = reading.node;
   const usedBytes = Math.max(0, totalBytes - freeBytes);
   const headroomBytes = Math.floor((totalBytes * headroomPercent) / 100);
+  // "Other workloads & system" = node used − the HOPE workloads (Prometheus only). A container's working set
+  // counts active page cache and `MemTotal − MemAvailable` does not, so summing every container overshot the
+  // headline figure on the cluster; deriving it from `used` keeps the segments summing to exactly `used`.
+  const hopeBytes = CPU_SEGMENTS.reduce((sum, s) => (s === 'other' ? sum : sum + (reading.services[s]?.memoryBytes ?? 0)), 0);
+  const segments: CpuReading['services'] =
+    reading.source === 'prometheus'
+      ? {
+          ...reading.services,
+          other: { memoryBytes: Math.max(0, Math.round(usedBytes - hopeBytes)), memoryLimitBytes: null, cpuCores: null, cpuRequestCores: null, cpuLimitCores: null },
+        }
+      : reading.services;
   const services: ModelResidencyCpuService[] = CPU_SEGMENTS.flatMap((service) => {
-    const r = reading.services[service];
+    const r = segments[service];
     const models = devices.find((d) => d.id === `cpu:${service}`)?.models ?? [];
     const known = r !== undefined && Object.values(r).some((v) => v !== null);
     if (!known && models.length === 0) return [];

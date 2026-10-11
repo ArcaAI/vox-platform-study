@@ -119,7 +119,7 @@ export function makeCpu(overrides: Partial<ResidencyCpuSummary> = {}): Residency
       },
       {
         service: 'other',
-        label: 'Other workloads',
+        label: 'Other workloads & system',
         memoryBytes: 6 * GiB,
         memoryLimitBytes: null,
         cpuCores: 1.5,

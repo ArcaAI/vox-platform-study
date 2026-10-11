@@ -90,18 +90,18 @@
         },
         {
           "service": "other",
-          "label": "Other workloads",
-          "memoryBytes": 21474836480,
+          "label": "Other workloads & system",
+          "memoryBytes": 35089393254,
           "memoryLimitBytes": null,
           "cpuCores": null,
           "cpuRequestCores": null,
           "cpuLimitCores": null,
           "models": [],
           "attributedBytes": 0,
-          "unattributedBytes": 21474836480
+          "unattributedBytes": 35089393254
         }
       ],
-      "unattributedBytes": 13614556774
+      "unattributedBytes": 0
     },
     "services": [
       {

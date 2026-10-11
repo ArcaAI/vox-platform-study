@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — deployed to dev (pipeline #1437, `c50182c3a`); cluster proof done; two display follow-ups open |
+| **Status** | Review — deployed to dev (pipeline #1437); display follow-ups fixed locally, awaiting push + cluster re-check |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Surfaces** | `packages/py-runtime-models`, `apps/{nlp,tts}` (pyproject only), `packages/applications` (model-residency), `apps/api` (artifacts only), `packages/vox-node` (generated), `apps/admin-console` (model-residency feature) |
@@ -173,13 +173,14 @@ Deployment repo: branch `task-1060/deploy` @ `d36e4c7` (worktree `../hope-v2-dep
 - `devices[]` = `gpu0`, `gpu1` only; the panel renders the node card, bar, per-service rows with cores vs request/limit.
 - No model is resident on CPU in the cluster right now, so per-model RSS (D-5) is proven by unit tests only; proving it live needs a CPU load (owner approval).
 
-### Follow-ups found in the cluster proof
+### Follow-ups found in the cluster proof — FIXED 2026-10-11 (owner: fix both under TASK-1060)
 1. **Bar overshoots "used".** Σ services + other = 20.75 GiB > node used 17.05 GiB: cadvisor working set counts active page cache, `MemTotal − MemAvailable` does not. Proposed fix: `other = max(0, node.used − Σ HOPE services)` (and scale the bar to `node.used` when Σ HOPE alone exceeds it), so the segments never exceed the headline figure.
 2. **Per-service "Not attributed" noise.** With no CPU models, every service repeats a "Not attributed — runtime, buffers…" row equal to its whole working set. Proposed fix: render that row only when the service has ≥ 1 CPU model.
 ## 6. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-11 | **Display follow-ups fixed.** (1) `other` is now `node.usedBytes − Σ` HOPE workloads (floored at 0), computed in `cpuSummary`; the all-namespace `allContainerMemory` query is removed, so the segments sum to exactly `used` and the Prometheus-source `unattributedBytes` is 0. Label `Other workloads & system`. (2) The per-service "Not attributed" row renders only when the service holds ≥ 1 CPU model. RED→GREEN: `cpu-summary.task1060.test.ts` case 3 rewritten (9/9), `cpu-summary-panel.test.tsx` new case (10/10); catalogue contract test 28/28 with the fixture updated (4 lines); `api:openapi:check`, `api:portal:check`, `gen:admin:check` rc=0; applications + admin-console `tsc --noEmit` clean. |
 | 2026-10-11 | **D-6 reverted (owner decision).** Declaring `psutil` changed `uv.lock`, which invalidated the cached `uv sync` layer of every Python image; each then recompiled `llama-cpp-python` from source and blew the 30-min CI job limit / the shared uv cache lock (pipelines #1434, #1436: `build-nlp` timeout, `build-harness` + `build-nlp-gpu` "Failed to acquire lock on the distribution cache"). `pyproject.toml` + `uv.lock` restored byte-identical to `01fc3f9d2`. RSS is unaffected in the cluster (Linux `/proc/self/statm` fallback) and in local dev (arcaenv ships psutil). D-5 (RSS-first on cpu) stays; lane P tests 21 passed after the revert. Lesson: a `uv.lock` change costs a full native rebuild of every Python image. |
 | 2026-10-10 | Owner: go with recommendations (OD-1 gateway segment, OD-2 one "Other workloads" segment, OD-3 no pressure). Waves 1–2 executed; deviations: lane G added `POD_NAMESPACE` to `IAppConfig`/`config.service.ts`/`env.descriptors.ts` (the env-sync path) and `response.cpu` to the catalogue contract fixture; lane C exported `Swatch`/`DeviceSize` from the GPU panel for reuse. |
 | 2026-10-10 | Ticket opened. Owner chose: all four CPU items, display-only headroom, per-model RSS measurement. Discovery (scout + live Prometheus check) recorded; plan, decisions D-1…D-10 and OD-1…OD-3 written. |

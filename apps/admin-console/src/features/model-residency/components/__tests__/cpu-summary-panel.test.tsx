@@ -48,7 +48,7 @@ describe('CpuSummaryPanel', () => {
     const gateway = within(list).getByText('API gateway').closest('li')!;
     expect(within(gateway).getByText('2 GB')).toBeDefined();
     expect(within(gateway).getByText('CPU n/a')).toBeDefined();
-    const other = within(list).getByText('Other workloads').closest('li')!;
+    const other = within(list).getByText('Other workloads & system').closest('li')!;
     expect(within(other).getByText('1.5 cores')).toBeDefined();
   });
 
@@ -66,6 +66,18 @@ describe('CpuSummaryPanel', () => {
     expect(within(nlp).getByText('3 GB')).toBeDefined();
     expect(within(nlp).getByText('~1 GB est.')).toBeDefined();
     expect(within(nlp).getByText('size unknown')).toBeDefined();
+    expect(within(nlp).getByText(/Not attributed — runtime, buffers, freed-but-retained memory/)).toBeDefined();
+  });
+
+  it('shows a service`s "Not attributed" row only when it holds a model on CPU (cluster proof: every row repeated it)', () => {
+    const cpu = makeCpu();
+    const gateway = cpu.services.find((s) => s.service === 'gateway')!;
+    gateway.unattributedBytes = gateway.memoryBytes!; // no CPU models: the whole working set is "unattributed"
+    render(<CpuSummaryPanel cpu={cpu} />);
+    const row = screen.getByText(gateway.label).closest('li')!;
+    expect(within(row).queryByText(/Not attributed/)).toBeNull();
+    // a service that does hold CPU models keeps it
+    const nlp = screen.getByText('Medical NLP').closest('li')!;
     expect(within(nlp).getByText(/Not attributed — runtime, buffers, freed-but-retained memory/)).toBeDefined();
   });
 

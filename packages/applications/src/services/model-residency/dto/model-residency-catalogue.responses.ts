@@ -87,7 +87,7 @@ export class ModelResidencyCpuNode {
 export class ModelResidencyCpuService {
   @ApiProperty({ enum: CPU_SERVICES, description: '`gateway` = the API gateway; `other` = every other container on the node (Prometheus only).' })
   service!: ResidencyCpuServiceName;
-  @ApiProperty({ example: 'Speech-to-text — live sessions', description: 'The service group`s catalogue label; `Gateway`; `Other workloads`.' })
+  @ApiProperty({ example: 'Speech-to-text — live sessions', description: 'The service group`s catalogue label; `Gateway`; `Other workloads & system`.' })
   label!: string;
   @ApiProperty({
     nullable: true,
@@ -121,10 +121,10 @@ export class ModelResidencyCpuSummary {
   @ApiProperty({ type: ModelResidencyCpuNode }) node!: ModelResidencyCpuNode;
   @ApiProperty({
     type: [ModelResidencyCpuService],
-    description: 'In order: stt, stt-worker, lm-studio, nlp, tts, gateway, other (Prometheus only). A service with no data at all is omitted.',
+    description: 'In order: stt, stt-worker, lm-studio, nlp, tts, gateway, other (Prometheus only: `node.usedBytes − Σ` the HOPE workloads, floored at 0, so the segments sum to `node.usedBytes`). A service with no data at all is omitted.',
   })
   services!: ModelResidencyCpuService[];
-  @ApiProperty({ description: '`node.usedBytes − Σ services[].memoryBytes`, floored at 0: the kernel, page cache and system daemons.' })
+  @ApiProperty({ description: '`node.usedBytes − Σ services[].memoryBytes`, floored at 0. With Prometheus it is 0 (`other` absorbs the rest); on the agents fallback it is everything the services do not report.' })
   unattributedBytes!: number;
 }
 

@@ -4997,7 +4997,7 @@ export interface ModelResidencyCpuService {
   cpuLimitCores: number | null;
   /** Sum of the pods` CPU requests (cores); `null` when unset or unknown. */
   cpuRequestCores: number | null;
-  /** The service group`s catalogue label; `Gateway`; `Other workloads`. */
+  /** The service group`s catalogue label; `Gateway`; `Other workloads & system`. */
   label: string;
   /** Prometheus: the pods` container working set; agents: the service process`s RSS. `null` when unknown. */
   memoryBytes: number | null;
@@ -5013,11 +5013,11 @@ export interface ModelResidencyCpuService {
 
 export interface ModelResidencyCpuSummary {
   node: ModelResidencyCpuNode;
-  /** In order: stt, stt-worker, lm-studio, nlp, tts, gateway, other (Prometheus only). A service with no data at all is omitted. */
+  /** In order: stt, stt-worker, lm-studio, nlp, tts, gateway, other (Prometheus only: `node.usedBytes − Σ` the HOPE workloads, floored at 0, so the segments sum to `node.usedBytes`). A service with no data at all is omitted. */
   services: ModelResidencyCpuService[];
   /** `prometheus` = node-exporter / cAdvisor / kube-state-metrics (the gateway knows its namespace); `agents` = the residency agents` own host reading and per-process RSS (no cores, no limits, no `other`). */
   source: 'prometheus' | 'agents';
-  /** `node.usedBytes − Σ services[].memoryBytes`, floored at 0: the kernel, page cache and system daemons. */
+  /** `node.usedBytes − Σ services[].memoryBytes`, floored at 0. With Prometheus it is 0 (`other` absorbs the rest); on the agents fallback it is everything the services do not report. */
   unattributedBytes: number;
 }
 

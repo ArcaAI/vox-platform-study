@@ -35,7 +35,8 @@ function ServiceRow({ service }: { service: ResidencyCpuService }) {
         <span className="tabular-nums">{memoryText(service)}</span>
         <span className="text-muted-foreground w-full pl-[1.125rem] text-xs tabular-nums">{coresText(service)}</span>
       </div>
-      {service.models.length > 0 || service.unattributedBytes > 0 ? (
+      {/* The remainder row only means something next to models: without any, it would restate the whole working set. */}
+      {service.models.length > 0 ? (
         <ul aria-label={`Models in ${service.label}`} className="flex flex-col gap-1 pl-[1.125rem] text-sm">
           {service.models.map((model) => (
             <li key={`${model.service}::${model.modelRef}`} className="flex items-start gap-2">
