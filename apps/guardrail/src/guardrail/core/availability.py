@@ -208,6 +208,11 @@ def _normalize_entry(
             entry["setBy"] = raw["setBy"]
         if _is_action(raw.get("dataRegionAction")):
             entry["dataRegionAction"] = raw["dataRegionAction"]
+        categories = _category_actions(raw.get("categoryActions"))
+        if enforce:
+            categories = {k: v for k, v in categories.items() if v in fallback.allowed_actions}
+        if categories:
+            entry["categoryActions"] = categories
     return entry
 
 

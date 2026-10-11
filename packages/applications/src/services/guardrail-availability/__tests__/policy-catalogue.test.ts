@@ -37,6 +37,7 @@ const CONTRACT = JSON.parse(
     defaultEnabled: boolean;
     inboundRegions?: string[];
     platformDefaultDataRegionAction?: string;
+    platformDefaultCategoryActions?: Record<string, string>;
   }[];
 };
 
@@ -80,14 +81,24 @@ describe('guardrail policy catalogue — the cross-language contract', () => {
       expect(actual.defaultEnabled, expected.id).toBe(expected.defaultEnabled);
       expect(actual.inboundRegions ?? null, expected.id).toEqual(expected.inboundRegions ?? null);
       expect(actual.platformDefaultDataRegionAction ?? null, expected.id).toEqual(expected.platformDefaultDataRegionAction ?? null);
+      expect(actual.platformDefaultCategoryActions ?? null, expected.id).toEqual(expected.platformDefaultCategoryActions ?? null);
       expect(actual.allowedActions, expected.id).toContain(actual.platformDefaultAction);
     }
   });
 
-  it('classifier checks default to block, except the safety/toxicity classifiers (inbound owner 2026-10-09, outbound 2026-10-08), which warn', () => {
+  it('classifier checks default to block, except the safety/toxicity classifiers (inbound owner 2026-10-09 warn), response_toxicity (warn) and response_safety (ignore, TASK-1061 OD-5b)', () => {
     const blocking = ['jailbreak_detection', 'response_refusal', 'pii_leak', 'containment_echo'];
     for (const id of blocking) expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)?.platformDefaultAction, id).toBe('block');
-    for (const id of ['prompt_safety', 'prompt_toxicity', 'response_safety', 'response_toxicity']) expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)?.platformDefaultAction, id).toBe('warn');
+    for (const id of ['prompt_safety', 'prompt_toxicity', 'response_toxicity']) expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)?.platformDefaultAction, id).toBe('warn');
+    expect(GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === 'response_safety')?.platformDefaultAction).toBe('ignore');
+    expect(GUARDRAIL_CHECK_DEFAULTS.response_safety?.action).toBe('ignore');
+  });
+
+  it('jailbreak_detection screens inbound only; prompt_toxicity relaxes privacy_violation by default (TASK-1061)', () => {
+    const byId = (id: string) => GUARDRAIL_POLICY_CATALOGUE.find((p) => p.id === id)!;
+    expect(byId('jailbreak_detection').directions).toEqual(['inbound']);
+    expect(byId('prompt_toxicity').platformDefaultCategoryActions).toEqual({ privacy_violation: 'ignore' });
+    expect(GUARDRAIL_POLICY_CATALOGUE.filter((p) => p.platformDefaultCategoryActions).map((p) => p.id)).toEqual(['prompt_toxicity']);
   });
 
   it('locks medical validation at block, and the judges default to the README actions', () => {
@@ -235,8 +246,8 @@ describe('assertBothDirectionsCovered — a direction may never be switched off'
     expect(() => assertBothDirectionsCovered({})).not.toThrow();
   });
 
-  it('accepts the single both-directions policy as the minimal legal narrowing', () => {
-    expect(() => assertBothDirectionsCovered({ jailbreak_detection: { enabled: true } })).not.toThrow();
+  it('refuses jailbreak_detection alone — it is inbound-only since TASK-1061', () => {
+    expect(() => assertBothDirectionsCovered({ jailbreak_detection: { enabled: true } })).toThrow(/outbound would have no check/);
   });
 
   it('refuses an outbound-only selection — every request would be ungated', () => {

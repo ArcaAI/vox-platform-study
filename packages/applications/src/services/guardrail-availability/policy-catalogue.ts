@@ -93,6 +93,11 @@ export interface GuardrailPolicyDescriptor {
    * FC-5b record-only. A platform admin may raise it (OD-12 / §11.1). Absent where it does not apply.
    */
   readonly platformDefaultDataRegionAction?: GuardrailViolationAction;
+  /**
+   * TASK-1061 OD-5b: `{ label: action }` — the action a flag whose labels are ALL listed takes instead of the
+   * check's. It only relaxes, and cascades label by label (catalogue → SYSTEM → tenant). Absent where none.
+   */
+  readonly platformDefaultCategoryActions?: Readonly<Record<string, GuardrailViolationAction>>;
 }
 
 const ALL_ACTIONS: readonly GuardrailViolationAction[] = Object.freeze(['ignore', 'warn', 'block']);
@@ -108,8 +113,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
     ...CLASSIFIER_INBOUND,
     label: 'Jailbreak / prompt injection',
     description:
-      'Detects instructions that try to override the system prompt. Runs on BOTH directions: a response that echoes — or complies with — an injected instruction is exactly what a post-receive check exists to catch.',
-    directions: ['inbound', 'outbound'],
+      'Detects instructions that try to override the system prompt in untrusted inbound content. Inbound only: a generated clinical note legitimately quotes patient and clinician speech, so the check is not run on a response.',
+    directions: ['inbound'],
   },
   {
     id: 'prompt_safety',
@@ -127,6 +132,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
     ...CLASSIFIER,
     // Owner 2026-10-09 (TASK-1053): warn by default — the classifier false-flags clinical notes; a hit must not block one.
     platformDefaultAction: 'warn',
+    // TASK-1061 OD-5b: a clinical note records patient identifiers by design, so `privacy_violation` alone is record-only.
+    platformDefaultCategoryActions: { privacy_violation: 'ignore' },
     defaultEnabled: true,
     ...CLASSIFIER_INBOUND,
     label: 'Prompt toxicity',
@@ -136,8 +143,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
   {
     id: 'response_safety',
     ...CLASSIFIER,
-    // Owner 2026-10-08: warn by default — the classifier false-flags clinical notes; a hit must not withhold one.
-    platformDefaultAction: 'warn',
+    // TASK-1061 OD-5b: ignore by default — the classifier false-flags clinical notes; a hit is recorded, not shown.
+    platformDefaultAction: 'ignore',
     defaultEnabled: true,
     label: 'Response safety',
     description: 'Content-safety moderation of a generated response before it reaches a clinician.',
@@ -424,9 +431,9 @@ export function normalizeSelection(raw: unknown): GuardrailPolicySelectionSet {
  * selection is exempt because it is not a selection at all: it inherits the
  * SYSTEM set, which covers both.
  *
- * The minimal legal narrowing is therefore one policy that runs on both —
- * `jailbreak_detection` — so this rule constrains the surface without closing
- * the use case it exists for.
+ * Since TASK-1061 `jailbreak_detection` is inbound-only, so no single policy
+ * runs on both: the minimal legal narrowing is one inbound plus one outbound
+ * policy, which constrains the surface without closing the use case it exists for.
  *
  * CONFIRMED BY THE OWNER 2026-09-10 (TASK-941 R2 / OD-2). This rule was DERIVED
  * from the decision's wording rather than stated, and TASK-886 flagged it as H6 for
