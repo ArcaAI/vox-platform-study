@@ -155,6 +155,8 @@ export const GUARDRAIL_POLICY_CATALOGUE: readonly GuardrailPolicyDescriptor[] = 
     ...CLASSIFIER,
     // Owner 2026-10-08: warn by default — the classifier false-flags clinical notes; a hit must not withhold one.
     platformDefaultAction: 'warn',
+    // TASK-1062 D-1: as prompt_toxicity — a clinical note's own history is not a privacy violation worth a banner.
+    platformDefaultCategoryActions: { privacy_violation: 'ignore' },
     defaultEnabled: true,
     label: 'Response toxicity',
     description: 'Toxicity moderation of a generated response.',

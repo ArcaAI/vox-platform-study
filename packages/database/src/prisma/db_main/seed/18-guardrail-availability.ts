@@ -77,7 +77,7 @@ export type PlatformGuardrailAvailabilitySeed = {
  *   - the eight classifier checks ON at `block` — except `response_refusal` (see the header) — and the
  *     three inbound ones record-only on DATA regions (`dataRegionAction: 'ignore'`, TASK-1047 FC-5b);
  *   - TASK-1061 (owner OD-4 / OD-5b, 2026-10-11): `jailbreak_detection` screens the request only (its action is
- *     inbound); `response_safety` and `prompt_toxicity`'s `privacy_violation` category are recorded only
+ *     inbound); `response_safety` and `prompt_toxicity`/`response_toxicity`'s `privacy_violation` category are recorded only
  *     (`ignore`, no clinician notice) until a calibrated threshold exists;
  *   - `medical_validation` ON at `block` and LOCKED (OD-9: the platform is for medical use only);
  *   - the four judges OFF (OD-6), at their catalogue actions, so a deploy makes zero judge calls until a
@@ -99,7 +99,8 @@ export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: PlatformGuardrailAvailabil
     prompt_toxicity: { enabled: true, action: 'warn', dataRegionAction: 'ignore', categoryActions: { privacy_violation: 'ignore' } },
     // TASK-1061 OD-5b (owner 2026-10-11): recorded only — `unsafe` fired on every clinical note. Was `warn` (2026-10-08).
     response_safety: { enabled: true, action: 'ignore' },
-    response_toxicity: { enabled: true, action: 'warn' },
+    // TASK-1062 D-1: `privacy_violation` is recorded only, as on prompt_toxicity.
+    response_toxicity: { enabled: true, action: 'warn', categoryActions: { privacy_violation: 'ignore' } },
     // A refusal is not unsafe content, so it is the one classifier check that ships off.
     response_refusal: { enabled: false, action: 'block' },
     pii_leak: { enabled: true, action: 'block', minScore: 0.5 },

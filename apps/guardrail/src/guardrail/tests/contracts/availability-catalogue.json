@@ -121,7 +121,10 @@
       ],
       "platformDefaultAction": "warn",
       "locked": false,
-      "defaultEnabled": true
+      "defaultEnabled": true,
+      "platformDefaultCategoryActions": {
+        "privacy_violation": "ignore"
+      }
     },
     {
       "id": "response_refusal",
