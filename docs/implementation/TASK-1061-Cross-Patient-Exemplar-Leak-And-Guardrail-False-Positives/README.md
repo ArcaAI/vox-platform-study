@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress — owner accepted OD-1..OD-5 defaults, go 2026-10-11 |
+| Status | Review — deployed 2026-10-11; acceptance passed for N-1; R-1..R-9 follow-ups |
 | Type | bugfix (clinical safety) |
 | Branch | dev-2.2 |
 | Source | [TASK-1059 acceptance](../TASK-1059-Realtime-Path-And-Guardrail-Fixes-From-1058-E2E/README.md) §"Open after acceptance" N-1, N-3 |
@@ -87,8 +87,26 @@ Then: orchestrator gate once, deploy with owner OK, cluster re-run of TASK-1059 
 | OD-5 | Runtime noise from PG2 / GLiGuard on clinical text | Inbound: screen only untrusted regions at runtime (governed platform/authored prompts were screened at save); `response_safety` and `prompt_toxicity:privacy_violation` → `ignore` (recorded, no clinician banner) on gateway-composed clinical prompts and notes until a calibrated threshold exists |
 
 ## Implementation Summary
-_(pending go)_
+
+**Lanes merged:** X (`20b8ab5a9`: no exemplars in any assemble() prompt; structure-only transform at read; exemplar audit fields), G (`95d673354`: outbound jailbreak removed; `response_safety` default ignore; per-check `categoryActions`, `prompt_toxicity.privacy_violation` ignore), G2 (`acddda460`: TS catalogue + both normalizers carry `categoryActions`), fixture `f9553aacb`. Audit A: exposure confined to 6 live / 4 pre-summary items, 2 E2E consultations, one tenant/department. Gate: guardrail 1,098, types 242, applications+seeds+contracts 20,909, typecheck + lint clean (black drift in `guardrails.py` pre-existing). Pushed `6eb7d32b0`, deployed. Cluster ops (owner-approved): 5 `GateEditExemplar` rows deleted; SYSTEM `TenantGuardrailPolicy` `response_safety` warn → ignore (v2).
+
+**Acceptance AC3 (2026-10-11 00:52–01:05Z):**
+- Leak test PASS: patient A signed off (new APPROVED_CLEAN exemplar), patient B same department — 0 of A's facts in any B frame or composed prompt; no exemplar section; B's prompt records `exemplarCount: 0`.
+- Outbound `jailbreak_detection` gone; `response_safety:unsafe` flagged 11× with 0 notices; `prompt_toxicity:privacy_violation` 13× with 0 notices; CONTEXT_WINDOW_EXCEEDED / CONCURRENCY_LIMIT / CONTENT_BLOCKED_NOT_MEDICAL / GUARDRAIL_BLOCKED all 0; 29 generations, 0 failed.
+
+**Remaining:**
+| Id | Sev | Item |
+|---|---|---|
+| R-1 | major | Stored exemplars still hold full clinical content (OD-2 at store time not done — corpus/fine-tune reuse `redactedAfter`; needs a `structureAfter` column, owner decision). Not used by any prompt today |
+| R-2 | minor | Inbound PG2 `jailbreak_detection` BLOCK evaluations (10) on governed prompt pieces with null `consultationId` — the gateway registry's advisory re-screen, not enforced, no notice; noise in metrics |
+| R-3 | major | Remaining clinician-facing FP notices: outbound `response_toxicity:privacy_violation` (3), inbound `prompt_safety:unsafe` (2), outbound `pii_leak:api_key` (1) |
+| R-4 | major | ×3 concurrency: live snapshot / entities only after stop (76–95 s), slower than TASK-1059 |
+| R-5 | minor | "Platform prompt-piece registration exceeded its wait" (3 s) on live requests |
+| R-6..R-9 | minor | pre-summary record labelled `finalize`; broker notification time −7 h; `&amp;` creates a CORRECTED exemplar for an unedited note; "metformin 500 → 1000 mg" literal example in finalize/fact-ledger instructions |
+| — | — | `categoryActions` API write path + platform-only field guard; console editor UI |
+
 
 ## Change History
 - 2026-10-11 — opened from TASK-1059 acceptance (N-1, N-3); plan + OD-1..OD-5 proposed.
 - 2026-10-11 — owner: accept OD-1..OD-5 defaults, go. Measurement lane dropped (a local classifier bench would load models); FP rates measured from cluster logs after deploy instead.
+- 2026-10-11 — merged X/G/G2, gate green, pushed + deployed; exemplar rows deleted; SYSTEM response_safety → ignore; acceptance AC3 passed (leak test); R-1..R-9 recorded.
