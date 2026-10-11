@@ -80,7 +80,8 @@ describe('DomainRail', () => {
     renderInShell(<DomainRail />, NARROW_TENANT_FIXTURE);
     await screen.findByRole('link', { name: 'Clinical' });
 
-    expect(railLinks().map((link) => link.textContent)).toEqual(['Knowledge & Agents', 'Clinical']);
+    // BUG-022 — the playground is open to every signed-in caller, so it is reachable here too.
+    expect(railLinks().map((link) => link.textContent)).toEqual(['Knowledge & Agents', 'Clinical', 'Playground']);
     expect(screen.queryByRole('link', { name: 'Platform Ops' })).toBeNull();
     // Nothing is rendered inert-but-focusable (EX-11): unreachable means absent.
     expect(screen.queryByRole('link', { name: 'Tenancy' })).toBeNull();

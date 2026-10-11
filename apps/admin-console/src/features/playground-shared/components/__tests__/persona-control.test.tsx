@@ -194,6 +194,19 @@ describe('PersonaControl', () => {
     expect(calls.filter((c) => c.url.includes('/api/hope/admin/users')).length).toBe(1);
   });
 
+  it('BUG-022: while impersonating, "Stop acting" is visible next to the trigger without opening the picker', () => {
+    stubFetch();
+    renderWithProviders(<PersonaControl session={session({ impersonatingUserId: 'doc-9', impersonatingUsername: 'dr-smith' })} />);
+    expect(screen.getByRole('button', { name: /stop acting/i })).toBeDefined();
+    expect(screen.queryByPlaceholderText(/search users to act as/i)).toBeNull();
+  });
+
+  it('BUG-022: no "Stop acting" when acting as yourself', () => {
+    stubFetch();
+    renderWithProviders(<PersonaControl session={session()} />);
+    expect(screen.queryByRole('button', { name: /stop acting/i })).toBeNull();
+  });
+
   it('revoke flow: "Stop acting" POSTs revoke and refreshes', async () => {
     const calls = stubFetch();
     renderWithProviders(<PersonaControl session={session({ impersonatingUserId: 'doc-9', impersonatingUsername: 'dr-smith' })} />);

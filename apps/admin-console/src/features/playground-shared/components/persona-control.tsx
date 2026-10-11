@@ -182,22 +182,16 @@ export function PersonaControl({ session }: { session: SafeSession }) {
                 </>
               ) : null}
             </CommandList>
-            {impersonating ? (
-              <div className="border-t p-1.5">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="w-full"
-                  disabled={pending}
-                  onClick={() => void runSessionAction('/api/auth/revoke-impersonation')}
-                >
-                  Stop acting
-                </Button>
-              </div>
-            ) : null}
           </Command>
         </PopoverContent>
       </Popover>
+      {/* BUG-022 — visible beside the trigger, not buried in the picker: while acting as a
+          clinician the nav narrows to that clinician's, and this is the way back. */}
+      {impersonating ? (
+        <Button variant="destructive" size="sm" className="shrink-0" disabled={pending} onClick={() => void runSessionAction('/api/auth/revoke-impersonation')}>
+          Stop acting
+        </Button>
+      ) : null}
       {underAdmin}
     </div>
   );

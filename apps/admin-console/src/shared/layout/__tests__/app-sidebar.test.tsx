@@ -123,6 +123,15 @@ describe('AppSidebar — scoped to the active domain', () => {
     expect(screen.queryByRole('link', { name: 'DNA writing styles' })).toBeNull();
   });
 
+  it('keeps the Playground nav for an impersonated clinician on a playground screen (BUG-022)', async () => {
+    usePathnameMock.mockReturnValue('/playground/consultation');
+    renderInShell(<AppSidebar />, { ...NARROW_TENANT_FIXTURE, roles: ['DOCTOR'] });
+
+    const active = await screen.findByRole('link', { name: 'Consultation Scribe' });
+    expect(active.getAttribute('aria-current')).toBe('page');
+    expect(within(scopedNav('Playground')).getAllByRole('link')).toHaveLength(5);
+  });
+
   it('renders the frame for a domain with exactly one visible route, with that route selected (Open Question)', async () => {
     usePathnameMock.mockReturnValue('/consultations');
     renderInShell(<AppSidebar />, NARROW_TENANT_FIXTURE);

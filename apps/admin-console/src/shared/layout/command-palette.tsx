@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Kbd } from '@arcaai/ui/components/shadcn/kbd';
-import { usePermissions } from '@/shared/auth/hooks';
+import { usePermissions, useSession } from '@/shared/auth/hooks';
 import { useFeatureGates } from '@/shared/feature-gates/use-feature-gates';
 import { NAV_SECTIONS, visibleNavEntries, visibleUserMenuEntries } from '@/shared/navigation/nav-config';
 
@@ -20,11 +20,14 @@ export function CommandPalette() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { data: rules } = usePermissions();
+  const { data: session } = useSession();
   const { gates } = useFeatureGates();
   // /developer and /account left NAV_ENTRIES for the user menu,
   // but they are still screens a user jumps to — keep them searchable here, or the
   // nav reorganisation silently removes two routes from ⌘K.
-  const entries = [...visibleNavEntries(rules, undefined, gates), ...visibleUserMenuEntries(rules)];
+  // BUG-022 — the EFFECTIVE roles, as the sidebar passes them: with none, every
+  // role-judged tier (10-19) vanished from ⌘K even for a super admin.
+  const entries = [...visibleNavEntries(rules, session?.effectiveUser.roles, gates), ...visibleUserMenuEntries(rules)];
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

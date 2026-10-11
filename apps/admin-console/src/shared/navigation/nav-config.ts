@@ -994,12 +994,12 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
 
   // ---------------------------------------------------------------------
-  // Playground — tier 50-59 only (approved 2026-07-06; moved into the console
-  // shell under (console)/(tenant)). End-user demo planes run under the
-  // admin's OWN account, so the backend guards are plain @Authorize() —
-  // visibility is role-gated (SUPER_ADMIN or TENANT_ADMIN) via
-  // visibleNavEntries, mirroring the (tenant) tier guard. Labels reconciled
-  // to the page titles: nav = breadcrumb = title.
+  // Playground — tier 50-59 (approved 2026-07-06). End-user demo planes run
+  // under the caller's OWN (or impersonated) account, so the backend guards
+  // are plain @Authorize() and `(console)/playground` admits every signed-in
+  // caller (TASK-890 J5). BUG-022: the nav no longer role-gates the tier
+  // either — an impersonated clinician kept the screen but lost its nav.
+  // Labels reconciled to the page titles: nav = breadcrumb = title.
   // ---------------------------------------------------------------------
   {
     route: '/playground/consultation',
@@ -1102,11 +1102,6 @@ export const USER_MENU_ENTRIES: readonly UserMenuEntry[] = [
  */
 const ALL_ROUTE_ENTRIES: readonly NavRouteEntry[] = [...NAV_ENTRIES, ...USER_MENU_ENTRIES];
 
-/** The playground audience — mirrors the (console)/(tenant) tier guard. */
-function isAdminTier(roles: readonly string[] | null | undefined): boolean {
-  return isElevated(roles) || !!roles?.includes('TENANT_ADMIN');
-}
-
 /** The one ability gate every nav surface shares: ANY granted pair, or any authenticated caller. */
 function isGranted(rules: readonly PermissionRule[] | null | undefined, entry: NavRouteEntry): boolean {
   return entry.required.length === 0 ? !!rules : canAny(rules, entry.required);
@@ -1131,8 +1126,8 @@ export function matchNavEntry(pathname: string, entries: readonly NavRouteEntry[
 /**
  * Implemented entries the caller's ability grants, in declaration order.
  *
- * Two tiers carry a ROLE check the ability rules alone cannot express, and
- * each mirrors the route-group guard that would otherwise 404 the click:
+ * Tier 10-19 carries a ROLE check the ability rules alone cannot express,
+ * mirroring the route-group guard that would otherwise 404 the click:
  *
  *  - tier 10-19 needs an ELEVATED role, exactly as `(console)/(global)/layout.tsx`
  *    demands (TASK-954). Before this, a tier-10-19 entry was ability-gated
@@ -1141,7 +1136,10 @@ export function matchNavEntry(pathname: string, entries: readonly NavRouteEntry[
  *    `read:AuditLog` → Audit logs, `read:TenantTelemetry` → Monitoring and
  *    Releases while they were 10-19) — so a tenant admin's rail listed platform
  *    screens that every one 404'd.
- *  - tier 50-59 needs an admin role, mirroring `(console)/(tenant)/layout.tsx`.
+ *
+ * Tier 50-59 (playground) has NO role check (BUG-022): its routes admit every
+ * signed-in caller, and its entries' empty ability gate shows them to anyone
+ * whose permissions have loaded.
  *
  * `roles` must be the EFFECTIVE identity's roles (the impersonated target's
  * while impersonating), the same identity the route groups judge.
@@ -1154,7 +1152,6 @@ export function visibleNavEntries(
   return NAV_ENTRIES.filter((entry) => {
     if (!entry.implemented) return false;
     if (entry.tier === '10-19' && !isElevated(roles)) return false;
-    if (entry.tier === '50-59' && !isAdminTier(roles)) return false;
     if (!isGateOpen(entry, gates)) return false;
     return isGranted(rules, entry);
   });

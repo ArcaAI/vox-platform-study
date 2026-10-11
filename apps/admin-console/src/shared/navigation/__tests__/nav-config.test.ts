@@ -174,7 +174,7 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
     expect(byTier('50-59').every((entry) => entry.implemented)).toBe(true);
   });
 
-  it('routes every playground entry under /playground; all five demo planes keep an empty ability gate (role-gated instead)', () => {
+  it('routes every playground entry under /playground; all five demo planes keep an empty ability gate (open to every signed-in caller, BUG-022)', () => {
     const playground = NAV_ENTRIES.filter((entry) => entry.tier === '50-59');
     expect(playground.map((entry) => entry.route)).toEqual([
       '/playground/consultation',
@@ -304,17 +304,19 @@ describe('visibleNavEntries', () => {
     expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN).some((entry) => entry.tier === '10-19')).toBe(true);
   });
 
-  it('shows an authenticated user with zero grants nothing in the rail', () => {
-    // Every rail route is now ability-gated: /account was the one ungated entry
-    // and moved it to the user menu, where it still renders.
-    expect(visibleNavEntries([]).map((entry) => entry.route)).toEqual([]);
+  it('shows an authenticated user with zero grants only the playground in the rail', () => {
+    // Every other rail route is ability-gated: /account was the one ungated entry
+    // and moved to the user menu, where it still renders. BUG-022 — the playground
+    // (empty ability gate, routes open to every signed-in user) is the exception.
+    expect(visibleNavEntries([]).map((entry) => entry.route)).toEqual(['/playground/consultation', '/playground/live-transcription', '/playground/voice-profiles', '/playground/dna-writing-style', '/playground/llm']);
     expect(visibleUserMenuEntries([]).map((entry) => entry.route)).toEqual(['/account']);
   });
 
-  it('hides the playground tier from non-admin roles even though its ability gate is empty', () => {
-    const visible = visibleNavEntries([], ['DOCTOR']).map((entry) => entry.route);
-    expect(visible).toEqual([]);
-    expect(visibleNavEntries([]).some((entry) => entry.tier === '50-59')).toBe(false);
+  it('shows the playground tier to any signed-in role — the nav matches what the route group allows (BUG-022)', () => {
+    // An impersonated clinician kept the Playground screen but lost its nav, because tier 50-59
+    // was role-gated here while `(console)/playground` admits every signed-in caller (TASK-890 J5).
+    expect(visibleNavEntries([], ['DOCTOR']).map((entry) => entry.route)).toEqual(['/playground/consultation', '/playground/live-transcription', '/playground/voice-profiles', '/playground/dna-writing-style', '/playground/llm']);
+    expect(visibleNavEntries(null, ['DOCTOR'])).toEqual([]);
   });
 
   it('shows nothing while permissions are unknown', () => {
@@ -839,12 +841,13 @@ describe('visibleNavDomains (AC-3)', () => {
 
   it('hides a domain whose only routes the caller cannot see', () => {
     const clinicalOnly: PermissionRule[] = [{ action: 'manage', subject: 'Consultation' }];
-    expect(visibleNavDomains(clinicalOnly, ['DOCTOR']).map((domain) => domain.id)).toEqual(['clinical']);
+    // BUG-022 — the playground domain is reachable by every signed-in caller.
+    expect(visibleNavDomains(clinicalOnly, ['DOCTOR']).map((domain) => domain.id)).toEqual(['clinical', 'playground']);
   });
 
-  it('honours the playground role check, not just the ability gate', () => {
+  it('shows the playground domain to clinicians as well as admins (BUG-022)', () => {
     const workflowRules: PermissionRule[] = [{ action: 'manage', subject: 'WorkflowDefinition' }];
-    expect(visibleNavDomains(workflowRules, ['DOCTOR']).map((domain) => domain.id)).not.toContain('playground');
+    expect(visibleNavDomains(workflowRules, ['DOCTOR']).map((domain) => domain.id)).toContain('playground');
     expect(visibleNavDomains(workflowRules, ['TENANT_ADMIN']).map((domain) => domain.id)).toContain('playground');
   });
 
@@ -922,7 +925,9 @@ describe('domainLandingRoute (Open Question — a rail click always navigates)',
   });
 
   it('returns undefined for a domain with nothing visible', () => {
-    expect(domainLandingRoute('playground', visibleNavEntries([{ action: 'read', subject: 'AuditLog' }], ['DOCTOR']))).toBeUndefined();
+    expect(domainLandingRoute('platform-ops', visibleNavEntries([{ action: 'read', subject: 'AuditLog' }], ['DOCTOR']))).toBeUndefined();
+    // BUG-022 — the playground is visible to a clinician, so it lands on its first screen.
+    expect(domainLandingRoute('playground', visibleNavEntries([{ action: 'read', subject: 'AuditLog' }], ['DOCTOR']))).toBe('/playground/consultation');
   });
 });
 
