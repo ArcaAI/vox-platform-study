@@ -211,6 +211,8 @@ interface TextCallPayload {
   consultationId?: string | null;
   /** TASK-1050 — the context items behind each data region of the assembled prompt (guardrail attribution). */
   regionItems?: GuardrailRegionItems | null;
+  /** TASK-1062 D-5.1 — the composed-prompt record's phase; absent = `finalize`. */
+  phase?: 'pre-summary' | 'finalize';
 }
 
 type TextCallResult = LegacyTextSummaryResponse & {
@@ -572,6 +574,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       options: request.options,
       departmentId: consultation.departmentId,
       consultationId: consultation.id,
+      phase: 'pre-summary',
       regionItems: caseNoteRegionItems(caseNotes, duplicated),
       context: {
         dnaStyleId: request.dnaStyleId,
@@ -1803,7 +1806,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, {
       deploymentKind: deploymentKind ?? null,
       consultationId: payload.consultationId ?? null,
-      phase: 'finalize',
+      phase: payload.phase ?? 'finalize',
       // TASK-1050 — guardrail attribution. The PRE_SUMMARY item the output becomes is created only
       // after the response, so no `response_items` can be named here.
       agentSlug: agentSlug ?? null,
