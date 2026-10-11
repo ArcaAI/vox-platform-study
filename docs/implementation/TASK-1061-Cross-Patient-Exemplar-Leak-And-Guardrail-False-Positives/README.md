@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending — awaiting owner decisions OD-1..OD-5 and **go** |
+| Status | In Progress — owner accepted OD-1..OD-5 defaults, go 2026-10-11 |
 | Type | bugfix (clinical safety) |
 | Branch | dev-2.2 |
 | Source | [TASK-1059 acceptance](../TASK-1059-Realtime-Path-And-Guardrail-Fixes-From-1058-E2E/README.md) §"Open after acceptance" N-1, N-3 |
@@ -72,7 +72,7 @@
 |---|---|---|---|
 | X exemplars | opus | `consultation/prompt/prompt-assembly.service.ts`, `style-reference.ts`, few-shot exemplar service | N-1 per OD-1/OD-2 + regression tests |
 | G guardrail | opus | guardrail `services/screening.py`, `core/policy.py`, `core/availability.py`, seed policy rows | N-3 per OD-4/OD-5 + tests |
-| M measure | sonnet | `.e2e-tools/t1061/` only | FP bench before/after (no model load beyond what is resident) |
+| A audit | sonnet | read-only (cluster SQL SELECT + Loki) | OD-3: find PRE_SUMMARY / live snapshot items with exemplar-derived content; report only |
 
 Then: orchestrator gate once, deploy with owner OK, cluster re-run of TASK-1059 AC1 (×3) and AC2 workflow runs.
 
@@ -91,3 +91,4 @@ _(pending go)_
 
 ## Change History
 - 2026-10-11 — opened from TASK-1059 acceptance (N-1, N-3); plan + OD-1..OD-5 proposed.
+- 2026-10-11 — owner: accept OD-1..OD-5 defaults, go. Measurement lane dropped (a local classifier bench would load models); FP rates measured from cluster logs after deploy instead.
