@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **Review** — all lanes + review fixes merged on `dev-2.2` (not pushed) and deployment local `main` (not pushed); final gate green; cluster e2e pending the owner's push + promotion (§7.4) |
+| Status | **Completed** — all waves deployed to dev and verified on the cluster (§8–§10.8); dark and light themes reviewed on `/model-residency` (2026-10-11) |
 | Type | bugfix + feature (gateway, residency agents, LM Studio pod, console, deployment repo) |
 | Branch | `dev-2.2` (lanes in worktrees, merged by the orchestrator) · `main` in `hope-v2-deployment` |
 | Builds on | TASK-1005 (residency controller), TASK-1051 (screen redesign) — both in Review |
@@ -462,6 +462,7 @@ CI note: the `uv.lock` change of TASK-1060 forced a cold `llama-cpp-python` comp
 
 | Date | Change |
 |---|---|
+| 2026-10-11 | Light-mode review of `/model-residency` (screen, CPU/GPU panels, models table, Load dialog, blocked-load dialog: text contrast ≥ 7:1). Status **Completed**. |
 | 2026-10-11 | Follow-ups 1–3 fixed and verified on the cluster (§10.8); follow-up 4 retracted. |
 | 2026-10-10 | Wave 3 pushed (owner: push all 51 incl. TASK-1057) — CI #1429 green, deployment `15abac6`; cluster e2e §10.7 passed G1/G2/G3; Prompt Guard 2 published (`hope-models-publish-pg2c`) and screening restored (guard/classify 649× 200). Follow-ups 1–4 recorded. Status Review. |
 | 2026-10-10 | Wave 3 merged locally (6 lanes + text agent-URL fix), gate green for this wave (§10.5); prompt-screening incident root-caused (§10.6), owner chose to publish Prompt Guard 2; all deploys on hold for the TASK-1058 e2e. |
