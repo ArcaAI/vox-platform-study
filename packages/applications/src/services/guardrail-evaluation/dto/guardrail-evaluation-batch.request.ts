@@ -31,6 +31,7 @@ import {
   GUARDRAIL_NOTICE_SCHEMA_VERSION,
   GUARDRAIL_NOTICE_SEVERITIES,
   GUARDRAIL_NOTICE_TYPES,
+  GUARDRAIL_REGION_TRUSTS,
   type GuardrailActionTaken,
   type GuardrailCaller,
   type GuardrailCheckId,
@@ -54,6 +55,17 @@ export class GuardrailEvaluationItemRefRequest {
   @ApiProperty() @IsInt() @Min(1) itemVersion!: number;
 }
 
+/** TASK-1063 5b — one flagged region of a check: keys and labels only, never text. */
+export class GuardrailEvaluationFlaggedRegionRequest {
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(256) key!: string;
+  @ApiPropertyOptional({ enum: GUARDRAIL_REGION_TRUSTS, nullable: true })
+  @IsOptional()
+  @IsIn(GUARDRAIL_REGION_TRUSTS as unknown as string[])
+  trust?: (typeof GUARDRAIL_REGION_TRUSTS)[number] | null;
+  @ApiProperty() @IsString() @MaxLength(128) label!: string;
+  @ApiPropertyOptional({ type: Number, nullable: true }) @IsOptional() @IsNumber() @Min(0) @Max(1) score?: number | null;
+}
+
 export class GuardrailEvaluationCheckRequest {
   @ApiProperty({ enum: GUARDRAIL_CHECK_IDS }) @IsIn(GUARDRAIL_CHECK_IDS as unknown as string[]) checkId!: GuardrailCheckId;
   @ApiProperty({ enum: GUARDRAIL_CHECK_VERDICTS }) @IsIn(GUARDRAIL_CHECK_VERDICTS as unknown as string[]) verdict!: GuardrailCheckVerdict;
@@ -74,6 +86,15 @@ export class GuardrailEvaluationCheckRequest {
   @ValidateNested({ each: true })
   @Type(() => GuardrailEvaluationItemRefRequest)
   items!: GuardrailEvaluationItemRefRequest[];
+  @ApiPropertyOptional({
+    type: () => [GuardrailEvaluationFlaggedRegionRequest],
+    description: 'TASK-1063: per-region detail of a flag (keys and labels only).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => GuardrailEvaluationFlaggedRegionRequest)
+  flaggedRegions?: GuardrailEvaluationFlaggedRegionRequest[];
 }
 
 export class GuardrailNoticeCheckRequest {
