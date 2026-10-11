@@ -209,6 +209,18 @@ class EffectiveConfigSnapshot:
             return None
         return _positive_int(group.get("parallel"))
 
+    def lm_studio_live_lane_slots(self) -> int | None:
+        """The live lane's LM Studio budget, ``lmStudioServing.liveLaneSlots`` (TASK-1062).
+
+        `lmStudio.serving.liveLaneSlots` (platform admin): the permits reserved for
+        generations marked ``X-Hope-Lane: live``. Absent / null / invalid is
+        "no opinion" -> None.
+        """
+        group = self.raw.get("lmStudioServing")
+        if not isinstance(group, dict):
+            return None
+        return _positive_int(group.get("liveLaneSlots"))
+
     def lm_studio_agent_url(self) -> str | None:
         """The LM Studio residency agent, ``lmStudioServing.agentUrl`` (TASK-1055 wave 3).
 

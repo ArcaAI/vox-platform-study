@@ -121,6 +121,6 @@ describe('TASK-1055 wave 3 — service=lmstudio serves a profile for every enabl
   });
 
   it('does not serve profiles to text', async () => {
-    expect((await serviceWith(repoStub([GEMMA])).resolveForService('text')).lmStudioServing).toEqual({ parallel: 10 });
+    expect((await serviceWith(repoStub([GEMMA])).resolveForService('text')).lmStudioServing).toEqual({ parallel: 10, liveLaneSlots: 2 });
   });
 });

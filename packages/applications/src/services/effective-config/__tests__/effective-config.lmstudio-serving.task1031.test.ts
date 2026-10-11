@@ -173,9 +173,11 @@ describe('TASK-1031 — service=lmstudio: the boot serving plan', () => {
 
 describe('TASK-1031 — service=text: the lm-studio concurrency', () => {
   it('serves the effective lmStudio.serving.parallel, and nothing else of the plan', async () => {
-    expect((await serviceWith().resolveForService('text')).lmStudioServing).toEqual({ parallel: 8 });
+    // TASK-1062 D-2 A — plus the live lane's reserved share (effective-config.live-lane-slots.task1062.test.ts).
+    expect((await serviceWith().resolveForService('text')).lmStudioServing).toEqual({ parallel: 8, liveLaneSlots: 2 });
     expect((await serviceWith(settingsStub({ 'lmStudio.serving.parallel': 12 })).resolveForService('text')).lmStudioServing).toEqual({
       parallel: 12,
+      liveLaneSlots: 2,
     });
   });
 

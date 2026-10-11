@@ -236,6 +236,11 @@ export interface EffectiveLmStudioServingPlan {
 export interface EffectiveLmStudioServingConcurrency {
   parallel: number;
   /**
+   * TASK-1062 D-2 A — `lmStudio.serving.liveLaneSlots`, clamped to `[1, parallel]`: the permits text
+   * reserves for generations marked `X-Hope-Lane: live`. The user lane keeps `parallel - liveLaneSlots`.
+   */
+  liveLaneSlots: number;
+  /**
    * TASK-1055 wave 3 — the LM Studio residency agent (the gateway's `LMSTUDIO_AGENT_URL`). Text asks
    * it to ensure a model is loaded, with the model's serving profile, before each request. Omitted
    * when the gateway has none.
