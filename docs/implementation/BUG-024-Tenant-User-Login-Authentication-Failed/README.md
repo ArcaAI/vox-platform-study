@@ -91,6 +91,10 @@ Evidence:
 
 Follow-up (not done): the `LoginRequest.tenantKey` `@ApiProperty` description still says "Tenant key"; updating it means regenerating the committed OpenAPI/portal artifacts — left for a quiet tree. The reporter's cluster tenant should still be checked for an enabled role + department for `homeo_doc` (a different, distinct 401).
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Verified: the login form label reads "Tenant key or ID (optional for super admins)", and a bad password with an unknown tenant still answers 401 (the 400 "Invalid or disabled tenant" is only reachable after a valid password). **Outstanding:** a real login as a newly created tenant user with its tenant key/ID. That needs real credentials on the cluster host, which only the owner may enter. Status stays Review until then.
+
 ## Change History
 
 | Date | Change |

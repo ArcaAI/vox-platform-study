@@ -1,6 +1,6 @@
 # BUG-025 — Consultation Scribe: Pre-summary panel fills with the live note after Stop
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** bugfix
 - **Source:** https://github.com/ArcaAI/project-hope/issues/25 (JayaramNambiar, 2026-09-30; labels `bug`, `Playground`)
 - **Severity:** Medium (clinician-visible mislabelling of AI content; no data loss)
@@ -66,7 +66,13 @@ Evidence:
 
 Not done: whether live snapshots should stop being stored as PRE_SUMMARY at all (owner chose the filter).
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+`GET consultations/01a121a4-…/summary/pre-summary/latest` (a consultation whose only PRE_SUMMARY is a `LIVE_SOAP_SNAPSHOT`) → 404 "No pre-summary has been generated yet". The live note is no longer served as the pre-summary.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 
 - 2026-10-06 — Ticket created from GitHub issue #25 (read-only investigation).
 - 2026-10-11 — Fixed (live snapshot filtered out of latest pre-summary; clearer refused-cancel message); tests, typecheck, lint, live API check green. Status Review.

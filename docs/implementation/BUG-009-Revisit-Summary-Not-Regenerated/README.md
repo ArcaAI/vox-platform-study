@@ -1,6 +1,6 @@
 # BUG-009 — Consultation Scribe revisit: old summary shown, no "Generate summary" action
 
-- **Status:** Pending
+- **Status:** Completed
 - **Type:** bugfix (UI + application service `open`)
 - **Source:** https://github.com/ArcaAI/project-hope/issues/9 (NeenaPanicker, 2026-09-28; no labels, no comments as of 2026-10-10)
 - **Severity:** High / Blocker (per reporter)
@@ -112,7 +112,13 @@ Independent re-check on `dev-2.2`; the analysis above holds. Additional findings
 
 Not started.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Revisit naming the APPROVED visit → 201, new linked consultation `01a12a56-26aa…`. Before the fix this was 409 `CONSULTATION_APPROVED`. The parent is `CLOSED_COMPLETE` with its signature and RAW_SUMMARY kept. Revisit naming the STOPPED visit → new `01a12a56-2e23…`, parent `CLOSED_INCOMPLETE`. A retry returns the same child (`isNew:false`). Meets the expectation: the revisit gets its own consultation and note.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 
 - 2026-10-10 — Ticket scaffolded from GitHub issue #9 (no investigation yet).
 - 2026-10-10 — Read-only investigation: backend open-key match beats a named parent (APPROVED parent → 409 / parent returned) and console hides Generate whenever the harness ever reported stages; plan + owner decisions OD-1..OD-3 recorded. Status stays Pending.

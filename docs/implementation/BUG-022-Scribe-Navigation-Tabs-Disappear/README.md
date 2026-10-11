@@ -1,6 +1,6 @@
 # BUG-022 — Consultation Scribe: navigation tabs vanish after selecting tenant and user
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** bugfix (UI / layout)
 - **Source:** https://github.com/ArcaAI/project-hope/issues/22 (NeenaPanicker, 2026-09-30; no labels)
 - **Severity:** High (layout/usability regression, per reporter)
@@ -85,7 +85,13 @@ Found during the live check, NOT fixed here (separate regression, TASK-1057's ar
 
 **Follow-up fix (owner asked, 2026-10-11):** `persona-control.tsx` now opens the shared `ConfirmDialog` with `reasonActionId: 'impersonation.start'` when a user is picked (same policy-driven Reason field as the Users screen; confirm disabled until the policy is satisfied) and POSTs `{ userId, reason }`. A refused switch is now shown as an error toast (the response was previously ignored and the layout refreshed as if it had worked), and the dialog stays open with the typed reason. Tests: the two impersonate flows go through the dialog and assert the posted body; a 400 shows the gateway message, does not refresh, keeps the reason. `vitest run src/features/playground-shared` → 25 passed; tsc exit 0; eslint exit 0. Live: picker → doctor_med → dialog (Reason *, button disabled) → reason typed → Act as user → "Acting as «doctor_med»" + Stop acting, Playground nav kept; AuditLog `IMPERSONATION` row carries the reason; Stop acting → "Acting as yourself".
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Console as super_admin in ArcaAI → Playground picker → `arcaai_doctor_bren`. Impersonation started with no reason prompt (default reason "Impersonation"). The Playground nav kept all five entries, "Stop acting" is visible beside the picker, and the doctor's consultations load. Impersonation revoked afterwards.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 
 - 2026-10-10 — Ticket scaffolded from GitHub issue #22 (no investigation yet).
 - 2026-10-10 — Read-only investigation: root cause (effective-role nav filtering of tier 50-59 vs clinician-reachable route), TDD plan and owner decisions recorded. Status unchanged (Pending).

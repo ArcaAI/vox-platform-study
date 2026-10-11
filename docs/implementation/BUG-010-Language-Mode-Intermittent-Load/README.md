@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review (fix already landed in ALaaS `7d1bcdb`; verified live 2026-10-11, see Implementation Summary) |
+| Status | Completed |
 | Type | bugfix |
 | Source | https://github.com/ArcaAI/project-hope/issues/10 |
 | Reporter / date | NeenaPanicker, 2026-09-29 |
@@ -124,6 +124,10 @@ temporary worktree `ALaaSv3.0-bug010-relay` and branch `bug-010/relay-retry` wer
 `hope-v2-deployment` untouched. The `ALaaSv3.0-e2e-1053` worktree is another session's live E2E tree (running dev
 servers, detached HEAD) and was left alone.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Main-checkout ALaaS web_ui (`490591d`) against the relay on :4000 → `api.taphuynh.dev`. Failure path (CORS-refused origin): the picker shows "Couldn't load modes. The default language will be used." and a Retry button; no endless "Loading modes…"; Start is not gated on modes. Healthy path: relay `language-modes` 200 ×3 (0.12–0.41 s) with the cluster catalog.
+
 ## Change History
 
 | Date | Change |
@@ -131,3 +135,4 @@ servers, detached HEAD) and was left alone.
 | 2026-10-06 | Created from GitHub issue #10 (read-only triage). |
 | 2026-10-11 | Verified live against local ALaaS + deployed cluster; found the reporter's screen already fixed by ALaaS `7d1bcdb`; status → Review; corrected the component analysis. |
 | 2026-10-11 | Added the relay-adapter retry (ALaaS `aabf749`, plan item 4); worktree + branch removed after merge. |
+| 2026-10-11 | Final verification against the deployed cluster passed (main-checkout web_ui `490591d` failure path + relay healthy path); status Completed. |

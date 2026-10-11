@@ -1,6 +1,6 @@
 # BUG-017 — Vox/ALaaS UI: unexpected "attached to existing consultation" / "clinician account provisioned" banners
 
-- **Status:** Completed (fix in the ALaaS repo, commit f5f9ee6; verified live 2026-10-10; no hope-v2 change)
+- **Status:** Completed
 - **Type:** bugfix (UI, lives in a sibling repo)
 - **Source:** https://github.com/ArcaAI/project-hope/issues/17 (NeenaPanicker, 2026-09-29; no labels)
 - **Severity:** Low
@@ -58,7 +58,13 @@ Side observations, out of scope: the reattached consultation then hit a guardrai
 
 Landing: no code changed in any repo for this verification — `hope-v2` carries only this README (`dev-2.2`), `hope-v2-deployment` (`main`) and `ALaaSv3.0` (`refactor-hope-integaration`, fix already at `f5f9ee6`) are untouched; no worktree or branch was created by this work.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Re-verified against the cluster earlier on 2026-10-11 (see Implementation Summary): no provisioning banner; the reattach notice appears only on a real reattach and can be dismissed. Nothing further to change.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 
 - 2026-10-06 — Ticket created from GitHub issue #17 (read-only investigation).
 - 2026-10-10 — Verified live end to end and comment posted on the GitHub issue; status Completed.

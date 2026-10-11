@@ -1,6 +1,6 @@
 # BUG-027 — Workflow Studio: duplicate agent entries (one per version) in the `core.agent` picker
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** bugfix
 - **Source:** https://github.com/ArcaAI/project-hope/issues/27 (JayaramNambiar, 2026-09-30; labels `bug`, `Knowledge & Agents`)
 - **Severity:** Medium (cannot tell entries apart; trigger text corrupts; risk of binding the wrong version)
@@ -61,7 +61,13 @@ Evidence:
 
 Note for the reporter: duplicate slugs are versions of one agent by design (`(tenant, slug, versionNumber)` unique, one active per slug) — slug uniqueness was never the defect.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+`GET admin/agents` returns 32 rows / 30 slugs (duplicate versions of `casenote-finalization`, `fact-ledger-extraction`). The Workflow Studio agent picker on the Case note finalization node lists 29 options, each slug exactly once.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 
 - 2026-10-06 — Ticket created from GitHub issue #27 (read-only investigation).
 - 2026-10-11 — Fixed (active PUBLISHED version per slug, others hidden); tests, typecheck, lint, live console check green. Status Review.

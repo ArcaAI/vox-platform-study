@@ -1,6 +1,6 @@
 # BUG-026 — Live Transcription: duplicate "Start session" buttons in idle state
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** bugfix (UI)
 - **Source:** https://github.com/ArcaAI/project-hope/issues/26 (JayaramNambiar, 2026-09-30; labels `bug`, `Playground`)
 - **Severity:** Low
@@ -51,7 +51,13 @@ Evidence:
 - `tsc --noEmit` (admin-console) exit 0; `eslint` on both changed files exit 0.
 - Running console (`stack:dev -- api admin`, tenant_admin @ Global): Streaming tab idle → 1 Start (empty state), 0 Stop, no header action, no console errors; Batch upload tab → 0 Start. Streaming itself not exercised in the browser pane (mic blocked there); covered by the unit test.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+`/playground/live-transcription` idle: exactly one visible "Start session" button (in the empty state); none in the header.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 
 - 2026-10-06 — Ticket created from GitHub issue #26 (read-only investigation).
 - 2026-10-11 — Fixed (option A + header Stop removed); tests, typecheck, lint, live console check green. Status Review.

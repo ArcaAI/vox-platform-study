@@ -1,6 +1,6 @@
 # BUG-023 — Playground user-selection dropdown shows no scrollbar, list looks truncated
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** bugfix (UI)
 - **Source:** https://github.com/ArcaAI/project-hope/issues/23 (NeenaPanicker, 2026-09-30; no labels)
 - **Severity:** Medium
@@ -78,7 +78,13 @@ Evidence:
 
 Not changed: the list still includes users that cannot be impersonated (e.g. `service_account`), and search still matches only username/externalId.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Picker shows "Showing 8 of 10 — type to narrow" and "Load more". After Load more: 10 users, all unique (no page-0 duplicate). The list is `max-h-[300px] overflow-y-auto` with the webkit scrollbar styling (no `scrollbar-width` override), so a visible scrollbar appears whenever the list overflows.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 
 - 2026-10-10 — Ticket scaffolded from GitHub issue #23 (no investigation yet).
 - 2026-10-10 - Read-only investigation: root cause identified (client `limit: 8` cap in persona-control.tsx with no pagination, plus no visible scrollbar affordance in `CommandList`); plan and owner decisions D1/D2 recorded.

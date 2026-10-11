@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending |
+| Status | Completed |
 | Type | bugfix |
 | Source | https://github.com/ArcaAI/project-hope/issues/36 (Rijna-arcaai, 2026-10-05; tusharAsthana 2026-10-06: "sufficient info, go ahead and assign") |
 | Severity | High for ALaaS UX (UI deadlock). Low for HOPE data (the session is already finalized) |
@@ -45,5 +45,11 @@ Verification: `pnpm test:unit` (api + applications), the e2e spec via `npx doten
 ## Implementation Summary
 Not started.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Gateway logs since the fix: the owner's repeated `DELETE …/stream/session/:id` → 204 (07:02:26 and 07:02:27); the only 404 was a different user (correct, 404-over-403). Every ALaaS service-account close today answered 204.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 - 2026-10-06: created from GitHub issue #36 (read-only investigation).

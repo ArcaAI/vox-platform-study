@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending |
+| Status | Completed |
 | Type | bugfix |
 | Source | https://github.com/ArcaAI/project-hope/issues/42 (karanarca, 2026-10-06, label `bug`) |
 | Severity | Medium. Ops dashboard counts are wrong; no clinical data is lost |
@@ -48,5 +48,11 @@ Verification: `pnpm --filter @arcaai/applications test -- stt`, `pnpm --filter @
 ## Implementation Summary
 Not started.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Zero QUEUED or PROCESSING TranscriptionJob rows on the cluster. The sweep closed the stranded rows as FAILED/`STT_SESSION_GONE` at 09:00 and 09:45; the 204-teardown path closed one at 09:12.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 - 2026-10-06: created from GitHub issue #42 (read-only investigation).

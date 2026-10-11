@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review |
+| Status | Completed |
 | Type | bugfix |
 | Source | https://github.com/ArcaAI/project-hope/issues/28 |
 | Reporter / date | JayaramNambiar, 2026-09-30 |
@@ -73,6 +73,10 @@ Evidence:
 - `pnpm api:build` exit 0; `eslint` on the validator and controller exit 0.
 - Live, `POST /api/v1/voice-profiles/enroll` as tenant_admin @ Global against the running gateway: real WebM/Opus (ffmpeg from the cardiology fixture) declared `audio/webm;codecs=opus` → passes validation, reaches the service → 409 `ASR_AGENT_DIARIZATION_DISABLED`; same file declared `video/webm` → 400; JPEG declared `audio/webm` → 400.
 - Not proven live: a full 201 enrollment. It needs a published STT agent with `audioFrontEnd.diarization.enabled` in the tenant (config change) and the embedding model loaded (owner approval) — the separate 409 gate above, unchanged by this fix.
+
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Acting as `arcaai_doctor_bren`: a browser-recorded `audio/webm` sample (MediaRecorder, 23 KB) passes the type check and reaches the next gate (409 `ASR_AGENT_DIARIZATION_DISABLED`; diarization is off in ArcaAI, so no model ran). A `text/plain` upload → 400 "expected an audio recording". The webm is no longer rejected.
 
 ## Change History
 

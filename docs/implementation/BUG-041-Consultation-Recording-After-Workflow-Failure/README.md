@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending |
+| Status | Completed |
 | Type | bugfix |
 | Source | https://github.com/ArcaAI/project-hope/issues/41 (karanarca, 2026-10-06, label `bug`) |
 | Severity | Medium. 232 sessions show the wrong state; downstream lists and filters are misled |
@@ -49,5 +49,11 @@ Verification: `pnpm --filter @arcaai/applications test -- consultation`, `pnpm h
 ## Implementation Summary
 Not started.
 
+## Final Verification (2026-10-11, cluster api `0.0.0-dev-2-2.b4c248f9`)
+
+Consultation list and detail show "Workflow failed" beside the status, with a plain-language reason (verified on `01a12189-2884…`). Harness `021c5d20` carries `_run_failure_cause`. No consultation is left in RECORDING; the stale-recording sweep is live.
+
 ## Change History
+
+- 2026-10-11 — Final verification against the deployed cluster passed; status Completed.
 - 2026-10-06: created from GitHub issue #41 (read-only investigation).
