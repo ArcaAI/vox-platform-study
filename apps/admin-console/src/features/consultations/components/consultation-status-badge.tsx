@@ -4,7 +4,7 @@ import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 
 import { CONSULTATION_PROCESSING, NOTE_READY_REASON, type ConsultationProcessing, type ConsultationStatus } from '@arcaai/types';
-import { normalizeConsultationStatus } from '../api/types';
+import { normalizeConsultationStatus, type GoverningRun } from '../api/types';
 
 /**
  * Seven-value lifecycle -> semantic roles (status is never color-only: the label always rides
@@ -62,21 +62,35 @@ export function consultationStatusMeta(status: string | undefined, processing?: 
   return { status: STATUS_META[normalized.status], processing: chip, reason: processingReasonMeta(reason) };
 }
 
+/**
+ * BUG-041 — a governing run that failed while the consultation is not STOPPED leaves `processing`
+ * untouched (a failed run is not a failed consultation), so without this chip a consultation that
+ * keeps recording after its workflow died reads as perfectly healthy.
+ */
+const GOVERNING_RUN_CHIP: Partial<Record<GoverningRun['status'], { label: string; role: StatusColorRole }>> = {
+  FAILED: { label: 'Workflow failed', role: 'destructive' },
+  TIMED_OUT: { label: 'Workflow timed out', role: 'warning' },
+};
+
 export function ConsultationStatusBadge({
   status,
   processing,
   processingReason,
+  governingRun,
 }: {
   status: string | undefined;
   processing?: string;
   processingReason?: string | null;
+  governingRun?: GoverningRun | null;
 }) {
   const meta = consultationStatusMeta(status, processing, processingReason);
+  const runChip = processing === 'FAILED' || !governingRun ? undefined : GOVERNING_RUN_CHIP[governingRun.status];
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <StatusBadge label={meta.status.label} colorRole={meta.status.role} icon={<StatusDot colorRole={meta.status.role} size="sm" />} />
       {meta.processing ? <StatusBadge label={meta.processing.label} colorRole={meta.processing.role} /> : null}
       {meta.reason ? <StatusBadge label={meta.reason.label} colorRole={meta.reason.role} /> : null}
+      {runChip ? <StatusBadge label={runChip.label} colorRole={runChip.role} /> : null}
     </span>
   );
 }

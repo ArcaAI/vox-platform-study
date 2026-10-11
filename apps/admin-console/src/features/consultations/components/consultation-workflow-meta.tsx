@@ -32,6 +32,25 @@ const RUN_STATUS_META: Record<GoverningRun['status'], { label: string; role: Sta
   TIMED_OUT: { label: 'Timed out', role: 'warning' },
 };
 
+/**
+ * BUG-041 — the failure reason is the run's fixed error code when the harness gave one. Each code
+ * gets its own plain sentence; free text predates the codes and came from a context mismatch.
+ */
+const FAILURE_SENTENCE: Record<string, string> = {
+  MODEL_ERROR: 'the model could not write the result (the model service failed or was busy).',
+  DOWNSTREAM_UNAVAILABLE: 'a service the workflow depends on was unavailable.',
+  OUTPUT_INVALID: "the result didn't match the workflow's declared output.",
+  NODE_TIMED_OUT: 'a step ran out of time.',
+  RUN_TIMED_OUT: 'the workflow ran out of time.',
+  GUARDRAIL_BLOCKED: 'a safety check blocked it.',
+  RUN_START_FAILED: 'the workflow could not be started.',
+};
+
+function failureSentence(reason: string | null): string {
+  if (reason && /^[A-Z][A-Z0-9_]{1,63}$/.test(reason)) return FAILURE_SENTENCE[reason] ?? 'the workflow did not finish.';
+  return "the context didn't match what the workflow accepts.";
+}
+
 function chipFor(run: GoverningRun): { label: string; role: StatusColorRole } {
   if (run.status === 'COMPLETED' && run.degraded) return { label: 'Completed with warnings', role: 'warning' };
   return RUN_STATUS_META[run.status] ?? { label: run.status, role: 'neutral' as StatusColorRole };
@@ -73,7 +92,7 @@ export function ConsultationWorkflowMeta({ run }: { run: GoverningRun | null | u
             {run.status === 'FAILED' ? (
               <>
                 <span className="text-muted-foreground text-xs">
-                  This consultation ran without its workflow. Reason: the context didn&apos;t match what the workflow accepts.
+                  {`This consultation ran without its workflow. Reason: ${failureSentence(run.failureReason)}`}
                 </span>
                 {run.failureReason ? <span className="text-muted-foreground font-mono text-xs">{run.failureReason}</span> : null}
               </>

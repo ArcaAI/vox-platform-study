@@ -108,6 +108,20 @@ describe('ConsultationWorkflowMeta', () => {
     expect(screen.getByText(/This consultation ran without its workflow/)).toBeDefined();
   });
 
+  // BUG-041 — a run that failed on a model/capacity error is not a context mismatch.
+  it.each([
+    ['MODEL_ERROR', 'Reason: the model could not write the result (the model service failed or was busy).'],
+    ['DOWNSTREAM_UNAVAILABLE', 'Reason: a service the workflow depends on was unavailable.'],
+    ['OUTPUT_INVALID', "Reason: the result didn't match the workflow's declared output."],
+    ['NODE_TIMED_OUT', 'Reason: a step ran out of time.'],
+    ['SOMETHING_NEW', 'Reason: the workflow did not finish.'],
+  ])('explains the %s error code in plain words', (code, sentence) => {
+    renderWithProviders(<ConsultationWorkflowMeta run={run({ status: 'FAILED', failureReason: code })} />);
+
+    expect(screen.getByText(`This consultation ran without its workflow. ${sentence}`)).toBeDefined();
+    expect(screen.getByText(code)).toBeDefined();
+  });
+
   it('has no axe violations in any state', async () => {
     for (const value of [null, run({ status: 'RUNNING' }), run({ degraded: true }), run({ status: 'FAILED', failureReason: 'boom' })]) {
       const { container, unmount } = renderWithProviders(

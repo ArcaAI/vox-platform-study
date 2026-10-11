@@ -131,6 +131,7 @@ function DetailBody({ id }: { id: string }) {
             status={consultation.status}
             processing={consultation.processing}
             processingReason={consultation.processingReason}
+            governingRun={consultation.governingRun}
           />
         </MetaItem>
         {/* Directly after Status, full width: which workflow governed this, and whether it worked. */}

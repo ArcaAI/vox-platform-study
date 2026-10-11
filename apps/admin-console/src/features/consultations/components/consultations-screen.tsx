@@ -247,6 +247,7 @@ function ConsultationsScreenBody() {
             status={row.original.status}
             processing={row.original.processing}
             processingReason={row.original.processingReason}
+            governingRun={row.original.governingRun}
           />
         ),
       },
