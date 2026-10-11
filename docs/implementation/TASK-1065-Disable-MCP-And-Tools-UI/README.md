@@ -35,3 +35,8 @@ Backend (`admin/mcp-servers`, harness MCP path) is untouched and still default-O
 
 ## Change History
 - 2026-10-11 — created and implemented.
+- 2026-10-11 — deployed via pipeline #1456 (Argo `hope-v2-dev` synced `42a2559`, Healthy). Cluster e2e
+  (`tests/e2e/task-1065-mcp-tools-disabled.spec.ts` against admin.taphuynh.dev): 3 passed (setup, nav entry absent,
+  `/tools-mcp` → "Page not found"), 2 skipped — `/agentic-policy` and `/harness/policy` are themselves
+  feature-gated off on the cluster, so the knob removals there are covered by the unit diff only.
+  `tools-mcp.spec.ts` skipped while parked.

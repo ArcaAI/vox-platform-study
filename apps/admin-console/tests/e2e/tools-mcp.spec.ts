@@ -18,6 +18,9 @@ import { impersonateUser, loginAsAdmin, selectWorkingTenant } from './helpers/au
 import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
 test.beforeEach(async ({ page }) => {
+  // TASK-1065: MCP & Tools is parked — the console gate is locked off, so this screen never renders.
+  // Re-enable this spec with the gate (`LOCKED_OFF_GATES` in src/shared/feature-gates/keys.ts).
+  test.skip(true, 'TASK-1065: MCP & Tools is parked');
   test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
   test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
   await loginAsAdmin(page);
