@@ -130,6 +130,9 @@ _NOT_SENT_ERRORS: tuple[type[BaseException], ...] = (
     httpx.PoolTimeout,
 )
 
+#: An attempt that ran out of time — the local deadline (`asyncio.timeout`) or an httpx phase.
+_TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (TimeoutError, httpx.TimeoutException)
+
 #: `apps/nlp` refuses a text longer than its window (TASK-1047 FC-8). Guardrail
 #: windows every screen, so this is a contract breach between the two — logged,
 #: never retried, and fail-CLOSED like any other undetermined screen.
@@ -142,6 +145,15 @@ class _PeerStatusError(RuntimeError):
     def __init__(self, status_code: int) -> None:
         self.status_code = status_code
         super().__init__(f"apps/nlp returned HTTP {status_code}")
+
+
+class NlpPeerTransientError(GuardrailUndeterminedError):
+    """The peer TIMED OUT or answered 5xx (TASK-1063 item 5a) — still undetermined, never a pass.
+
+    The same reason and detail as its base, so every existing handler reads it unchanged. It is
+    the one failure a CALLER may choose to retry once at its own level (the `pii_leak` span
+    extraction does); this client still never retries it itself (D7 / C6).
+    """
 
 
 class NlpGuardClient:
@@ -290,9 +302,12 @@ class NlpGuardClient:
             raise _PeerStatusError(response.status_code)
 
         last_error = ""
+        #: TASK-1063 item 5a: the budget ran out or the peer answered 5xx — a caller may retry.
+        transient = False
         for attempt in range(self._max_attempts):
             if deadline - time.monotonic() <= 0:
                 last_error = last_error or "deadline_exceeded"
+                transient = True
                 break
             try:
                 if self._breaker is not None:
@@ -317,15 +332,18 @@ class NlpGuardClient:
                 # identically, and a 5xx / 429 means the peer is already struggling —
                 # a retry is load amplification on exactly the wrong service.
                 last_error = f"HTTP {exc.status_code}"
+                transient = exc.status_code >= 500
                 break
             except _NOT_SENT_ERRORS as exc:
                 # The request never left, so nothing is running in the peer: the
                 # one failure a retry cannot amplify.
                 last_error = f"{type(exc).__name__}"
+                transient = isinstance(exc, _TIMEOUT_ERRORS)
             except Exception as exc:  # noqa: BLE001 — every transport failure is fail-closed
                 # A read timeout, the deadline, a reset mid-response: the inference
                 # may STILL be running in the peer. Never retried (C6).
                 last_error = f"{type(exc).__name__}"
+                transient = isinstance(exc, _TIMEOUT_ERRORS)
                 break
 
             remaining = deadline - time.monotonic()
@@ -334,7 +352,7 @@ class NlpGuardClient:
 
         # PHI-safe: the error string carries no request text.
         logger.error(f"guardrail.nlp_delegation.failed what={what} error={last_error}")
-        raise GuardrailUndeterminedError(
+        raise (NlpPeerTransientError if transient else GuardrailUndeterminedError)(
             REASON_ENGINE_ERROR,
             f"apps/nlp {what} delegation failed ({last_error}) — refusing to fabricate a result",
         )

@@ -76,6 +76,7 @@ from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
 from guardrail.core.metrics import record_data_finding, record_screening_decision
 from guardrail.core.policy import GuardrailPolicy
+from guardrail.services.external_nlp_client import NlpPeerTransientError
 from guardrail.services.injection_defense import (
     SanitizationReport,
     contains_fence_echo,
@@ -249,6 +250,30 @@ def _unique(values: Sequence[Any]) -> tuple[Any, ...]:
     return tuple(dict.fromkeys(values))
 
 
+def _number(value: Any) -> float | None:
+    """``value`` as a float when it is a real number, else ``None`` — never a fabricated 0."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+@dataclass(frozen=True)
+class FlaggedRegion:
+    """One region a check flagged, and why (TASK-1063 item 5b). Keys and labels — never text.
+
+    ``trust`` is the inbound region trust (`instruction` | `data`); ``None`` on the outbound
+    response, which has none. ``score`` is the check's score for THAT region, when it has one.
+    """
+
+    key: str
+    trust: str | None
+    label: str
+    score: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"key": self.key, "trust": self.trust, "label": self.label, "score": self.score}
+
+
 @dataclass(frozen=True)
 class CheckOutcome:
     """One check, and everything an auditor needs to interpret it."""
@@ -282,6 +307,8 @@ class CheckOutcome:
     #: The resolved notice whose verified `X-Hope-Guardrail-Override` downgraded this
     #: check's block to a warn for this request (contract amendment 5d0760a60).
     override_notice_id: str | None = None
+    #: Per-region verdicts behind a flag (TASK-1063 item 5b): every region that flagged.
+    region_verdicts: tuple[FlaggedRegion, ...] = ()
 
     @property
     def effective_verdict(self) -> str:
@@ -932,6 +959,20 @@ class Screener:
             all_labels = _unique([label for p in parts for label in p[2]])
             target_parts = [p for p in parts if p[1] == taken]
             scores = [per_scores[i][name] for i in covered if name in per_scores.get(i, {})]
+            region_verdicts = tuple(
+                FlaggedRegion(
+                    key=region_keys[i],
+                    trust=(
+                        None
+                        if direction == DIRECTION_OUTBOUND
+                        else (TRUST_DATA if mask[i] else TRUST_INSTRUCTION)
+                    ),
+                    label=str(label),
+                    score=_number(per_scores.get(i, {}).get(name)),
+                )
+                for i, _action, flagged in parts
+                for label in flagged
+            )
             outcomes.append(
                 CheckOutcome(
                     name=name,
@@ -952,6 +993,7 @@ class Screener:
                     flagged_items=_unique(
                         [ref for p in target_parts for ref in item_map.get(region_keys[p[0]], ())]
                     ),
+                    region_verdicts=region_verdicts,
                 )
             )
         findings: list[tuple[int, tuple[str, ...]]] = []
@@ -1096,6 +1138,15 @@ class Screener:
             "flagged_regions": _unique([w.region_key for w, _v in flags]),
             "items": _unique([ref for w in windows for ref in w.items]),
             "flagged_items": _unique([ref for w, _v in flags for ref in w.items]),
+            # TASK-1063 item 5b: one `(region key, category, score)` per flagged window.
+            "flag_details": tuple(
+                (
+                    w.region_key,
+                    getattr(v, "category", None),
+                    _number(getattr(v, "score", None)),
+                )
+                for w, v in flags
+            ),
         }
 
     def _judge_check(
@@ -1121,6 +1172,20 @@ class Screener:
             taken = action_taken_for(verdict, action)
         flagged = verdict == OUTCOME_FLAG
         acted = taken != TAKEN_NONE
+        region_trust = trust if direction == DIRECTION_INBOUND else None
+        region_verdicts = (
+            tuple(
+                FlaggedRegion(
+                    key=str(key),
+                    trust=region_trust,
+                    label=str(category or agg["category"] or lane),
+                    score=score,
+                )
+                for key, category, score in agg.get("flag_details") or ()
+            )
+            if flagged
+            else ()
+        )
         return CheckOutcome(
             name=lane,
             outcome=verdict,
@@ -1141,6 +1206,7 @@ class Screener:
             ),
             items=agg["items"],
             flagged_items=((agg["flagged_items"] if flagged else agg["items"]) if acted else ()),
+            region_verdicts=region_verdicts,
         )
 
     async def _judge_fallback(
@@ -1165,6 +1231,7 @@ class Screener:
         except GuardrailUndeterminedError:
             return None
         flagged_keys: list[str] = []
+        flag_details: list[tuple[str, str, float | None]] = []
         category: str | None = None
         undetermined = False
         answered = False
@@ -1191,6 +1258,7 @@ class Screener:
                     continue
                 if bad:
                     flagged_keys.append(key)
+                    flag_details.append((key, bad[0], _number(score)))
                     category = category or bad[0]
         if not answered:
             return None
@@ -1214,6 +1282,7 @@ class Screener:
             "flagged_regions": flagged,
             "items": _unique([ref for k in keys for ref in items.get(k, ())]),
             "flagged_items": _unique([ref for k in flagged for ref in items.get(k, ())]),
+            "flag_details": tuple(flag_details),
         }
 
     async def _inbound_judges(
@@ -1561,7 +1630,13 @@ class Screener:
         return self._finish(DIRECTION_OUTBOUND, checks, report)
 
     def _local_pii_leak_detect_only(self, checks: list[CheckOutcome]) -> list[CheckOutcome]:
-        """OD-3: a local provider's ``pii_leak`` block, when it is the ONLY block, warns."""
+        """OD-3: a local provider's ``pii_leak`` block, when it is the ONLY block, warns.
+
+        TASK-1063 item 2: before that, a local ``pii_leak`` flag whose labels are ALL
+        quasi-identifiers is taken at ``ignore`` — recorded only, no notice. Only ever a
+        downgrade: a flag already at ``ignore`` stays there.
+        """
+        checks = [self._local_quasi_pii_leak_ignored(check) for check in checks]
         decided = [self._decide(DIRECTION_OUTBOUND, check) for check in checks]
         blocking = {check.name for check in decided if check.blocks}
         if blocking != {"pii_leak"}:
@@ -1570,6 +1645,28 @@ class Screener:
             dataclasses.replace(check, action_taken=TAKEN_WARN) if check.blocks else check
             for check in decided
         ]
+
+    def _local_quasi_pii_leak_ignored(self, check: CheckOutcome) -> CheckOutcome:
+        if check.name != "pii_leak" or check.effective_verdict != OUTCOME_FLAG:
+            return check
+        decided = self._decide(DIRECTION_OUTBOUND, check)
+        if (
+            not self._quasi_only(decided.labels)
+            or _TAKEN_RANK.get(decided.effective_action_taken, 0) <= _TAKEN_RANK[TAKEN_IGNORE]
+        ):
+            return check
+        return dataclasses.replace(decided, action_taken=TAKEN_IGNORE)
+
+    def _quasi_only(self, labels: Sequence[str]) -> bool:
+        """Every label is a listed quasi-identifier (exact, case-folded; empty list ⇒ False)."""
+        return (
+            bool(labels)
+            and bool(self.pii_leak_quasi_identifier_labels)
+            and all(
+                label.strip().casefold() in self.pii_leak_quasi_identifier_labels
+                for label in labels
+            )
+        )
 
     async def _check_pii_leak(
         self, response: str, sources: list[str] | None, refs: tuple[ItemRef, ...] = ()
@@ -1600,6 +1697,8 @@ class Screener:
                 self._model(name),
                 [(None, response)],
                 self.window_geometry,
+                # TASK-1063 item 5a: one more attempt after a timeout / 5xx; never more.
+                retry_once=lambda exc: isinstance(exc, NlpPeerTransientError),
             )
         except GuardrailUndeterminedError as exc:
             return CheckOutcome(
@@ -1615,13 +1714,16 @@ class Screener:
 
         haystacks = [source.casefold() for source in sources]
         leaked: list[str] = []
+        leak_scores: dict[str, float] = {}
         for span in spans:
-            if float(getattr(span, "score", 1.0)) < self._pii_leak_min_score:
+            score = float(getattr(span, "score", 1.0))
+            if score < self._pii_leak_min_score:
                 continue
             fragment = response[int(span.start) : int(span.end)].strip()
             if fragment and not any(fragment.casefold() in hay for hay in haystacks):
                 # The LABEL is recorded, never the fragment — the fragment is the PHI.
                 leaked.append(str(span.label))
+                leak_scores[str(span.label)] = max(score, leak_scores.get(str(span.label), 0.0))
 
         latency_ms = int((time.monotonic() - started) * 1000)
         if not leaked:
@@ -1636,10 +1738,7 @@ class Screener:
             )
         action = self._availability.action_for(name, DIRECTION_OUTBOUND)
         taken = action_taken_for(OUTCOME_FLAG, action)
-        quasi_only = bool(self.pii_leak_quasi_identifier_labels) and all(
-            label.strip().casefold() in self.pii_leak_quasi_identifier_labels for label in leaked
-        )
-        if taken == TAKEN_BLOCK and quasi_only:
+        if taken == TAKEN_BLOCK and self._quasi_only(leaked):
             # Follow-up A: quasi-identifiers alone warn — never stricter than configured, and an
             # unlisted label (a direct identifier, a secret) keeps the configured action.
             taken = TAKEN_WARN
@@ -1660,6 +1759,10 @@ class Screener:
             flagged_regions=(REGION_RESPONSE,) if acted else (),
             items=refs,
             flagged_items=refs if acted else (),
+            region_verdicts=tuple(
+                FlaggedRegion(key=REGION_RESPONSE, trust=None, label=label, score=score)
+                for label, score in leak_scores.items()
+            ),
         )
 
     def _check_containment_echo(

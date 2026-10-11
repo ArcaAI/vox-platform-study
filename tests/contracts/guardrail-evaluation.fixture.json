@@ -8,7 +8,10 @@
     "internal wire, and encrypted by the gateway before it is stored.",
     "`batch` is a VALID request body (<= batchMax records). TypeScript: packages/types/src/guardrail-evaluation.ts.",
     "TASK-1050 follow-up H: a check's optional `reason` (a fixed code) explains a skipped / undetermined /",
-    "recorded-only (flag taken at ignore) check, and is absent on every other check."
+    "recorded-only (flag taken at ignore) check, and is absent on every other check.",
+    "TASK-1063 item 5b: a FLAGGED check carries `flaggedRegions` — one {key, trust, label, score} per",
+    "region that flagged (trust `instruction` | `data` inbound, null on the outbound response; score null",
+    "when the check has none). Region keys and labels only, never text; absent on every non-flag check."
   ],
   "batchMax": 100,
   "batch": {
@@ -50,6 +53,9 @@
             "regionKeys": ["transcript:w1"],
             "items": [
               { "itemId": "01927f6e-1111-7000-8000-000000000010", "itemVersion": 2 }
+            ],
+            "flaggedRegions": [
+              { "key": "transcript:w1", "trust": "data", "label": "violence", "score": 0.61 }
             ]
           },
           {
@@ -101,6 +107,9 @@
             "regionKeys": ["response"],
             "items": [
               { "itemId": "01927f6e-2222-7000-8000-000000000020", "itemVersion": 1 }
+            ],
+            "flaggedRegions": [
+              { "key": "response", "trust": null, "label": "credential", "score": null }
             ]
           },
           {

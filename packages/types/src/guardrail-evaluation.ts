@@ -20,6 +20,7 @@ import type {
   GuardrailCheckVerdict,
   GuardrailDecision,
   GuardrailDirection,
+  GuardrailRegionTrust,
 } from './guardrail-vocabulary.js';
 import type { GuardrailNotice } from './guardrail-notice.js';
 
@@ -40,6 +41,20 @@ export type GuardrailEvaluationExemption = (typeof GUARDRAIL_EVALUATION_EXEMPTIO
 export interface GuardrailEvaluationItemRef {
   readonly itemId: string;
   readonly itemVersion: number;
+}
+
+/**
+ * One region a check flagged (TASK-1063 item 5b, additive). Region KEYS and labels only — never text.
+ */
+export interface GuardrailEvaluationFlaggedRegion {
+  /** The region (or judge window) key, e.g. `encounter_1`, `transcript:w1`, `response`. */
+  readonly key: string;
+  /** The inbound region trust; `null` on the outbound response, which has none. */
+  readonly trust: GuardrailRegionTrust | null;
+  /** The flagged label / category for that region (a taxonomy label, never content). */
+  readonly label: string;
+  /** The check's score for that region in [0,1]; `null` when the check has none. */
+  readonly score: number | null;
 }
 
 export interface GuardrailEvaluationCheck {
@@ -67,6 +82,11 @@ export interface GuardrailEvaluationCheck {
    * (`recorded_as_finding`). A fixed code, never content.
    */
   readonly reason?: string;
+  /**
+   * Per-region verdicts (TASK-1063 item 5b, additive): present ONLY on a `flag` check — one entry per
+   * region that flagged, so a warn or block is attributable to the region (and its trust) behind it.
+   */
+  readonly flaggedRegions?: readonly GuardrailEvaluationFlaggedRegion[];
 }
 
 export interface GuardrailEvaluationRecord {

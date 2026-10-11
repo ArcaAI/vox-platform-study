@@ -139,18 +139,28 @@ async def windowed_spans(
     model_id: str,
     regions: list[tuple[str | None, str]],
     geometry: WindowGeometry,
+    *,
+    retry_once: Callable[[BaseException], bool] | None = None,
 ) -> list[RegionSpan]:
     """PII spans of every region, window by window, in REGION coordinates.
 
     Each region is cut from its own start (an append-only region therefore re-uses
     every earlier window's cached verdict), and the overlap duplicates are resolved
     longest-span-wins.
+
+    ``retry_once`` (TASK-1063 item 5a): a window whose extraction fails with an error it
+    accepts is extracted ONE more time; a second failure fails the run as before.
     """
     windows = [w for key, text in regions for w in region_windows(key, text, geometry)]
     if not windows:
         return []
 
     async def _compute(window_text: str) -> dict[str, Any]:
+        try:
+            return _span_value(await extract(window_text))
+        except Exception as exc:
+            if retry_once is None or not retry_once(exc):
+                raise
         return _span_value(await extract(window_text))
 
     verdicts = await runner.run(PII_TASK, model_id, [w.text for w in windows], _compute)
