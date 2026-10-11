@@ -28,6 +28,7 @@ import {
   SysEventType,
 } from '@arcaai/domains';
 import type { JsonValue } from '@arcaai/domains';
+import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
@@ -69,6 +70,17 @@ const DEFAULT_BACKFILL_RETRY_MAX_MS = 900_000;
 const DEFAULT_BACKFILL_INITIAL_DELAY_MS = 60_000;
 /** The check guardrail names an injection/jailbreak verdict by (`INBOUND_TASKS`). */
 const INJECTION_CHECK = 'jailbreak_detection';
+/** TASK-1063 — true for a piece the tenant authored (the only text the medical-scope judge sees). */
+function isAuthoredText(piece: GovernedPieceInput): boolean {
+  return (
+    piece.sourceType !== 'PLATFORM' &&
+    piece.kind !== 'PLATFORM' &&
+    piece.kind !== 'LANGUAGE' &&
+    piece.kind !== 'CONTRACT' &&
+    piece.sourceKey !== OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY
+  );
+}
+
 /** TASK-1059 C-3 — the build-time medical-scope judge, reported under this check name. */
 const MEDICAL_SCOPE_CHECK = 'medical_scope';
 
@@ -653,7 +665,9 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     // TASK-1059 C-3 (owner OD-2): the medical-scope judge runs beside the inbound screen, at build time,
     // over the AUTHORED unit in ONE call (platform pieces are never judged for scope). Either one
     // unavailable is PromptScreeningUnavailableError for the whole screen (fail closed).
-    const unit = (medicalUnit ?? []).filter((one) => one.piece.sourceType !== 'PLATFORM');
+    // TASK-1063: and only text the tenant WROTE — the output-language policy fragment and language/contract
+    // pieces are template- or platform-supplied, so they are screened inbound but never judged for scope.
+    const unit = (medicalUnit ?? []).filter((one) => isAuthoredText(one.piece));
     const [outcome, medical] = await Promise.all([
       this.screenClient.screenRegions(
         tenantId,
@@ -685,7 +699,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     this.logger.warn({ message: 'governed-prompt.medical.off_scope', tenantId, regions });
     for (const one of pieces) {
       const codes = result.get(one.digest);
-      if (codes === 'unavailable' || one.piece.sourceType === 'PLATFORM') continue;
+      if (codes === 'unavailable' || !isAuthoredText(one.piece)) continue;
       result.set(one.digest, [...(codes ?? []), { code: 'PROMPT_SCREENING_UNSAFE', checks: [MEDICAL_SCOPE_CHECK], regions }]);
     }
     return result;
