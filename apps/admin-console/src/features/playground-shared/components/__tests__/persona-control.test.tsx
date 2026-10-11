@@ -7,7 +7,7 @@
  * boundary.
  */
 
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SafeSession } from '@/shared/auth/hooks';
@@ -18,6 +18,9 @@ const refresh = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh }),
 }));
+
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { error: toastError, success: vi.fn() } }));
 
 afterEach(() => {
   cleanup();
@@ -43,24 +46,41 @@ function session(overrides: Partial<SafeSession> = {}): SafeSession {
 interface RecordedCall {
   url: string;
   method: string;
+  body?: unknown;
 }
 
-function stubFetch(): RecordedCall[] {
+function stubFetch(options: { impersonateStatus?: number } = {}): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
-      calls.push({ url, method: init?.method ?? 'GET' });
+      calls.push({ url, method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
       if (url.includes('/api/hope/admin/users')) {
         const body = { data: [{ id: 'doc-9', username: 'dr-smith', email: 'smith@hope.test' }], count: 1, limit: 8, page: 1 };
         return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url === '/api/auth/impersonate' && options.impersonateStatus && options.impersonateStatus >= 400) {
+        return new Response(JSON.stringify({ message: 'A reason is required for this action.' }), { status: options.impersonateStatus, headers: { 'content-type': 'application/json' } });
       }
       // /api/auth/impersonate and /api/auth/revoke-impersonation
       return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
     }),
   );
   return calls;
+}
+
+/**
+ * TASK-1057 made `impersonation.start` a LOCKED required reason on the gateway; the picker used to
+ * POST without one and the 400 was swallowed. Picking a user now opens the shared confirm dialog.
+ */
+async function confirmWithReason(reason: string) {
+  const dialog = await screen.findByRole('alertdialog');
+  const confirm = within(dialog).getByRole('button', { name: /act as/i }) as HTMLButtonElement;
+  expect(confirm.disabled).toBe(true);
+  fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: reason } });
+  expect(confirm.disabled).toBe(false);
+  fireEvent.click(confirm);
 }
 
 describe('PersonaControl', () => {
@@ -122,20 +142,26 @@ describe('PersonaControl', () => {
     fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
     const option = await screen.findByText('dr-smith');
     fireEvent.click(option);
+    expect(calls.some((c) => c.url === '/api/auth/impersonate')).toBe(false);
+    await confirmWithReason(' testing the scribe as this clinician ');
     await waitFor(() => {
-      expect(calls.some((c) => c.url === '/api/auth/impersonate' && c.method === 'POST')).toBe(true);
+      const post = calls.find((c) => c.url === '/api/auth/impersonate' && c.method === 'POST');
+      expect(post?.body).toEqual({ userId: 'doc-9', reason: 'testing the scribe as this clinician' });
     });
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
-  it('impersonate flow: selecting a user POSTs to the BFF and refreshes', async () => {
+  it('impersonate flow: selecting a user asks for a reason, then POSTs it to the BFF and refreshes', async () => {
     const calls = stubFetch();
     renderWithProviders(<PersonaControl session={session()} />);
     fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
     const option = await screen.findByText('dr-smith');
     fireEvent.click(option);
+    expect(calls.some((c) => c.url === '/api/auth/impersonate')).toBe(false);
+    await confirmWithReason(' testing the scribe as this clinician ');
     await waitFor(() => {
-      expect(calls.some((c) => c.url === '/api/auth/impersonate' && c.method === 'POST')).toBe(true);
+      const post = calls.find((c) => c.url === '/api/auth/impersonate' && c.method === 'POST');
+      expect(post?.body).toEqual({ userId: 'doc-9', reason: 'testing the scribe as this clinician' });
     });
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
@@ -192,6 +218,18 @@ describe('PersonaControl', () => {
     );
     // Only the final value was ever requested — no per-keystroke fan-out.
     expect(calls.filter((c) => c.url.includes('/api/hope/admin/users')).length).toBe(1);
+  });
+
+  it('a refused impersonation is shown as an error, not swallowed', async () => {
+    stubFetch({ impersonateStatus: 400 });
+    renderWithProviders(<PersonaControl session={session()} />);
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+    fireEvent.click(await screen.findByText('dr-smith'));
+    await confirmWithReason('testing the scribe');
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('A reason is required for this action.'));
+    expect(refresh).not.toHaveBeenCalled();
+    // The dialog stays open with the reason, so the admin can correct and retry.
+    expect((within(screen.getByRole('alertdialog')).getByRole('textbox') as HTMLTextAreaElement).value).toBe('testing the scribe');
   });
 
   it('BUG-022: while impersonating, "Stop acting" is visible next to the trigger without opening the picker', () => {

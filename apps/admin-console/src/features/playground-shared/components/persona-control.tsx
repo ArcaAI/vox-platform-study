@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { IconChevronDown, IconInfoCircle, IconSpy } from '@tabler/icons-react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@arcaai/ui/components/shadcn/popover';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { getJson, type Paginated } from '@/shared/api';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { isTenantAdmin } from '@/shared/auth/ability';
 import type { SafeSession } from '@/shared/auth/hooks';
 import { invalidateGridLayoutCache } from '@/shared/data/grid-persistence';
@@ -70,6 +72,8 @@ export function PersonaControl({ session }: { session: SafeSession }) {
     return () => clearTimeout(timer);
   }, [search]);
   const [pending, setPending] = useState(false);
+  // TASK-1057 — `impersonation.start` needs a reason, so a pick opens the confirm dialog first.
+  const [target, setTarget] = useState<PersonaUser | null>(null);
 
   const canImpersonate = session.isElevated || isTenantAdmin(session.user.roles);
   const impersonating = !!session.impersonatingUserId;
@@ -79,18 +83,25 @@ export function PersonaControl({ session }: { session: SafeSession }) {
   // After a bearer swap every query is stale; refetch all + refresh the
   // server layout so the sealed session projection re-reads. Mirrors the
   // global session banners' invalidation.
-  async function runSessionAction(url: string, body?: Record<string, unknown>) {
+  async function runSessionAction(url: string, body?: Record<string, unknown>): Promise<boolean> {
     setPending(true);
     try {
-      await fetch(url, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: body ? { 'content-type': 'application/json' } : undefined,
         body: body ? JSON.stringify(body) : undefined,
       });
+      // A refusal used to be swallowed (and the layout refreshed as if it had worked).
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { message?: string };
+        toast.error(payload.message ?? 'The session could not be switched');
+        return false;
+      }
       invalidateGridLayoutCache();
       await queryClient.invalidateQueries();
       router.refresh();
       setOpen(false);
+      return true;
     } finally {
       setPending(false);
     }
@@ -157,7 +168,10 @@ export function PersonaControl({ session }: { session: SafeSession }) {
                   key={user.id}
                   value={user.id}
                   disabled={pending || user.id === session.impersonatingUserId}
-                  onSelect={() => void runSessionAction('/api/auth/impersonate', { userId: user.id })}
+                  onSelect={() => {
+                    setTarget(user);
+                    setOpen(false);
+                  }}
                 >
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate text-sm font-medium">{user.username}</span>
@@ -193,6 +207,23 @@ export function PersonaControl({ session }: { session: SafeSession }) {
         </Button>
       ) : null}
       {underAdmin}
+      {target ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setTarget(null);
+          }}
+          title={`Act as ${target.username}?`}
+          description="The playground and the console run as this user until you stop acting. Every action taken while impersonating is audit-flagged."
+          confirmLabel="Act as user"
+          reasonActionId="impersonation.start"
+          isPending={pending}
+          onConfirm={async ({ reason }) => {
+            // Kept open on a refusal so the typed reason is not lost.
+            if (await runSessionAction('/api/auth/impersonate', { userId: target.id, ...(reason ? { reason } : {}) })) setTarget(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
