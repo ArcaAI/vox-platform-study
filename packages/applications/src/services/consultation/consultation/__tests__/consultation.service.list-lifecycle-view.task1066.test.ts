@@ -87,7 +87,15 @@ describe('ConsultationService lists — the lifecycle view, batch-loaded', () =>
       {} as any,
       { emit: vi.fn() } as any,
       cls as any,
-      new ConsultationEncounterService(encounterRepository, consultationRepository, approvalRepository, {} as any, { emit: vi.fn() } as any, cls as any, tenantSettings as any),
+      new ConsultationEncounterService(
+        encounterRepository,
+        consultationRepository,
+        approvalRepository,
+        {} as any,
+        { emit: vi.fn() } as any,
+        cls as any,
+        tenantSettings as any,
+      ),
       lifecycleDouble() as any,
       undefined,
       tenantSettings as any,
@@ -108,7 +116,12 @@ describe('ConsultationService lists — the lifecycle view, batch-loaded', () =>
     approvalRepository = {
       findLatestByConsultations: vi.fn(
         async (ids: string[]) =>
-          new Map(ids.map((id) => [id, { id: `ap-${id}`, approvedAt: new Date('2026-10-05T09:00:00Z'), approvedBy: 'doctor-1', snapshotHash: 'h', snapshot: { items: [{}] } }])),
+          new Map(
+            ids.map((id) => [
+              id,
+              { id: `ap-${id}`, approvedAt: new Date('2026-10-05T09:00:00Z'), approvedBy: 'doctor-1', snapshotHash: 'h', snapshot: { items: [{}] } },
+            ]),
+          ),
       ),
       findLatestByConsultation: vi.fn(async () => null),
     };

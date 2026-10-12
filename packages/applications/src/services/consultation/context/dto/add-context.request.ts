@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsObject, IsEnum, IsBoolean, IsNumber, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsEnum, IsBoolean, IsNumber, IsInt, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ContextItemType, ContextItemSource } from '@arcaai/domains';
 
@@ -100,6 +100,18 @@ export class AddContextRequest {
   @IsOptional()
   @IsString()
   derivedFromContextItemId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The encounter (visit sequence) this item belongs to. Omit it and a STRUCTURED, CASE_NOTE, WORKNOTE or ' +
+      'PRE_SUMMARY item is stamped with the consultation’s current encounter; a transcript stays consultation-wide. ' +
+      'An encounter that does not exist yet is refused (400).',
+    minimum: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  encounterSeq?: number;
 }
 
 /**

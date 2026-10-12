@@ -68,7 +68,8 @@ function build(rows: ConsultationEntity[]) {
   const tenantSettings = {
     resolve: vi.fn((key: string, tenantId: string) => {
       if (key === CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY) return { key, value: 'UTC' };
-      if (key === CONSULTATION_AUTO_CLOSE_SETTING_KEY) return { key, value: { mode: 'idle', idleMinutes: tenantId === 't-2' ? 30 : 720, dailyAt: null } };
+      if (key === CONSULTATION_AUTO_CLOSE_SETTING_KEY)
+        return { key, value: { mode: 'idle', idleMinutes: tenantId === 't-2' ? 30 : 720, dailyAt: null } };
       if (key === CONSULTATION_REOPEN_ALLOW_CLOSED_COMPLETE_SETTING_KEY) return { key, value: tenantId === 't-2' };
       throw new Error(`Unknown setting '${key}'.`);
     }),

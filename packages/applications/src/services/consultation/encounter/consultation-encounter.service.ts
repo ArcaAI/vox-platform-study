@@ -192,7 +192,9 @@ export class ConsultationEncounterService extends BaseService implements IConsul
     const approvedIds = consultations.filter((consultation) => consultation.isApproved).map((consultation) => consultation.id);
     const [encounters, approvals] = await Promise.all([
       this.encounterRepository.findByConsultations(consultations.map((consultation) => consultation.id)),
-      approvedIds.length > 0 ? this.approvalRepository.findLatestByConsultations(approvedIds) : Promise.resolve(new Map<string, ConsultationApprovalEntity>()),
+      approvedIds.length > 0
+        ? this.approvalRepository.findLatestByConsultations(approvedIds)
+        : Promise.resolve(new Map<string, ConsultationApprovalEntity>()),
     ]);
     const encountersOf = new Map<string, ConsultationEncounterEntity[]>();
     for (const encounter of encounters) {

@@ -236,6 +236,8 @@ export class ChainSummaryService extends BaseService {
 
     // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, result.text, request.dnaStyleId, userId ?? 'system');
+    // The note belongs to the requesting consultation's current encounter.
+    if (typeof consultation.currentEncounterSeq === 'number') contextItem.encounterSeq = consultation.currentEncounterSeq;
 
     // Encrypt the generated summary text into `encryptedContent`
     // before persistence — the plaintext `content` column was dropped by the
