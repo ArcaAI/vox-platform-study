@@ -14,7 +14,7 @@ export const REGISTRY_CHECKSUM: string = "52a0cfd5613bd1b9f708908a5ac6d62c819367
 
 export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "ARCAAI:arcaai-gen-consultation": {
-    "graphChecksum": "b2f25b7d04a072ccb1fe474c45d224891fa434fe7665f6c8b940d9ab38c2f409",
+    "graphChecksum": "6eafa0a502c665f761c519a74647bbc494ed79d8cdf75f8ea8173af324b45812",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -838,9 +838,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -1059,11 +1060,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "14cbcdf3b6df2d20562f9c77e69424b04100e33354d0bc77570ad925ccb18ecd"
+      "checksum": "f7fc452b430fa2f490c8e4b9f916b8efc2287f527264f386e42699fee274b028"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
-    "graphChecksum": "81e65aa995d1ce013d04dda8563af23018434b9ec59dc8d85d3791cf8d46053d",
+    "graphChecksum": "eb3c473a50a8b5f2b16d5dcb2c51db35a777dd65ddcb523bb461b038455e7922",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1887,9 +1888,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -2108,11 +2110,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "edc8bdc4216c7e1c90210a93a7dc51a396db995bfb953a6dd1941113033aec7b"
+      "checksum": "98d807fb82920fbb4c66fe008a6106272b030952afded41c33a20a509986879b"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
-    "graphChecksum": "0561d5527d820c81daeca0f875ee9597945f5578dd441f0347147ad237cc86d6",
+    "graphChecksum": "aa393f2ff9ab71573b2194e311fe8ce012840bd422fca6247758b32ea698fb49",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -2936,9 +2938,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -3157,11 +3160,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "933c92e6b62273110af4f451da1911dc073d08138bda01ee8ed4f41eca79a7db"
+      "checksum": "e11174aef6bf9918b1be2a5af6aab4496234fecfc7e209f3ffadda8c37df1338"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
-    "graphChecksum": "089419b517e426d1b253849561f0d73eb9f4f018bd266ea247526d854c3dfc45",
+    "graphChecksum": "3098ebc15e82895c2772aed640067bf27da62697943eb61d59f8d1f3378b0b81",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -3985,9 +3988,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -4206,11 +4210,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "bb3d9b96825bdbdc7e57990f74d7ed20cf4b2ebd6ed82d60d20a29a9f1794c32"
+      "checksum": "1289cf5d6caa5cb12a25da3783c508a6aac72edc528cde901ce41037a49c4dba"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
-    "graphChecksum": "660413574e7d3646f45d1aecd74f73f455ccd7b920c73eba774f558a161f1a7d",
+    "graphChecksum": "940f94c109ddc5a70314c1e1b44e8ad54fcbe3d5356d1ae0883c17c9cba6ff73",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -5034,9 +5038,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -5255,11 +5260,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "a4aceadc1d67ebba96a7a7e32a86d7abb15a6d565590d3da8f1ee48af8bd4b8a"
+      "checksum": "3fc0f090bcd9efd999ab53633948df522320f10181c8e86f5ead773a95fe215a"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
-    "graphChecksum": "30ac5fcf00fb63d4fae4df7b5e7dfca25d85c5472c2ea3e6bf629f44933175c9",
+    "graphChecksum": "bcaf69b6c99124fbb253a1be7c0837643dfbe58d2a25f05d5cd2e63c176ceb8b",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -6083,9 +6088,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -6304,11 +6310,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "0cf79a3e6c7609b4e2dcc473a55053a36bcbe678ad51f8f1bcb6df13c363f70a"
+      "checksum": "e66ebe22ba6959da2b1de8a58c45a82e6d6959e0e01c58b9b56b8cfee4176c88"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
-    "graphChecksum": "e5fc8604db082642b73db4b15713ec0571c78482174210177d4a506cd6955222",
+    "graphChecksum": "231ab3f5fad3a70994f564b361279bbe8874fd0afefa963a5d10b974dbb0f694",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -7132,9 +7138,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -7353,11 +7360,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "128ba0e65b6bd5044453de1032cdbf44a25ac285a1f029ea695f698e25ed81d7"
+      "checksum": "e10da5ff577d7773729c6ed6f51387b11e956fbb5480c039b938a8e0ee5c61d2"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
-    "graphChecksum": "8ed2421262cd795fdf607e50ea2d853b9e34cb6aff06b757d4128d91e79dcd8d",
+    "graphChecksum": "54f9ffb7bc359c6015857a25970e9caf54ece5e33bdc982e88f32e34f4edfb2f",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -8181,9 +8188,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -8402,11 +8410,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "e8e35cc89708a235608c6172ddf8056fdfb67f2148f66def3c0d8b8b1f5b5b55"
+      "checksum": "5066c79b49e83e6db87c5298647e8fcc0fef7328311a50b23ac779a93e42217c"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
-    "graphChecksum": "92cc785b81cd3684655bbb206ec864c1f04f7f17046fe2e1b398f297735e3117",
+    "graphChecksum": "af2dbe5769121af384a2521d51cce367f06d09e48bf8e82afedcbea41adf047f",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -9230,9 +9238,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -9451,11 +9460,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "7e64d279554a06af83753aab1b5471973b06cfaa5060c3c1c40a8835fc8a2c20"
+      "checksum": "49b56e9e9ac54f60872ed7924fd8756a92feae2986b9635130eb662f8b7619af"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
-    "graphChecksum": "ec9c6b7120a752a97a31901a1dccb64cdd9d0cbf6638bd0defd4d9b5b17b53d3",
+    "graphChecksum": "42b47c8ec38ad5c7b945ba72fdcc13799f46a84230c06d87db5583691c6f2b31",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -10279,9 +10288,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -10500,11 +10510,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "b411a29e4fb0fd32ebf53ee5733ef2fe80a4d5c4ef72ce2da26c0658f47b0649"
+      "checksum": "93c9304534fa6ce27e17d720e35759cfb445e2a52c73deafeb664f7a42e7a867"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
-    "graphChecksum": "ce77782f4ca61ecc2c3cab85e9763df132ff1f2ec14927fef44bc156a979c5df",
+    "graphChecksum": "06f1b95c2756a7a8fe1b48578a40efe4fe43ad782e2d88f70e474f38f9784bd9",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -11328,9 +11338,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -11549,7 +11560,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "59c48145ae281d02bad63bc6532be0b049ef90ae5db575d4d092fe7e67ee498f"
+      "checksum": "89eac1c556fedc43d76aea81ab68d554981d2694dc66b046c07cd328de1dbfbe"
     }
   }
 };

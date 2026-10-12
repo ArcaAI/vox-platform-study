@@ -97,6 +97,15 @@ const REALTIME_PER_TURN = { lane: 'realtime', cadence: 'perTurn' };
  */
 const REALTIME_ON_START = { lane: 'realtime', cadence: 'onStart' };
 
+/**
+ * The budget of a DURABLE `core.agent` node — the `start_to_close` timeout of the one harness
+ * activity that runs it. It must outlast one governed model call (the harness LLM governor allows
+ * `HARNESS_LLM_REQUEST_TIMEOUT_S`, 300 s by default, per call) plus the wait for the endpoint slot,
+ * or the activity is cancelled mid-call and its work is lost. The compile-time ceiling
+ * (`caps.maxNodeSeconds`) is 600 s.
+ */
+const DURABLE_AGENT_TIMEOUT_SECONDS = 600;
+
 /** The §8.4 consultation graph. Node ids are stable across variants so the tests can address them. */
 export function buildConsultationGraph(options: ConsultationGraphOptions): SeedGraph {
   /** The `documentTemplateSlug` for one summary node, or nothing — an absent slug is omitted, never `null`. */
@@ -205,6 +214,7 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
           execution: { lane: 'durable', cadence: 'onEnd' },
           dna: { enabled: true },
           onError: 'fail',
+          timeoutSeconds: DURABLE_AGENT_TIMEOUT_SECONDS,
         },
       },
       {
@@ -317,6 +327,7 @@ export function buildSummarizationGraph(options: { contextSchemaId: string }): S
           agentRef: { slug: 'general-medicine-summarization' },
           execution: { lane: 'durable', cadence: 'once' },
           onError: 'fail',
+          timeoutSeconds: DURABLE_AGENT_TIMEOUT_SECONDS,
         },
       },
       { id: 'n_output', type: 'core.output', config: { protocols: ['http', 'http-sse'], onSchemaViolation: 'fail' } },

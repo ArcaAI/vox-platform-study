@@ -18,7 +18,7 @@ export const REGISTRY_CHECKSUM: string = "52a0cfd5613bd1b9f708908a5ac6d62c819367
 
 export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "GLOBAL:general-medicine-consultation": {
-    "graphChecksum": "24facccbe6d87dc8de9f147a18cf6c0680795812c5747a0a872a680615d5cb52",
+    "graphChecksum": "84ce5e90ecd43fcfdccc97ea8d44f7359ca4bdd717feb8779b85d74bc930c0eb",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -570,9 +570,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -763,11 +764,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
           "consultation"
         ]
       },
-      "checksum": "669cca907dfa936613bc93cb6e0786327ac8f2f6dd5dd9064d01c662714ba10a"
+      "checksum": "4ebff11469176083e8c062d5ba955bef8c2ba0bca314692b432ff22b486a4ce1"
     }
   },
   "GLOBAL:platform-default-summarization": {
-    "graphChecksum": "259e48d572fb2923fd46499193336c2d332c5aaf95ceeeb7549182de4d6ffbdd",
+    "graphChecksum": "5da61a6451654f0c7b1e0588c640f1817aba2b0d25fe9466db09ee862f11a8f3",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1107,9 +1108,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                   "lane": "durable",
                   "cadence": "once"
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -1210,11 +1212,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         ],
         "sources": []
       },
-      "checksum": "88ebec644237661ec0901de680d90338c27ea7afb4dcf8f97c461153efb3c375"
+      "checksum": "a29bcf0d6704bc27b49bbbd1a2f2a99dc1716696813163b381af8ca6d2dd760b"
     }
   },
   "SYSTEM:general-medicine-consultation": {
-    "graphChecksum": "2b28ea89b5d6e5cfa8d144aeb8572ff15fa7a89e1ec2306b1b614b21fc1ef997",
+    "graphChecksum": "51a8709a194df0b29230af554f293eaf7cc63e2c1b278b79384a51d7634f3f1d",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1766,9 +1768,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 "dna": {
                   "enabled": true
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -1959,11 +1962,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
           "consultation"
         ]
       },
-      "checksum": "dcc4c10c694112603e5d53a855441fd37c551242c282f2bcd6c8218756cf570f"
+      "checksum": "cbbd5d0b58dd851ded6cc0696f61364ba8ebf8b8547b4aa4aa80eef4d3a996af"
     }
   },
   "SYSTEM:platform-default-summarization": {
-    "graphChecksum": "90923f42e78abceddfa5cd9394bfb11ef2935d88e233c4b4c88574ae22cde632",
+    "graphChecksum": "f29388d429af220451d0fe69acfdee269846a7f362e1d207f388e06a6c574019",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -2303,9 +2306,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                   "lane": "durable",
                   "cadence": "once"
                 },
-                "onError": "fail"
+                "onError": "fail",
+                "timeoutSeconds": 600
               },
-              "timeoutSeconds": 300,
+              "timeoutSeconds": 600,
               "retry": {
                 "maximumAttempts": 1,
                 "initialIntervalSeconds": 1,
@@ -2406,7 +2410,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         ],
         "sources": []
       },
-      "checksum": "b0604e4973d0d33b4f6d4e951a94e2019f8741a4c37ad2e9b33cf5c809caafde"
+      "checksum": "4c71df56b9397f6a6d0dcd8fd58d35928d655cc11445ce2dfe4413950bf5b9cd"
     }
   }
 };

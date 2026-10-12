@@ -20,11 +20,13 @@ activity switches to the next candidate on a ``TextServiceError`` only while it 
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from temporalio import activity
 
+from harness.core.llm_concurrency import get_llm_governor_config
 from harness.temporal.interpreter.models import ResolvedAgent, ResolvedPrompt
 
 __all__ = [
@@ -211,42 +213,77 @@ def chain_candidates(block: TextFallbackBlock | None) -> list[TextFallbackCandid
     return [c for c in block.chain if wire_provider(c.provider) and c.model]
 
 
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+def _attempt_elapsed(started: datetime | None, total_seconds: float | None) -> float:
+    """Seconds since the activity attempt started (server-stamped), or ``0`` when unknowable.
+
+    A start older than the attempt's own ``start_to_close`` timeout cannot belong to a live
+    attempt — it is clock skew, or a test environment's placeholder epoch — so it is ignored
+    rather than read as an exhausted budget. A start in the future (the worker's clock behind
+    the server's) counts as zero.
+    """
+    if not isinstance(started, datetime):
+        return 0.0
+    aware = started if started.tzinfo is not None else started.replace(tzinfo=UTC)
+    elapsed = (datetime.now(UTC) - aware).total_seconds()
+    if elapsed < 0 or (total_seconds is not None and elapsed > total_seconds):
+        return 0.0
+    return elapsed
+
+
 class ActivityBudget:
-    """Whether ANOTHER candidate's call can still finish inside this activity's budget.
+    """Whether ANOTHER call can still finish inside this activity's budget.
 
-    The whole chain walk runs inside ONE activity's ``start_to_close_timeout``. Without this
-    guard a switch late in the budget is started anyway, the activity times out mid-call, and
-    Temporal re-runs it FROM THE PRIMARY — re-billing a generation that already completed and
-    losing the fallback's work. So a candidate is only STARTED when its own per-call timeout
-    still fits in what is left; on exhaustion the walker stops and the node degrades, never
-    raises (a raise is what makes Temporal retry).
+    The whole chain walk (and a note plan's truncation retry and coverage repair) runs inside ONE
+    activity's ``start_to_close_timeout``. Without this guard a call late in the budget is started
+    anyway, Temporal cancels the activity mid-call, and the work already done is lost — a fallback
+    re-runs FROM THE PRIMARY, a finalizer's note never reaches the output. So a call is only
+    STARTED when the longest it may legitimately take still fits in what is left; on exhaustion
+    the caller stops and the node degrades, never raises (a raise is what makes Temporal retry).
 
-    The FIRST candidate is always allowed: the budget governs SWITCHING, not the attempt the
+    A call is costed at the LLM governor's per-call timeout (``HARNESS_LLM_REQUEST_TIMEOUT_S``)
+    when that is longer than the caller's own figure: the governor lets one call run that long
+    once it holds its endpoint slot, so anything shorter is a guess that a contended box beats.
+    The clock starts when the activity ATTEMPT started (Temporal's own ``start_to_close`` clock),
+    not when the budget was built, so a wait for a concurrency slot — or any other work before
+    the budget existed — is charged rather than forgotten.
+
+    The FIRST candidate is always allowed: the budget governs what comes AFTER the attempt the
     activity exists to make. Outside an activity context (unit fixtures) there is no declared
     budget and the guard is inert.
     """
 
-    def __init__(self, per_call_seconds: float, total_seconds: float | None) -> None:
+    def __init__(
+        self,
+        per_call_seconds: float,
+        total_seconds: float | None,
+        *,
+        elapsed_seconds: float = 0.0,
+    ) -> None:
         self._per_call = per_call_seconds
         self._total = total_seconds
-        self._start = time.monotonic()
+        self._start = _monotonic() - max(0.0, elapsed_seconds)
 
     @classmethod
     def for_activity(cls, per_call_seconds: float) -> ActivityBudget:
-        total: float | None = None
         try:
-            timeout = activity.info().start_to_close_timeout
+            info = activity.info()
         except RuntimeError:
-            timeout = None
-        if timeout is not None:
-            total = timeout.total_seconds()
-        return cls(per_call_seconds, total)
+            return cls(per_call_seconds, None)
+        timeout = info.start_to_close_timeout
+        total = timeout.total_seconds() if timeout is not None else None
+        governor_call = get_llm_governor_config().request_timeout_s
+        per_call = max(per_call_seconds, governor_call) if governor_call > 0 else per_call_seconds
+        return cls(per_call, total, elapsed_seconds=_attempt_elapsed(info.started_time, total))
 
     @property
     def remaining_seconds(self) -> float | None:
         if self._total is None:
             return None
-        return self._total - (time.monotonic() - self._start)
+        return self._total - (_monotonic() - self._start)
 
     def allows_another(self) -> bool:
         remaining = self.remaining_seconds
