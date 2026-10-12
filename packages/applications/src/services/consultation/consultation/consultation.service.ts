@@ -1675,6 +1675,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
+   * A list page as responses, each carrying its lifecycle view (encounters, approval, auto-close,
+   * reopen policy). The views of the whole page are loaded together — two queries, whatever the
+   * page size — and outside the row read itself, so a failure there is never mistaken for "no rows".
+   */
+  private async mapList(rows: ConsultationEntity[]): Promise<ConsultationResponse[]> {
+    if (rows.length === 0) return [];
+    const views = await this.encounters.lifecycleViews(rows);
+    return rows.map((row) => ConsultationDtoMapper.toResponse(row, false, views.get(row.id)));
+  }
+
+  /**
    * Get all consultations for a patient (across all dates and doctors)
    */
   async getPatientHistory(patientId: string): Promise<ConsultationResponse[]> {
@@ -1693,7 +1704,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { patientId, historyCount: consultations.length },
     });
 
-    return consultations.map((c) => ConsultationDtoMapper.toResponse(c));
+    return this.mapList(consultations);
   }
 
   /**
@@ -1711,7 +1722,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { patientId, date, count: consultations.length },
     });
 
-    return consultations.map((c) => ConsultationDtoMapper.toResponse(c));
+    return this.mapList(consultations);
   }
 
   /**
@@ -1749,7 +1760,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { consultationId, chainCount: inTenant.length },
     });
 
-    return inTenant.map((c) => ConsultationDtoMapper.toResponse(c));
+    return this.mapList(inTenant);
   }
 
   /**
@@ -1781,7 +1792,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(consultations),
       count,
       page,
       limit,
@@ -1812,7 +1823,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: pageData.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(pageData),
       count,
       page,
       limit,
@@ -1858,7 +1869,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       });
 
       return {
-        data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+        data: await this.mapList(consultations),
         count,
         page,
         limit: pageSize,
@@ -1884,7 +1895,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(consultations),
       count,
       page,
       limit: pageSize,
@@ -1956,7 +1967,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(consultations),
       count,
       page,
       limit: pageSize,

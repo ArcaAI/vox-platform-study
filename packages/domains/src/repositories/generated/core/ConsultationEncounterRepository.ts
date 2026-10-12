@@ -25,6 +25,20 @@ export class ConsultationEncounterRepository extends Repository<ConsultationEnco
     return models.map((model: ConsultationEncounter) => (this as any)._mapper.toDomainEntity(model));
   }
 
+  /**
+   * Every encounter of a set of consultations (a list page), in ONE query, grouped by
+   * consultation and in `seq` order within each.
+   */
+  async findByConsultations(consultationIds: string[]): Promise<ConsultationEncounterEntity[]> {
+    const ids = [...new Set(consultationIds)];
+    if (ids.length === 0) return [];
+    const models = await (this as any).db.findMany({
+      where: { consultationId: { in: ids } },
+      orderBy: [{ consultationId: 'asc' }, { seq: 'asc' }],
+    });
+    return models.map((model: ConsultationEncounter) => (this as any)._mapper.toDomainEntity(model));
+  }
+
   /** One encounter by its seq, or `null`. */
   async findBySeq(consultationId: string, seq: number): Promise<ConsultationEncounterEntity | null> {
     const model = await (this as any).db.findFirst({ where: { consultationId, seq } });

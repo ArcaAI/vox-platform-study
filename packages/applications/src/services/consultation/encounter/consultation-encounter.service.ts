@@ -3,6 +3,7 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BusinessException } from '@arcaai/exceptions';
 import {
+  ConsultationApprovalEntity,
   ConsultationApprovalRepository,
   ConsultationEncounterEntity,
   ConsultationEncounterFactory,
@@ -47,6 +48,13 @@ interface IncludedConsultation {
   patientId?: string;
   doctorId?: string;
   resourceStatus?: string;
+}
+
+/** The lifecycle settings of one tenant, resolved once per answer. */
+interface TenantLifecyclePolicy {
+  autoClose: unknown;
+  timeZone: string;
+  allowClosedCompleteReopen: boolean;
 }
 
 @Injectable()
@@ -171,26 +179,73 @@ export class ConsultationEncounterService extends BaseService implements IConsul
   }
 
   async lifecycleView(consultation: ConsultationEntity): Promise<ConsultationLifecycleView> {
-    const [encounters, approval] = await Promise.all([this.encounterRepository.findByConsultation(consultation.id), this.approvalOf(consultation)]);
+    const [encounters, approval] = await Promise.all([
+      this.encounterRepository.findByConsultation(consultation.id),
+      consultation.isApproved ? this.approvalRepository.findLatestByConsultation(consultation.id) : Promise.resolve(null),
+    ]);
+    return this.buildView(consultation, encounters, approval, this.tenantPolicy(consultation.tenantId));
+  }
+
+  async lifecycleViews(consultations: ConsultationEntity[]): Promise<Map<string, ConsultationLifecycleView>> {
+    const views = new Map<string, ConsultationLifecycleView>();
+    if (consultations.length === 0) return views;
+    const approvedIds = consultations.filter((consultation) => consultation.isApproved).map((consultation) => consultation.id);
+    const [encounters, approvals] = await Promise.all([
+      this.encounterRepository.findByConsultations(consultations.map((consultation) => consultation.id)),
+      approvedIds.length > 0 ? this.approvalRepository.findLatestByConsultations(approvedIds) : Promise.resolve(new Map<string, ConsultationApprovalEntity>()),
+    ]);
+    const encountersOf = new Map<string, ConsultationEncounterEntity[]>();
+    for (const encounter of encounters) {
+      encountersOf.set(encounter.consultationId, [...(encountersOf.get(encounter.consultationId) ?? []), encounter]);
+    }
+    const policies = new Map<string, TenantLifecyclePolicy>();
+    for (const consultation of consultations) {
+      let policy = policies.get(consultation.tenantId);
+      if (!policy) {
+        policy = this.tenantPolicy(consultation.tenantId);
+        policies.set(consultation.tenantId, policy);
+      }
+      views.set(
+        consultation.id,
+        this.buildView(consultation, encountersOf.get(consultation.id) ?? [], approvals.get(consultation.id) ?? null, policy),
+      );
+    }
+    return views;
+  }
+
+  /** One consultation's view from its already-loaded encounters, latest approval and tenant policy. */
+  private buildView(
+    consultation: ConsultationEntity,
+    encounters: ConsultationEncounterEntity[],
+    approval: ConsultationApprovalEntity | null,
+    policy: TenantLifecyclePolicy,
+  ): ConsultationLifecycleView {
     const autoCloseAt = consultation.isClosed
       ? null
-      : computeAutoCloseAt(readAutoClosePolicy(this.setting(CONSULTATION_AUTO_CLOSE_SETTING_KEY, consultation.tenantId)), {
+      : computeAutoCloseAt(readAutoClosePolicy(policy.autoClose), {
           lastActivityAt: consultation.lastActivityAt,
           now: new Date(),
-          timeZone: this.timeZone(consultation.tenantId),
+          timeZone: policy.timeZone,
         });
     return {
       encounters: EncounterDtoMapper.toResponses(encounters),
-      approval,
+      approval: consultation.isApproved ? this.approvalResponse(approval) : null,
       autoCloseAt,
-      allowClosedCompleteReopen: this.setting(CONSULTATION_REOPEN_ALLOW_CLOSED_COMPLETE_SETTING_KEY, consultation.tenantId) === true,
+      allowClosedCompleteReopen: policy.allowClosedCompleteReopen,
+    };
+  }
+
+  /** The lifecycle settings of one tenant, resolved once. */
+  private tenantPolicy(tenantId: string): TenantLifecyclePolicy {
+    return {
+      autoClose: this.setting(CONSULTATION_AUTO_CLOSE_SETTING_KEY, tenantId),
+      timeZone: this.timeZone(tenantId),
+      allowClosedCompleteReopen: this.setting(CONSULTATION_REOPEN_ALLOW_CLOSED_COMPLETE_SETTING_KEY, tenantId) === true,
     };
   }
 
   /** The latest approval while the consultation is approved (APPROVED / CLOSED_COMPLETE); a reopen voids it. */
-  private async approvalOf(consultation: ConsultationEntity): Promise<ConsultationApprovalResponse | null> {
-    if (!consultation.isApproved) return null;
-    const approval = await this.approvalRepository.findLatestByConsultation(consultation.id);
+  private approvalResponse(approval: ConsultationApprovalEntity | null): ConsultationApprovalResponse | null {
     if (!approval) return null;
     const items = (approval.snapshot as { items?: unknown } | null | undefined)?.items;
     return {
