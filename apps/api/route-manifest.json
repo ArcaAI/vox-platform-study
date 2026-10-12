@@ -2901,6 +2901,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "AdminGuardrailEvaluationController",
+      "handler": "notices",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/guardrail-notices",
+      "routePath": "/admin/consultations/:id/guardrail-notices",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AdminConsultationHistoryController",
       "handler": "listRuns",
       "method": "GET",

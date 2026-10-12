@@ -602,6 +602,11 @@
             "description": "DNA Writing Style ID (for summaries)",
             "type": "string"
           },
+          "encounterSeq": {
+            "description": "The encounter (visit sequence) this item belongs to. Omit it and a STRUCTURED, CASE_NOTE, WORKNOTE or PRE_SUMMARY item is stamped with the consultation’s current encounter; a transcript stays consultation-wide. An encounter that does not exist yet is refused (400).",
+            "minimum": 1,
+            "type": "number"
+          },
           "kindKey": {
             "description": "The tenant-declared context kind this item is an instance of (`kinds[].key` of the tenant's pinned ConsultationContextSchema version). Omit it for the pre-existing behaviour: no schema is consulted and the write proceeds exactly as before.",
             "example": "referral_letter",

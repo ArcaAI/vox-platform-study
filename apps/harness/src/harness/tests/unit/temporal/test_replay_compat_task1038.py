@@ -69,6 +69,10 @@ INTERPRETER_FAMILY_FIXTURES = (
     # (`_capture_task1038_replay_fixtures.py --task1038-e3`, recorded on the post-change definition).
     "interpreter_task1038_e3_loop_reads_history",
     "loop_workflow_task1038_e3_reads_history",
+    # TASK-1066 — backward and forward guards of `upstream-failed-output`
+    # (`_capture_upstream_failed_output_fixture.py`).
+    "interpreter_upstream_failed_pre_marker_history",
+    "interpreter_upstream_failed_marker_history",
 )
 
 

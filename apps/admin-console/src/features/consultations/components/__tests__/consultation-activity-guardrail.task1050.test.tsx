@@ -89,7 +89,7 @@ function stub(processingReason?: string) {
       if (path === '/api/hope/admin/consultations/c-1/activity') return Response.json(page(processingReason));
       if (path === '/api/hope/admin/consultations/c-1/guardrail-evaluations')
         return Response.json({ consultationId: 'c-1', items: [], nextCursor: null, hasMore: false, limit: 100 });
-      if (path === '/api/hope/consultations/c-1/guardrail-notices') return Response.json({ notices: [BLOCK], unacknowledgedNoticeIds: [] });
+      if (path === '/api/hope/admin/consultations/c-1/guardrail-notices') return Response.json({ notices: [BLOCK], unacknowledgedNoticeIds: [] });
       if (path === '/api/hope/users/me/settings') return Response.json([]);
       return Response.json({});
     }),

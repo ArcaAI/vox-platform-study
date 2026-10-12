@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 629 component schemas the generated surface transitively
+ * Only the 633 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -3595,6 +3595,70 @@ export interface GuardrailNoticeAcknowledgementResponse {
   acknowledgedVia: 'ack' | 'approve' | 'resume';
   /** The acknowledged guardrail notice. */
   noticeId: string;
+}
+
+export interface GuardrailNoticeAcknowledgementView {
+  acknowledgedAt: string;
+  acknowledgedBy: string;
+  acknowledgedVia: 'ack' | 'approve' | 'resume';
+  noticeId: string;
+}
+
+export interface GuardrailNoticeCheckResponse {
+  category?: string;
+  checkId:
+    | 'jailbreak_detection'
+    | 'prompt_safety'
+    | 'prompt_toxicity'
+    | 'response_safety'
+    | 'response_toxicity'
+    | 'response_refusal'
+    | 'pii_leak'
+    | 'containment_echo'
+    | 'medical_validation'
+    | 'injection_judge'
+    | 'unsafe_content_judge'
+    | 'clinical_safety_judge'
+    | 'leakage_judge';
+  severity: 'low' | 'medium' | 'high';
+}
+
+export interface GuardrailNoticeListResponse {
+  /** Every OPEN notice plus the most recent acknowledged / resolved ones, oldest first. */
+  notices: GuardrailNoticeResponse[];
+  /** The notices still awaiting an acknowledgement. */
+  unacknowledgedNoticeIds: string[];
+}
+
+export interface GuardrailNoticeResponse {
+  acknowledgement: GuardrailNoticeAcknowledgementView;
+  action: 'warn' | 'block';
+  checks: GuardrailNoticeCheckResponse[];
+  consultationId?: string;
+  /** The fixed English label of messageKey — never content. */
+  defaultMessage: string;
+  direction: 'inbound' | 'outbound';
+  itemIds: string[];
+  messageKey:
+    | 'guardrail.warning.generic'
+    | 'guardrail.blocked.inbound'
+    | 'guardrail.blocked.outbound'
+    | 'guardrail.blocked.not_medical'
+    | 'guardrail.blocked.redaction_unavailable'
+    | 'guardrail.unverified.generic';
+  nodeId?: string;
+  noticeId: string;
+  occurredAt: string;
+  policyVersion: string;
+  requiresAcknowledgement: boolean;
+  resolution: 'item_excluded' | 'item_edited' | 'acknowledged' | null;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  resumable: boolean;
+  runId?: string;
+  schemaVersion: 1;
+  status: 'open' | 'acknowledged' | 'resolved';
+  type: 'guardrail.warning' | 'guardrail.blocked' | 'guardrail.unverified';
 }
 
 export interface GuardrailPerformanceResponse {

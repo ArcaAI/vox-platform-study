@@ -113,7 +113,7 @@ function stub({ withheldStatus = 200, notices = [WARNING, MEDICAL_BLOCK] }: { wi
             })
           : Response.json({ statusCode: 403, code: 'GUARDRAIL_WITHHELD_FORBIDDEN', message: 'Forbidden' }, { status: 403 });
       }
-      if (path === '/api/hope/consultations/c-1/guardrail-notices')
+      if (path === '/api/hope/admin/consultations/c-1/guardrail-notices')
         return Response.json({ notices, unacknowledgedNoticeIds: ['n-warn'] });
       if (path === '/api/hope/consultations/c-1' && method === 'GET') return Response.json({ id: 'c-1', version: 11 }, { headers: { etag: '"11"' } });
       if (method === 'POST') return Response.json({ ok: true });

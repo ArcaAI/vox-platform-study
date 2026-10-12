@@ -2040,6 +2040,7 @@ async def _run_note_plan_finalizer(
             ),
             preserved_sections=envelope.preserved_sections,
             allow_repair=budget.allows_another,
+            remaining_seconds=lambda: budget.remaining_seconds,
             # TASK-1049 F9 — one lead call fills guardrail's window cache for the shared prefix.
             prime_shared_prefix=True,
         )

@@ -21,6 +21,7 @@ import type {
   ConsultationTelemetryResponse,
   FeedbackRollupResponse,
   GuardrailEvaluationPageResponse,
+  GuardrailNoticeListResponse,
   GuardrailWithheldContentResponse,
   ItemVersionDetailResponse,
   ItemVersionSummaryResponse,
@@ -38,7 +39,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AdminConsultationController, AdminConsultationHistoryController, AdminFeedbackRollupController, AdminGuardrailEvaluationController, ComposedPromptAdminController, ConsultationTelemetryController, PromptPreviewController
- * (15 routes). Several controllers sharing one scope share one
+ * (16 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -250,6 +251,22 @@ export class AdminConsultationAdminResource extends AdminResource {
     return this.request<GuardrailWithheldContentResponse>({
       method: 'GET',
       path: `admin/consultations/${encodePathSegment(String(id))}/guardrail-evaluations/${encodePathSegment(String(evaluationId))}/withheld`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List a consultation`s guardrail notices (admin)
+   *
+   * Every OPEN guardrail notice and the most recent acknowledged / resolved ones, oldest first, plus `unacknowledgedNoticeIds`. No content and no judge reasoning.
+   *
+   * `GET /api/v1/admin/consultations/{id}/guardrail-notices` — `AdminGuardrailEvaluationController.notices`.
+   */
+  notices(id: string, options: AdminRequestOptions = {}): Promise<GuardrailNoticeListResponse> {
+    return this.request<GuardrailNoticeListResponse>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/guardrail-notices`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

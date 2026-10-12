@@ -45,7 +45,6 @@ export class AdminGuardrailEvaluationController {
     return (await this.noticeService.list(id)) as unknown as GuardrailNoticeListResponse;
   }
 
-
   @Get(':id/guardrail-evaluations')
   @ApiOperation({
     summary: 'List a consultation`s guardrail evaluations',

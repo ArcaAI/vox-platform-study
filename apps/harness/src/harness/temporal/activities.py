@@ -2258,6 +2258,7 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
             generate=walk_attempts(attempts, _generate, allows_another=budget.allows_another),
             preserved_sections=envelope.preserved_sections,
             allow_repair=budget.allows_another,
+            remaining_seconds=lambda: budget.remaining_seconds,
             # TASK-1049 F9 — one lead call fills guardrail's window cache for the shared prefix.
             prime_shared_prefix=True,
         )
