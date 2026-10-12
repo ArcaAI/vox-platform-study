@@ -48,6 +48,20 @@ HARNESS_TENANT_ID_ATTR = "HarnessTenantId"
 HARNESS_TENANT_ID_KEY = SearchAttributeKey.for_keyword(HARNESS_TENANT_ID_ATTR)
 
 
+# The missing-attribute degradation repeats on every signal of every consultation until an operator
+# registers the attribute; one warning per process says it, the rest would only bury other logs.
+_SEARCH_ATTRIBUTE_WARNED: set[str] = set()
+_SEARCH_ATTRIBUTE_WARN_KEY = HARNESS_TENANT_ID_ATTR
+
+
+def _warn_search_attribute_unavailable(event: str, **fields: Any) -> None:
+    if _SEARCH_ATTRIBUTE_WARN_KEY in _SEARCH_ATTRIBUTE_WARNED:
+        logger.debug(event, **fields)
+        return
+    _SEARCH_ATTRIBUTE_WARNED.add(_SEARCH_ATTRIBUTE_WARN_KEY)
+    logger.warning(event, **fields)
+
+
 def _settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
 
@@ -329,7 +343,7 @@ async def start_document(
     except Exception as exc:  # noqa: BLE001 — fail-safe: the SA may be unregistered
         # Degrade to a memo-only start so a missing search attribute never blocks a
         # consultation. The admin console then filters by the memo client-side.
-        logger.warning(
+        _warn_search_attribute_unavailable(
             "harness.document.start.search_attribute_unavailable",
             consultation_id=consultation_id,
             workflow_id=workflow_id,
@@ -518,7 +532,7 @@ async def signal_context_added(
     except Exception as exc:  # noqa: BLE001 — fail-safe: the SA may be unregistered
         # Same degradation as ``start_document``: a search attribute that is not
         # registered on the cluster must never stop a consultation.
-        logger.warning(
+        _warn_search_attribute_unavailable(
             "harness.loop.signal_context_added.search_attribute_unavailable",
             consultation_id=consultation_id,
             workflow_id=workflow_id,

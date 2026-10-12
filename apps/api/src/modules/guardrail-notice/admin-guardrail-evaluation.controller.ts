@@ -2,9 +2,11 @@ import {
   GuardrailEvaluationAdminService,
   GuardrailEvaluationListQuery,
   GuardrailEvaluationPageResponse,
+  GuardrailNoticeListResponse,
   GuardrailWithheldContentResponse,
+  IGuardrailNoticeService,
 } from '@arcaai/applications';
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
@@ -20,7 +22,29 @@ import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 @Controller('admin/consultations')
 @CanRead('Consultation')
 export class AdminGuardrailEvaluationController {
-  constructor(private readonly evaluations: GuardrailEvaluationAdminService) {}
+  constructor(
+    private readonly evaluations: GuardrailEvaluationAdminService,
+    @Inject(IGuardrailNoticeService) private readonly noticeService: IGuardrailNoticeService,
+  ) {}
+
+  // AUTH-NOTE: the same class gate as the evaluation grid (read:Consultation, no API key, the admin
+  // service scope). The business-plane twin (`consultations/:id/guardrail-notices`) is session-scoped
+  // and refuses a tenant administrator who is not the consultation's clinician; this admin read lists
+  // the same content-free notices for the working tenant. The service resolves the consultation inside
+  // the CLS tenant, so another tenant's consultation is 404.
+  @Get(':id/guardrail-notices')
+  @ApiOperation({
+    summary: 'List a consultation`s guardrail notices (admin)',
+    description:
+      'Every OPEN guardrail notice and the most recent acknowledged / resolved ones, oldest first, plus `unacknowledgedNoticeIds`. No content and no judge reasoning.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiOkResponse({ type: GuardrailNoticeListResponse })
+  @ApiResponse({ status: 404, description: 'No such consultation in this tenant.' })
+  async notices(@Param('id') id: string): Promise<GuardrailNoticeListResponse> {
+    return (await this.noticeService.list(id)) as unknown as GuardrailNoticeListResponse;
+  }
+
 
   @Get(':id/guardrail-evaluations')
   @ApiOperation({

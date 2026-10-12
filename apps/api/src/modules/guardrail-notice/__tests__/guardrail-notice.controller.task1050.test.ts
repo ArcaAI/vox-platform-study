@@ -5,7 +5,7 @@
  */
 import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
-import { ForbiddenException, HttpException } from '@nestjs/common';
+import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
 import { GuardrailNoticeController } from '../guardrail-notice.controller';
 import { AdminGuardrailEvaluationController } from '../admin-guardrail-evaluation.controller';
 
@@ -71,10 +71,26 @@ describe('GuardrailNoticeController', () => {
 describe('AdminGuardrailEvaluationController', () => {
   it('passes the list query and the withheld read through to the admin service', async () => {
     const admin = { list: vi.fn(async () => ({ items: [] })), getWithheld: vi.fn(async () => ({ content: 'x' })) };
-    const controller = new AdminGuardrailEvaluationController(admin as never);
+    const controller = new AdminGuardrailEvaluationController(admin as never, {} as never);
     await controller.list('c-1', { action: 'block', limit: 5 } as never);
     expect(admin.list).toHaveBeenCalledWith('c-1', { action: 'block', limit: 5 });
     await controller.withheld('c-1', 'e-1');
     expect(admin.getWithheld).toHaveBeenCalledWith('c-1', 'e-1');
+  });
+});
+
+describe('AdminGuardrailEvaluationController notices', () => {
+  it('lists the consultation notices through the tenant-closed notice service', async () => {
+    const notices = { list: vi.fn(async () => ({ notices: [], unacknowledgedNoticeIds: [] })) };
+    const controller = new AdminGuardrailEvaluationController({} as never, notices as never);
+    await expect(controller.notices('c-1')).resolves.toEqual({ notices: [], unacknowledgedNoticeIds: [] });
+    expect(notices.list).toHaveBeenCalledWith('c-1');
+  });
+
+  it('propagates the cross-tenant 404 and declares the admin plane gates', async () => {
+    const notices = { list: vi.fn(async () => { throw new NotFoundException('Consultation c-9 not found'); }) };
+    const controller = new AdminGuardrailEvaluationController({} as never, notices as never);
+    await expect(controller.notices('c-9')).rejects.toBeInstanceOf(NotFoundException);
+    expect(Reflect.getMetadata('path', AdminGuardrailEvaluationController.prototype.notices)).toBe(':id/guardrail-notices');
   });
 });

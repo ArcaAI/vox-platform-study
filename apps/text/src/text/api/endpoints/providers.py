@@ -55,6 +55,11 @@ def _unavailable(name: str) -> dict[str, Any]:
     ).model_dump()
 
 
+def _has_no_endpoint(provider: LLMProvider) -> bool:
+    """True for a self-hosted adapter (it keeps a ``_last_base_url`` memo) that has none yet."""
+    return getattr(provider, "_last_base_url", object()) is None
+
+
 async def _describe(provider: LLMProvider, connection: ProbeConnection | None) -> ProviderInfo:
     """Enumerate the engine the CALLER resolved, falling back to the process memo.
 
@@ -85,8 +90,15 @@ async def _probe(
     probe_error: str | None = None
     try:
         provider = registry.get(name)
-        info = await asyncio.wait_for(_describe(provider, connection), timeout=timeout_s)
-        payload = info.model_dump()
+        if connection is None and _has_no_endpoint(provider):
+            # A self-hosted engine nobody configured (no resolved connection, and no
+            # generation ever served from one): there is nothing to probe, and probing
+            # its default address only produces a failure log every poll.
+            payload = _unavailable(name)
+            payload["probe_status_override"] = "skipped"
+        else:
+            info = await asyncio.wait_for(_describe(provider, connection), timeout=timeout_s)
+            payload = info.model_dump()
     except TimeoutError:
         payload = _unavailable(name)
         probe_status = "timeout"
@@ -96,7 +108,10 @@ async def _probe(
         probe_status = "error"
         probe_error = str(exc)
 
-    if probe_status == "ok" and payload.get("status") == "unavailable":
+    if payload.pop("probe_status_override", None) == "skipped":
+        probe_status = "skipped"
+        probe_error = "no connection is configured for this provider; nothing was probed"
+    elif probe_status == "ok" and payload.get("status") == "unavailable":
         # A SWALLOWED failure. Every adapter catches its own transport error and
         # returns a well-formed ``ProviderInfo(status="unavailable")`` instead of
         # raising, so the ``try`` above completes and would stamp ``ok`` — a probe

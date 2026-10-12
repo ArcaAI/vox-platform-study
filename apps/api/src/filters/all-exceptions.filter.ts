@@ -5,6 +5,13 @@ import { logRequestFailure, requestIdOf, writeErrorBody } from './failure-log';
 /** `code` for an error nothing upstream mapped. */
 export const UNEXPECTED_ERROR_CODE = 'INTERNAL.UNEXPECTED';
 
+/** `code` for a request body over the parser limit. */
+export const PAYLOAD_TOO_LARGE_CODE = 'REQUEST.PAYLOAD_TOO_LARGE';
+
+function isPayloadTooLarge(exception: unknown): boolean {
+  return typeof exception === 'object' && exception !== null && (exception as { type?: unknown }).type === 'entity.too.large';
+}
+
 /**
  * The terminal filter for anything the specific filters do not claim — a
  * `TypeError` in a handler, a non-HTTP error thrown from a guard, a domain
@@ -33,16 +40,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest();
     const response = ctx.getResponse();
 
-    const status = HttpStatus.INTERNAL_SERVER_ERROR;
+    // body-parser rejects an oversize body with an error that is not an HttpException; answer it
+    // with the 413 it is, so a client (and a retrying outbox) can tell "too big" from "broken".
+    const tooLarge = isPayloadTooLarge(exception);
+    const status = tooLarge ? HttpStatus.PAYLOAD_TOO_LARGE : HttpStatus.INTERNAL_SERVER_ERROR;
+    const code = tooLarge ? PAYLOAD_TOO_LARGE_CODE : UNEXPECTED_ERROR_CODE;
     const correlationId = requestIdOf(request);
 
-    logRequestFailure(this.logger, { request, status, code: UNEXPECTED_ERROR_CODE, exception });
+    logRequestFailure(this.logger, { request, status, code, exception });
 
     if (typeof response?.status !== 'function') return;
     writeErrorBody(response, status, {
       statusCode: status,
-      code: UNEXPECTED_ERROR_CODE,
-      message: 'Internal server error',
+      code,
+      message: tooLarge ? 'Request body too large' : 'Internal server error',
       ...(correlationId ? { correlationId } : {}),
     });
   }

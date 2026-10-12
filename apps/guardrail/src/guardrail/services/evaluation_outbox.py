@@ -356,7 +356,7 @@ class EvaluationDrainer:
         await self._redis.xdel(self._stream, *ids)
 
     async def _post(self, tenant_id: str, records: list[dict[str, Any]]) -> str:
-        """`ok` | `retry` | `rejected`."""
+        """`ok` | `retry` | `rejected` | `oversize`."""
         try:
             response = await self._http.post(
                 self._url,
@@ -381,6 +381,8 @@ class EvaluationDrainer:
         status = int(getattr(response, "status_code", 0) or 0)
         if 200 <= status < 300:
             return "ok"
+        if status == 413:
+            return "oversize"
         if 400 <= status < 500 and status not in (408, 429):
             logger.error(
                 "guardrail.evaluation_outbox.rejected",
@@ -396,6 +398,47 @@ class EvaluationDrainer:
             status=status,
         )
         return "retry"
+
+    async def _deliver(
+        self,
+        tenant_id: str,
+        chunk: list[tuple[str, dict[str, Any]]],
+        redriven_ids: set[str],
+    ) -> int:
+        """POST one batch; a 413 halves it, a single oversize row is dropped. Returns acked."""
+        ids = [eid for eid, _r in chunk]
+        outcome = await self._post(tenant_id, [r for _e, r in chunk])
+        if outcome == "oversize":
+            if len(chunk) > 1:
+                mid = len(chunk) // 2
+                return await self._deliver(
+                    tenant_id, chunk[:mid], redriven_ids
+                ) + await self._deliver(tenant_id, chunk[mid:], redriven_ids)
+            logger.error(
+                "guardrail.evaluation_outbox.oversize_dropped",
+                tenant_id=tenant_id,
+                evaluation_id=str(chunk[0][1].get("evaluationId")),
+            )
+            record_outbox_failure("oversize", 1)
+            await self._settle(ids)
+            return 0
+        if outcome == "ok":
+            await self._settle(ids)
+            redriven = sum(1 for eid in ids if eid in redriven_ids)
+            try:
+                EVALUATIONS_DRAINED.inc(len(ids))
+                if redriven:
+                    EVALUATIONS_REDRIVEN.inc(redriven)
+            except Exception:  # noqa: BLE001
+                pass
+            return len(ids)
+        if outcome == "rejected":
+            record_outbox_failure("rejected", len(ids))
+            await self._settle(ids)
+        else:
+            # Left pending: XAUTOCLAIM redrives it once idle. Never dropped.
+            record_outbox_failure("post", len(ids))
+        return 0
 
     async def drain_once(self) -> int:
         """One pass: redrive stale pending entries, then read new ones. Returns acked."""
@@ -419,24 +462,7 @@ class EvaluationDrainer:
         for tenant_id, entries in by_tenant.items():
             for start in range(0, len(entries), self._batch_max):
                 chunk = entries[start : start + self._batch_max]
-                ids = [eid for eid, _r in chunk]
-                outcome = await self._post(tenant_id, [r for _e, r in chunk])
-                redriven = sum(1 for eid in ids if eid in redriven_ids)
-                if outcome == "ok":
-                    await self._settle(ids)
-                    acked += len(ids)
-                    try:
-                        EVALUATIONS_DRAINED.inc(len(ids))
-                        if redriven:
-                            EVALUATIONS_REDRIVEN.inc(redriven)
-                    except Exception:  # noqa: BLE001
-                        pass
-                elif outcome == "rejected":
-                    record_outbox_failure("rejected", len(ids))
-                    await self._settle(ids)
-                else:
-                    # Left pending: XAUTOCLAIM redrives it once idle. Never dropped.
-                    record_outbox_failure("post", len(ids))
+                acked += await self._deliver(tenant_id, chunk, redriven_ids)
         return acked
 
     async def run(self) -> None:
