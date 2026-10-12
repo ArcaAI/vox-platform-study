@@ -1660,6 +1660,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private ON_START_SETTLE_MS = 20_000; // TASK-1059 orchestrator: 120 s delayed finalize past the broker's 180 s note budget; ALaaS also reads a late pre-summary on terminal
 
+  /**
+   * How long `stop()` waits for NER over the unflushed transcript tail before closing without it.
+   * Short on purpose: the pass is an enrichment of the closing snapshot, never a reason for the
+   * stop to be slow. Not `readonly` only so a test can shorten it.
+   */
+  private STOP_NER_TIMEOUT_MS = 3_000;
+
   /** The one running stop per consultation; a second stop joins it. */
   private readonly stopsInFlight = new Map<string, Promise<LiveSummaryEventDto | null>>();
 
@@ -3212,6 +3219,7 @@ return 0`;
     const session = this.sessions.get(consultationId);
     let finalPayload: LiveSummaryEventDto | null = null;
     const stopStartedAt = Date.now();
+    let closingEntities: LiveSummaryEntityDto[] | undefined;
 
     if (session) {
       // TASK-1022 (D-FLUSH) — fence the session first and cancel the pending timers. Replay1020 run3:
@@ -3230,11 +3238,18 @@ return 0`;
       // `CONCURRENCY_LIMIT`), and bought nothing: finalization runs right after stop and writes the
       // note from the transcript record (TASK-1045 note plan), not from the live text. So the stop
       // supersedes a generation still in flight — its slot is freed now, and its late answer is
-      // dropped as stale — and closes on the LAST GOOD note. No NER either: the entities of the last
-      // flush ride that note, and the transcript tail is the finalizer's.
+      // dropped as stale — and closes on the LAST GOOD note. The transcript tail's NOTE is the
+      // finalizer's; its ENTITIES are extracted below (owner amendment: NER only, never a generation).
       session.generation += 1;
       session.abortController?.abort();
       finalPayload = session.lastPayload ?? null;
+      // One bounded extraction call over the transcript tail no flush consumed, so the closing
+      // snapshot carries the entities of what was said after the last flush.
+      const tailEntities = await this.extractStopTailEntities(session);
+      if (tailEntities.length > 0) {
+        closingEntities = this.publishableEntities([...(finalPayload?.entities ?? []), ...tailEntities], finalPayload?.runningSummary ?? '', true);
+        if (finalPayload) finalPayload = { ...finalPayload, entities: closingEntities };
+      }
 
       // Finalize the durable snapshot: opt-in via `persistSnapshot`, or simply close
       // out the live row if periodic snapshots already created one this session.
@@ -3298,6 +3313,7 @@ return 0`;
     const lastUpdatedMs = Date.parse(finalPayload?.updatedAt ?? '');
     const closed: LiveSummaryEventDto = {
       ...(finalPayload ?? this.emptyPayload(consultationId)),
+      ...(closingEntities ? { entities: closingEntities } : {}),
       updatedAt: new Date(Number.isNaN(lastUpdatedMs) ? Date.now() : Math.max(Date.now(), lastUpdatedMs + 1)).toISOString(),
       closed: true,
     };
@@ -4907,7 +4923,11 @@ return 0`;
         const result = await this.toolRegistry.extraction().execute({ sourceText: input.sourceText, tenantId: input.tenantId }, signal);
         const vitalsEnabled = this.toolRegistry.isEnabled(ctx.agent.toolPlan, 'vitals');
         const nerEnabled = this.toolRegistry.isEnabled(ctx.agent.toolPlan, 'ner');
-        return { entities: nerEnabled ? result.entities : [], vitals: vitalsEnabled ? result.vitals : undefined };
+        const entities = nerEnabled ? result.entities : [];
+        // The note generation that follows takes an order of magnitude longer than NER, so the
+        // entities go out NOW, on the note the clinician already has.
+        await this.publishEarlyEntities(session, entities, ctx.isStale);
+        return { entities, vitals: vitalsEnabled ? result.vitals : undefined };
       },
     };
 
@@ -8504,6 +8524,80 @@ return 0`;
       anchored.push(transcriptAnchored);
     }
     return [...grounded, ...anchored];
+  }
+
+  /**
+   * The EARLY entity snapshot — published the moment a realtime NER stage answers, instead of
+   * waiting for the note generation of the same flush (~4 s against ~60 s on the dev serving tier).
+   *
+   * It is the note the session ALREADY shows (`lastPayload`, or the empty note when there is none
+   * yet) with this flush's transcript-anchored entities merged in, through
+   * {@link publishableEntities} as a flush that produced no note of its own. Nothing else of the
+   * note changes, so it can never blank or regress it.
+   *
+   * Ordering: it is dropped when the flush has been superseded, when the session is stopping, or
+   * when a newer payload became the session's last-good while NER was running — an early snapshot
+   * must never replace a newer full flush. It becomes the last-good itself, so a stop that
+   * supersedes the generation still closes with these entities. Best-effort like every publish.
+   */
+  private async publishEarlyEntities(session: LiveSession, extracted: LiveSummaryEntityDto[], isStale: () => boolean): Promise<void> {
+    if (extracted.length === 0) return;
+    const base = session.lastPayload;
+    if (session.stopping || isStale()) return;
+    const anchored = this.anchorEntitiesToTranscript(extracted, session.pendingGraphSegments);
+    const entities = this.publishableEntities([...(base?.entities ?? []), ...anchored], base?.runningSummary ?? '', true);
+    // Checked again immediately before the write: nothing may have replaced `base` meanwhile.
+    if (session.stopping || isStale() || session.lastPayload !== base) return;
+    const payload: LiveSummaryEventDto = {
+      ...(base ?? this.emptyPayload(session.consultationId)),
+      entities,
+      updatedAt: new Date().toISOString(),
+    };
+    session.lastPayload = payload;
+    await this.safePublish(session.consultationId, payload);
+  }
+
+  /**
+   * NER over the transcript tail no flush consumed, at stop — the closing snapshot's only source of
+   * entities for whatever was said after the last flush (or before the first one finished).
+   *
+   * Never a generation: only the extraction call, bounded by {@link STOP_NER_TIMEOUT_MS} so the stop
+   * is not held by a slow NLP. Gated by the session's frozen tool plan exactly as a flush's NER is.
+   * `[]` on an empty tail, a disabled plan, a timeout or a failure — the consultation then closes
+   * exactly as it would have without this pass.
+   */
+  private async extractStopTailEntities(session: LiveSession): Promise<LiveSummaryEntityDto[]> {
+    const from = session.flushedTranscriptCount;
+    const to = session.transcriptParts.length;
+    if (to <= from) return [];
+    if (!this.toolRegistry.isEnabled(session.agentSnapshot?.toolPlan ?? DEFAULT_LIVE_TOOL_PLAN, 'ner')) return [];
+    const sourceText = session.transcriptParts.slice(from, to).join(' ');
+    if (!sourceText.trim()) return [];
+
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`NER at stop exceeded ${this.STOP_NER_TIMEOUT_MS} ms`));
+      }, this.STOP_NER_TIMEOUT_MS);
+    });
+    try {
+      const result = await Promise.race([
+        this.toolRegistry.extraction().execute({ sourceText, tenantId: session.tenantId }, controller.signal),
+        timedOut,
+      ]);
+      return this.anchorEntitiesToTranscript(result.entities, this.buildGraphSegments(session, from, to));
+    } catch (error) {
+      this.logger.warn({
+        message: 'NER over the transcript tail at stop did not complete — closing with the last published entities',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private groundEntitiesToNote(entities: LiveSummaryEntityDto[], note: string): LiveSummaryEntityDto[] {
