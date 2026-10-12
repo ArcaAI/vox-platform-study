@@ -85,6 +85,17 @@ describe('ConsultationRepository — no-version-bump writers', () => {
     expect(second.data).not.toHaveProperty('processingPrior');
   });
 
+  it('setProcessing with onlyIfProcessing writes only while the row still holds that processing', async () => {
+    delegate.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      repo.setProcessing('c-1', ConsultationProcessing.IDLE, { prior: null, onlyIfProcessing: ConsultationProcessing.FINALIZING_TRANSCRIPT }),
+    ).resolves.toBe(false);
+    const args = delegate.updateMany.mock.calls[0][0];
+    expect(args.where).toEqual({ id: 'c-1', processing: ConsultationProcessing.FINALIZING_TRANSCRIPT });
+    expect(args.data).not.toHaveProperty('onlyIfProcessing');
+    expect(payloadHasVersion(delegate.updateMany.mock.calls[0])).toBe(false);
+  });
+
   it('allocateSegmentSeqs increments the head atomically and returns the allocated range', async () => {
     delegate.update.mockResolvedValue({ segmentSeqHead: 12 });
     await expect(repo.allocateSegmentSeqs('c-1', 3)).resolves.toEqual({ first: 10, last: 12 });
