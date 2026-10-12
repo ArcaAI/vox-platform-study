@@ -118,3 +118,22 @@ describe('countHumanEdits', () => {
     expect(countHumanEdits([human, machine, unedited])).toBe(1);
   });
 });
+
+describe('legacy note content', () => {
+  const render = (kind: 'NOTE' | 'PRE_SUMMARY' | 'CASE_NOTE' | 'STRUCTURED', content: string) => {
+    stubGates(false);
+    renderWithProviders(<ItemBody entry={itemEntry({ kind, latestVersion: { ...itemEntry().latestVersion, content } })} />);
+  };
+  it.each(['NOTE', 'PRE_SUMMARY', 'CASE_NOTE'] as const)('unwraps {"summary"} for %s', (kind) => {
+    render(kind, JSON.stringify({ summary: 'Patient is well.' }));
+    expect(screen.getByText('Patient is well.')).toBeDefined();
+  });
+  it('leaves non-string summary and non-objects untouched', () => {
+    render('NOTE', '{"summary":5}');
+    expect(screen.getByText('{"summary":5}')).toBeDefined();
+  });
+  it('leaves plain text untouched', () => {
+    render('NOTE', 'just text');
+    expect(screen.getByText('just text')).toBeDefined();
+  });
+});

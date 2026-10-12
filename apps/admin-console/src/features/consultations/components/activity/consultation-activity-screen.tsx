@@ -21,6 +21,7 @@ import { guardrailCountsByItem, useConsultationGuardrailNotices, useGuardrailEva
 import { ConsultationGuardrailTab } from '../guardrail/consultation-guardrail-tab';
 import { ConsultationHoldBanner } from '../guardrail/consultation-hold-banner';
 import { ConsultationStatusBadge } from '../consultation-status-badge';
+import { ConsultationHeaderMeta } from './consultation-header-meta';
 import { countHumanEdits, formatRunCost, kindLabel } from './activity-format';
 import { ItemBody } from './activity-item-row';
 import { buildActivityRows, isItemEntry, segmentRunRowId } from './activity-model';
@@ -279,6 +280,7 @@ export function ConsultationActivityScreen({ consultationId }: { consultationId:
                 {first ? (
                   <ConsultationStatusBadge status={first.status} processing={first.processing} processingReason={first.processingReason} />
                 ) : null}
+                <ConsultationHeaderMeta consultationId={consultationId} />
               </>
             }
             actions={

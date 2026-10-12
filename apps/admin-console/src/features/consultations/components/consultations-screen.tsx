@@ -23,6 +23,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { CONSULTATION_STATUSES, VISIT_TYPES, consultationKeys, useConsultations, visitTypeOf } from '../api';
 import type { Consultation, ConsultationStatus, ConsultationVisitType, ListConsultationsParams } from '../api';
+import { doctorDisplayName } from '../lib/doctor-name';
 import { AggregateChartCard } from './aggregate-chart-card';
 import { ConsultationDetailPanel } from './consultation-detail-panel';
 import { ConsultationStatusBadge } from './consultation-status-badge';
@@ -209,7 +210,16 @@ function ConsultationsScreenBody() {
         enableHiding: false,
         size: 150,
         meta: { label: 'Doctor', variant: 'text' },
-        cell: ({ row }) => row.original.doctor?.username ?? <span className="font-mono text-xs">{row.original.doctorId}</span>,
+        cell: ({ row }) => {
+          const doctor = doctorDisplayName(row.original.doctor);
+          if (!doctor) return <span className="font-mono text-xs">{row.original.doctorId}</span>;
+          return (
+            <span title={doctor.secondary}>
+              {doctor.label}
+              {doctor.secondary && doctor.label !== doctor.secondary ? <span className="text-muted-foreground ml-1 text-xs">({doctor.secondary})</span> : null}
+            </span>
+          );
+        },
       },
       {
         accessorKey: 'departmentId',

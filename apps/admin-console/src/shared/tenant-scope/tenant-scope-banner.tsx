@@ -2,6 +2,7 @@
 
 import { IconBuilding } from '@tabler/icons-react';
 import { useSession } from '@/shared/auth';
+import { useWorkingTenantName } from './use-working-tenant-name';
 
 /**
  * Per-page tenant-scope banner (redesign build spec, region 1). Info-tinted
@@ -14,8 +15,9 @@ import { useSession } from '@/shared/auth';
 export function TenantScopeBanner() {
   const session = useSession();
   const workingTenantId = session.data?.workingTenantId;
+  const resolved = useWorkingTenantName(workingTenantId, session.data?.workingTenantName);
   if (!workingTenantId) return null;
-  const name = session.data?.workingTenantName ?? workingTenantId;
+  const name = resolved ?? 'selected tenant';
 
   return (
     <div role="status" className="bg-info/10 text-foreground flex items-center gap-2 px-4 py-1.5 text-sm">
