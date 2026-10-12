@@ -13,6 +13,7 @@ import { formatDateTime } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { useConsultation, visitTypeOf } from '../api';
 import type { Consultation } from '../api';
+import { doctorDisplayName } from '../lib/doctor-name';
 import { ConsultationEncountersSection, ConsultationLifecycleMeta } from './consultation-lifecycle-section';
 import { ConsultationStatusBadge } from './consultation-status-badge';
 import { ConsultationWorkflowMeta } from './consultation-workflow-meta';
@@ -84,11 +85,15 @@ function RelationsSummary({ consultation }: { consultation: Consultation }) {
   );
 }
 
-function doctorName(consultation: Consultation): string {
-  const { doctor } = consultation;
-  if (!doctor) return consultation.doctorId;
-  const fullName = [doctor.firstName, doctor.lastName].filter(Boolean).join(' ');
-  return fullName ? `${doctor.username} (${fullName})` : doctor.username;
+function DoctorName({ consultation }: { consultation: Consultation }) {
+  const doctor = doctorDisplayName(consultation.doctor);
+  if (!doctor) return <>{consultation.doctorId}</>;
+  return (
+    <>
+      {doctor.label}
+      {doctor.secondary ? <span className="text-muted-foreground ml-1 text-xs">({doctor.secondary})</span> : null}
+    </>
+  );
 }
 
 function departmentLabel(consultation: Consultation): string | null {
@@ -124,7 +129,7 @@ function DetailBody({ id }: { id: string }) {
           <span className="font-mono text-xs">{maskPatientId(consultation.patientId)}</span>{' '}
           <span className="text-muted-foreground text-xs">(masked)</span>
         </MetaItem>
-        <MetaItem label="Doctor">{doctorName(consultation)}</MetaItem>
+        <MetaItem label="Doctor"><DoctorName consultation={consultation} /></MetaItem>
         <MetaItem label="Department">{department ?? EM_DASH}</MetaItem>
         <MetaItem label="Status">
           <ConsultationStatusBadge

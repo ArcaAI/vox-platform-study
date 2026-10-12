@@ -75,7 +75,25 @@ function itemText(entry: ActivityItemEntry): string | null {
   const content = entry.latestVersion.content;
   if (!content) return null;
   const recap = entry.kind === 'ENCOUNTER_RECAP' ? parseRecap(content) : null;
-  return recap ? recapPlainText(recap) : content;
+  if (recap) return recapPlainText(recap);
+  return LEGACY_WRAPPED_KINDS.has(entry.kind) ? unwrapLegacySummary(content) : content;
+}
+
+const LEGACY_WRAPPED_KINDS: ReadonlySet<string> = new Set(['NOTE', 'PRE_SUMMARY', 'CASE_NOTE']);
+
+/** Older notes were stored as `{"summary":"..."}`; show the summary text only when that is exactly the shape. */
+function unwrapLegacySummary(content: string): string {
+  if (!content.trimStart().startsWith('{')) return content;
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const summary = (parsed as { summary?: unknown }).summary;
+      if (typeof summary === 'string') return summary;
+    }
+  } catch {
+    // not JSON — show as is
+  }
+  return content;
 }
 
 /** TASK-1050: an item's guardrail warn / block counts (from its notices and evaluations). */

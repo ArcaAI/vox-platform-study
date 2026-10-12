@@ -147,3 +147,12 @@ describe('consultation guardrail api', () => {
     expect(counts.get('i-2')).toEqual({ warn: 1, block: 1 });
   });
 });
+
+describe('listConsultationGuardrailNotices route', () => {
+  it('reads the admin-plane route', async () => {
+    const calls = stub(() => Response.json([]));
+    const { listConsultationGuardrailNotices } = await import('../guardrail');
+    await listConsultationGuardrailNotices('c-1');
+    expect(calls[0]?.url).toContain('/api/hope/admin/consultations/c-1/guardrail-notices');
+  });
+});

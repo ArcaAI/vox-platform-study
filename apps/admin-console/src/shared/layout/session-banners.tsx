@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import type { SafeSession } from '@/shared/auth/hooks';
 import { invalidateGridLayoutCache } from '@/shared/data/grid-persistence';
+import { useWorkingTenantName } from '@/shared/tenant-scope/use-working-tenant-name';
 
 function useSessionAction(url: string, method: 'POST' | 'DELETE') {
   const router = useRouter();
@@ -35,8 +36,9 @@ function useSessionAction(url: string, method: 'POST' | 'DELETE') {
  */
 export function WorkingTenantBanner({ session }: { session: SafeSession }) {
   const { run, pending } = useSessionAction('/api/auth/working-tenant', 'DELETE');
+  const resolved = useWorkingTenantName(session.workingTenantId, session.workingTenantName);
   if (!session.workingTenantId) return null;
-  const name = session.workingTenantName ?? session.workingTenantId;
+  const name = resolved ?? 'selected tenant';
 
   return (
     <div role="status" className="bg-warning/10 text-foreground flex items-center gap-2 border-b px-4 py-1.5 text-sm">

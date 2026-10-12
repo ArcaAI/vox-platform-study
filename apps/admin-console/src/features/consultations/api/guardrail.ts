@@ -98,7 +98,7 @@ export function getWithheldContent(consultationId: string, evaluationId: string)
 }
 
 export async function listConsultationGuardrailNotices(consultationId: string): Promise<GuardrailNoticeWithState[]> {
-  return toGuardrailNotices<GuardrailNoticeWithState>(await getJson<unknown>(`${business(consultationId)}/guardrail-notices`));
+  return toGuardrailNotices<GuardrailNoticeWithState>(await getJson<unknown>(`${admin(consultationId)}/guardrail-notices`));
 }
 
 async function command<T>(consultationId: string, suffix: string, body: unknown): Promise<T> {

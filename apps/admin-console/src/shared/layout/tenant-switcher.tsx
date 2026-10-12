@@ -16,6 +16,7 @@ import {
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import type { SafeSession } from '@/shared/auth/hooks';
+import { useWorkingTenantName } from '@/shared/tenant-scope/use-working-tenant-name';
 
 interface TenantListItem {
   id: string;
@@ -47,7 +48,8 @@ export function TenantSwitcher({ session }: { session: SafeSession }) {
     staleTime: 60_000,
   });
 
-  const activeTenantName = session.workingTenantName ?? tenants?.find((tenant) => tenant.id === session.workingTenantId)?.name;
+  const resolvedName = useWorkingTenantName(session.workingTenantId, session.workingTenantName);
+  const activeTenantName = resolvedName ?? tenants?.find((tenant) => tenant.id === session.workingTenantId)?.name;
 
   async function applySelection(tenant: TenantListItem | null) {
     setSaving(true);
@@ -73,7 +75,7 @@ export function TenantSwitcher({ session }: { session: SafeSession }) {
     <div className="flex items-center gap-2">
       {session.workingTenantId ? (
         <Badge variant="secondary" className="max-w-48 truncate">
-          Acting on: {activeTenantName ?? session.workingTenantId}
+          Acting on: {activeTenantName ?? 'selected tenant'}
         </Badge>
       ) : null}
       <DropdownMenu open={open} onOpenChange={setOpen}>
