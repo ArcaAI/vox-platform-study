@@ -203,6 +203,15 @@ _LIVE_HANDOFF_PATCH = "task-932-live-handoff"
 # review never consults the marker and never records one.
 _REVIEW_SKIP_PATCH = "task-946-review-skip-empty-payload"
 
+# The FAILED-UPSTREAM marker. A `core.output` whose every data producer settled without a result,
+# and at least one of those producers is REQUIRED (`onError: 'fail'`), is no longer dispatched:
+# it settles FAILED naming that producer and carrying its reason. This REMOVES a command (the
+# output activity), and a history recorded before it DID schedule one — a finalizer cancelled by
+# its timeout, then the output run on nothing — so the removal rides behind its own marker. The
+# cheap operand (an output node with a failed required producer) is checked FIRST, so every
+# healthy run never consults the marker and never records one.
+_UPSTREAM_FAILED_PATCH = "upstream-failed-output"
+
 # TASK-1038 R-5 — the node retry policy honours the COMPILED backoff and names the failures a
 # retry cannot fix. A retry policy is an activity OPTION (the recorded command sequence does not
 # change), but it changes how often a refused call is re-sent, so it is a behaviour change and
@@ -1504,6 +1513,13 @@ class WorkflowInterpreter:
                 self._live_skipped.add(node.node_id)
             return skipped
 
+        # An output is never run on the empty result of a required producer that failed: its
+        # schema check would turn the producer's failure into an output-contract violation and
+        # bury the real cause. Cheap operand first (see `_UPSTREAM_FAILED_PATCH`).
+        upstream_failed = self._failed_required_producer(node)
+        if upstream_failed is not None and workflow.patched(_UPSTREAM_FAILED_PATCH):
+            return upstream_failed
+
         # Present after `_preflight_skip` by construction — an unregistered/unimplemented type
         # is its first refusal, so reaching here means the registry has a real spec.
         spec = effective_spec(node.type, node.config) or NODE_REGISTRY[node.type]
@@ -1661,6 +1677,43 @@ class WorkflowInterpreter:
         return NodeResult(
             node_id=node.node_id, node_type=node.type, status="SKIPPED", reason=result.reason
         )
+
+    def _failed_required_producer(self, node: CompiledNode) -> NodeResult | None:
+        """The FAILED record of a `core.output` whose required producer left it nothing (pure).
+
+        Only DATA inputs count (an ordering edge such as `n_review.next -> n_output.after`
+        carries no result). The output still runs when ANY data producer stored a result —
+        including a degraded one that kept its output — or when every producer that came up
+        empty was one the author allowed to degrade (`onError: 'degrade'`). Reads only settled
+        stage results and the walk's own output cache, so it is replay-safe.
+        """
+        if node.type != "core.output":
+            return None
+        settled = {result.node_id: result for stage in self._stages for result in stage.nodes}
+        producers: list[str] = []
+        for binding in node.inputs:
+            producer = self._nodes_by_id.get(binding.from_node_id)
+            keys = output_keys_for(producer.type, producer.config) if producer else None
+            if keys is None or keys.get(binding.from_port) is None:
+                continue
+            if binding.from_node_id not in producers:
+                producers.append(binding.from_node_id)
+        if not producers or any(pid in self._node_outputs for pid in producers):
+            return None
+        for pid in producers:
+            result = settled.get(pid)
+            if (
+                result is not None
+                and result.status in ("FAILED", "DEGRADED")
+                and self._nodes_by_id[pid].on_error == "fail"
+            ):
+                return NodeResult(
+                    node_id=node.node_id,
+                    node_type=node.type,
+                    status="FAILED",
+                    reason=f"upstream_failed: {pid}: {result.reason or 'no result'}",
+                )
+        return None
 
     @staticmethod
     def _activity_failure(node: CompiledNode, spec: Any, exc: ActivityError) -> NodeResult:

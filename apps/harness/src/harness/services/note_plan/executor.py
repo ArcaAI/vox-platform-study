@@ -17,14 +17,17 @@ Trajectory seq offsets inside one activity's 16-wide seq base (pinned by the tes
 
 An answer that stopped because it ran out of output tokens (``stop_reason == "length"``) is never
 merged: a cut-off section is a wrong note. The call is retried ONCE with more room — twice its
-cap, bounded by what the model's window leaves after the prompt and the plan's safety margin — and
-a second cut-off fails the call. A note in which no section was written at all is not a note
+cap, bounded by what the model's window leaves after the prompt and the plan's safety margin, and
+by what the caller's remaining time budget can pay for at the pace the cut-off answer was written
+(no retry at all when not even an equal-sized one would finish) — and a second cut-off fails the
+call. A note in which no section was written at all is not a note
 either: the executor raises instead of assembling one from the not-discussed marker.
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -283,6 +286,26 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+def _affordable_retry_cap(
+    cap: int, cut_tokens: int, cut_seconds: float, remaining_seconds: float | None
+) -> int | None:
+    """The retry cap the remaining time budget can pay for, or ``None`` when no retry can finish.
+
+    A retry regenerates the whole answer, so it is costed at the pace the cut-off answer was
+    written (``cut_seconds`` for ``cut_tokens``). A retry that is not larger than the answer
+    that was cut off would only be cut off again, so it is not worth starting.
+    """
+    if remaining_seconds is None or cut_seconds <= 0:
+        return cap
+    affordable = int(cut_tokens * max(0.0, remaining_seconds) / cut_seconds)
+    bounded = min(cap, affordable)
+    return bounded if bounded > cut_tokens else None
+
+
 async def _run(
     generate: GenerateFn,
     request: NoteCallRequest,
@@ -290,6 +313,7 @@ async def _run(
     *,
     retry_max_tokens: int | None = None,
     allow_retry: Callable[[], bool] = lambda: True,
+    remaining_seconds: Callable[[], float | None] | None = None,
 ) -> NoteCallRecord:
     async with gate:
         record = NoteCallRecord(request=request, started_at=_now())
@@ -298,18 +322,24 @@ async def _run(
         try:
             while True:
                 started = _now()
+                began = _monotonic()
                 result = await generate(current)
                 if result.stop_reason != STOP_LENGTH:
                     record.result = result
                     break
                 truncated.append(TruncatedAttempt(current, started, _now(), result))
-                if current.retry or retry_max_tokens is None or not allow_retry():
+                retry_cap = retry_max_tokens
+                if retry_cap is not None and remaining_seconds is not None:
+                    retry_cap = _affordable_retry_cap(
+                        retry_cap, current.max_tokens, _monotonic() - began, remaining_seconds()
+                    )
+                if current.retry or retry_cap is None or not allow_retry():
                     record.error = NoteOutputTruncated(
                         f"note plan call {request.call_id} was cut off by its output budget "
                         f"({current.max_tokens} tokens)"
                     )
                     break
-                current = replace(current, max_tokens=retry_max_tokens, retry=1)
+                current = replace(current, max_tokens=retry_cap, retry=1)
             record.request = current
             if record.result is not None:
                 record.attempt = record.result.attempt
@@ -363,6 +393,7 @@ async def execute_plan(
     max_parallel: int = MAX_PARALLEL_CALLS,
     allow_repair: Callable[[], bool] = lambda: True,
     prime_shared_prefix: bool = False,
+    remaining_seconds: Callable[[], float | None] | None = None,
 ) -> NotePlanExecution:
     """Run ``plan.calls`` (bounded parallel), merge, check coverage, repair the gaps ONCE.
 
@@ -377,6 +408,9 @@ async def execute_plan(
     (the platform's bottleneck, TASK-1049 §12) does N times the work. Primed, the lead call fills
     guardrail's window cache and the rest hit it. A lead call guardrail REFUSED is not fanned out
     at all: the others carry the same data and would be refused the same way.
+
+    ``remaining_seconds`` — the caller's remaining time budget (``ActivityBudget``), when it has
+    one: a cut-off call's retry grows only as far as that budget pays for (see the module doc).
     """
     preserved = dict(preserved_sections or {})
     if plan.preserve is not None:
@@ -406,6 +440,7 @@ async def execute_plan(
             gate,
             retry_max_tokens=_retry_max_tokens(plan, plan.calls[index]),
             allow_retry=allow_repair,
+            remaining_seconds=remaining_seconds,
         )
 
     records: list[NoteCallRecord] = []
