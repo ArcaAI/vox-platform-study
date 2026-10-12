@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { applyInternalBodyLimits } from './bootstrap/internal-body-limit';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
 import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface } from './bootstrap/api-key-scope-audit';
 import { auditAdminScopedControllers, auditAdminControllersDeclareNoApiKeyScopes } from './bootstrap/admin-scope-audit';
@@ -143,6 +144,9 @@ async function bootstrap() {
   // `observability/http-response-metrics.ts` for which of the two request
   // metrics is authoritative and how to read their difference.
   app.use(httpResponseMetricsMiddleware());
+
+  // 2 MB JSON bodies for the internal guardrail evaluation drain only; everything else keeps the default.
+  applyInternalBodyLimits(app);
 
   // Use native WebSocket adapter for WebSocket support
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
