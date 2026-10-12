@@ -586,6 +586,8 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     // Create pre-summary context item
     const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId ?? 'system');
+    // The pre-summary belongs to the encounter it was generated in.
+    if (typeof consultation.currentEncounterSeq === 'number') contextItem.encounterSeq = consultation.currentEncounterSeq;
     // TASK-999 (D-3(a)) — measured from the plaintext, before the encrypt below is the last
     // moment anything can. The factory's positional form carries no counters, so they are
     // stamped on the entity.

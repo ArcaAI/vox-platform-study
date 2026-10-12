@@ -49,6 +49,12 @@ export abstract class IConsultationEncounterService {
 
   /** The episode facts a single-consultation response carries (encounters, approval, auto-close, reopen policy). */
   abstract lifecycleView(consultation: ConsultationEntity): Promise<ConsultationLifecycleView>;
+
+  /**
+   * The same facts for a page of consultations, keyed by consultation id: one encounter read and
+   * one approval read for the whole page, the tenant settings resolved once per distinct tenant.
+   */
+  abstract lifecycleViews(consultations: ConsultationEntity[]): Promise<Map<string, ConsultationLifecycleView>>;
 }
 
 export const IConsultationEncounterServiceToken = Symbol('IConsultationEncounterService');

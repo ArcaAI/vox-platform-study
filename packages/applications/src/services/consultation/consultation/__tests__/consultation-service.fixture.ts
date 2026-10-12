@@ -20,6 +20,7 @@ export interface EncounterServiceDouble {
   currentEncounter: ReturnType<typeof vi.fn>;
   listForConsultation: ReturnType<typeof vi.fn>;
   lifecycleView: ReturnType<typeof vi.fn>;
+  lifecycleViews: ReturnType<typeof vi.fn>;
 }
 
 const encounterOf = (consultation: any, seq: number, start: { visitType?: string; externalRef?: string | null }) => ({
@@ -63,6 +64,7 @@ export function encounterServiceDouble(consultationRepository: {
     currentEncounter: vi.fn().mockResolvedValue(null),
     listForConsultation: vi.fn().mockResolvedValue([]),
     lifecycleView: vi.fn().mockResolvedValue({ encounters: [], approval: null, autoCloseAt: null, allowClosedCompleteReopen: false }),
+    lifecycleViews: vi.fn(async () => new Map()),
   };
 }
 

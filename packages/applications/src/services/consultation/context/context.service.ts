@@ -75,6 +75,18 @@ import {
  * explicit kind filter now, so this widening changes only what reaches the
  * bus — not what either of them acts on.
  */
+/**
+ * The context kinds that belong to ONE visit: a write that names no encounter is stamped with the
+ * consultation's current one. Transcripts are not here — FULL_TRANSCRIPT is consultation-wide, and
+ * a transcript segment is stamped by its own writer.
+ */
+const ENCOUNTER_SCOPED_TYPES = new Set<ContextItemType>([
+  ContextItemType.STRUCTURED,
+  ContextItemType.CASE_NOTE,
+  ContextItemType.WORKNOTE,
+  ContextItemType.PRE_SUMMARY,
+]);
+
 const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([
   ContextItemType.WORKNOTE,
   ContextItemType.CASE_NOTE,
@@ -288,6 +300,26 @@ export class ContextService extends BaseService implements IContextService {
     }
   }
 
+  /**
+   * The encounter a new item is written into: the one the caller names (never one the
+   * consultation has not reached — 400), else the current one for an encounter-scoped kind, else
+   * none.
+   */
+  private encounterSeqFor(
+    consultation: { currentEncounterSeq?: number | null },
+    type: ContextItemType,
+    requested: number | undefined,
+  ): number | undefined {
+    const current = consultation.currentEncounterSeq ?? undefined;
+    if (requested !== undefined) {
+      if (current !== undefined && requested > current) {
+        throw new BadRequestException(`Encounter ${requested} does not exist yet; the consultation is at encounter ${current}.`);
+      }
+      return requested;
+    }
+    return ENCOUNTER_SCOPED_TYPES.has(type) ? current : undefined;
+  }
+
   // ============================================
   // Context Item CRUD
   // ============================================
@@ -317,7 +349,8 @@ export class ContextService extends BaseService implements IContextService {
     // `NotFoundException` for both missing-parent and cross-tenant cases
     // so the response never reveals the existence of a foreign-tenant
     // consultation.
-    await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+    const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+    const encounterSeq = this.encounterSeqFor(consultation, request.type, request.encounterSeq);
 
     // Resolve the tenant-declared kind when the write names one.
     //
@@ -380,6 +413,7 @@ export class ContextService extends BaseService implements IContextService {
       dnaWritingStyleId: request.dnaWritingStyleId,
       kindKey: validatedKind?.kindKey,
       contextSchemaVersionId: validatedKind?.contextSchemaVersionId,
+      ...(encounterSeq !== undefined ? { encounterSeq } : {}),
       createdBy: userId ?? undefined,
     });
 
@@ -833,6 +867,8 @@ export class ContextService extends BaseService implements IContextService {
     // TASK-999 (D-3(a)) — `CreateRawSummary` takes positional arguments and cannot carry the
     // counters, so they are stamped on the entity instead, before the encrypt below.
     stampContentCounters(contextItem, request.content);
+    // The note belongs to the encounter it was written in.
+    if (typeof consultation.currentEncounterSeq === 'number') contextItem.encounterSeq = consultation.currentEncounterSeq;
 
     // Encrypt summary `content` before persist (dual-write).
     await this.encryptContent(contextItem);

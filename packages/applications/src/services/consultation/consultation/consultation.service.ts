@@ -90,7 +90,7 @@ import {
 // re-exports the service, the module and the DTO surface for the three symbols wanted here.
 import { IConsultationContextSchemaService } from '../../consultation-context-schema/IConsultationContextSchemaService';
 import type { ConsultationContextSchemaBundleResponse } from '../../consultation-context-schema/dto';
-import { openBindingsFromDefinition, type UserIdentityBinding } from '../../consultation-context-schema/context-schema-definition';
+import { canonicalJson, openBindingsFromDefinition, type UserIdentityBinding } from '../../consultation-context-schema/context-schema-definition';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../../user/identity';
 // TASK-951 §D-5 — `open` now PERSISTS the context it validated, and it does so through the one
 // service that already knows how (schema pin, canonical content, Vault-Transit encryption, the
@@ -930,8 +930,16 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * the consultation and the kind so it is recoverable rather than invisible. The identical
    * argument the dispatch call below makes, for the identical reason.
    */
-  private async persistOpenContext(consultationId: string, context: Record<string, unknown>, resolved: ResolvedOpenContext): Promise<void> {
+  private async persistOpenContext(
+    consultation: ConsultationEntity,
+    context: Record<string, unknown>,
+    resolved: ResolvedOpenContext,
+    options: { skipUnchanged?: boolean } = {},
+  ): Promise<void> {
     if (resolved.validatedKindKeys.length === 0) return;
+    const consultationId = consultation.id;
+    // The visit the context was sent for: encounter 1 for a new consultation, the appended one otherwise.
+    const encounterSeq = consultation.currentEncounterSeq;
 
     if (!this.contextService) {
       this.logger.warn({
@@ -943,18 +951,24 @@ export class ConsultationService extends BaseService implements IConsultationSer
     }
 
     const materialize = new Set(resolved.materializeKindKeys);
+    // An encounter append re-sends the whole context. A kind whose canonical payload equals the
+    // live item of that kind is already on the consultation; only a changed kind is stored again.
+    const live = options.skipUnchanged ? await this.liveStructuredContent(consultationId) : new Map<string, string>();
 
     for (const kindKey of resolved.validatedKindKeys) {
       const payload = context[kindKey] as Record<string, unknown> | undefined;
       if (!payload) continue;
 
       try {
-        await this.contextService.addContext(consultationId, {
-          type: ContextItemType.STRUCTURED,
-          source: ContextItemSource.USER,
-          kindKey,
-          payload,
-        });
+        if (live.get(kindKey) !== canonicalJson(payload)) {
+          await this.contextService.addContext(consultationId, {
+            type: ContextItemType.STRUCTURED,
+            source: ContextItemSource.USER,
+            kindKey,
+            payload,
+            encounterSeq,
+          });
+        }
       } catch (error) {
         this.logger.error({
           message: 'A context kind validated at open could not be persisted as a context item',
@@ -967,9 +981,32 @@ export class ConsultationService extends BaseService implements IConsultationSer
       }
 
       if (materialize.has(kindKey)) {
-        await this.materializeCaseNotes(consultationId, kindKey, payload);
+        await this.materializeCaseNotes(consultationId, kindKey, payload, encounterSeq);
       }
     }
+  }
+
+  /**
+   * The canonical content of the newest live STRUCTURED item of each kind on the consultation. A
+   * failed read degrades to "nothing is live" — storing a kind twice is a smaller loss than not
+   * storing a changed one.
+   */
+  private async liveStructuredContent(consultationId: string): Promise<Map<string, string>> {
+    const live = new Map<string, string>();
+    try {
+      const items = (await this.contextService?.getContextItems(consultationId, { type: ContextItemType.STRUCTURED })) ?? [];
+      // Oldest first, so the newest item of a kind is the one left in the map.
+      for (const item of items) {
+        if (item.kindKey && typeof item.content === 'string') live.set(item.kindKey, item.content);
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'The live context of the consultation could not be read; storing the open context without de-duplication',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return live;
   }
 
   /**
@@ -1071,7 +1108,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * shared-context join) reads exactly that column. The remaining fields (`date`, `department`,
    * `doctor`) stay addressable on the STRUCTURED item written beside these.
    */
-  private async materializeCaseNotes(consultationId: string, kindKey: string, payload: Record<string, unknown>): Promise<void> {
+  private async materializeCaseNotes(consultationId: string, kindKey: string, payload: Record<string, unknown>, encounterSeq: number): Promise<void> {
     const notes = payload.notes;
     if (!Array.isArray(notes)) {
       this.logger.warn({
@@ -1123,6 +1160,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
           // clinician wrote during the visit - they are the same type on purpose (every existing
           // reader must see both), and this is the only thing that distinguishes them.
           metadata: { origin: 'open.context', kindKey, index },
+          encounterSeq,
         });
       } catch (error) {
         this.logger.error({
@@ -1398,7 +1436,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
     await this.recordOpenConsent(consultation);
     if (request.context) {
-      await this.persistOpenContext(consultation.id, request.context, openContext);
+      await this.persistOpenContext(consultation, request.context, openContext, { skipUnchanged: true });
     }
     if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(consultation)) !== declaredLanguageMode) {
       await this.reopenWithSpokenLanguageMode(consultation, declaredLanguageMode);
@@ -1457,7 +1495,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // pre-summary reads `CASE_NOTE` items, so a graph dispatched first would warm-start on
     // nothing. Best-effort by contract — see `persistOpenContext`.
     if (request.context) {
-      await this.persistOpenContext(saved.id, request.context, openContext);
+      await this.persistOpenContext(saved, request.context, openContext);
     }
 
     await this.dispatchOnCreate(saved, input);
@@ -1675,6 +1713,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
+   * A list page as responses, each carrying its lifecycle view (encounters, approval, auto-close,
+   * reopen policy). The views of the whole page are loaded together — two queries, whatever the
+   * page size — and outside the row read itself, so a failure there is never mistaken for "no rows".
+   */
+  private async mapList(rows: ConsultationEntity[]): Promise<ConsultationResponse[]> {
+    if (rows.length === 0) return [];
+    const views = await this.encounters.lifecycleViews(rows);
+    return rows.map((row) => ConsultationDtoMapper.toResponse(row, false, views.get(row.id)));
+  }
+
+  /**
    * Get all consultations for a patient (across all dates and doctors)
    */
   async getPatientHistory(patientId: string): Promise<ConsultationResponse[]> {
@@ -1693,7 +1742,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { patientId, historyCount: consultations.length },
     });
 
-    return consultations.map((c) => ConsultationDtoMapper.toResponse(c));
+    return this.mapList(consultations);
   }
 
   /**
@@ -1711,7 +1760,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { patientId, date, count: consultations.length },
     });
 
-    return consultations.map((c) => ConsultationDtoMapper.toResponse(c));
+    return this.mapList(consultations);
   }
 
   /**
@@ -1749,7 +1798,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { consultationId, chainCount: inTenant.length },
     });
 
-    return inTenant.map((c) => ConsultationDtoMapper.toResponse(c));
+    return this.mapList(inTenant);
   }
 
   /**
@@ -1781,7 +1830,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(consultations),
       count,
       page,
       limit,
@@ -1812,7 +1861,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: pageData.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(pageData),
       count,
       page,
       limit,
@@ -1858,7 +1907,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       });
 
       return {
-        data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+        data: await this.mapList(consultations),
         count,
         page,
         limit: pageSize,
@@ -1884,7 +1933,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(consultations),
       count,
       page,
       limit: pageSize,
@@ -1956,7 +2005,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     return {
-      data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+      data: await this.mapList(consultations),
       count,
       page,
       limit: pageSize,

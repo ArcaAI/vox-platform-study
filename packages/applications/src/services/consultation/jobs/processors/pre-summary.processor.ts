@@ -288,6 +288,8 @@ export class PreSummaryProcessor extends WorkerHost {
         await this.jobService.notifyProgress(jobId, 70, 'Saving results');
 
         const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, textResponse.summary, dnaStyleId, userId);
+        // The pre-summary belongs to the encounter it was generated in.
+        if (typeof consultation.currentEncounterSeq === 'number') contextItem.encounterSeq = consultation.currentEncounterSeq;
 
         // Encrypt the generated pre-summary text into `encryptedContent`
         // before persistence — the plaintext `content` column was dropped by the

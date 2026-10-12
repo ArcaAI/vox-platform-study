@@ -2048,6 +2048,7 @@ export class HarnessInternalService extends BaseService {
     tenantId: string,
     userId: string,
     withheld: { noticeId: string; evaluationId?: string },
+    encounterSeq?: number,
   ): Promise<HarnessDraftResponse> {
     const placeholder = ContextItemFactory.CreateContextItem({
       tenantId,
@@ -2055,6 +2056,7 @@ export class HarnessInternalService extends BaseService {
       type: ContextItemType.RAW_SUMMARY,
       source: ContextItemSource.AI,
       content: '',
+      encounterSeq,
       createdBy: userId,
       guardrailStatus: GuardrailItemStatus.WITHHELD,
       metaData: {
@@ -2114,7 +2116,7 @@ export class HarnessInternalService extends BaseService {
 
         // TASK-1050 §9.7.6 — an outbound-blocked generation is never stored as a note.
         if (dto.guardrailWithheld) {
-          return this.persistWithheldPlaceholder(consultationId, tenantId, userId, dto.guardrailWithheld);
+          return this.persistWithheldPlaceholder(consultationId, tenantId, userId, dto.guardrailWithheld, consultation?.currentEncounterSeq);
         }
 
         // 0. Strip `[[seg:<id>]]` StrictCitations markers out of the generated note
@@ -2245,6 +2247,8 @@ export class HarnessInternalService extends BaseService {
           }
         } else {
           const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, strippedContent, dto.dnaStyleId, userId);
+          // The note belongs to the encounter it was written in.
+          if (typeof consultation?.currentEncounterSeq === 'number') contextItem.encounterSeq = consultation.currentEncounterSeq;
           // Pin the AI draft to v1 so the `ai_draft_v1`
           // snapshot below IS version 1 and the doctor's first edit becomes v2.
           contextItem.currentVersionNumber = 1;
