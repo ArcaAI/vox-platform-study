@@ -87,7 +87,7 @@ function build(opts: { consultation: Row; item: ReturnType<typeof transcript> | 
     redis as never,
     gate as never,
   );
-  return { service, harnessGateway, dispatch, gate, setItem: (next: ReturnType<typeof transcript>) => (item = next) };
+  return { service, harnessGateway, dispatch, gate, consultation, setItem: (next: ReturnType<typeof transcript>) => (item = next) };
 }
 
 const stopEvent = { consultationId: CID, tenantId: TENANT, contextItemId: FT, transcriptionSource: 'streaming' as const, timestamp: 't' };
@@ -129,5 +129,56 @@ describe('governed encounter 1 — the session final reports the note the govern
     });
     await service.onTranscriptionCreated(stopEvent as never);
     expect(gate.setProcessing).not.toHaveBeenCalled();
+  });
+});
+
+describe('governed encounter 1 — the stop is still finalizing the transcript when the session final lands', () => {
+  it('marks SUMMARIZING while processing is FINALIZING_TRANSCRIPT (the stop defers its restore until the final arrives)', async () => {
+    const { service, gate, dispatch } = build({
+      consultation: row({ currentEncounterSeq: 1, segmentSeqHead: 11, processing: 'FINALIZING_TRANSCRIPT' }),
+      item: transcript(1, 11),
+    });
+    const outcome = await service.onTranscriptionCreated(stopEvent as never);
+    expect(outcome).toEqual({ kind: 'not-refinalize', reason: 'first' });
+    expect(gate.setProcessing).toHaveBeenCalledWith(CID, 'SUMMARIZING');
+    expect(dispatch.supersedeGoverningRun).not.toHaveBeenCalled();
+  });
+
+  it('leaves a note outcome alone (FAILED / AWAITING_REVIEW are not overwritten by the encounter-1 marker)', async () => {
+    for (const processing of ['FAILED', 'AWAITING_REVIEW']) {
+      const { service, gate } = build({ consultation: row({ currentEncounterSeq: 1, segmentSeqHead: 11, processing }), item: transcript(1, 11) });
+      await service.onTranscriptionCreated(stopEvent as never);
+      expect(gate.setProcessing).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('a governed generation that starts nothing never leaves SUMMARIZING behind', () => {
+  it('a duplicate supersede (the trigger already re-finalised) leaves processing unchanged', async () => {
+    const { service, gate, dispatch, consultation } = build({ consultation: row(), item: transcript(2, 21) });
+    dispatch.supersedeGoverningRun.mockResolvedValueOnce({ superseded: false, skippedReason: 'duplicate', runId: 'run-e2' });
+
+    const outcome = await service.onTranscriptionCreated(stopEvent as never);
+
+    expect(outcome).toEqual({ kind: 'coalesced', lane: 'governed', jobId: 'run-e2' });
+    expect(gate.setProcessing).not.toHaveBeenCalled();
+    expect(consultation.processing).toBe('IDLE');
+  });
+
+  it('an explicit request that joins the open-time run on encounter 1 writes no processing', async () => {
+    const { service, gate, dispatch } = build({ consultation: row({ currentEncounterSeq: 1, segmentSeqHead: 11 }), item: transcript(1, 11) });
+
+    const outcome = await service.onExplicitRequest({ consultationId: CID, tenantId: TENANT, jobId: 'job-1' });
+
+    expect(outcome).toEqual({ kind: 'coalesced', lane: 'governed', jobId: null });
+    expect(gate.setProcessing).not.toHaveBeenCalled();
+    expect(dispatch.supersedeGoverningRun).not.toHaveBeenCalled();
+  });
+
+  it('a superseded run still reports SUMMARIZING', async () => {
+    const { service, gate } = build({ consultation: row(), item: transcript(2, 21) });
+    const outcome = await service.onTranscriptionCreated(stopEvent as never);
+    expect(outcome).toEqual({ kind: 'started', lane: 'governed', jobId: 'run-e2' });
+    expect(gate.setProcessing).toHaveBeenCalledWith(CID, 'SUMMARIZING');
   });
 });

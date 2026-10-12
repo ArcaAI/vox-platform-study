@@ -219,13 +219,19 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     }
 
     // A session final that landed during the wait may already have started the note's
-    // re-finalisation (processing SUMMARIZING): that value is newer than this stop's and stays.
-    const settled = await this.consultationRepository.findByIdOrNull(consultationId);
-    const stillFinalizing = !settled || settled.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT;
-    const restored = stillFinalizing ? (prior ?? ConsultationProcessing.IDLE) : settled.processing;
-    if (stillFinalizing) {
-      await this.consultationRepository.setProcessing(consultationId, restored, { prior: null });
+    // generation (processing SUMMARIZING): that value is newer than this stop's and stays. The
+    // restore is a compare-and-set on FINALIZING_TRANSCRIPT, so a value written between the read
+    // and the write is kept too.
+    let settled = await this.consultationRepository.findByIdOrNull(consultationId);
+    if (!settled || settled.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT) {
+      const written = await this.consultationRepository.setProcessing(consultationId, prior ?? ConsultationProcessing.IDLE, {
+        prior: null,
+        onlyIfProcessing: ConsultationProcessing.FINALIZING_TRANSCRIPT,
+      });
+      settled = written || !settled ? null : await this.consultationRepository.findByIdOrNull(consultationId);
     }
+    const moved = settled !== null && settled.processing !== ConsultationProcessing.FINALIZING_TRANSCRIPT ? settled : null;
+    const restored = moved ? moved.processing : (prior ?? ConsultationProcessing.IDLE);
     const payload: EncounterStoppedPayload = {
       consultationId,
       tenantId: stopped.tenantId,
@@ -238,7 +244,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
       this.eventEmitter.emit(ConsultationPipelineEvent.EncounterStopped, payload);
     }
     await this.events.publish(
-      this.subject(stopped, { processing: restored, processingReason: stillFinalizing ? null : (settled.processingReason ?? null) }),
+      this.subject(stopped, { processing: restored, processingReason: moved ? (moved.processingReason ?? null) : null }),
       'transcript_final',
     );
     return this.stopResult(stopped, 'complete', restored);

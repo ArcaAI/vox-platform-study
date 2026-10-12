@@ -373,6 +373,41 @@ describe('ConsultationLifecycleService — stop', () => {
     });
   });
 
+  it('a SUMMARIZING the note writer sets during the wait survives the stop, even when it lands after the post-wait read', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.RECORDING, currentEncounterSeq: 1 }));
+    // The row as the database holds it once the stop persisted FINALIZING_TRANSCRIPT.
+    let db: ConsultationProcessing = ConsultationProcessing.FINALIZING_TRANSCRIPT;
+    let waited = false;
+    let postWaitReads = 0;
+    h.transcriptRecord.awaitFinal.mockImplementationOnce(async () => {
+      waited = true;
+      return 'complete' as const;
+    });
+    h.consultations.findByIdOrNull.mockImplementation(async () => {
+      const current = h.current()!;
+      if (!waited) return current;
+      const snapshot = Object.assign(Object.create(Object.getPrototypeOf(current)), current) as ConsultationEntity;
+      snapshot.setProcessing(db);
+      // The governed note's SUMMARIZING lands right after this read.
+      if (postWaitReads++ === 0) db = ConsultationProcessing.SUMMARIZING;
+      return snapshot;
+    });
+    h.consultations.setProcessing.mockImplementation((async (
+      _id: string,
+      processing: ConsultationProcessing,
+      options: { onlyIfProcessing?: ConsultationProcessing } = {},
+    ) => {
+      if (options.onlyIfProcessing !== undefined && options.onlyIfProcessing !== db) return false;
+      db = processing;
+      return true;
+    }) as never);
+
+    const result = await h.service.stop(ID);
+
+    expect(db).toBe(ConsultationProcessing.SUMMARIZING);
+    expect(result).toMatchObject({ status: 'STOPPED', processing: 'SUMMARIZING', finalTranscript: { state: 'complete' } });
+  });
+
   it('returns pending on the await timeout, leaves processing FINALIZING_TRANSCRIPT and emits no EncounterStopped', async () => {
     const h = makeHarness(consultation({ status: ConsultationStatus.PAUSED }));
     h.transcriptRecord.awaitFinal.mockResolvedValueOnce('pending');

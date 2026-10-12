@@ -167,14 +167,16 @@ export class EncounterRefinalizeService {
     // too — the default engine would write a second, ungoverned note beside it.
     const governedFirst = input.trigger === 'explicit' && kind === 'first' && tenantWorkflowGoverns(consultation.metadata);
     // The stop of encounter 1 hands the transcript to the governing run, which writes the first note
-    // now; processing reports it (the harness settles it like any other note generation).
+    // now; processing reports it (the harness settles it like any other note generation). The stop
+    // may still hold FINALIZING_TRANSCRIPT while it awaits this final; its restore keeps the
+    // SUMMARIZING written here.
     if (
       input.trigger === 'stop' &&
       kind === 'first' &&
       item &&
       tenantWorkflowGoverns(consultation.metadata) &&
       governingRunOf(consultation.metadata)?.status === 'RUNNING' &&
-      consultation.processing === ConsultationProcessing.IDLE
+      (consultation.processing === ConsultationProcessing.IDLE || consultation.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT)
     ) {
       await this.setProcessing(consultation.id, ConsultationProcessing.SUMMARIZING);
     }
@@ -213,16 +215,21 @@ export class EncounterRefinalizeService {
       await this.claim(claimKey, { lane, jobId }, false);
     }
 
+    const ctx = { consultation, item, stateKey, claimKey, input, regenerate };
+    if (lane === 'governed') return this.refinalizeGoverned(ctx);
+    await this.markSummarizing(consultation);
+    return this.refinalizeHarnessDoc({ ...ctx, jobId: jobId! });
+  }
+
+  /** SUMMARIZING for a generation this call starts; an attachment in progress keeps its marker. */
+  private async markSummarizing(consultation: { id: string; processing?: ConsultationProcessing | string | null }): Promise<void> {
     if (consultation.processing !== ConsultationProcessing.PROCESSING_ATTACHMENT) {
       await this.setProcessing(consultation.id, ConsultationProcessing.SUMMARIZING);
     }
-
-    const ctx = { consultation, item, stateKey, claimKey, input, regenerate };
-    return lane === 'governed' ? this.refinalizeGoverned(ctx) : this.refinalizeHarnessDoc({ ...ctx, jobId: jobId! });
   }
 
   private async refinalizeGoverned(ctx: {
-    consultation: { id: string; tenantId: string };
+    consultation: { id: string; tenantId: string; processing?: ConsultationProcessing | string | null };
     stateKey: string;
     claimKey: string;
     input: RefinalizeInput;
@@ -242,7 +249,9 @@ export class EncounterRefinalizeService {
       triggerId,
       authoredContext: await rebuildAuthoredContext(this.contextItemRepository, this.secretsService, consultation.id),
     });
+    // Only a superseding run reports SUMMARIZING: a duplicate starts nothing that would settle it.
     if (result.superseded) {
+      await this.markSummarizing(consultation);
       await this.claim(claimKey, { lane: 'governed', jobId: result.runId }, false);
       this.logger.log({
         message: 'Stop re-finalises the governed note over the whole consultation (governing run superseded)',

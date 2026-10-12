@@ -540,13 +540,19 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   /**
    * Set the processing axis. `processingReason` follows the entity rule (kept
    * only on FAILED / AWAITING_REVIEW); `refs` / `prior` are written only when
-   * supplied (`null` clears `prior`).
-   * @returns `true` when the row was found.
+   * supplied (`null` clears `prior`). `onlyIfProcessing` makes the write a
+   * compare-and-set: it lands only while the row still holds that processing.
+   * @returns `true` when the row was found (and, with `onlyIfProcessing`, matched).
    */
   async setProcessing(
     id: string,
     processing: ConsultationProcessing,
-    options: { reason?: string | null; refs?: string[]; prior?: ConsultationProcessing | null } = {},
+    options: {
+      reason?: string | null;
+      refs?: string[];
+      prior?: ConsultationProcessing | null;
+      onlyIfProcessing?: ConsultationProcessing;
+    } = {},
     tx?: Prisma.TransactionClient | any,
   ): Promise<boolean> {
     const data: Record<string, unknown> = {
@@ -557,7 +563,8 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
     if (options.refs !== undefined) data.processingRefs = options.refs;
     if (options.prior !== undefined) data.processingPrior = options.prior;
 
-    const result = await this.delegate(tx).updateMany({ where: { id }, data });
+    const where = options.onlyIfProcessing === undefined ? { id } : { id, processing: options.onlyIfProcessing };
+    const result = await this.delegate(tx).updateMany({ where, data });
     return result.count > 0;
   }
 
