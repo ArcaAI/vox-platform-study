@@ -388,14 +388,18 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'nlp.worker.recycleAfterRequests': {
     label: 'NLP worker recycle after N requests',
     description:
-      'The NLP worker exits gracefully after serving this many requests and is restarted by the supervisor / ' +
-      'uvicorn, so allocator retention cannot ratchet resident memory without bound. 0 disables the request-count recycle.',
+      'When the NLP service runs several uvicorn workers, a worker exits gracefully after serving this many requests and ' +
+      'uvicorn restarts it, so allocator retention cannot ratchet resident memory without bound. A single-process ' +
+      'deployment (the cluster pod) never recycles on a count — that exit would take the whole service down while every ' +
+      'model reloads — and relies on the RSS ceiling instead. 0 disables the request-count recycle.',
   },
   'nlp.worker.recycleRssMib': {
     label: 'NLP worker recycle RSS ceiling (MiB)',
     description:
       'After a response, a worker whose resident set exceeds this exits gracefully and is restarted by the ' +
-      'supervisor / uvicorn. Size it under the pod memory limit with headroom. 0 disables the RSS recycle.',
+      'supervisor / uvicorn. When the container memory limit is readable (cgroup v2 memory.max or v1 ' +
+      'memory.limit_in_bytes) the effective ceiling is clamped to 90 % of it, so the recycle fires before an OOM kill. ' +
+      '0 disables the RSS recycle.',
   },
 
   'guardrail.groundedness.enabled': {
