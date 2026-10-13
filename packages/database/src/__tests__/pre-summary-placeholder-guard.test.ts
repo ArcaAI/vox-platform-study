@@ -95,9 +95,7 @@ describe('seeded pre-summary bodies still carry all v1 placeholders', () => {
     // PRE_SUMMARY template row — the one exported surface that lets us prove
     // the two independently-declared nine-variable lists have not drifted
     // apart, without either package importing the other.
-    const preSummaryTemplate = ARCAAI_CLINICAL_TEMPLATES.find(
-      (template) => template.id === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
-    );
+    const preSummaryTemplate = ARCAAI_CLINICAL_TEMPLATES.find((template) => template.id === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
     expect(preSummaryTemplate, 'no ARCAAI_CLINICAL_TEMPLATES row for ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY').toBeDefined();
     expect(preSummaryTemplate!.variables).toEqual(NINE_V1_PLACEHOLDERS.map((name) => ({ name, type: 'string', required: true })));
   });
@@ -106,18 +104,14 @@ describe('seeded pre-summary bodies still carry all v1 placeholders', () => {
   // single-brace.
   it('PRE_SUMMARY_CONTENT (07b-arcaai-clinical-content.ts) contains all nine single-brace placeholders and not the regression phrase', () => {
     const found = placeholdersPresentIn(PRE_SUMMARY_CONTENT, 'single');
-    expect(found, `missing placeholders: ${NINE_V1_PLACEHOLDERS.filter((n) => !found.includes(n)).join(', ')}`).toEqual([
-      ...NINE_V1_PLACEHOLDERS,
-    ]);
+    expect(found, `missing placeholders: ${NINE_V1_PLACEHOLDERS.filter((n) => !found.includes(n)).join(', ')}`).toEqual([...NINE_V1_PLACEHOLDERS]);
     expect(PRE_SUMMARY_CONTENT).not.toContain(REGRESSION_PHRASE);
   });
 
   // Converted (TASK-890 §3.2) to the ONE `{{context.*}}` grammar.
   it('SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT (07-prompt-template.ts) contains all nine {{context.*}} placeholders and not the regression phrase', () => {
     const found = placeholdersPresentIn(SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT, 'context');
-    expect(found, `missing placeholders: ${NINE_V1_PLACEHOLDERS.filter((n) => !found.includes(n)).join(', ')}`).toEqual([
-      ...NINE_V1_PLACEHOLDERS,
-    ]);
+    expect(found, `missing placeholders: ${NINE_V1_PLACEHOLDERS.filter((n) => !found.includes(n)).join(', ')}`).toEqual([...NINE_V1_PLACEHOLDERS]);
     expect(SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT).not.toContain(REGRESSION_PHRASE);
     // And the old single-brace form must not have survived the conversion.
     for (const name of NINE_V1_PLACEHOLDERS) {
@@ -130,15 +124,11 @@ describe('seeded pre-summary bodies still carry all v1 placeholders', () => {
     // the dept-free fork deliberately drops `{{context.current_department}}`
     // and `{{context.visit_type}}` — it must NOT carry those two, but must
     // still carry the remaining seven.
-    const DEPT_FREE_EXPECTED = NINE_V1_PLACEHOLDERS.filter(
-      (name) => name !== 'current_department' && name !== 'visit_type',
-    );
+    const DEPT_FREE_EXPECTED = NINE_V1_PLACEHOLDERS.filter((name) => name !== 'current_department' && name !== 'visit_type');
     expect(DEPT_FREE_EXPECTED).toHaveLength(7);
 
     const found = placeholdersPresentIn(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT, 'context');
-    expect(found, `missing placeholders: ${DEPT_FREE_EXPECTED.filter((n) => !found.includes(n)).join(', ')}`).toEqual(
-      DEPT_FREE_EXPECTED,
-    );
+    expect(found, `missing placeholders: ${DEPT_FREE_EXPECTED.filter((n) => !found.includes(n)).join(', ')}`).toEqual(DEPT_FREE_EXPECTED);
 
     // And it must NOT have regained the two dropped axes, in EITHER brace style.
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('{current_department}');

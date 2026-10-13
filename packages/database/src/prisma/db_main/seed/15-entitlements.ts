@@ -251,8 +251,7 @@ interface PlanEntitlementSeed {
  * The larger wins, rounded up to the nearest 50. Read the constants file for
  * why both bounds exist and which one currently binds.
  */
-const planRateLimitPerMinute = (maxUsers: number): number =>
-  Math.ceil(Math.max(maxUsers * (0.3 * 26.0 + 0.7 * 8.5) * 3, maxUsers * 44.1) / 50) * 50;
+const planRateLimitPerMinute = (maxUsers: number): number => Math.ceil(Math.max(maxUsers * (0.3 * 26.0 + 0.7 * 8.5) * 3, maxUsers * 44.1) / 50) * 50;
 
 // TRIAL is a 1-week PRO-entitled window (Q4), so it shares PRO's values.
 const PRO_VALUES = {

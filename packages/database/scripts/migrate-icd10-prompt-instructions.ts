@@ -82,7 +82,11 @@
  */
 import { createHash } from 'crypto';
 
-import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_TEMPLATE_IDS } from '../src/prisma/db_main/seed/07b-arcaai-clinical-templates';
+import {
+  ARCAAI_CLINICAL_APPROVED_VERSION,
+  ARCAAI_CLINICAL_TEMPLATES,
+  ARCAAI_CLINICAL_TEMPLATE_IDS,
+} from '../src/prisma/db_main/seed/07b-arcaai-clinical-templates';
 import { DEFAULT_PROMPT_TEMPLATES, EXTRA_PROMPT_VERSIONS, TEMPLATE_IDS } from '../src/prisma/db_main/seed/07-prompt-template';
 // eslint-disable-next-line no-restricted-imports -- scripts/** allow-list: maintenance task must see every tenant's rows
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';

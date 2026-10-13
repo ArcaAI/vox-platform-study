@@ -46,9 +46,7 @@ describe('resolveBootstrapTenantAdminConfig — half-configured is a hard error'
 
 describe('resolveBootstrapTenantAdminConfig — credential quality', () => {
   it('refuses a well-known password, and says WHY rather than quoting a length rule', () => {
-    expect(() => resolveBootstrapTenantAdminConfig({ [V.email]: 'ops@example.test', [V.password]: 'password123' })).toThrow(
-      /well-known value/,
-    );
+    expect(() => resolveBootstrapTenantAdminConfig({ [V.email]: 'ops@example.test', [V.password]: 'password123' })).toThrow(/well-known value/);
   });
 
   it('refuses well-known passwords case-insensitively', () => {
@@ -59,9 +57,7 @@ describe('resolveBootstrapTenantAdminConfig — credential quality', () => {
     // `password123` padded to 12+ characters passes the length rule. If the
     // length check ran first the operator would be told to lengthen it, which
     // is exactly the wrong instruction.
-    expect(() => resolveBootstrapTenantAdminConfig({ [V.email]: 'ops@example.test', [V.password]: 'password123' })).toThrow(
-      /well-known/,
-    );
+    expect(() => resolveBootstrapTenantAdminConfig({ [V.email]: 'ops@example.test', [V.password]: 'password123' })).toThrow(/well-known/);
   });
 
   it(`refuses a password shorter than ${BOOTSTRAP_TENANT_ADMIN_PASSWORD_MIN_LENGTH} characters`, () => {

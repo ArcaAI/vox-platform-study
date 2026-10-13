@@ -231,9 +231,14 @@ describe('gliner2-privacy-filter-pii-multi: piiLeakQuasiIdentifierLabels', () =>
 
 describe('gliner2-guardrails-pii-multi: keeps the six moderation tasks the model card declares (finding K)', () => {
   it('declares all six GLiGuard tasks in its taxonomy', () => {
-    expect(Object.keys(meta('gliner2-guardrails-pii-multi').labelTaxonomy.tasks).sort()).toEqual(
-      ['jailbreak_detection', 'prompt_safety', 'prompt_toxicity', 'response_refusal', 'response_safety', 'response_toxicity'],
-    );
+    expect(Object.keys(meta('gliner2-guardrails-pii-multi').labelTaxonomy.tasks).sort()).toEqual([
+      'jailbreak_detection',
+      'prompt_safety',
+      'prompt_toxicity',
+      'response_refusal',
+      'response_safety',
+      'response_toxicity',
+    ]);
   });
 });
 

@@ -43,12 +43,10 @@ const SEEDED_VERSIONS = [...DEFAULT_PROMPT_VERSIONS, ...EXTRA_PROMPT_VERSIONS, .
 
 describe('seeded prompt templates', () => {
   it('pins an approved version on every row the seed publishes as APPROVED', () => {
-    const unpinned = SEEDED
-      .filter((template) => {
-        const publication = resolvePromptPublication(template);
-        return publication.status === 'APPROVED' && publication.approvedVersionNumber === null;
-      })
-      .map((template) => template.name);
+    const unpinned = SEEDED.filter((template) => {
+      const publication = resolvePromptPublication(template);
+      return publication.status === 'APPROVED' && publication.approvedVersionNumber === null;
+    }).map((template) => template.name);
 
     expect(unpinned, 'APPROVED without approvedVersionNumber resolves to nothing at runtime').toEqual([]);
   });

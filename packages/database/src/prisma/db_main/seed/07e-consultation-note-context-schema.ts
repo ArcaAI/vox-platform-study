@@ -87,7 +87,9 @@ function mediaReferenceSchema(mimeTypes?: readonly unknown[]): Record<string, un
     const normalized = value.trim().toLowerCase();
     return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
   };
-  const declared = Array.isArray(mimeTypes) ? [...new Set(mimeTypes.filter((entry): entry is string => typeof entry === 'string').map(normalize))] : [];
+  const declared = Array.isArray(mimeTypes)
+    ? [...new Set(mimeTypes.filter((entry): entry is string => typeof entry === 'string').map(normalize))]
+    : [];
   return {
     type: 'object',
     additionalProperties: false,
@@ -117,7 +119,9 @@ function kindPayloadSchema(kind: Record<string, unknown>): Record<string, unknow
     case 'IMAGE':
       return oneOrMany(mediaReferenceSchema(mimeTypes));
     case 'STREAM_AUDIO':
-      return kind.delivery === 'blob' ? oneOrMany(mediaReferenceSchema(mimeTypes)) : { type: 'object', properties: { sttSessionId: { type: 'string', minLength: 1 } } };
+      return kind.delivery === 'blob'
+        ? oneOrMany(mediaReferenceSchema(mimeTypes))
+        : { type: 'object', properties: { sttSessionId: { type: 'string', minLength: 1 } } };
     default:
       return { type: 'object' };
   }
@@ -172,7 +176,8 @@ export const LEGACY_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
   dna_style_text: { type: 'string', description: "The doctor's resolved DNA writing style." },
   dna_redaction_rules_text: {
     type: 'string',
-    description: "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored.",
+    description:
+      "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored.",
   },
   ...Object.fromEntries(
     [
@@ -189,7 +194,10 @@ export const LEGACY_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
       'breast_endocrine',
     ].map((department) => [
       `style_DNA_doctor_department_${department}`,
-      { type: 'string', description: `The doctor's DNA writing style, substituted into the ${department.replace(/_/g, ' ')} slot when the template declares it.` },
+      {
+        type: 'string',
+        description: `The doctor's DNA writing style, substituted into the ${department.replace(/_/g, ' ')} slot when the template declares it.`,
+      },
     ]),
   ),
 };

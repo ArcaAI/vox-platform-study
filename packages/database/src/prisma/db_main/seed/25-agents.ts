@@ -926,13 +926,34 @@ export const FACT_LEDGER_OUTPUT_SCHEMA: Record<string, unknown> = {
           key: { type: 'string' },
           kind: {
             type: 'string',
-            enum: ['complaint', 'history', 'medication', 'dose_change', 'allergy', 'vital', 'exam', 'result', 'diagnosis', 'plan', 'order', 'follow_up', 'red_flag', 'negation', 'other'],
+            enum: [
+              'complaint',
+              'history',
+              'medication',
+              'dose_change',
+              'allergy',
+              'vital',
+              'exam',
+              'result',
+              'diagnosis',
+              'plan',
+              'order',
+              'follow_up',
+              'red_flag',
+              'negation',
+              'other',
+            ],
           },
           statement: { type: 'string' },
           critical: { type: 'boolean' },
           numbers: {
             type: 'array',
-            items: { type: 'object', additionalProperties: false, required: ['value'], properties: { value: { type: 'string' }, unit: { type: 'string' } } },
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['value'],
+              properties: { value: { type: 'string' }, unit: { type: 'string' } },
+            },
           },
           aliases: { type: 'array', items: { type: 'string' } },
           citations: { type: 'array', items: { type: 'string' } },
@@ -1347,7 +1368,9 @@ export function parseSeedVariableDeclarations(raw: unknown): SeedVariableDeclara
     .map((entry) => {
       const declaration: SeedVariableDeclaration = {
         name: entry.name as string,
-        type: SEED_VARIABLE_TYPES.includes(entry.type as SeedVariableDeclaration['type']) ? (entry.type as SeedVariableDeclaration['type']) : 'string',
+        type: SEED_VARIABLE_TYPES.includes(entry.type as SeedVariableDeclaration['type'])
+          ? (entry.type as SeedVariableDeclaration['type'])
+          : 'string',
         required: entry.required === true,
       };
       if (typeof entry.default === 'string') declaration.default = entry.default;
@@ -1489,9 +1512,7 @@ export interface SeedAgentsClient {
     } | null>;
   };
   promptVersion: {
-    findFirst(args: {
-      where: { promptTemplateId: string; versionNumber: number };
-    }): Promise<{ content: string | null; variables?: unknown } | null>;
+    findFirst(args: { where: { promptTemplateId: string; versionNumber: number } }): Promise<{ content: string | null; variables?: unknown } | null>;
   };
   agent: {
     findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;

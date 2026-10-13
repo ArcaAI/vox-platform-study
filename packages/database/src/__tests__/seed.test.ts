@@ -1617,10 +1617,13 @@ describe('platform settings (PLATFORM_SETTINGS)', () => {
  * medical judge run on every call, so the seed carries no row for either at any scope.
  */
 describe('the retired guardrail switches are not seeded', () => {
-  it.each(['text.externalGuardrail.enabled', 'text.externalGuardrail.requireMedical', 'text.guardrailPolicy.requireMedical'])('%s has no row', (key) => {
-    expect(PLATFORM_SETTINGS.filter((s) => s.key === key)).toEqual([]);
-    expect(ALL_SETTINGS.filter((s) => s.key === key)).toEqual([]);
-  });
+  it.each(['text.externalGuardrail.enabled', 'text.externalGuardrail.requireMedical', 'text.guardrailPolicy.requireMedical'])(
+    '%s has no row',
+    (key) => {
+      expect(PLATFORM_SETTINGS.filter((s) => s.key === key)).toEqual([]);
+      expect(ALL_SETTINGS.filter((s) => s.key === key)).toEqual([]);
+    },
+  );
 });
 
 describe('TEXT default moved off GlobalSetting (HarnessPolicy is authoritative)', () => {

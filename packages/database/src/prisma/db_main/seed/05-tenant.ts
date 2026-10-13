@@ -23,7 +23,8 @@ const GLOBAL_TENANT = {
   // (Several runtime constants still DO treat it as a platform tier — see the
   // Decisions; correcting the row's own description is
   // the part that belongs to the seed.)
-  description: 'Global — a CUSTOMER tenant used as the platform-admin playground for trialling configuration before promoting it into the SYSTEM tier. Not a config tier; never a runtime fallback.',
+  description:
+    'Global — a CUSTOMER tenant used as the platform-admin playground for trialling configuration before promoting it into the SYSTEM tier. Not a config tier; never a runtime fallback.',
 };
 
 const CUSTOMER_TENANTS = [
@@ -39,7 +40,8 @@ const CUSTOMER_TENANTS = [
     // tenant admin + machine identity. It still backs the cross-tenant e2e
     // suite; that is a consequence of being a real second tenant, not its
     // purpose.
-    description: 'ArcaAI — the day-1 customer tenant: clinical departments, approved prompt library, agent defaults, tenant administrator and machine identity. Tenant-scoped like any customer; never a config tier.',
+    description:
+      'ArcaAI — the day-1 customer tenant: clinical departments, approved prompt library, agent defaults, tenant administrator and machine identity. Tenant-scoped like any customer; never a config tier.',
     // (owner decision, 2026-08-20): ArcaAI is the one seeded
     // tenant with a commercially-modelled plan. Every other seeded tenant
     // (SYSTEM, Global) keeps `plan = null` and resolves ungated-legacy via

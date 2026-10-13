@@ -101,8 +101,7 @@ async function main(): Promise<void> {
       }
 
       const summary = await provisionTenantReferenceSet(client, tenant.id);
-      const written =
-        summary.contextSchemas + summary.promptTemplates + summary.agents + summary.agentAssignments + summary.documentTemplates;
+      const written = summary.contextSchemas + summary.promptTemplates + summary.agents + summary.agentAssignments + summary.documentTemplates;
       totalWritten += written;
       console.log(
         `  ${tenant.key} (${tenant.id}): +${summary.contextSchemas} schema(s), +${summary.promptTemplates} prompt(s), ` +

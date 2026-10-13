@@ -86,9 +86,7 @@ function abilitiesFor(roleName: string): Set<string> {
 
 /** CASL semantics: `manage` subsumes every action, `all` subsumes every subject. */
 function can(abilities: Set<string>, action: string, subject: string): boolean {
-  return (
-    abilities.has('manage:all') || abilities.has(`manage:${subject}`) || abilities.has(`${action}:all`) || abilities.has(`${action}:${subject}`)
-  );
+  return abilities.has('manage:all') || abilities.has(`manage:${subject}`) || abilities.has(`${action}:all`) || abilities.has(`${action}:${subject}`);
 }
 
 /** The `action:subject` inventory declared by `apps/api/src/modules/**` (see the module doc). */

@@ -101,7 +101,11 @@ function bindingsOf(spec: SeedAgentSpec): Binding[] {
   if (!instruction) return [];
   const out: Binding[] = [];
   if (typeof instruction.promptTemplateId === 'string') {
-    out.push({ path: 'instruction', promptTemplateId: instruction.promptTemplateId, promptVersionNumber: instruction.promptVersionNumber as number | undefined });
+    out.push({
+      path: 'instruction',
+      promptTemplateId: instruction.promptTemplateId,
+      promptVersionNumber: instruction.promptVersionNumber as number | undefined,
+    });
   }
   if (Array.isArray(instruction.fragments)) {
     (instruction.fragments as Array<Record<string, unknown>>).forEach((fragment, index) => {
@@ -138,11 +142,13 @@ describe('TASK-1036 W3 — every library prompt a seeded agent binds is pinned',
 
   it('the 26 agents that were unpinned before W3 (4 catalogue note writers + 22 ArcaAI summary agents), and the ArcaAI finalizer, carry pins now', () => {
     const withPolicy = ALL_AGENTS.filter((spec) =>
-      bindingsOf(spec).some((binding) => [
-        ...OUTPUT_LANGUAGE_POLICY_TEMPLATES.map((template) => template.id),
-        ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.id,
-        ARCAAI_SAME_DAY_RETURN_TEMPLATE.id,
-      ].includes(binding.promptTemplateId)),
+      bindingsOf(spec).some((binding) =>
+        [
+          ...OUTPUT_LANGUAGE_POLICY_TEMPLATES.map((template) => template.id),
+          ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.id,
+          ARCAAI_SAME_DAY_RETURN_TEMPLATE.id,
+        ].includes(binding.promptTemplateId),
+      ),
     );
     // SYSTEM + Global: general-medicine-summarization and casenote-finalization (2 x 2) = 4;
     // ArcaAI: 22 department summary agents + the finalizer = 23.

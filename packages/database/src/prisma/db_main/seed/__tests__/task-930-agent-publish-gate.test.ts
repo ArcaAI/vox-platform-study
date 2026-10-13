@@ -89,7 +89,10 @@ describe('TASK-930 D-6 — a seeded published agent passes the publish gate the 
           capabilities: capabilitiesOf(spec.modelSlug),
         },
       );
-      expect(problems.filter((problem: { severity: string }) => problem.severity === 'ERROR'), JSON.stringify(problems)).toEqual([]);
+      expect(
+        problems.filter((problem: { severity: string }) => problem.severity === 'ERROR'),
+        JSON.stringify(problems),
+      ).toEqual([]);
     },
   );
 

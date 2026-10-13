@@ -145,7 +145,9 @@ async function main() {
 
   console.log(`\n----- departments carrying an inert preSummaryPromptId: ${stale.length} -----`);
   for (const dept of stale) {
-    console.log(`  ${dept.tenantId}  ${dept.code.padEnd(6)} ${dept.name.padEnd(24)} ${dept.preSummaryPromptId} → NULL  (id ${dept.id}, _version ${dept.version})`);
+    console.log(
+      `  ${dept.tenantId}  ${dept.code.padEnd(6)} ${dept.name.padEnd(24)} ${dept.preSummaryPromptId} → NULL  (id ${dept.id}, _version ${dept.version})`,
+    );
   }
 
   if (stale.length === 0) {

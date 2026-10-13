@@ -85,9 +85,7 @@ describe('Phase 1 additive schema', () => {
   it('creates core.ConsultationStatus with the seven lifecycle states', async () => {
     if (!available) return;
     const labels = await enumLabels('ConsultationStatus');
-    expect(new Set(labels)).toEqual(
-      new Set(['OPEN', 'RECORDING', 'PAUSED', 'STOPPED', 'APPROVED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE']),
-    );
+    expect(new Set(labels)).toEqual(new Set(['OPEN', 'RECORDING', 'PAUSED', 'STOPPED', 'APPROVED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE']));
   });
 
   it('adds SIGNED_NOTE to core.ContextItemType', async () => {

@@ -193,9 +193,7 @@ describe('phase 26 provisions the SYSTEM document-template library into a tenant
 
     for (const item of DOCUMENT_TEMPLATE_LIBRARY) {
       const template = client.documentTemplate.rows.find((row) => row['tenantId'] === TENANT && row['slug'] === item.slug)!;
-      const version = client.documentTemplateVersion.rows.find(
-        (row) => row['tenantId'] === TENANT && row['templateId'] === template['id'],
-      )!;
+      const version = client.documentTemplateVersion.rows.find((row) => row['tenantId'] === TENANT && row['templateId'] === template['id'])!;
       expect(version['versionNumber']).toBe(1);
       expect(version['checksum']).toBe(item.checksum);
       expect(version['compiled']).toEqual(item.compiled);
@@ -252,9 +250,7 @@ describe('phase 26 provisions the SYSTEM document-template library into a tenant
   });
 
   it('refuses the SYSTEM tenant — it IS the reference set', async () => {
-    await expect(provisionTenantReferenceSet(client as never, SYSTEM_TENANT_ID)).rejects.toThrow(
-      /cannot be provisioned from itself/,
-    );
+    await expect(provisionTenantReferenceSet(client as never, SYSTEM_TENANT_ID)).rejects.toThrow(/cannot be provisioned from itself/);
   });
 });
 

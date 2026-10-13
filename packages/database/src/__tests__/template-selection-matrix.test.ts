@@ -24,10 +24,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from '../prisma/db_main/seed/04-department';
-import {
-  ARCAAI_CLINICAL_TEMPLATE_IDS,
-  ARCAAI_CLINICAL_TEMPLATES,
-} from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
+import { ARCAAI_CLINICAL_TEMPLATE_IDS, ARCAAI_CLINICAL_TEMPLATES } from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
 
 // Build once: every template id this seed produces, plus its governance state.
 const templatesById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((template) => [template.id, template]));
@@ -57,7 +54,10 @@ describe('ArcaAI department x visit-type template-selection matrix', () => {
       // the template catalogue this seed actually writes.
       const newPatientTemplate = templatesById.get(dept.newPatientPromptId as string);
       const revisitTemplate = templatesById.get(dept.revisitPromptId as string);
-      expect(newPatientTemplate, `${dept.code}.newPatientPromptId (${dept.newPatientPromptId}) has no matching ARCAAI_CLINICAL_TEMPLATES row`).toBeDefined();
+      expect(
+        newPatientTemplate,
+        `${dept.code}.newPatientPromptId (${dept.newPatientPromptId}) has no matching ARCAAI_CLINICAL_TEMPLATES row`,
+      ).toBeDefined();
       expect(revisitTemplate, `${dept.code}.revisitPromptId (${dept.revisitPromptId}) has no matching ARCAAI_CLINICAL_TEMPLATES row`).toBeDefined();
 
       // APPROVED + a pinned approvedVersionNumber — tier-1b silently skips
@@ -78,9 +78,7 @@ describe('ArcaAI department x visit-type template-selection matrix', () => {
       // New-patient and revisit must resolve to DIFFERENT templates — a
       // visit-type collapse is exactly the shipped-once failure mode this
       // matrix exists to prevent.
-      expect(dept.revisitPromptId, `${dept.code} new-patient and revisit collapse onto the same template id`).not.toBe(
-        dept.newPatientPromptId,
-      );
+      expect(dept.revisitPromptId, `${dept.code} new-patient and revisit collapse onto the same template id`).not.toBe(dept.newPatientPromptId);
     },
   );
 
@@ -94,9 +92,7 @@ describe('ArcaAI department x visit-type template-selection matrix', () => {
   it('every id referenced by a department column exists in ARCAAI_CLINICAL_TEMPLATE_IDS (no dangling ids, both directions)', () => {
     const knownTemplateIds = new Set(Object.values(ARCAAI_CLINICAL_TEMPLATE_IDS));
     for (const dept of ARCAAI_ALL_CLINICAL_DEPARTMENTS) {
-      expect(knownTemplateIds.has(dept.newPatientPromptId as string), `${dept.code}.newPatientPromptId is not a known ArcaAI template id`).toBe(
-        true,
-      );
+      expect(knownTemplateIds.has(dept.newPatientPromptId as string), `${dept.code}.newPatientPromptId is not a known ArcaAI template id`).toBe(true);
       expect(knownTemplateIds.has(dept.revisitPromptId as string), `${dept.code}.revisitPromptId is not a known ArcaAI template id`).toBe(true);
     }
   });

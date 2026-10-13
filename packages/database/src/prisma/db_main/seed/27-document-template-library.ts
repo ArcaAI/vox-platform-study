@@ -687,7 +687,10 @@ export const DOCUMENT_TEMPLATE_LIBRARY: readonly DocumentTemplateLibraryEntry[] 
 // =============================================================================
 
 /** Insert a template version snapshot unless it already exists: snapshots are immutable, so a re-seed must not touch one. */
-async function createVersionOnce(client: CorePrismaClient, data: Parameters<CorePrismaClient['documentTemplateVersion']['create']>[0]['data']): Promise<void> {
+async function createVersionOnce(
+  client: CorePrismaClient,
+  data: Parameters<CorePrismaClient['documentTemplateVersion']['create']>[0]['data'],
+): Promise<void> {
   const existing = await client.documentTemplateVersion.findUnique({ where: { id: data.id as string }, select: { id: true } });
   if (!existing) await client.documentTemplateVersion.create({ data });
 }
@@ -832,28 +835,67 @@ interface ArcaaiDepartmentSpec {
  * step, because the sections come out of the bodies named here.
  */
 const ARCAAI_DEPARTMENT_SPECS: readonly ArcaaiDepartmentSpec[] = [
-  { code: 'GEN', slugPart: 'gen', name: 'General Medicine',
-    bodies: { 'new-visit': MEDICINE_NEW_REFERRAL_CONTENT_V3, revisit: MEDICINE_FOLLOWUP_CONTENT_V3 } },
-  { code: 'SURG', slugPart: 'surg', name: 'Surgery',
-    bodies: { 'new-visit': SURGERY_NEW_REFERRAL_CONTENT_V3, revisit: SURGERY_FOLLOWUP_CONTENT_V3 } },
-  { code: 'RHEUM', slugPart: 'rheum', name: 'Rheumatology',
-    bodies: { 'new-visit': RHEUMATOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: RHEUMATOLOGY_FOLLOWUP_CONTENT_V3 } },
-  { code: 'NEUR', slugPart: 'neur', name: 'Neurology',
-    bodies: { 'new-visit': NEUROLOGY_NEW_REFERRAL_CONTENT_V3, revisit: NEUROLOGY_FOLLOWUP_CONTENT_V3 } },
-  { code: 'ORTH', slugPart: 'orth', name: 'Orthopedics',
-    bodies: { 'new-visit': ORTHOPEDICS_NEW_REFERRAL_CONTENT_V3, revisit: ORTHOPEDICS_REVIEW_CONTENT_V3 } },
-  { code: 'HEME', slugPart: 'heme', name: 'Hematology',
-    bodies: { 'new-visit': HEMATOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: HEMATOLOGY_REVISIT_CONTENT_V3 } },
-  { code: 'BREN', slugPart: 'bren', name: 'Breast & Endocrine',
-    bodies: { 'new-visit': BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V3, revisit: BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V3 } },
-  { code: 'DERM', slugPart: 'derm', name: 'Dermatology',
-    bodies: { 'new-visit': DERMATOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: DERMATOLOGY_FOLLOWUP_CONTENT_V3 } },
-  { code: 'DIET', slugPart: 'diet', name: 'Dietetics',
-    bodies: { 'new-visit': DIETETICS_NEW_REFERRAL_CONTENT_V3, revisit: DIETETICS_FOLLOWUP_CONTENT_V3 } },
-  { code: 'NEPH', slugPart: 'neph', name: 'Nephrology',
-    bodies: { 'new-visit': NEPHROLOGY_NEW_REFERRAL_CONTENT_V3, revisit: NEPHROLOGY_FOLLOWUP_CONTENT_V3 } },
-  { code: 'SONC', slugPart: 'sonc', name: 'Surgical Oncology',
-    bodies: { 'new-visit': SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT_V3 } },
+  {
+    code: 'GEN',
+    slugPart: 'gen',
+    name: 'General Medicine',
+    bodies: { 'new-visit': MEDICINE_NEW_REFERRAL_CONTENT_V3, revisit: MEDICINE_FOLLOWUP_CONTENT_V3 },
+  },
+  { code: 'SURG', slugPart: 'surg', name: 'Surgery', bodies: { 'new-visit': SURGERY_NEW_REFERRAL_CONTENT_V3, revisit: SURGERY_FOLLOWUP_CONTENT_V3 } },
+  {
+    code: 'RHEUM',
+    slugPart: 'rheum',
+    name: 'Rheumatology',
+    bodies: { 'new-visit': RHEUMATOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: RHEUMATOLOGY_FOLLOWUP_CONTENT_V3 },
+  },
+  {
+    code: 'NEUR',
+    slugPart: 'neur',
+    name: 'Neurology',
+    bodies: { 'new-visit': NEUROLOGY_NEW_REFERRAL_CONTENT_V3, revisit: NEUROLOGY_FOLLOWUP_CONTENT_V3 },
+  },
+  {
+    code: 'ORTH',
+    slugPart: 'orth',
+    name: 'Orthopedics',
+    bodies: { 'new-visit': ORTHOPEDICS_NEW_REFERRAL_CONTENT_V3, revisit: ORTHOPEDICS_REVIEW_CONTENT_V3 },
+  },
+  {
+    code: 'HEME',
+    slugPart: 'heme',
+    name: 'Hematology',
+    bodies: { 'new-visit': HEMATOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: HEMATOLOGY_REVISIT_CONTENT_V3 },
+  },
+  {
+    code: 'BREN',
+    slugPart: 'bren',
+    name: 'Breast & Endocrine',
+    bodies: { 'new-visit': BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V3, revisit: BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V3 },
+  },
+  {
+    code: 'DERM',
+    slugPart: 'derm',
+    name: 'Dermatology',
+    bodies: { 'new-visit': DERMATOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: DERMATOLOGY_FOLLOWUP_CONTENT_V3 },
+  },
+  {
+    code: 'DIET',
+    slugPart: 'diet',
+    name: 'Dietetics',
+    bodies: { 'new-visit': DIETETICS_NEW_REFERRAL_CONTENT_V3, revisit: DIETETICS_FOLLOWUP_CONTENT_V3 },
+  },
+  {
+    code: 'NEPH',
+    slugPart: 'neph',
+    name: 'Nephrology',
+    bodies: { 'new-visit': NEPHROLOGY_NEW_REFERRAL_CONTENT_V3, revisit: NEPHROLOGY_FOLLOWUP_CONTENT_V3 },
+  },
+  {
+    code: 'SONC',
+    slugPart: 'sonc',
+    name: 'Surgical Oncology',
+    bodies: { 'new-visit': SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT_V3, revisit: SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT_V3 },
+  },
 ] as const;
 
 // -----------------------------------------------------------------------------
@@ -943,7 +985,10 @@ function parsePromptHeadings(body: string, label: string): PromptHeading[] {
       continue;
     }
     if (!current) continue;
-    if (line.trim().startsWith(HEADING_BLOCK_END)) { close(); continue; }
+    if (line.trim().startsWith(HEADING_BLOCK_END)) {
+      close();
+      continue;
+    }
     guidance.push(line.trim());
   }
   close();

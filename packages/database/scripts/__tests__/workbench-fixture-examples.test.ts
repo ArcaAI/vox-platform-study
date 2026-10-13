@@ -17,11 +17,14 @@ describe('synthetic fixture examples stay PHI-shape-clean', () => {
     expect(syntheticFixtureExamples()).toEqual(syntheticFixtureExamples());
   });
 
-  it.each(SYNTHETIC_FIXTURE_EXAMPLES.map((example) => [example.name, example] as const))('%s: scans clean across every heuristic category', (_name, example) => {
-    const serialized = JSON.stringify(example.input);
-    const counts = scanText(serialized);
-    expect(isClean(counts)).toBe(true);
-  });
+  it.each(SYNTHETIC_FIXTURE_EXAMPLES.map((example) => [example.name, example] as const))(
+    '%s: scans clean across every heuristic category',
+    (_name, example) => {
+      const serialized = JSON.stringify(example.input);
+      const counts = scanText(serialized);
+      expect(isClean(counts)).toBe(true);
+    },
+  );
 
   it('every example is a plain object with a name and description — never a raw string that could hide free-text PHI unexamined', () => {
     for (const example of SYNTHETIC_FIXTURE_EXAMPLES) {

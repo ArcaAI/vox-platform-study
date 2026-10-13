@@ -24,9 +24,7 @@ describe('ArcaAI clinical template department references', () => {
       NEPH: 'persisted-neph-id',
       SONC: 'persisted-sonc-id',
     };
-    const findMany = vi.fn().mockResolvedValue(
-      Object.entries(departmentIds).map(([code, id]) => ({ code, id })),
-    );
+    const findMany = vi.fn().mockResolvedValue(Object.entries(departmentIds).map(([code, id]) => ({ code, id })));
     const promptTemplateUpsert = vi.fn().mockResolvedValue({});
     const promptVersionUpsert = vi.fn().mockResolvedValue({});
     const client = {

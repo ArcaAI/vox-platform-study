@@ -41,11 +41,7 @@ import { SYSTEM_AI_PROVIDER_CONNECTIONS } from '../17-ai-provider-connection';
 import { SYSTEM_TENANT_ID } from '../00-constants';
 
 /** Every `ollama-*` slug the platform has ever seeded. */
-const PURGED_OLLAMA_SLUGS = [
-  'ollama-gemma4-12b-mlx',
-  'ollama-gemma4-e2b-it-qat',
-  'ollama-qwen3.5-2b',
-] as const;
+const PURGED_OLLAMA_SLUGS = ['ollama-gemma4-12b-mlx', 'ollama-gemma4-e2b-it-qat', 'ollama-qwen3.5-2b'] as const;
 
 describe(' (revised) — Ollama provider retained, Ollama catalog purged', () => {
   describe('provider logic stays selectable', () => {

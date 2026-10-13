@@ -36,7 +36,14 @@ describe('TASK-930 §8.2 — consultation_note_context', () => {
     expect(NOTE_CONTEXT_SCHEMA_SLUG).toBe('consultation_note_context');
     expect(NOTE_CONTEXT_SCHEMAS.map((row) => row.tenantId).sort()).toEqual([SYSTEM_TENANT_ID, SEED_TENANT_ID].sort());
     for (const row of NOTE_CONTEXT_SCHEMAS) {
-      expect(row).toMatchObject({ slug: NOTE_CONTEXT_SCHEMA_SLUG, scope: 'TENANT', status: 'PUBLISHED', pinnedVersionNumber: 1, isDefault: true, departmentId: null });
+      expect(row).toMatchObject({
+        slug: NOTE_CONTEXT_SCHEMA_SLUG,
+        scope: 'TENANT',
+        status: 'PUBLISHED',
+        pinnedVersionNumber: 1,
+        isDefault: true,
+        departmentId: null,
+      });
     }
     expect(new Set(NOTE_CONTEXT_SCHEMAS.map((row) => row.id)).size).toBe(NOTE_CONTEXT_SCHEMAS.length);
     expect(NOTE_CONTEXT_SCHEMA_VERSIONS.map((version) => version.schemaId).sort()).toEqual(NOTE_CONTEXT_SCHEMAS.map((row) => row.id).sort());
@@ -44,9 +51,26 @@ describe('TASK-930 §8.2 — consultation_note_context', () => {
 
   it('declares the prompt fields the clinical templates bind under ONE structured `context` kind, plus the day-1 item kinds and the finished transcript', () => {
     // TASK-1006 added `transcript` — the finished-transcript input the consultation graph's `n_transcript` reads.
-    expect(kindsOf(NOTE_CONTEXT_SCHEMA_DEFINITION)).toEqual(['audio_stream', 'transcript', 'work_note', 'case_note', 'attachment', NOTE_CONTEXT_KIND_KEY]);
+    expect(kindsOf(NOTE_CONTEXT_SCHEMA_DEFINITION)).toEqual([
+      'audio_stream',
+      'transcript',
+      'work_note',
+      'case_note',
+      'attachment',
+      NOTE_CONTEXT_KIND_KEY,
+    ]);
     const properties = contextKind().fields.properties as Record<string, Record<string, unknown>>;
-    for (const name of ['visit_type', 'current_department', 'language', 'safe_age', 'safe_dob', 'safe_gender', 'formatted_previous_visits', 'formatted_vitals', 'chief_complaint']) {
+    for (const name of [
+      'visit_type',
+      'current_department',
+      'language',
+      'safe_age',
+      'safe_dob',
+      'safe_gender',
+      'formatted_previous_visits',
+      'formatted_vitals',
+      'chief_complaint',
+    ]) {
       expect(properties[name], name).toBeDefined();
       expect(NOTE_CONTEXT_FIELD_NAMES).toContain(name);
     }
@@ -64,8 +88,11 @@ describe('TASK-930 §8.2 — consultation_note_context', () => {
   it('is a valid definition by the REAL application validator, and the seeded checksum / payload schema equal the real derivations', () => {
     expect(definitionModule.contextSchemaDefinitionProblems(NOTE_CONTEXT_SCHEMA_DEFINITION)).toEqual([]);
     expect(definitionChecksum(NOTE_CONTEXT_SCHEMA_DEFINITION)).toBe(definitionModule.computeDefinitionChecksum(NOTE_CONTEXT_SCHEMA_DEFINITION));
-    for (const version of NOTE_CONTEXT_SCHEMA_VERSIONS) expect(version.checksum).toBe(definitionModule.computeDefinitionChecksum(NOTE_CONTEXT_SCHEMA_DEFINITION));
-    expect(payloadSchemaFromDefinition(NOTE_CONTEXT_SCHEMA_DEFINITION)).toEqual(definitionModule.payloadSchemaFromDefinition(NOTE_CONTEXT_SCHEMA_DEFINITION));
+    for (const version of NOTE_CONTEXT_SCHEMA_VERSIONS)
+      expect(version.checksum).toBe(definitionModule.computeDefinitionChecksum(NOTE_CONTEXT_SCHEMA_DEFINITION));
+    expect(payloadSchemaFromDefinition(NOTE_CONTEXT_SCHEMA_DEFINITION)).toEqual(
+      definitionModule.payloadSchemaFromDefinition(NOTE_CONTEXT_SCHEMA_DEFINITION),
+    );
     // `trigger.context.visit_type` — the path every §8.4 / §8.5 graph reads — resolves in the payload.
     const payload = payloadSchemaFromDefinition(NOTE_CONTEXT_SCHEMA_DEFINITION) as any;
     expect(payload.properties[NOTE_CONTEXT_KIND_KEY].properties.visit_type.enum).toEqual(['new-visit', 'revisit']);
@@ -77,7 +104,9 @@ describe('TASK-930 §8.2 — consultation_note_context', () => {
     const client = {
       consultationContextSchema: {
         findFirst: async ({ where }: any) =>
-          schemas.find((row) => row.tenantId === where.tenantId && (row.id === where.OR[0].id || (row.scope === 'TENANT' && row.isDefault === true))) ?? null,
+          schemas.find(
+            (row) => row.tenantId === where.tenantId && (row.id === where.OR[0].id || (row.scope === 'TENANT' && row.isDefault === true)),
+          ) ?? null,
         create: async ({ data }: any) => {
           schemas.push(data);
           return data;

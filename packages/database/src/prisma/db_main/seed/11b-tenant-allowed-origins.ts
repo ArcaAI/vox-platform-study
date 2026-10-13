@@ -175,7 +175,8 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     origin: 'https://[::1]:*',
     tenantId: SYSTEM_TENANT_ID,
     label: 'Local development — IPv6 loopback over local TLS (any port)',
-    description: 'IPv6 loopback literal served over local TLS (mkcert/self-signed). Scheme is matched exactly, so the http row above does not cover it.',
+    description:
+      'IPv6 loopback literal served over local TLS (mkcert/self-signed). Scheme is matched exactly, so the http row above does not cover it.',
   },
 
   // ── ArcaAI deployed hosts (exact) ─────────────────────────────────────────
@@ -203,7 +204,8 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     origin: 'https://*.bcmch.org:*',
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     label: 'BCMCH — any subdomain (https, any port)',
-    description: 'Subdomains at any depth, never the apex. Trusts every current AND future bcmch.org subdomain — see the wildcard note in this file header.',
+    description:
+      'Subdomains at any depth, never the apex. Trusts every current AND future bcmch.org subdomain — see the wildcard note in this file header.',
   },
   {
     origin: 'https://*.taphuynh.dev:*',
@@ -230,7 +232,8 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     origin: 'chrome-extension://*',
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     label: 'Chromium extensions — any id (Chrome/Edge/Brave)',
-    description: 'Any chrome-extension:// origin. Admits any installed Chromium extension for ArcaAI; pin specific ids as exact chrome-extension://<id> rows once known.',
+    description:
+      'Any chrome-extension:// origin. Admits any installed Chromium extension for ArcaAI; pin specific ids as exact chrome-extension://<id> rows once known.',
   },
   {
     origin: 'moz-extension://*',

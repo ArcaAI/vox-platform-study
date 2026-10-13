@@ -33,9 +33,7 @@ const CUSTOMER_TENANTS = [{ label: 'ArcaAI', tenantId: SEED_CUSTOMER_TENANT_IDS.
 
 // `${tenantId}:${code}` for every department the seed actually creates, used to
 // confirm a clinical user's mapped department code resolves within its tenant.
-const SEEDED_DEPARTMENT_KEYS = new Set(
-  [...DEFAULT_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS].map((d) => `${d.tenantId}:${d.code}`),
-);
+const SEEDED_DEPARTMENT_KEYS = new Set([...DEFAULT_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS].map((d) => `${d.tenantId}:${d.code}`));
 
 const usersInTenantWithRole = (tenantId: string, role: string) => SEED_USERS.filter((u) => u.tenantId === tenantId && u.roleNames.includes(role));
 

@@ -21,8 +21,7 @@ function rulesFor(roleName: string) {
   return DEFAULT_POLICIES.filter((policy) => names.includes(policy.name)).flatMap((policy) => policy.rules);
 }
 
-const grants = (roleName: string, subject: string) =>
-  rulesFor(roleName).filter((rule) => rule.subject === subject || rule.subject === 'all');
+const grants = (roleName: string, subject: string) => rulesFor(roleName).filter((rule) => rule.subject === subject || rule.subject === 'all');
 
 describe('TenantGuardrailPolicy CASL grant', () => {
   it('TENANT_ADMIN manages its OWN tenant`s guardrail policy', () => {

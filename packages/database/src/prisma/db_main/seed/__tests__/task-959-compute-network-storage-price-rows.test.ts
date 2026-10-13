@@ -162,7 +162,7 @@ describe('STORAGE_GB_DAY — priced under the STORAGE capability', () => {
     // GB-month at ~$30,000). ~$0.08/GB-month ÷ 30 = 2666.7µ, rounded UP.
     expect(rows[0]!.unitPriceMicros).toBe(2_667n);
     // Round-trip the rate the SELL side will actually quote.
-    const gbMonth = Number(rows[0]!.unitPriceMicros) * 30 / 1_000_000;
+    const gbMonth = (Number(rows[0]!.unitPriceMicros) * 30) / 1_000_000;
     expect(gbMonth).toBeCloseTo(0.08, 3);
   });
 

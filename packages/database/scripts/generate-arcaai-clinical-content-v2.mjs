@@ -36,12 +36,20 @@ let section = null;
 let buf = null;
 for (const line of lines) {
   const h = /^## (\d+)\) /.exec(line);
-  if (h && buf === null) { section = Number(h[1]); continue; }
-  if (line === '```text' && buf === null && section !== null) { buf = []; continue; }
+  if (h && buf === null) {
+    section = Number(h[1]);
+    continue;
+  }
+  if (line === '```text' && buf === null && section !== null) {
+    buf = [];
+    continue;
+  }
   if (line === '```' && buf !== null) {
     if (bodies.has(section)) throw new Error(`duplicate fence for section ${section}`);
     bodies.set(section, buf.join('\n') + '\n');
-    buf = null; section = null; continue;
+    buf = null;
+    section = null;
+    continue;
   }
   if (buf !== null) buf.push(line);
 }
@@ -74,8 +82,15 @@ if (!preContent.startsWith('## Medical AI Pre-Summary Prompt')) {
   throw new Error('pre-summary must start at the prompt heading');
 }
 const PLACEHOLDERS = [
-  'current_department', 'visit_type', 'safe_age', 'safe_dob', 'safe_gender',
-  'safe_vitals', 'formatted_test_results', 'formatted_previous_visits', 'language_name',
+  'current_department',
+  'visit_type',
+  'safe_age',
+  'safe_dob',
+  'safe_gender',
+  'safe_vitals',
+  'formatted_test_results',
+  'formatted_previous_visits',
+  'language_name',
 ];
 const found = new Set([...preContent.matchAll(/\{([a-z_]+)\}/g)].map((m) => m[1]));
 for (const p of PLACEHOLDERS) if (!found.has(p)) throw new Error(`pre-summary lost placeholder ${p}`);
@@ -91,10 +106,7 @@ const FORMAT_TITLES = [
 ];
 for (const t of FORMAT_TITLES) if (!preContent.includes(`- ${t}`)) throw new Error(`FORMAT title missing: ${t}`);
 
-const entries = [
-  ...Object.entries(BY_SECTION).map(([n, name]) => [name, bodies.get(Number(n))]),
-  ['PRE_SUMMARY', preContent],
-];
+const entries = [...Object.entries(BY_SECTION).map(([n, name]) => [name, bodies.get(Number(n))]), ['PRE_SUMMARY', preContent]];
 for (const [name, body] of entries) {
   if (body.includes('FILE METADATA') || body.includes('DO NOT PASTE INTO HOPE')) {
     throw new Error(`${name}: author FILE METADATA comment leaked into prompt body`);
@@ -154,9 +166,7 @@ const header = `/**
  */
 `;
 
-const out = header + entries
-  .map(([name, body]) => `\nexport const ${name}_CONTENT_V2: string =\n  ${JSON.stringify(body)};\n`)
-  .join('');
+const out = header + entries.map(([name, body]) => `\nexport const ${name}_CONTENT_V2: string =\n  ${JSON.stringify(body)};\n`).join('');
 
 writeFileSync(process.argv[2], out);
 console.log(`wrote ${entries.length} bodies, ${out.length} bytes`);

@@ -198,7 +198,38 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // cap deletes most of a Malayalam span. The en-medical rows below are unmeasured and keep the
     // engine default. Ticket README §6.3b / §6.6.
     // TASK-1055 owner default alignment (2026-10-09): `residency.defaultDevice` GPU 0, with Medical NER and GLiGuard.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { audioCtx: 768, hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } }, residency: { defaultDevice: 'gpu0' } },
+    metaData: {
+      asr: {
+        maxDecodeWindowSec: 7,
+        partialWindowSec: 6,
+        decoding: {
+          audioCtx: 768,
+          hotwords: [
+            'ceftriaxone',
+            'amoxicillin',
+            'piperacillin-tazobactam',
+            'vancomycin',
+            'ceftazidime',
+            'azithromycin',
+            'metronidazole',
+            'troponin',
+            'creatinine',
+            'metformin',
+            'lisinopril',
+            'atorvastatin',
+            'bisoprolol',
+            'apixaban',
+            'furosemide',
+            'levothyroxine',
+            'salbutamol',
+            'prednisolone',
+            'amlodipine',
+            'omeprazole',
+          ],
+        },
+      },
+      residency: { defaultDevice: 'gpu0' },
+    },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -290,7 +321,37 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // Metal flash-attention build (640 collapsed the decode); `maxTokens` stays uncapped — a 32–64
     // cap deletes most of a Malayalam span. The en-medical rows below are unmeasured and keep the
     // engine default. Ticket README §6.3b / §6.6.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { audioCtx: 768, hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    metaData: {
+      asr: {
+        maxDecodeWindowSec: 7,
+        partialWindowSec: 6,
+        decoding: {
+          audioCtx: 768,
+          hotwords: [
+            'ceftriaxone',
+            'amoxicillin',
+            'piperacillin-tazobactam',
+            'vancomycin',
+            'ceftazidime',
+            'azithromycin',
+            'metronidazole',
+            'troponin',
+            'creatinine',
+            'metformin',
+            'lisinopril',
+            'atorvastatin',
+            'bisoprolol',
+            'apixaban',
+            'furosemide',
+            'levothyroxine',
+            'salbutamol',
+            'prednisolone',
+            'amlodipine',
+            'omeprazole',
+          ],
+        },
+      },
+    },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -299,7 +360,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'ArcaAI Whisper Large ML-EN Code-Switch (transformers)',
     slug: 'arcaai-whisper-large-ml-en',
-    description: 'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo (fp16 safetensor) served via the transformers runtime.',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo (fp16 safetensor) served via the transformers runtime.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.FINETUNED_MODEL,
@@ -324,7 +386,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'ArcaAI Whisper Large ML-EN Code-Switch (CTranslate2)',
     slug: 'arcaai-whisper-large-ml-en-ct2',
-    description: 'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, converted to CTranslate2 for the faster-whisper runtime.',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, converted to CTranslate2 for the faster-whisper runtime.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -417,7 +480,36 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // (lane S) — the partial window widens to 15s because a short partial window is where
     // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
     // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    metaData: {
+      asr: {
+        maxDecodeWindowSec: 7,
+        partialWindowSec: 6,
+        decoding: {
+          hotwords: [
+            'ceftriaxone',
+            'amoxicillin',
+            'piperacillin-tazobactam',
+            'vancomycin',
+            'ceftazidime',
+            'azithromycin',
+            'metronidazole',
+            'troponin',
+            'creatinine',
+            'metformin',
+            'lisinopril',
+            'atorvastatin',
+            'bisoprolol',
+            'apixaban',
+            'furosemide',
+            'levothyroxine',
+            'salbutamol',
+            'prednisolone',
+            'amlodipine',
+            'omeprazole',
+          ],
+        },
+      },
+    },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -456,7 +548,36 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // (lane S) — the partial window widens to 15s because a short partial window is where
     // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
     // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    metaData: {
+      asr: {
+        maxDecodeWindowSec: 7,
+        partialWindowSec: 6,
+        decoding: {
+          hotwords: [
+            'ceftriaxone',
+            'amoxicillin',
+            'piperacillin-tazobactam',
+            'vancomycin',
+            'ceftazidime',
+            'azithromycin',
+            'metronidazole',
+            'troponin',
+            'creatinine',
+            'metformin',
+            'lisinopril',
+            'atorvastatin',
+            'bisoprolol',
+            'apixaban',
+            'furosemide',
+            'levothyroxine',
+            'salbutamol',
+            'prednisolone',
+            'amlodipine',
+            'omeprazole',
+          ],
+        },
+      },
+    },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'q8_0', 'private-repo'],
   },
   {
@@ -493,7 +614,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Azure Speech STT',
     slug: 'azure-speech-stt',
-    description: 'Azure Cognitive Services Speech-to-Text (cloud). Credentials via the tenant → SYSTEM `stt`/`azure-speech` provider connection. `ml-IN` supported.',
+    description:
+      'Azure Cognitive Services Speech-to-Text (cloud). Credentials via the tenant → SYSTEM `stt`/`azure-speech` provider connection. `ml-IN` supported.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.BASE_MODEL,
@@ -619,7 +741,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Silero VAD v5',
     slug: 'silero-vad',
-    description: 'Silero VAD v5 ONNX — the voice-activity detector the stt runtime loads from onnx-community/silero-vad. Lightweight, low-latency; recommended for production.',
+    description:
+      'Silero VAD v5 ONNX — the voice-activity detector the stt runtime loads from onnx-community/silero-vad. Lightweight, low-latency; recommended for production.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.VOICE_ACTIVITY_DETECTION,
     modelType: ModelType.BASE_MODEL,
@@ -651,7 +774,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'RNNoise',
     slug: 'rnnoise',
-    description: 'RNNoise — lightweight recurrent-network noise suppression (pyrnnoise). Frame-accurate default denoiser for real-time capture; weights ship inside the package.',
+    description:
+      'RNNoise — lightweight recurrent-network noise suppression (pyrnnoise). Frame-accurate default denoiser for real-time capture; weights ship inside the package.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUDIO_TO_AUDIO,
     modelType: ModelType.BASE_MODEL,
@@ -741,7 +865,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'WeSpeaker ResNet34 Speaker Embedding (pyannote)',
     slug: 'wespeaker-voxceleb-resnet34',
-    description: 'pyannote WeSpeaker ResNet34 VoxCeleb speaker-verification embeddings — the SYSTEM ASR template\'s diarization embedding model (TASK-887).',
+    description:
+      "pyannote WeSpeaker ResNet34 VoxCeleb speaker-verification embeddings — the SYSTEM ASR template's diarization embedding model (TASK-887).",
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.SPEAKER_EMBEDDING,
     modelType: ModelType.BASE_MODEL,

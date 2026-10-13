@@ -64,7 +64,8 @@ export const EMPTY_SCAN_COUNTS: ScanCounts = { mrnShaped: 0, dobShaped: 0, drugD
 const MRN_PATTERN = /\bMRN[\s:#-]*\d{3,}\b/gi;
 
 /** A `DOB`/`date of birth` label followed by a date, OR a bare date shape on its own. */
-const DOB_PATTERN = /\b(?:DOB|D\.O\.B\.?|date of birth)[\s:]*\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}\b|\b\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}\b|\b(19|20)\d{2}-\d{2}-\d{2}\b/gi;
+const DOB_PATTERN =
+  /\b(?:DOB|D\.O\.B\.?|date of birth)[\s:]*\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}\b|\b\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}\b|\b(19|20)\d{2}-\d{2}-\d{2}\b/gi;
 
 /**
  * A short, hand-authored list of common generic drug names for the

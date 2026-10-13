@@ -139,9 +139,7 @@ describe('packages/database Dockerfile workspace deps', () => {
     // Guards the guard: an all-`import type` refactor would make this vacuous.
     expect(valueImported.length).toBeGreaterThan(0);
 
-    const missing = valueImported.filter(
-      (dir) => !new RegExp(`^COPY\\s+--from=builder\\s+/app/${dir}/dist\\s`, 'm').test(dockerfile),
-    );
+    const missing = valueImported.filter((dir) => !new RegExp(`^COPY\\s+--from=builder\\s+/app/${dir}/dist\\s`, 'm').test(dockerfile));
     expect(
       missing,
       `packages/database/Dockerfile's RUNTIME stage is missing ${missing.length} workspace dist COPY line(s). ` +

@@ -58,9 +58,7 @@ const ALL_SEEDED_TEMPLATES: SeedTemplateLike[] = [
 const matchesPreSummaryConvention = (template: SeedTemplateLike): boolean => {
   const scope = template.scope ?? DEFAULT_SCOPE;
   const status = template.status ?? resolveSeedStatus(template.category);
-  return (
-    template.departmentId == null && scope === DEFAULT_SCOPE && status === 'APPROVED' && template.tags.includes(PRE_SUMMARY_TAG)
-  );
+  return template.departmentId == null && scope === DEFAULT_SCOPE && status === 'APPROVED' && template.tags.includes(PRE_SUMMARY_TAG);
 };
 
 /**

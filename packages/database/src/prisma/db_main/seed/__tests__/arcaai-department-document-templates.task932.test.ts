@@ -87,7 +87,6 @@ function headingsOf(body: string): string[] {
     .filter((title) => title.length > 0);
 }
 
-
 /** The node config of one workflow target's node. */
 function nodeConfig(workflowSlug: string, nodeId: string): Record<string, unknown> {
   const target = ARCAAI_WORKFLOW_TARGETS.find((candidate) => candidate.slug === workflowSlug)!;
@@ -129,7 +128,10 @@ describe('TASK-932 §3.7 — ArcaAI department note shapes', () => {
         const expected = headingsOf(body!);
 
         expect(expected.length, `${slug}: the corpus body must yield headings`).toBeGreaterThan(1);
-        expect(shape.sections.map((section) => section.title), slug).toEqual(expected);
+        expect(
+          shape.sections.map((section) => section.title),
+          slug,
+        ).toEqual(expected);
       }
     }
   });
@@ -172,12 +174,8 @@ describe('TASK-932 §3.7 — ArcaAI department note shapes', () => {
   it('General Medicine`s shapes are the platform pair`s section list — the platform shapes were ported from that body', () => {
     // The one department whose headings the platform axis already carries. If this drifts, either
     // the corpus body or the platform shape moved, and the two are supposed to be the same list.
-    expect(bySlug.get('arcaai-gen-soap-new-visit')!.shape.sections.map((s) => s.title)).toEqual(
-      NEW_VISIT_NOTE_SHAPE.sections.map((s) => s.title),
-    );
-    expect(bySlug.get('arcaai-gen-soap-revisit')!.shape.sections.map((s) => s.title)).toEqual(
-      REVISIT_NOTE_SHAPE.sections.map((s) => s.title),
-    );
+    expect(bySlug.get('arcaai-gen-soap-new-visit')!.shape.sections.map((s) => s.title)).toEqual(NEW_VISIT_NOTE_SHAPE.sections.map((s) => s.title));
+    expect(bySlug.get('arcaai-gen-soap-revisit')!.shape.sections.map((s) => s.title)).toEqual(REVISIT_NOTE_SHAPE.sections.map((s) => s.title));
   });
 
   it('the department axis is REAL — the ten non-General shapes differ from the platform pair', () => {
@@ -197,7 +195,10 @@ describe('TASK-932 §3.7 — ArcaAI department note shapes', () => {
     for (const entry of ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES) {
       for (const section of entry.shape.sections) expect(section.required).not.toBe(true);
       // …which the compiled artifact must agree with: every key present, every value nullable.
-      const compiled = entry.compiled as { sectionKeys: string[]; responseFormat: { json_schema: { required: string[]; properties: Record<string, { type: unknown }> } } };
+      const compiled = entry.compiled as {
+        sectionKeys: string[];
+        responseFormat: { json_schema: { required: string[]; properties: Record<string, { type: unknown }> } };
+      };
       expect(compiled.responseFormat.json_schema.required).toEqual(compiled.sectionKeys);
       for (const key of compiled.sectionKeys) expect(compiled.responseFormat.json_schema.properties[key]!.type).toEqual(['string', 'null']);
     }

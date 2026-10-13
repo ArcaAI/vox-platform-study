@@ -105,7 +105,12 @@ export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   // SYSTEM text agent's primary and on `harness.judge` below.
   { id: '89000000-0000-0000-0000-000000000006', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.safety', modelSlug: 'gliguard-llm-guardrails-300m' },
   { id: '89000000-0000-0000-0000-000000000011', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.pii', modelSlug: 'gliner2-privacy-filter-pii-multi' },
-  { id: '89000000-0000-0000-0000-000000000012', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.pii.spans', modelSlug: 'gliner2-guardrails-pii-multi' },
+  {
+    id: '89000000-0000-0000-0000-000000000012',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'guardrail.pii.spans',
+    modelSlug: 'gliner2-guardrails-pii-multi',
+  },
   { id: '89000000-0000-0000-0000-000000000007', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.groundedness', modelSlug: 'minicheck-flan-t5-large' },
   { id: '89000000-0000-0000-0000-000000000008', tenantId: SYSTEM_TENANT_ID, taskKey: 'harness.judge', modelSlug: 'lms-gemma-4-e2b-it-qat' },
   // TASK-1016 (OD-1a) — the open-taxonomy topic/intent labels `apps/nlp` delegates to `text`'s
@@ -121,10 +126,30 @@ export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   // behaviour-neutral (and the four judges ship OFF, `18-guardrail-availability.ts`). A platform admin
   // switches a lane (e.g. to `qwen3guard-gen-0.6b`) on `/guardrails/control`; a model that does not declare
   // the lane in `_metadata.judge` is refused 400 JUDGE_LANE_UNSUPPORTED.
-  { id: '89000000-0000-0000-0000-000000000016', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.injection', modelSlug: 'granite-guardian-4.1-8b' },
-  { id: '89000000-0000-0000-0000-000000000017', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.unsafe_content', modelSlug: 'granite-guardian-4.1-8b' },
-  { id: '89000000-0000-0000-0000-000000000018', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.clinical_safety', modelSlug: 'granite-guardian-4.1-8b' },
-  { id: '89000000-0000-0000-0000-000000000019', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.judge.leakage', modelSlug: 'granite-guardian-4.1-8b' },
+  {
+    id: '89000000-0000-0000-0000-000000000016',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'guardrail.judge.injection',
+    modelSlug: 'granite-guardian-4.1-8b',
+  },
+  {
+    id: '89000000-0000-0000-0000-000000000017',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'guardrail.judge.unsafe_content',
+    modelSlug: 'granite-guardian-4.1-8b',
+  },
+  {
+    id: '89000000-0000-0000-0000-000000000018',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'guardrail.judge.clinical_safety',
+    modelSlug: 'granite-guardian-4.1-8b',
+  },
+  {
+    id: '89000000-0000-0000-0000-000000000019',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'guardrail.judge.leakage',
+    modelSlug: 'granite-guardian-4.1-8b',
+  },
 ];
 
 export const seedAiRoutingPolicy = async (

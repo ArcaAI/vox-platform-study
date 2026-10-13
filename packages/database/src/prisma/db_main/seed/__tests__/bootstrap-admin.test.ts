@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  BOOTSTRAP_ENV_VARS,
-  BOOTSTRAP_PASSWORD_MIN_LENGTH,
-  BOOTSTRAP_SUPER_ADMIN_USER_ID,
-  resolveBootstrapAdminConfig,
-} from '../92-bootstrap-admin';
+import { BOOTSTRAP_ENV_VARS, BOOTSTRAP_PASSWORD_MIN_LENGTH, BOOTSTRAP_SUPER_ADMIN_USER_ID, resolveBootstrapAdminConfig } from '../92-bootstrap-admin';
 import { SEED_USER_IDS } from '../00-constants';
 import { SEED_PHASES_EXCLUDED_FROM_SAFE, isPhaseEnabled } from '../seed-mode';
 

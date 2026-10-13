@@ -45,9 +45,7 @@ const SCORECARD_BASELINE = JSON.parse(
 
 const catalog = DEFAULT_AI_MODELS;
 
-const whisperCppAsrRows = catalog.filter(
-  (m) => m.taskType === ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION && m.format === AiModelFormat.WHISPER_CPP,
-);
+const whisperCppAsrRows = catalog.filter((m) => m.taskType === ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION && m.format === AiModelFormat.WHISPER_CPP);
 
 describe('TASK-934 — ASR decode-geometry profile (OD-1)', () => {
   it('has at least the four whisper.cpp fine-tune rows this ticket measured', () => {

@@ -83,30 +83,27 @@ describe('v1 clinical prompt fidelity fixture', () => {
     expect(Object.keys(CONTENT_BY_CONSTANT_NAME)).toHaveLength(23);
   });
 
-  it.each(V1_CLINICAL_PROMPT_CHECKSUMS)(
-    'seeded $contentConstant matches its pinned v1 sha256',
-    ({ contentConstant, v1Sha256 }) => {
-      const content = CONTENT_BY_CONSTANT_NAME[contentConstant];
-      expect(
-        content,
-        `Fixture references unknown export "${contentConstant}" — it is not exported from ` +
-          '07b-arcaai-clinical-content.ts (or not wired into this test\'s CONTENT_BY_CONSTANT_NAME map).',
-      ).toBeDefined();
+  it.each(V1_CLINICAL_PROMPT_CHECKSUMS)('seeded $contentConstant matches its pinned v1 sha256', ({ contentConstant, v1Sha256 }) => {
+    const content = CONTENT_BY_CONSTANT_NAME[contentConstant];
+    expect(
+      content,
+      `Fixture references unknown export "${contentConstant}" — it is not exported from ` +
+        "07b-arcaai-clinical-content.ts (or not wired into this test's CONTENT_BY_CONSTANT_NAME map).",
+    ).toBeDefined();
 
-      const actualSha256 = sha256Hex(content);
+    const actualSha256 = sha256Hex(content);
 
-      expect(
-        actualSha256,
-        `${contentConstant} has drifted from v1.\n` +
-          `  expected (pinned v1) sha256: ${v1Sha256}\n` +
-          `  actual (seeded) sha256:      ${actualSha256}\n` +
-          'This means the seeded content no longer matches the v1 clinical prompt template. ' +
-          `Re-extract ${contentConstant} from the RUNNING v1 pod (Rancher cluster c-9lwv8, ` +
-          'namespace apps, pod apps-text-84c9774997-zhp2l) — never from a local HOPE checkout, ' +
-          'which has diverged from production in both directions. If this divergence is an ' +
-          'intentional, sign-off-approved content change (not silent drift), update the pinned ' +
-          'hash in v1-clinical-prompt-checksums.fixture.ts with an entry explaining why.',
-      ).toBe(v1Sha256);
-    },
-  );
+    expect(
+      actualSha256,
+      `${contentConstant} has drifted from v1.\n` +
+        `  expected (pinned v1) sha256: ${v1Sha256}\n` +
+        `  actual (seeded) sha256:      ${actualSha256}\n` +
+        'This means the seeded content no longer matches the v1 clinical prompt template. ' +
+        `Re-extract ${contentConstant} from the RUNNING v1 pod (Rancher cluster c-9lwv8, ` +
+        'namespace apps, pod apps-text-84c9774997-zhp2l) — never from a local HOPE checkout, ' +
+        'which has diverged from production in both directions. If this divergence is an ' +
+        'intentional, sign-off-approved content change (not silent drift), update the pinned ' +
+        'hash in v1-clinical-prompt-checksums.fixture.ts with an entry explaining why.',
+    ).toBe(v1Sha256);
+  });
 });

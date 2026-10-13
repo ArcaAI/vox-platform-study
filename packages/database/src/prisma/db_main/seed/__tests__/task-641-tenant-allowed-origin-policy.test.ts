@@ -23,9 +23,7 @@ describe('tenant-full-access policy — TenantAllowedOrigin grant', () => {
   });
 
   it('grants manage:TenantAllowedOrigin', () => {
-    expect(policy?.rules).toEqual(
-      expect.arrayContaining([expect.objectContaining({ action: 'manage', subject: 'TenantAllowedOrigin' })]),
-    );
+    expect(policy?.rules).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'manage', subject: 'TenantAllowedOrigin' })]));
   });
 
   it('scopes the grant to the caller tenant via conditions.tenantId (not cross-tenant)', () => {

@@ -154,7 +154,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
    * `tests/contracts/provider-connection-services.contract.test.ts` pins that
    * list to `@arcaai/applications` `PROVIDER_SERVICES` (the source of truth,
    * which this package cannot import — it would be a dependency cycle).
- */
+   */
   it('carries a valid service discriminator on every row', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
       expect(SEEDABLE_PROVIDER_SERVICES, `service for ${c.service}:${c.provider}`).toContain(c.service);
@@ -213,7 +213,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
    * rigor: the connection row is REQUIRED so a tenant can point the platform at
    * its own Ollama, while the MODEL CATALOG stays purged — the pair is pinned
    * by `ollama-provider-retained.test.ts`.
-*/
+   */
   it('seeds the ollama connection row keyless, so the endpoint is configurable without a platform key', () => {
     const ollama = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.provider === 'ollama');
     expect(ollama).toHaveLength(1);
@@ -282,7 +282,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
    * hence the non-secret placeholder `not-needed`, which is literally the value
    * `openai_compat.py` substitutes for LM Studio when the field is empty.
    * ────────────────────────────────────────────────────────────────────────
-*/
+   */
 
   /** The self-host llm engines `apps/text` registers a provider factory for. */
   const TEXT_SELF_HOST_ENGINES = ['llm:lm-studio', 'llm:ollama', 'llm:vllm', 'llm:llama-cpp'] as const;
@@ -291,9 +291,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     TEXT_SELF_HOST_ENGINES.forEach((pair) => {
       const row = SYSTEM_AI_PROVIDER_CONNECTIONS.find((c) => `${c.service}:${c.provider}` === pair);
       expect(row, `${pair} must have a SYSTEM connection row`).toBeDefined();
-      expect(row!.apiKeyPlaintext, `${pair} must carry the keyless-engine placeholder or the fold drops it`).toBe(
-        SELF_HOST_PLACEHOLDER_API_KEY,
-      );
+      expect(row!.apiKeyPlaintext, `${pair} must carry the keyless-engine placeholder or the fold drops it`).toBe(SELF_HOST_PLACEHOLDER_API_KEY);
       expect(row!.baseUrl, `${pair} must carry the engine endpoint`).toBeTruthy();
     });
   });
@@ -331,11 +329,9 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
   });
 
   it('leaves every cloud-BYO row keyless (a seeded placeholder would defeat fail-closed)', () => {
-    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => (CLOUD_BYO_SEED_PAIRS as readonly string[]).includes(`${c.service}:${c.provider}`)).forEach(
-      (c) => {
-        expect(c.apiKeyPlaintext, `cloud-BYO ${c.service}:${c.provider} must seed no key material at all`).toBeNull();
-      },
-    );
+    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => (CLOUD_BYO_SEED_PAIRS as readonly string[]).includes(`${c.service}:${c.provider}`)).forEach((c) => {
+      expect(c.apiKeyPlaintext, `cloud-BYO ${c.service}:${c.provider} must seed no key material at all`).toBeNull();
+    });
   });
 
   it('keeps `llm:built-in` keyless — it is in-process, so there is nothing to deliver a credential to', () => {

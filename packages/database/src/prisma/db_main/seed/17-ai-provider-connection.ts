@@ -897,8 +897,7 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
     const key = row.apiKeyPlaintext ? await encryptSeedSecret(row.apiKeyPlaintext) : null;
 
     console.log(
-      `  Creating AiProviderConnection "${row.service}:${row.provider}" ` +
-        `(${row.enabled ? 'enabled' : 'disabled'}${key ? ', keyed' : ''})`,
+      `  Creating AiProviderConnection "${row.service}:${row.provider}" ` + `(${row.enabled ? 'enabled' : 'disabled'}${key ? ', keyed' : ''})`,
     );
     await client.aiProviderConnection.create({
       data: {

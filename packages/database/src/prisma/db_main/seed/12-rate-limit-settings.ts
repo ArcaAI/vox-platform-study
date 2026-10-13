@@ -142,7 +142,8 @@ export const RATE_LIMIT_SETTINGS: RateLimitSettingDef[] = [
     key: 'rate-limit.principal.enabled',
     value: 'true',
     dataType: ValueType.Boolean,
-    description: 'Whether each caller is additionally counted in its own bucket underneath its tenant-wide ceiling. OFF restores the single tenant-wide counter.',
+    description:
+      'Whether each caller is additionally counted in its own bucket underneath its tenant-wide ceiling. OFF restores the single tenant-wide counter.',
   },
   {
     id: IDS.RATE_LIMIT_PRINCIPAL_LIMIT,
@@ -150,7 +151,8 @@ export const RATE_LIMIT_SETTINGS: RateLimitSettingDef[] = [
     key: 'rate-limit.principal.limit',
     value: '150',
     dataType: ValueType.Integer,
-    description: 'Max requests ONE caller may make per window inside its tenant. Sized from the measured worst case for a single console user (44.1 req/min) with the approved 3x headroom.',
+    description:
+      'Max requests ONE caller may make per window inside its tenant. Sized from the measured worst case for a single console user (44.1 req/min) with the approved 3x headroom.',
   },
   {
     id: IDS.RATE_LIMIT_PRINCIPAL_TTL,
@@ -167,7 +169,8 @@ export const RATE_LIMIT_SETTINGS: RateLimitSettingDef[] = [
     key: 'rate-limit.lockout.enabled',
     value: 'false',
     dataType: ValueType.Boolean,
-    description: 'ON: exceeding a limit refuses the bucket for a FULL window measured from the breach. OFF (the default): the refusal lasts only until the current window rolls.',
+    description:
+      'ON: exceeding a limit refuses the bucket for a FULL window measured from the breach. OFF (the default): the refusal lasts only until the current window rolls.',
   },
 ];
 

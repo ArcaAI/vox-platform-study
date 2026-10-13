@@ -36,7 +36,10 @@ function importedPhaseFunctions(): string[] {
   while ((m = importRe.exec(src)) !== null) {
     const specifiers = m[1]!.split(',');
     for (const raw of specifiers) {
-      const name = raw.trim().split(/\s+as\s+/)[0]!.trim();
+      const name = raw
+        .trim()
+        .split(/\s+as\s+/)[0]!
+        .trim();
       if (/^(seed|provision)[A-Z]/.test(name)) names.push(name);
     }
   }

@@ -66,9 +66,27 @@ function buildGrants(): ConsentGrantSeed[] {
 
   for (const [patientId, toolKey, styleKey, qualityKey] of rows) {
     grants.push(
-      { id: SEED_CONSENT_GRANT_IDS[toolKey], tenantId: SEED_TENANT_ID, externalPatientId: patientId, purpose: PURPOSE_ID_SUFFIX.TOOL_LOOKUP, grantedBy: SEED_USER_IDS.DOCTOR },
-      { id: SEED_CONSENT_GRANT_IDS[styleKey], tenantId: SEED_TENANT_ID, externalPatientId: patientId, purpose: PURPOSE_ID_SUFFIX.STYLE_LEARNING, grantedBy: SEED_USER_IDS.DOCTOR },
-      { id: SEED_CONSENT_GRANT_IDS[qualityKey], tenantId: SEED_TENANT_ID, externalPatientId: patientId, purpose: PURPOSE_ID_SUFFIX.QUALITY_REVIEW, grantedBy: SEED_USER_IDS.DOCTOR },
+      {
+        id: SEED_CONSENT_GRANT_IDS[toolKey],
+        tenantId: SEED_TENANT_ID,
+        externalPatientId: patientId,
+        purpose: PURPOSE_ID_SUFFIX.TOOL_LOOKUP,
+        grantedBy: SEED_USER_IDS.DOCTOR,
+      },
+      {
+        id: SEED_CONSENT_GRANT_IDS[styleKey],
+        tenantId: SEED_TENANT_ID,
+        externalPatientId: patientId,
+        purpose: PURPOSE_ID_SUFFIX.STYLE_LEARNING,
+        grantedBy: SEED_USER_IDS.DOCTOR,
+      },
+      {
+        id: SEED_CONSENT_GRANT_IDS[qualityKey],
+        tenantId: SEED_TENANT_ID,
+        externalPatientId: patientId,
+        purpose: PURPOSE_ID_SUFFIX.QUALITY_REVIEW,
+        grantedBy: SEED_USER_IDS.DOCTOR,
+      },
     );
   }
 

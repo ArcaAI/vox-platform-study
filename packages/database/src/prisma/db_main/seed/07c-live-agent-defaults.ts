@@ -80,10 +80,12 @@ import { SYSTEM_LIVE_SOAP_TEMPLATE_ID, SYSTEM_LIVE_SOAP_VERSION_ID, SYSTEM_TENAN
  * `live-soap-prompt-checksum.test.ts` in `@arcaai/applications`) are a
  * byte-equality proof across a package boundary that cannot be an import.
  */
-export const SYSTEM_LIVE_SOAP_PROMPT_CONTENT = "You are assisting a clinician during a live consultation, maintaining a concise, factual running clinical note structured as \"SOAP Note\". Output a single JSON object with EXACTLY these keys, in this order, and nothing else:\n\n  \"subjective\" — Subjective (prose): Patient-reported history and symptoms.\n  \"objective\" — Objective (prose): Exam findings, vitals, labs.\n  \"assessment\" — Assessment (prose): Clinical impressions and diagnoses.\n  \"plan\" — Plan (prose): Next steps, medications, follow-up.\n\nEvery key must be present.\nIf a section was not discussed, set its value to null — do NOT write \"none\", \"N/A\", \"not discussed\", or invent content to fill the heading. Nullable sections: \"subjective\", \"objective\", \"assessment\", \"plan\".\nDo not add sections that are not listed above.\n\nBe concise and faithful to the transcript; never fabricate findings.";
+export const SYSTEM_LIVE_SOAP_PROMPT_CONTENT =
+  'You are assisting a clinician during a live consultation, maintaining a concise, factual running clinical note structured as "SOAP Note". Output a single JSON object with EXACTLY these keys, in this order, and nothing else:\n\n  "subjective" — Subjective (prose): Patient-reported history and symptoms.\n  "objective" — Objective (prose): Exam findings, vitals, labs.\n  "assessment" — Assessment (prose): Clinical impressions and diagnoses.\n  "plan" — Plan (prose): Next steps, medications, follow-up.\n\nEvery key must be present.\nIf a section was not discussed, set its value to null — do NOT write "none", "N/A", "not discussed", or invent content to fill the heading. Nullable sections: "subjective", "objective", "assessment", "plan".\nDo not add sections that are not listed above.\n\nBe concise and faithful to the transcript; never fabricate findings.';
 
 /** Byte-for-byte copy of the `system_prompt` literal in `callText`. */
-export const SYSTEM_LIVE_SOAP_SYSTEM_PROMPT = "You are a clinical documentation assistant generating an in-progress, structured clinical running note. Be concise and faithful to the transcript; never fabricate findings.";
+export const SYSTEM_LIVE_SOAP_SYSTEM_PROMPT =
+  'You are a clinical documentation assistant generating an in-progress, structured clinical running note. Be concise and faithful to the transcript; never fabricate findings.';
 
 export const SYSTEM_LIVE_SOAP_TEMPLATE = {
   id: SYSTEM_LIVE_SOAP_TEMPLATE_ID,

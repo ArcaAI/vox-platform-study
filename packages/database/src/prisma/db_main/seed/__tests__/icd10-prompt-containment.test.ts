@@ -128,9 +128,7 @@ describe('ICD-10 prompt containment ', () => {
     }
 
     if (violations.length > 0) {
-      const report = violations
-        .map((v, i) => `${i + 1}. [${v.source}] id=${v.id} field=${v.field}\n   …${v.excerpt}…`)
-        .join('\n');
+      const report = violations.map((v, i) => `${i + 1}. [${v.source}] id=${v.id} field=${v.field}\n   …${v.excerpt}…`).join('\n');
       // eslint-disable-next-line no-console
       console.error(`ICD-10 prompt-containment violations (${violations.length}):\n${report}`);
     }

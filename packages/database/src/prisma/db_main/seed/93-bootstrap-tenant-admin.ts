@@ -103,14 +103,10 @@ export function resolveBootstrapTenantAdminConfig(env: NodeJS.ProcessEnv = proce
   if (email === '' && password === '') return null;
 
   if (email === '') {
-    throw new Error(
-      `${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.password} is set but ${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.email} is not. Set both, or neither.`,
-    );
+    throw new Error(`${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.password} is set but ${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.email} is not. Set both, or neither.`);
   }
   if (password === '') {
-    throw new Error(
-      `${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.email} is set but ${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.password} is not. Set both, or neither.`,
-    );
+    throw new Error(`${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.email} is set but ${BOOTSTRAP_TENANT_ADMIN_ENV_VARS.password} is not. Set both, or neither.`);
   }
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

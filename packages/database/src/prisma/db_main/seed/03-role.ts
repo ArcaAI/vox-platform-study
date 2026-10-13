@@ -37,7 +37,15 @@ export const SYSTEM_ROLES = [
     externalName: 'Tenant Administrator',
     isSystemRole: true,
     parentRoleId: null,
-    policies: ['tenant-full-access', 'rbac-tenant-manage', 'rbac-delegate', 'user-profile-own', 'prompt-template-manage', 'audit-log-read', 'api-documentation-read'],
+    policies: [
+      'tenant-full-access',
+      'rbac-tenant-manage',
+      'rbac-delegate',
+      'user-profile-own',
+      'prompt-template-manage',
+      'audit-log-read',
+      'api-documentation-read',
+    ],
   },
   {
     id: SEED_ROLE_IDS.DOCTOR,

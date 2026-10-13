@@ -68,7 +68,9 @@ describe('TASK-1022 — the finalization prompt names the template headings', ()
     expect(prompt).toContain('THE FINALIZED NOTE IS ENTIRELY IN ENGLISH');
     expect(prompt).toContain('=== WRITING STYLE ===');
     expect(prompt).toContain('{{context.dna_style_text | default("")}}');
-    expect(prompt).toContain('Return a JSON object with `case_note` (the finalized Markdown note), `redactions` (an array of `{ text, label }`) and `sources`');
+    expect(prompt).toContain(
+      'Return a JSON object with `case_note` (the finalized Markdown note), `redactions` (an array of `{ text, label }`) and `sources`',
+    );
   });
 
   it('renders the numbered heading list into the durable prompt', () => {

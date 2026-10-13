@@ -34,11 +34,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import {
-  ARCAAI_CLINICAL_APPROVED_VERSION,
-  ARCAAI_CLINICAL_TEMPLATES,
-  ARCAAI_CLINICAL_VERSIONS,
-} from '../07b-arcaai-clinical-templates';
+import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arcaai-clinical-templates';
 
 const ICD10_PATTERN = /ICD-?10/i;
 

@@ -104,7 +104,9 @@ describe('seedAiProviderConnection — key material (SECRETS_PROVIDER=vault)', (
 
   it('persists ciphertext + keyVersion for every text-served self-host engine', async () => {
     const created: CreatedRow[] = [];
-    await (await loadSeed())(fakeClient(created));
+    await (
+      await loadSeed()
+    )(fakeClient(created));
 
     for (const pair of TEXT_SELF_HOST_ENGINES) {
       const row = created.find((r) => `${r.service}:${r.provider}` === pair);
@@ -119,7 +121,9 @@ describe('seedAiProviderConnection — key material (SECRETS_PROVIDER=vault)', (
   });
 
   it('encrypts under the SECRETS transit key, never the PHI key', async () => {
-    await (await loadSeed())(fakeClient([]));
+    await (
+      await loadSeed()
+    )(fakeClient([]));
 
     const paths = writeMock.mock.calls.map((c) => (c as unknown as [string])[0]);
     expect(paths.length).toBeGreaterThan(0);
@@ -133,7 +137,9 @@ describe('seedAiProviderConnection — key material (SECRETS_PROVIDER=vault)', (
 
   it('honours VAULT_TRANSIT_KEY, so a deployment that renamed the key still round-trips', async () => {
     vi.stubEnv('VAULT_TRANSIT_KEY', 'hope-secrets-alt');
-    await (await loadSeed())(fakeClient([]));
+    await (
+      await loadSeed()
+    )(fakeClient([]));
 
     const paths = writeMock.mock.calls.map((c) => (c as unknown as [string])[0]);
     expect(new Set(paths)).toEqual(new Set(['transit/encrypt/hope-secrets-alt']));
@@ -141,7 +147,9 @@ describe('seedAiProviderConnection — key material (SECRETS_PROVIDER=vault)', (
 
   it('still creates every cloud-BYO row keyless (a keyed SYSTEM cloud row is platform spend)', async () => {
     const created: CreatedRow[] = [];
-    await (await loadSeed())(fakeClient(created));
+    await (
+      await loadSeed()
+    )(fakeClient(created));
 
     const cloud = created.filter((r) => !KEYED_SELF_HOST_ROWS.includes(`${r.service}:${r.provider}`));
     expect(cloud.length).toBeGreaterThan(0);
@@ -157,7 +165,9 @@ describe('seedAiProviderConnection — no Vault (soft mode)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const created: CreatedRow[] = [];
 
-    await (await loadSeed())(fakeClient(created));
+    await (
+      await loadSeed()
+    )(fakeClient(created));
 
     expect(vaultFactory).not.toHaveBeenCalled();
     expect(writeMock).not.toHaveBeenCalled();

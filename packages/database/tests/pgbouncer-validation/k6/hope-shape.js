@@ -15,9 +15,7 @@
 import sql from 'k6/x/sql';
 import driver from 'k6/x/sql/driver/postgres';
 
-const POOLED_URL =
-  __ENV.DATABASE_URL ||
-  'postgres://hope_app:hope_app_local@127.0.0.1:6532/hope?sslmode=disable';
+const POOLED_URL = __ENV.DATABASE_URL || 'postgres://hope_app:hope_app_local@127.0.0.1:6532/hope?sslmode=disable';
 
 export const options = {
   scenarios: {
@@ -57,10 +55,7 @@ export default function () {
   if (__ITER % 10 === 0) {
     db.exec(`BEGIN`);
     db.exec(`SELECT set_config('app.tenant_id', '${tenantId}', true)`);
-    db.exec(
-      `UPDATE core."GlobalSetting" SET "updatedAt" = NOW() ` +
-        `WHERE id IN (SELECT id FROM core."GlobalSetting" LIMIT 1)`,
-    );
+    db.exec(`UPDATE core."GlobalSetting" SET "updatedAt" = NOW() ` + `WHERE id IN (SELECT id FROM core."GlobalSetting" LIMIT 1)`);
     db.exec(`COMMIT`);
   }
 
