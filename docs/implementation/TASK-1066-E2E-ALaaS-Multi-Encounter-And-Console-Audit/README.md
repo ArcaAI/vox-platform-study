@@ -1,6 +1,6 @@
 # TASK-1066 — E2E: ALaaS web_ui ↔ audio-stream-svc ↔ HOPE cluster, multi-encounter lifecycle, tenant-admin console audit
 
-**Status:** Review (test + analysis only — no fixes applied, per owner)
+**Status:** Review — fixes merged and verified on the cluster (2026-10-13)
 **Date:** 2026-10-12 · **Type:** verification · **Branch:** dev-2.2 · **Target:** cluster `hope-v2-dev` (`api.taphuynh.dev`, `admin.taphuynh.dev`)
 
 ## Requirement Analysis
@@ -79,8 +79,76 @@ Note quality (observed): UI-E3 final note drew mostly on prior-visit content; tr
 8. **Observability:** register `HarnessTenantId`; stop polling unconfigured text providers; add Grafana panels for stop→note-ready p50/p95, LM Studio queue depth, outbox backlog.
 9. **Test rig:** provision a Global-bound ALaaS service account; make ALaaS mic-agent URL and CORS env-driven; per-lane mock patients; a stub EMR opener to exercise approve/close.
 
+## Root Causes (RCA, 2026-10-12)
+| Id | Root cause | Kind |
+|---|---|---|
+| B-3/C-3 | governed encounter-1 SUMMARIZING guard required IDLE but stop held FINALIZING_TRANSCRIPT (`encounter-refinalize.service.ts`), then stop wrote IDLE unconditionally (`consultation-lifecycle.service.ts`); ALaaS broker gave up at 180 s because HOPE reported no work | bug |
+| B-8 stuck | refinalize set SUMMARIZING before a supersede that answered `duplicate`, never cleared | bug |
+| B-8 RUNNING | run parked at the review gate; ALaaS auto-approve off in the rig (OD-14) | by design |
+| C-2 | `n_finalize` 300 s == per-call 300 s → Temporal cancelled the repair call; `ActivityBudget` assumed 120 s/call and ignored slot wait; harness LLM concurrency 1; truncation retry doubled `max_tokens`; `n_output` ran on an empty result | bug + config |
+| B-1 | NER ran in the gateway realtime lane but entities rode only on a finished LLM flush (56–65 s) and stop cancelled the flush with no NER (TASK-1063 1a) | design gap |
+| C-1 | Express 100 kB body default on the internal evaluation route; 413 mapped to 500; outbox retried the same batch | bug |
+| C-4 | `HarnessTenantId` search attribute never registered | config |
+| B-5 | list paths mapped without the lifecycle view | bug |
+| B-6/B-7/B-9/banner/doctor | console header built from the activity feed; notices called the clinician route; legacy JSON not unwrapped; tenant name only stored when sent; no display-name fallback | bug |
+| encounterSeq / context | `addContext` never stamped; `appendEncounter` re-stored open context | bug |
+| B-2/B-4 | TASK-1045 D-3 visit keying (owner kept it); ALaaS fake adapter + comment stale | by design |
+| B-10/B-11/C-7 | ALaaS: visitType read from EMR rows that never carry it; hardcoded mic URL/CORS; empty API key | bug / rig |
+
+Owner decisions (2026-10-12): keep D-3; stamp NOTE/PRE_SUMMARY with the encounter; NER early snapshot (A) + NER at stop (B, amends TASK-1063 1a for NER only); raise ArcaAI `maxWorkflowDefinitions` to 40.
+
 ## Implementation Summary
-No code changed. Report only.
+| Lane | Model | Branch → merge | Change |
+|---|---|---|---|
+| L1 | opus | task-1066-l1 | SUMMARIZING guard accepts FINALIZING_TRANSCRIPT; conditional stop restore (`setProcessing onlyIfProcessing`); SUMMARIZING only after a real supersede |
+| L2 | opus | task-1066-l2 | batch lifecycle views for lists (`findByConsultations`, `findLatestByConsultations`, `lifecycleViews`); encounterSeq on STRUCTURED/CASE_NOTE/WORKNOTE/PRE_SUMMARY/NOTE writers; skip unchanged open context on append |
+| L3 | opus | task-1066-l3 | durable `core.agent` timeout 600 s (seed + regen); `ActivityBudget` costs calls at the governor timeout from attempt start; bounded truncation retry; `core.output` skipped after a failed producer (`upstream-failed-output` patch + replay fixtures) |
+| L4 | opus | task-1066-l4 | early NER entity snapshot with ordering guard; 3 s tail NER at stop |
+| L5 | sonnet | task-1066-l5 + deployment `task-1066` | 2 MB limit on the internal evaluation route, 413 preserved, outbox batch halving; `GET admin/consultations/:id/guardrail-notices`; provider probe skip; search-attribute warn-once; deployment: `HARNESS_LLM_MAX_CONCURRENCY=4`, out-of-band `temporal-search-attributes.yaml` |
+| L6 | sonnet | task-1066-l6 | console header meta, admin notices route, legacy note unwrap, working-tenant name hook, doctor display name |
+| L7 | sonnet | ALaaS `task-1066` → `refactor-hope-integaration` | env-driven mic URL + CORS, EMR provider-type skip without key, label fix, fake adapter follows D-3, visit type from patient context |
+| orchestrator | — | `0af2dbf62` | wire `remaining_seconds` at both `execute_plan` sites; register replay fixtures; regenerate route-manifest/openapi/portal/vox-node admin; admin-notices test stubs |
+
+Post-merge gates (2026-10-12): builds + api typecheck + artifact checks + `pnpm lint` green; domains 2120, applications 19133, database 2441, test:unit 34025 passed (1 flaky — random UUID contains "54"); console 5059 passed (2 pre-existing failures also red on base: `app-sidebar`, `findings-list.asr-warnings`); harness 3843, guardrail 1116, text 2294 passed; ALaaS web_ui 820 passed, audio-stream-svc 1368/1371 (logger spec order-dependent, red on base too).
+
+Cluster rollout (2026-10-13): pipeline #1464 → promote `dev-0af2dbf6`; job `hope-temporal-search-attributes-2` registered `HarnessTenantId` (first attempt blocked by `allow-intra-platform` — out-of-band job lacked `environment: dev`, fixed in deployment `71396b6`); 15 workflow definitions republished with 600 s (Global 2, ArcaAI 13); ArcaAI entitlement override `maxWorkflowDefinitions: 40` (row `01a132be-3019-…`, undo = DELETE override).
+
+## Verification (browser-driven ALaaS web_ui → broker → cluster, 2026-10-13)
+Evidence: `.e2e-tools/t1066/verify/{V1,V2,V3}/` (screenshots, polls, broker/web_ui logs).
+
+| Defect | Verdict | Before → after |
+|---|---|---|
+| B-3/C-3 | FIXED | IDLE ~3.5 min + "did not arrive in time" → SUMMARIZING within 1–6 s of every stop, no timeout/unavailable labels (V1, V2 all 9 notes) |
+| C-2 | FIXED | enc-2 at 3×: 2/3 FAILED at ~345 s → 6/6 follow-up notes completed (enc 2: 202/225/284 s; enc 3: 209/212/219 s) |
+| E6 latency | improved | enc 1 at 3×: 210/278/313 s → 140/194/217 s; single: 82–215 s → 57–65 s |
+| B-8 | FIXED | no stuck SUMMARIZING; ends AWAITING_REVIEW (run RUNNING at review gate = by design) |
+| B-1 | FIXED | 0 highlights → 7 findings ~30 s into recording; short encounter 5 → 14 at stop |
+| encounters / context | FIXED (partial, see V-2) | context 3 × 13.7 kB per encounter → 1 new identity item; recap + "Return visit" shown |
+| C-1 | FIXED | 500 every 30 s → 107 × 200, no 413/500 |
+| C-4 | FIXED | warning flood → 0 in 6 h |
+| B-5 | FIXED (API) | list rows carry encounters/approval/autoCloseAt (51/51); grid has no columns for them — shown in detail header |
+| B-6, B-7, B-9, banner, doctor name | FIXED | header full; notices 200 + counts match; legacy JSON rendered; tenant name (brief "selected tenant" flash on cold load); "Auto-provisioned clinician" |
+| B-10, C-7, B-11/C-5 | FIXED | no visit-type warning; provider-type 200; non-default ports via env only |
+| get_info noise | **STILL FAILING** | vllm/llama-cpp/ollama `get_info.failed` every minute — the probe-skip condition does not match the cluster's provider state |
+| E7 Copy to EMR | BLOCKED (rig) | standalone web_ui has no EMR opener; now fails silently (V-5) |
+| a11y | PASS | axe 0 violations (dark); light inconclusive |
+
+### New defects from verification (not fixed)
+| Id | Sev | Defect |
+|---|---|---|
+| V-1 | **H** | note safety: final note says "Allergic to allopurinol" (transcript: penicillin ×4); exam uses mock vitals 110/60 not spoken 152/94; "97.8 °C" |
+| V-2 | M | encounter-2 note stored as version 2 of the encounter-1 NOTE item → keeps `encounterSeq: 1`, no NOTE@2 |
+| V2-1 | M | `hope-nlp` restarted (exit Completed, no OOM, 5.4/8 GiB) 30 s into the 3× encounter-3 round |
+| Q-1 | M | entitlement `maxWorkflowDefinitions` counts every version, so routine republishing exhausts the plan |
+| V-6 | M | status AWAITING_REVIEW while governingRun reads RUNNING (gate) — console shows them side by side without explanation |
+| V-3 | L | encounter 2 stamped `visit_type: new-visit` though it is a return visit |
+| V-4 | L | opening an encounter does not bump `lastActivityAt` → autoCloseAt counts from the previous encounter |
+| V-5 | L | Copy to EMR without an opener: no request, no feedback |
+| V2-2 | L | live draft "The last update did not arrive" for ~20–30 s twice under 3× load, self-recovers |
+| V2-3 | L | harness `live_handoff_unavailable` (empty error) ×6, `compute_metering.sample_dropped_no_tenant` ×5 |
+| V-7 | L | one PRE_SUMMARY, FULL_TRANSCRIPT, ATTACHMENT unscoped; seeded Global rows lack approval/encounters; guardrail pager "1–8 of many" |
 
 ## Change History
 - 2026-10-12 — run executed (lanes B, C on cluster; lane A cancelled), report written.
+- 2026-10-12 — RCA (3 lanes), owner decisions, 7 fix lanes merged into dev-2.2 / ALaaS / deployment; post-merge gates.
+- 2026-10-13 — deployed (pipeline #1464), Temporal attribute registered, workflows republished (600 s), ArcaAI limit raised; browser e2e V1/V2/V3 verified.
