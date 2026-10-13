@@ -78,9 +78,16 @@ export function ConsultationGuardrailTab({ consultationId }: { consultationId: s
   const acknowledge = useAcknowledgeConsultationNotice(consultationId);
   const withheldRead = useWithheldContent(consultationId);
 
+  // The keyset route returns no total. When the first page is also the last one the list is
+  // complete, so the grid pages by offset with the real count instead of "1–N of many".
+  const wholeListLoaded = !cursor && evaluations.data?.hasMore === false;
   const queryState = useMemo<DataQueryState>(
-    () => ({ pagination: { mode: 'cursor', cursor, limit: PAGE_SIZE }, sorting: [], filters: [] }),
-    [cursor],
+    () => ({
+      pagination: wholeListLoaded ? { mode: 'offset', page: 0, limit: PAGE_SIZE } : { mode: 'cursor', cursor, limit: PAGE_SIZE },
+      sorting: [],
+      filters: [],
+    }),
+    [cursor, wholeListLoaded],
   );
 
   function setFilter(next: Partial<typeof filters>) {
@@ -326,7 +333,7 @@ export function ConsultationGuardrailTab({ consultationId }: { consultationId: s
           total={evaluations.data?.items.length ?? 0}
           queryState={queryState}
           onQueryStateChange={(next) => setCursor(next.pagination.mode === 'cursor' ? (next.pagination.cursor ?? null) : null)}
-          pageMode="cursor"
+          pageMode={wholeListLoaded ? 'offset' : 'cursor'}
           cursor={{ hasMore: evaluations.data?.hasMore, nextCursor: evaluations.data?.nextCursor }}
           isLoading={evaluations.isLoading}
           isBusy={evaluations.isFetching && !evaluations.isLoading}

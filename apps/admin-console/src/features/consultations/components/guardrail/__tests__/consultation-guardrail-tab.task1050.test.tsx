@@ -144,6 +144,16 @@ describe('ConsultationGuardrailTab', () => {
     expect(screen.queryByText('withheld note body')).toBeNull();
   });
 
+  it('shows the real total, not "of many", when the whole list fits on one page', async () => {
+    stub();
+    renderWithProviders(<ConsultationGuardrailTab consultationId="c-1" />);
+    const grid = await screen.findByRole('grid', { name: /guardrail evaluations/i });
+    await within(grid).findByText('Leakage (judge)');
+    const pager = await screen.findByRole('navigation', { name: 'Pagination' });
+    expect(pager.textContent).not.toMatch(/of many/);
+    expect(pager.textContent).toMatch(/of 1\b/);
+  });
+
   it('sends the action / direction / check filters to the keyset route', async () => {
     const calls = stub();
     renderWithProviders(<ConsultationGuardrailTab consultationId="c-1" />);

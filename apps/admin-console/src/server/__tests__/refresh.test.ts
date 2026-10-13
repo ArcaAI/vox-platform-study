@@ -123,6 +123,16 @@ describe('refreshSession', () => {
     expect(await sessionIn(second.jar)).toMatchObject({ refreshToken: 'refresh-next' });
   });
 
+  it('keeps the working tenant id and sealed name across a rotation', async () => {
+    const session = { ...sessionFor('tenant'), workingTenantId: 't-1', workingTenantName: 'ArcaAI' };
+    const cookie = await sealSession(session);
+    installFetchMock(() => Response.json({ token: 'access-next', refreshToken: 'refresh-next' }));
+
+    const { jar } = await withRequest(cookie, () => refreshSession(session));
+
+    expect(await sessionIn(jar)).toMatchObject({ workingTenantId: 't-1', workingTenantName: 'ArcaAI' });
+  });
+
   // D-3a, the production shape: a page load fires a dozen parallel proxied
   // calls against one expired access token. The ones that 401 AFTER the
   // rotation settled are separate requests whose cookie still holds the spent

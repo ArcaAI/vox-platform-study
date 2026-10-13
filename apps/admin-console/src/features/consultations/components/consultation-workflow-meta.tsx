@@ -51,12 +51,15 @@ function failureSentence(reason: string | null): string {
   return "the context didn't match what the workflow accepts.";
 }
 
-function chipFor(run: GoverningRun): { label: string; role: StatusColorRole } {
+function chipFor(run: GoverningRun, awaitingReview: boolean): { label: string; role: StatusColorRole } {
+  // A run parked at the clinician review gate is RUNNING by status; beside an "Awaiting review"
+  // consultation a bare "Running" reads as a contradiction, so say what it is waiting for.
+  if (run.status === 'RUNNING' && awaitingReview) return { label: 'Awaiting review gate', role: 'warning' };
   if (run.status === 'COMPLETED' && run.degraded) return { label: 'Completed with warnings', role: 'warning' };
   return RUN_STATUS_META[run.status] ?? { label: run.status, role: 'neutral' as StatusColorRole };
 }
 
-export function ConsultationWorkflowMeta({ run }: { run: GoverningRun | null | undefined }) {
+export function ConsultationWorkflowMeta({ run, awaitingReview = false }: { run: GoverningRun | null | undefined; awaitingReview?: boolean }) {
   // `/workflow-runs/*` is a 404 unless the Workflow & Harness domain is on: link only then, otherwise
   // the run id is plain text (TASK-1059 C-05).
   const { gates } = useFeatureGates();
@@ -72,7 +75,7 @@ export function ConsultationWorkflowMeta({ run }: { run: GoverningRun | null | u
             <span className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs">{run.workflowDefinitionSlug}</span>
               {(() => {
-                const chip = chipFor(run);
+                const chip = chipFor(run, awaitingReview);
                 return <StatusBadge label={chip.label} colorRole={chip.role} icon={<StatusDot colorRole={chip.role} size="sm" />} />;
               })()}
               {runLinkable ? (
