@@ -53,6 +53,7 @@ import {
   resultLabel,
   segmentLabel,
 } from './labelled-transcript.renderer';
+import { readingsStatedIn, withSupersedingReadings } from './stated-vitals';
 import { planNoteBudget, planSectionGroups, type BudgetPlan, type NoteBudgetSettings, type PlannerPriorEncounter } from './note-budget-planner';
 import {
   NOTE_INPUT_EXCEEDS_CONTEXT,
@@ -138,8 +139,12 @@ export interface NoteSourceSnapshot {
   preSummary: NoteSnapshotText | null;
   /** Earlier-visit history (prior visit summary, client-stated visits, same-day prequel): uncited background. */
   background: Array<{ key: string; label: string; text: string }>;
-  /** Cited `R<n>` sources: lab/exam documents and the clinician's own notes and readings, oldest first. */
-  results: NoteSnapshotText[];
+  /**
+   * Cited `R<n>` sources: lab/exam documents and the clinician's own notes and readings, oldest first.
+   * `clinicVitals` marks the clinic's typed vitals set, which the readings the latest encounter
+   * states supersede for that encounter.
+   */
+  results: Array<NoteSnapshotText & { clinicVitals?: boolean }>;
   /** Uploaded-audio transcripts (`A<n>`), oldest first, with the encounter they were attached in. */
   attachmentTranscripts: Array<NoteSnapshotText & { encounterSeq: number | null }>;
   /** The latest note and its latest AI version, for the clinician / AI split. */
@@ -415,7 +420,20 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
     if (text) head.push({ key: entry.key, role: 'pre_summary', label: entry.label, lines: [text] });
   }
 
-  const resultLines = snapshot.results.flatMap((result, index) => (result.text.trim() ? [renderLabelledLine(resultLabel(index), result.text)] : []));
+  // The clinic's typed vitals may be days or months old; a reading the LATEST encounter states is
+  // today's. Both stay in the plan, each with its provenance, and the spoken one is marked as the
+  // one for this encounter.
+  const latestSpoken = spoken.length > 0 ? encounters.find((encounter) => encounter.seq === Math.max(...spoken.map((e) => e.seq))) : undefined;
+  const latestReadings = latestSpoken
+    ? readingsStatedIn(
+        latestSpoken.segments.map((segment) => ({ label: `${segmentLabel(segment.segmentSeq)} E${latestSpoken.seq}`, text: segment.text })),
+      )
+    : [];
+  const resultLines = snapshot.results.flatMap((result, index) =>
+    result.text.trim()
+      ? [renderLabelledLine(resultLabel(index), result.clinicVitals ? withSupersedingReadings(result.text, latestReadings) : result.text)]
+      : [],
+  );
   const resultItems = snapshot.results.filter((result) => result.text.trim()).map((result) => ref(result.itemId, result.versionNumber));
   const results: BlockDraft | null =
     resultLines.length > 0 ? { key: 'results', role: 'results', label: 'Results', lines: resultLines, items: resultItems } : null;
@@ -1071,6 +1089,18 @@ export class NoteInputComposerService {
     return withoutExcludedContext(snapshot, new Set(result.excludedIds));
   }
 
+  /** The ids the clinic's typed vitals set rides under: its latest item, or the harness's fallback id. */
+  private async clinicVitalsIds(consultationId: string): Promise<Set<string>> {
+    const ids = new Set([`${consultationId}:${CLIENT_VITALS_KIND_KEY}`]);
+    try {
+      const item = await this.contextItemRepository.findLatestByKindKey(consultationId, CLIENT_VITALS_KIND_KEY);
+      if (item) ids.add(item.id);
+    } catch {
+      // swallow-ok: an unreadable item only loses the supersession note; the reading itself is carried
+    }
+    return ids;
+  }
+
   /** The ids the clinic's TYPED readings (vitals, test results) ride under — never judged (OD-8). */
   private async typedReadingIds(consultationId: string): Promise<Set<string>> {
     const ids = new Set<string>();
@@ -1335,7 +1365,12 @@ export class NoteInputComposerService {
       const body = extracted || (await text(item));
       if (body) results.push({ itemId: item.id, versionNumber: item.currentVersionNumber, text: body });
     }
-    results.push(...(request.extras?.results ?? []).filter((entry) => entry.text.trim()));
+    const vitalsIds = await this.clinicVitalsIds(consultationId);
+    results.push(
+      ...(request.extras?.results ?? [])
+        .filter((entry) => entry.text.trim())
+        .map((entry) => (vitalsIds.has(entry.itemId) ? { ...entry, clinicVitals: true } : entry)),
+    );
 
     const preSummaries = (await this.contextItemRepository.findPreSummaries(consultationId)).filter((item) => !skip(item)).sort(byCreated);
     const latestPreSummary = preSummaries[preSummaries.length - 1];
