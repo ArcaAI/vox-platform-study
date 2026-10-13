@@ -85,6 +85,7 @@ const ENCOUNTER_SCOPED_TYPES = new Set<ContextItemType>([
   ContextItemType.CASE_NOTE,
   ContextItemType.WORKNOTE,
   ContextItemType.PRE_SUMMARY,
+  ContextItemType.ATTACHMENT,
 ]);
 
 const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([

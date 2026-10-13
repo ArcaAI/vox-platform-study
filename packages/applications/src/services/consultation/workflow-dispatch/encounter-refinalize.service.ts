@@ -8,7 +8,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { ConfigResolver } from '../../config-resolver';
-import { ConsultationPipelineEvent, type TranscriptionCreatedPayload } from '../events/consultation.events';
+import { ConsultationPipelineEvent, type EncounterStoppedPayload, type TranscriptionCreatedPayload } from '../events/consultation.events';
 import { governingRunOf, tenantWorkflowGoverns } from '../governing-engine';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessInternalService } from '../harness/harness-internal.service';
@@ -131,6 +131,33 @@ export class EncounterRefinalizeService {
   }
 
   /**
+   * The stop announced the encounter. A session final that landed BEFORE the stop (the client
+   * closed its STT session first) found the consultation still capturing and reported nothing, and
+   * the stop then restored IDLE: the governed encounter-1 note is reported here instead, under the
+   * same rule. Re-finalisation (a later encounter) stays the session final's.
+   */
+  @OnEvent(ConsultationPipelineEvent.EncounterStopped, { async: true })
+  async onEncounterStopped(payload: EncounterStoppedPayload): Promise<void> {
+    if (!payload.tenantId) return;
+    await this.cls.run(async () => {
+      this.cls.set('tenantId', payload.tenantId);
+      this.cls.set('user', createWorkerSession({ userId: payload.userId, tenantId: payload.tenantId, kind: 'transcription-created-event' }));
+      try {
+        const consultation = await this.consultationRepository.findByIdOrNull(payload.consultationId);
+        if (!consultation || consultation.tenantId !== payload.tenantId) return;
+        const found = await this.contextItemRepository.findFullTranscript(consultation.id);
+        await this.markGovernedFirstSummarizing(consultation, found && found.consultationId === consultation.id ? found : null);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Governed encounter-1 note could not be reported at the stop (best-effort)',
+          consultationId: payload.consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+  }
+
+  /**
    * An explicit note request (`POST :id/summary/async`). `not-refinalize` ⇒ the caller's usual
    * path; otherwise this service started, joined or failed the generation and the caller hands
    * back `jobId` (its own `jobId` when `null`).
@@ -166,20 +193,7 @@ export class EncounterRefinalizeService {
     // An explicit request on encounter 1 of a governed consultation belongs to the governing run
     // too — the default engine would write a second, ungoverned note beside it.
     const governedFirst = input.trigger === 'explicit' && kind === 'first' && tenantWorkflowGoverns(consultation.metadata);
-    // The stop of encounter 1 hands the transcript to the governing run, which writes the first note
-    // now; processing reports it (the harness settles it like any other note generation). The stop
-    // may still hold FINALIZING_TRANSCRIPT while it awaits this final; its restore keeps the
-    // SUMMARIZING written here.
-    if (
-      input.trigger === 'stop' &&
-      kind === 'first' &&
-      item &&
-      tenantWorkflowGoverns(consultation.metadata) &&
-      governingRunOf(consultation.metadata)?.status === 'RUNNING' &&
-      (consultation.processing === ConsultationProcessing.IDLE || consultation.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT)
-    ) {
-      await this.setProcessing(consultation.id, ConsultationProcessing.SUMMARIZING);
-    }
+    if (input.trigger === 'stop') await this.markGovernedFirstSummarizing(consultation, item);
     if ((kind !== 'refinalize' && !governedFirst) || !item) {
       return { kind: 'not-refinalize', reason: kind === 'refinalize' ? 'not-full-transcript' : kind };
     }
@@ -219,6 +233,33 @@ export class EncounterRefinalizeService {
     if (lane === 'governed') return this.refinalizeGoverned(ctx);
     await this.markSummarizing(consultation);
     return this.refinalizeHarnessDoc({ ...ctx, jobId: jobId! });
+  }
+
+  /**
+   * The stop of encounter 1 hands the transcript to the governing run, which writes the first note
+   * now; processing reports it (the harness settles it like any other note generation). The stop
+   * may still hold FINALIZING_TRANSCRIPT while it awaits the final; its restore keeps the
+   * SUMMARIZING written here.
+   */
+  private async markGovernedFirstSummarizing(
+    consultation: {
+      id: string;
+      status: unknown;
+      currentEncounterSeq: number;
+      processing?: ConsultationProcessing | string | null;
+      metadata?: unknown;
+    },
+    item: { type: string; currentVersionNumber: number } | null,
+  ): Promise<void> {
+    if (
+      item &&
+      classifySessionFinal({ status: String(consultation.status), currentEncounterSeq: consultation.currentEncounterSeq }, item) === 'first' &&
+      tenantWorkflowGoverns(consultation.metadata) &&
+      governingRunOf(consultation.metadata)?.status === 'RUNNING' &&
+      (consultation.processing === ConsultationProcessing.IDLE || consultation.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT)
+    ) {
+      await this.setProcessing(consultation.id, ConsultationProcessing.SUMMARIZING);
+    }
   }
 
   /** SUMMARIZING for a generation this call starts; an attachment in progress keeps its marker. */
