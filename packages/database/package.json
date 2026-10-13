@@ -23,6 +23,8 @@
     "clean": "rimraf dist tsconfig.tsbuildinfo src/generated",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo src/generated",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
     "db:generate": "prisma generate && pnpm --filter @arcaai/tools generate-prisma-index",

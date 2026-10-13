@@ -30,7 +30,7 @@
  *   npx dotenv -e .env.dev -- tsx packages/database/scripts/strip-retired-guardrail-optout.ts --dry-run
  *   npx dotenv -e .env.dev -- tsx packages/database/scripts/strip-retired-guardrail-optout.ts
  */
-/* eslint-disable no-console, @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console, @typescript-eslint/no-explicit-any -- operator CLI: console is its output; raw JSON rows */
 import { createHash } from 'node:crypto';
 import * as contract from '../../workflow-contract/dist/index.mjs';
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';

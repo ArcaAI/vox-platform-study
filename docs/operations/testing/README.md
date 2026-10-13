@@ -8,19 +8,28 @@ test placement, layer gates) are in
 [`.claude/rules/01-development-workflow.md`](../../../.claude/rules/01-development-workflow.md).
 When these disagree, the code and configs win — fix the doc.
 
-Last verified: 2026-09-15 against root `package.json`, `tests/docker-compose.test.yml`, and
-`scripts/start-test-app.sh`.
+Last verified: 2026-10-13 against root `package.json`, `scripts/gate.sh`, `tests/docker-compose.test.yml`,
+and `scripts/start-test-app.sh`.
 
 ## Layout
 
 | Document | Purpose | Primary audience |
 |---|---|---|
 | [`environment-setup.md`](environment-setup.md) | Prepare every test environment: toolchain, `.env.test`, isolated Docker test infra, conda `arcaenv`, DB push/seed | Any engineer, CI maintainers |
-| [`test-execution.md`](test-execution.md) | Runbook — exact commands to run each suite (TS unit/integration/E2E, Python, coverage), including the "managed" one-command runners | Any engineer |
+| [`test-execution.md`](test-execution.md) | Runbook — the quality gate (`scripts/gate.sh`) and exact commands for unit / integration / E2E / Python suites, coverage, troubleshooting | Any engineer |
 | [`test-strategy.md`](test-strategy.md) | Formal QA/QC plan: scope, test levels, entry/exit criteria, coverage policy, roles, defect handling, release readiness | Leads, QA, auditors |
 | [`ci-gates.md`](ci-gates.md) | CI pipeline traceability — every validate/test gate, what it runs, and what it blocks | CI maintainers, release managers |
 
 ## Commands
+
+### The quality gate (one command, after everything is merged)
+
+```bash
+scripts/gate.sh              # lint + typecheck + API artifacts + all unit suites, with coverage (~10 min)
+scripts/gate.sh --changed    # only what your diff touches (1–4 min)
+```
+
+Details, flags and how to read it: [`test-execution.md`](test-execution.md) §1.
 
 ### The fast path (fresh checkout to green suite)
 

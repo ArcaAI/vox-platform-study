@@ -32,7 +32,7 @@
  *   npx dotenv -e .env.dev -- tsx packages/database/scripts/backfill-retire-model-clones.ts --dry-run
  *   npx dotenv -e .env.dev -- tsx packages/database/scripts/backfill-retire-model-clones.ts
  */
-/* eslint-disable no-console */
+/* eslint-disable no-console -- operator CLI: console is its output */
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../src/prisma/db_main/seed/00-constants';
 

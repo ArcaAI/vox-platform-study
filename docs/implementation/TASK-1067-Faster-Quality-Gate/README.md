@@ -133,3 +133,11 @@ pre-existing admin-console tests listed under Findings (workspace 2,440/2,440 fi
     end with mocked Vault + Prisma: read-only, always disconnects, refuses without Vault, and the scan
     never prints decrypted text (a mutation that leaks it fails).
   - Found, not fixed: `@arcaai/database` has no `lint` script and no ESLint config.
+- 2026-10-13 f — `@arcaai/database` gets `lint` / `lint:fix` and an `eslint.config.mjs` (the
+  `library` preset, as `packages/domains`); turbo `pnpm lint` — and so the gate — now covers it.
+  0 errors; the 7 undescribed `eslint-disable` directives got their reasons. Left: ~10,294
+  `prettier/prettier` warnings (180 of 241 files were never Prettier-formatted — a reformat is held
+  for an owner decision) and 3 pre-existing warnings (two unused constants, one `any`).
+  Runbook: `docs/operations/testing/test-execution.md` rewritten around `scripts/gate.sh` — gate,
+  unit, integration, E2E, Python, coverage, troubleshooting — every command checked against
+  `package.json`; the testing README links it.

@@ -33,7 +33,7 @@
  * while sibling agents share this repo), so both are imported from their BUILT dist by relative
  * path, exactly as `regen-workflow-seeds.ts` does.
  */
-/* eslint-disable no-console, @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console, @typescript-eslint/no-explicit-any -- operator CLI: console is its output; the untyped workflow-contract dist import */
 import * as contract from '../../workflow-contract/dist/index.mjs';
 import * as jsonSchemaSubset from '../../json-schema-subset/dist/index.mjs';
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';

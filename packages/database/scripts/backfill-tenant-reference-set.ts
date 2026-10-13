@@ -35,7 +35,7 @@
  * `--dry-run` reports what each tenant is MISSING without writing anything, which is the same
  * question proof #9 asks.
  */
-/* eslint-disable no-console */
+/* eslint-disable no-console -- operator CLI: console is its output */
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';
 import { provisionTenantReferenceSet } from '../src/prisma/db_main/seed/26-tenant-reference-set';
 import { SYSTEM_TENANT_ID } from '../src/prisma/db_main/seed/00-constants';

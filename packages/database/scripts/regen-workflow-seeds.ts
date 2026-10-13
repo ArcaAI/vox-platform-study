@@ -26,9 +26,9 @@ import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped workspace dist import
 import * as contract from '../../workflow-contract/dist/index.mjs';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped workspace dist import
 import * as jsonSchemaSubset from '../../json-schema-subset/dist/index.mjs';
 // TASK-1036 (lane B6b) — the W3 pin logic a real publish applies, REUSED rather than mirrored: these
 // are pure functions (`publish-pins.ts` / `node-prompt-binding.ts` depend only on the contract), so
@@ -56,7 +56,7 @@ import {
   ARCAAI_WORKFLOW_TARGETS,
 } from '../src/prisma/db_main/seed/29-arcaai-agents-and-workflows';
 
-/* eslint-disable @typescript-eslint/no-explicit-any, no-console */
+/* eslint-disable @typescript-eslint/no-explicit-any, no-console -- operator CLI over untyped dist modules; console is its output */
 const {
   WORKFLOW_NODE_REGISTRY,
   canonicalJson,
