@@ -34,6 +34,7 @@ from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, stats_from_openai_usage
 from text.models.stream import StreamChunk
 from text.models.usage import openai_usage_dict
+from text.providers import probe_log
 from text.providers.base import CredentialPosture
 from text.providers.clients import CLIENT_CACHE, client_key
 from text.providers.pool import TransportFamily, pooled_http_client
@@ -546,10 +547,11 @@ class OpenAICompatProvider:
             for m in model_list.data:
                 models.append(ModelInfo(name=m.id, supports_streaming=True))
             status = "available"
+            probe_log.probe_succeeded(logger, self._provider_name, base_url)
         except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
             # Narrower than a bare `except Exception: pass` so diagnostics
-            # aren't swallowed. Mirrors `health_check` above.
-            logger.warning("get_info.failed", provider=self._provider_name, error=str(exc))
+            # aren't swallowed; an unchanged repeat drops to debug (`probe_log`).
+            probe_log.probe_failed(logger, self._provider_name, base_url, str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider=self._provider_name, error=str(exc))
 

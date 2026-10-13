@@ -5,6 +5,14 @@ itself: uvicorn drains in-flight requests first) when its RSS is above
 ``nlp.worker.recycleRssMib`` or it has served ``nlp.worker.recycleAfterRequests``
 requests. The supervisor / uvicorn multiprocess manager restarts it.
 
+The request-count recycle applies ONLY when the process is one of several
+uvicorn workers: a lone process (the cluster pod) exiting takes the whole
+service down while every model reloads, so there it is left to the RSS
+ceiling. ``0`` disables either recycle.
+
+The RSS ceiling is clamped to 90 % of the container's cgroup memory limit when
+one is readable: a ceiling above the limit never fires, the kernel OOM-kills first.
+
 RSS source: ``psutil`` if importable, else ``/proc/self/statm`` (Linux), else
 ``resource.getrusage`` peak RSS (a conservative over-estimate).
 """
@@ -15,6 +23,7 @@ import os
 import signal
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from nlp.core import bounds
@@ -23,6 +32,38 @@ from nlp.core.logging import get_logger
 logger = get_logger(__name__)
 
 _EXEMPT_FRAGMENTS = ("/health", "/metrics")
+
+#: Share of the cgroup memory limit the RSS ceiling may reach.
+CGROUP_LIMIT_FRACTION = 0.9
+#: cgroup v1 reports "unlimited" as a huge page-aligned value; anything at or above this is none.
+_CGROUP_V1_UNLIMITED_BYTES = 1 << 62
+_CGROUP_ROOT = Path("/sys/fs/cgroup")
+
+
+def cgroup_memory_limit_mib(root: Path = _CGROUP_ROOT) -> int | None:
+    """The container memory limit in MiB (cgroup v2, then v1), or ``None`` if unreadable/unset."""
+    for path in (root / "memory.max", root / "memory" / "memory.limit_in_bytes"):
+        try:
+            raw = path.read_text().strip()
+        except OSError:
+            continue
+        if raw == "max":
+            return None
+        try:
+            limit = int(raw)
+        except ValueError:
+            continue
+        if limit <= 0 or limit >= _CGROUP_V1_UNLIMITED_BYTES:
+            return None
+        return limit // (1024 * 1024)
+    return None
+
+
+def effective_rss_ceiling_mib(configured_mib: int, limit_mib: int | None) -> int:
+    """``configured_mib``, lowered to ``CGROUP_LIMIT_FRACTION`` of a known limit. 0 stays 0."""
+    if configured_mib <= 0 or limit_mib is None:
+        return configured_mib
+    return min(configured_mib, int(limit_mib * CGROUP_LIMIT_FRACTION))
 
 
 def _current_rss_mib() -> float:
@@ -55,9 +96,19 @@ class RecycleGuard:
         self,
         rss_reader: Callable[[], float] | None = None,
         shutdown: Callable[[str], None] | None = None,
+        worker_count: int | None = None,
+        memory_limit_mib: int | None | Callable[[], int | None] = cgroup_memory_limit_mib,
     ) -> None:
         self._rss_reader = rss_reader
         self._shutdown = shutdown
+        if worker_count is None:
+            from nlp.core.config import settings
+
+            worker_count = settings.service.workers
+        self._worker_count = worker_count
+        self._memory_limit_mib = (
+            memory_limit_mib() if callable(memory_limit_mib) else memory_limit_mib
+        )
         self._served = 0
         self._triggered = False
 
@@ -71,9 +122,14 @@ class RecycleGuard:
             return
         limits = bounds.get_bounds()
         reason = None
-        if rss_mib > limits.recycle_rss_mib:
+        rss_ceiling = effective_rss_ceiling_mib(limits.recycle_rss_mib, self._memory_limit_mib)
+        if rss_ceiling > 0 and rss_mib > rss_ceiling:
             reason = "rss"
-        elif self._served >= limits.recycle_after_requests:
+        elif (
+            self._worker_count > 1
+            and limits.recycle_after_requests > 0
+            and self._served >= limits.recycle_after_requests
+        ):
             reason = "requests"
         if reason:
             self._triggered = True

@@ -75,7 +75,8 @@ def _api_error(path: str, exc: httpx.HTTPError) -> ApiServiceError:
     A transport failure (connect refused, read timeout) is always retryable; a response
     status is terminal only when it is a non-``408``/``429`` 4xx.
     """
-    message = f"apps/api {path} failed: {exc}"
+    # Some httpx errors (ReadTimeout, PoolTimeout) stringify to "" — name the class instead.
+    message = f"apps/api {path} failed: {str(exc) or type(exc).__name__}"
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
         if 400 <= status < 500 and status not in _RETRYABLE_CLIENT_STATUSES:

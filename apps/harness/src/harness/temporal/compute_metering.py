@@ -422,6 +422,15 @@ def _trigger_for_workflow_id(workflow_id: str) -> str | None:
     return None
 
 
+#: Activities whose input DECLARES no tenant, with the reason. Their CPU is dropped at debug
+#: rather than warned about on every run: the absence is by design, not a dropped field.
+#: ``interpreter.load_config`` takes a content-addressed ``ClaimCheckRef`` (a stable, replayed
+#: shape that must not grow a field) and parses a published workflow config.
+TENANTLESS_ACTIVITY_TYPES: Mapping[str, str] = {
+    "interpreter.load_config": "content-addressed workflow config load",
+}
+
+
 def _build_sample(
     input: ExecuteActivityInput, *, cpu_ms: float, wall_ms: float
 ) -> ComputeSample | None:
@@ -434,6 +443,17 @@ def _build_sample(
     info = activity.info()
     tenant_id = _field(input.args, "tenant_id", "tenantId")
     if not isinstance(tenant_id, str) or not tenant_id:
+        tenantless_reason = TENANTLESS_ACTIVITY_TYPES.get(info.activity_type)
+        if tenantless_reason is not None:
+            activity.logger.debug(
+                "harness.compute_metering.sample_tenantless",
+                extra={
+                    "activity_type": info.activity_type,
+                    "tenantless_reason": tenantless_reason,
+                    "cpu_ms": round(cpu_ms, 3),
+                },
+            )
+            return None
         activity.logger.warning(
             "harness.compute_metering.sample_dropped_no_tenant",
             extra={
