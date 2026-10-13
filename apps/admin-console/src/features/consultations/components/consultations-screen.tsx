@@ -262,6 +262,46 @@ function ConsultationsScreenBody() {
         ),
       },
       {
+        id: 'encounters',
+        accessorFn: (row) => row.encounters?.length ?? null,
+        header: 'Encounters',
+        enableSorting: false,
+        enableHiding: false,
+        size: 100,
+        meta: { label: 'Encounters' },
+        cell: ({ row }) => {
+          const count = row.original.encounters?.length;
+          return count === undefined ? (
+            <span className="text-muted-foreground">{'\u2014'}</span>
+          ) : (
+            <span className="tabular-nums" aria-label={`${count} ${count === 1 ? 'encounter' : 'encounters'}`}>
+              {count}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'autoCloseAt',
+        accessorFn: (row) => row.autoCloseAt ?? null,
+        header: 'Auto-close',
+        enableSorting: false,
+        enableHiding: false,
+        size: 120,
+        meta: { label: 'Auto-close' },
+        cell: ({ row }) =>
+          row.original.autoCloseAt ? (
+            <span
+              className="text-muted-foreground text-xs whitespace-nowrap"
+              title={formatDateTime(row.original.autoCloseAt)}
+              aria-label={`Auto-closes ${formatDateTime(row.original.autoCloseAt)}`}
+            >
+              {formatRelativeTime(row.original.autoCloseAt)}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">{'\u2014'}</span>
+          ),
+      },
+      {
         accessorKey: 'updatedAt',
         header: 'Updated',
         enableSorting: true,

@@ -28,6 +28,7 @@ const mockRepository = {
   findById: vi.fn(),
   findAll: vi.fn(),
   count: vi.fn(),
+  countDistinctSlugs: vi.fn(),
   create: vi.fn(),
   findMaxVersionNumber: vi.fn(),
   findPublishedBySlug: vi.fn(),

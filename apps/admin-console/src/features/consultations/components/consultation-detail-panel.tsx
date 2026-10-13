@@ -140,7 +140,7 @@ function DetailBody({ id }: { id: string }) {
           />
         </MetaItem>
         {/* Directly after Status, full width: which workflow governed this, and whether it worked. */}
-        <ConsultationWorkflowMeta run={consultation.governingRun} />
+        <ConsultationWorkflowMeta run={consultation.governingRun} awaitingReview={consultation.processing === 'AWAITING_REVIEW'} />
         <MetaItem label="Type">
           <Badge variant="outline">{visitType === 'new' ? 'New' : 'Revisit'}</Badge>
         </MetaItem>

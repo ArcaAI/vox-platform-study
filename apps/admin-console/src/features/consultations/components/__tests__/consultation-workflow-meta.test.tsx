@@ -76,6 +76,17 @@ describe('ConsultationWorkflowMeta', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
+  it('reads a RUNNING run as parked at the review gate while the consultation awaits review', () => {
+    renderWithProviders(<ConsultationWorkflowMeta run={run({ status: 'RUNNING' })} awaitingReview />);
+    expect(screen.getByText('Awaiting review gate')).toBeDefined();
+    expect(screen.queryByText('Running')).toBeNull();
+  });
+
+  it('keeps a COMPLETED run as completed even when the consultation awaits review', () => {
+    renderWithProviders(<ConsultationWorkflowMeta run={run({ status: 'COMPLETED' })} awaitingReview />);
+    expect(screen.getByText('Completed')).toBeDefined();
+  });
+
   it('reads a completed run as completed', () => {
     renderWithProviders(<ConsultationWorkflowMeta run={run()} />);
     expect(screen.getByText('Completed')).toBeDefined();

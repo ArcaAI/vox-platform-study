@@ -250,10 +250,9 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     const activeConcurrent = await this.getActiveConcurrency(tenantId);
     // Both counts MUST be the query the matching precheck runs, or the row
     // contradicts the gate: a tenant shown "3 / 5" would still be refused at 3.
-    // Workflow definitions: `workflowDefinitionRepository.count({ tenantId })`,
-    // every version row, exactly as `WorkflowDefinitionService` counts before
-    // `assertQuantityQuota`.
-    const workflowDefinitionCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+    // Workflow definitions: distinct slugs (lineages), exactly as
+    // `WorkflowDefinitionService` counts before `assertQuantityQuota`.
+    const workflowDefinitionCount = await this.workflowDefinitionRepository.countDistinctSlugs(tenantId);
     // Provider connections: ENABLED rows only, across every service —
     // `AiProviderConnectionService.countTenantConnections` sums
     // `findByTenantIdAndService`, which filters `resourceStatus: ENABLED`. A

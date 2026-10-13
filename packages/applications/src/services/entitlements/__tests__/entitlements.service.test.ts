@@ -22,7 +22,7 @@ const tenantRepository = { findById: vi.fn() };
 const planEntitlementRepository = { findByPlan: vi.fn(), findAll: vi.fn(), updateWithVersion: vi.fn() };
 const tenantEntitlementRepository = { findByTenant: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
 const apiKeyRepository = { count: vi.fn() };
-const workflowDefinitionRepository = { count: vi.fn() };
+const workflowDefinitionRepository = { count: vi.fn(), countDistinctSlugs: vi.fn().mockResolvedValue(0) };
 const aiProviderConnectionRepository = { count: vi.fn() };
 const tenantService = { getUsageStats: vi.fn() };
 const metering = {
@@ -393,7 +393,7 @@ describe('EntitlementsService', () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
       tenantService.getUsageStats.mockResolvedValue(usageStats());
       apiKeyRepository.count.mockResolvedValue(0);
-      workflowDefinitionRepository.count.mockResolvedValue(7);
+      workflowDefinitionRepository.countDistinctSlugs.mockResolvedValue(7);
       aiProviderConnectionRepository.count.mockResolvedValue(2);
       metering.getCurrentUsage.mockResolvedValue({ consultations: 0, transcriptionMinutes: 0, summaries: 0, workflowInvocations: 41 });
 
@@ -404,19 +404,18 @@ describe('EntitlementsService', () => {
       expect(caps.meters.find((m) => m.key === 'monthlyWorkflowInvocations')).toMatchObject({ used: 41 });
     });
 
-    it('counts workflow definitions the way the precheck does — every version row for the tenant', async () => {
+    it('counts workflow definitions the way the precheck does — distinct slugs for the tenant', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
       planEntitlementRepository.findByPlan.mockResolvedValue(null);
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
       tenantService.getUsageStats.mockResolvedValue(usageStats());
       apiKeyRepository.count.mockResolvedValue(0);
-      workflowDefinitionRepository.count.mockResolvedValue(3);
+      workflowDefinitionRepository.countDistinctSlugs.mockResolvedValue(3);
       aiProviderConnectionRepository.count.mockResolvedValue(0);
 
       await makeService().getCapabilities('tenant-1');
 
-      // `WorkflowDefinitionService` runs exactly this before assertQuantityQuota.
-      expect(workflowDefinitionRepository.count).toHaveBeenCalledWith({ where: { tenantId: 'tenant-1' } });
+            expect(workflowDefinitionRepository.countDistinctSlugs).toHaveBeenCalledWith('tenant-1');
     });
 
     it('counts only ENABLED provider connections, because a DISABLED row is a veto and not a consumed slot', async () => {
@@ -425,7 +424,7 @@ describe('EntitlementsService', () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
       tenantService.getUsageStats.mockResolvedValue(usageStats());
       apiKeyRepository.count.mockResolvedValue(0);
-      workflowDefinitionRepository.count.mockResolvedValue(0);
+      workflowDefinitionRepository.countDistinctSlugs.mockResolvedValue(0);
       aiProviderConnectionRepository.count.mockResolvedValue(1);
 
       await makeService().getCapabilities('tenant-1');
@@ -473,7 +472,7 @@ describe('EntitlementsService', () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
       tenantService.getUsageStats.mockResolvedValue(usageStats());
       apiKeyRepository.count.mockResolvedValue(0);
-      workflowDefinitionRepository.count.mockResolvedValue(0);
+      workflowDefinitionRepository.countDistinctSlugs.mockResolvedValue(0);
       aiProviderConnectionRepository.count.mockResolvedValue(0);
 
       const caps = await makeService().getCapabilities('tenant-1');

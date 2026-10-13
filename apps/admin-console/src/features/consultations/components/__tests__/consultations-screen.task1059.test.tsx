@@ -171,3 +171,35 @@ describe('Consultation drawer — lifecycle DTO, relations, mask', () => {
   });
 });
 
+
+describe('Consultations grid — encounters and auto-close columns', () => {
+  const LISTED: Consultation = {
+    ...ROW,
+    encounters: DETAIL.encounters,
+    currentEncounterSeq: 2,
+    autoCloseAt: '2099-01-01T00:00:00.000Z',
+  };
+
+  it('shows the encounter count and the auto-close time from the list response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), 'http://t').pathname;
+        if (path === '/api/auth/session') return Response.json(session({ workingTenantId: 't-1', effectiveIsElevated: true, effectiveTenantId: 't-1' }));
+        if (path === '/api/hope/admin/consultations/aggregate')
+          return Response.json({ buckets: [], totals: { total: 0, newVisits: 0, revisits: 0 }, granularity: 'day', refreshedAt: ROW.createdAt });
+        if (path === '/api/hope/admin/consultations') return Response.json({ data: [LISTED], count: 1, page: 1, limit: 25 });
+        if (path === '/api/hope/users/me/settings') return Response.json([]);
+        throw new Error(`Unhandled fetch: ${path}`);
+      }),
+    );
+    renderWithProviders(<ConsultationsScreen />);
+
+    await screen.findByText('dr.one');
+    expect(screen.getByRole('columnheader', { name: /Encounters/ })).toBeDefined();
+    expect(screen.getByRole('columnheader', { name: /Auto-close/ })).toBeDefined();
+    const row = screen.getByText('dr.one').closest('[role="row"]') as HTMLElement;
+    expect(within(row).getByLabelText('2 encounters')).toBeDefined();
+    expect(within(row).getByLabelText(/^Auto-closes /)).toBeDefined();
+  });
+});

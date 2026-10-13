@@ -239,6 +239,19 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
   }
 
   /**
+   * Number of distinct, non-deleted slugs (lineages) the tenant owns — what
+   * `maxWorkflowDefinitions` measures. A new version of an existing slug does not change it.
+   */
+  async countDistinctSlugs(tenantId: string): Promise<number> {
+    const rows: Array<{ slug: string }> = await this.db.findMany({
+      where: { tenantId, resourceStatus: { not: ResourceStatusType.DELETED } },
+      select: { slug: true },
+      distinct: ['slug'],
+    });
+    return rows.length;
+  }
+
+  /**
    * The tenant's published + ACTIVE workflows, one row per slug (the movable
    * pointer means at most one such row per `(tenantId, slug)`) — backs
    * `GET /api/v1/workflows` ( exposure plane list route).

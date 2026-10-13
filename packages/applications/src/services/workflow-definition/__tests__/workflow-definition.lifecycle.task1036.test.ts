@@ -23,6 +23,7 @@ const mockRepository = {
   findById: vi.fn(),
   findAll: vi.fn(),
   count: vi.fn(),
+  countDistinctSlugs: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   updateWithVersion: vi.fn(),
@@ -241,14 +242,13 @@ describe('WorkflowDefinitionService — lifecycle fixes (TASK-1036 A3)', () => {
       expect(mockRepository.create).not.toHaveBeenCalled();
     });
 
-    it('applies the maxWorkflowDefinitions quota like create', async () => {
+    it('consumes no maxWorkflowDefinitions quota (a new version of an existing lineage)', async () => {
       mockEntitlements.isEnforcementEnabled.mockReturnValue(true);
-      mockRepository.count.mockResolvedValue(9);
-      mockEntitlements.assertQuantityQuota.mockRejectedValue(new Error('QuotaExceeded'));
 
-      await expect(service.createDraft('pub-1')).rejects.toBeDefined();
-      expect(mockEntitlements.assertQuantityQuota).toHaveBeenCalledWith('tenant-1', 'maxWorkflowDefinitions', 9);
-      expect(mockRepository.create).not.toHaveBeenCalled();
+      await service.createDraft('pub-1');
+
+      expect(mockEntitlements.assertQuantityQuota).not.toHaveBeenCalled();
+      expect(mockRepository.create).toHaveBeenCalled();
     });
 
     it('broadcasts ResourceCreated naming the version it was drafted from', async () => {

@@ -1,5 +1,22 @@
+import { activeAccessToken, gatewayUrl } from '@/server/gateway';
 import { toSafeSession } from '@/server/safe-user';
 import { getSession, isElevated, setSession } from '@/server/session';
+
+/** The tenant's display name via the gateway, or undefined when it cannot be resolved. */
+async function resolveTenantName(tenantId: string, accessToken: string): Promise<string | undefined> {
+  try {
+    const response = await fetch(gatewayUrl(`admin/tenants/${encodeURIComponent(tenantId)}`), {
+      headers: { authorization: `Bearer ${accessToken}` },
+      cache: 'no-store',
+      redirect: 'manual',
+    });
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as { name?: unknown };
+    return typeof body.name === 'string' && body.name.length > 0 ? body.name : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Working-tenant selection for the elevated cross-tenant set. The proxy sends
@@ -26,11 +43,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ message: 'tenantId is required' }, { status: 400 });
   }
 
-  const updated = {
-    ...session,
-    workingTenantId: tenantId,
-    workingTenantName: typeof tenantName === 'string' && tenantName.length > 0 ? tenantName : undefined,
-  };
+  // The sealed name lets the banner paint the real tenant on a cold load; a body that omits it
+  // is resolved here, once, instead of by every client after its tenants query settles.
+  const resolvedName =
+    typeof tenantName === 'string' && tenantName.length > 0 ? tenantName : await resolveTenantName(tenantId, activeAccessToken(session));
+  const updated = { ...session, workingTenantId: tenantId, workingTenantName: resolvedName };
   await setSession(updated);
   return Response.json(toSafeSession(updated));
 }
