@@ -10656,6 +10656,11 @@
             "nullable": true,
             "type": "string"
           },
+          "encounterSeq": {
+            "description": "The consultation encounter (visit, 1-based) this section belongs to. A later encounter writing the same section starts it over, so a row always describes exactly one encounter. Rows written before encounters were tracked report `1`.",
+            "minimum": 1,
+            "type": "number"
+          },
           "id": {
             "description": "Row id",
             "type": "string"
@@ -10713,6 +10718,7 @@
           "sectionKey",
           "title",
           "idx",
+          "encounterSeq",
           "state",
           "revision",
           "version",
@@ -80624,6 +80630,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "The consultation encounter (1-based) whose sections to return. Absent ⇒ the consultation's CURRENT encounter — an earlier encounter's sections are never served as the document of the one now open.",
+            "in": "query",
+            "name": "encounter",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
           }
         ],
         "responses": {
@@ -80650,6 +80665,9 @@
               }
             },
             "description": "Retrieving multiple DocumentSectionResponses by id"
+          },
+          "400": {
+            "description": "`encounter` is not a positive integer."
           },
           "404": {
             "description": "Consultation not found, or not visible to this caller."
@@ -80709,6 +80727,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "The consultation encounter (1-based) whose sections to return. Absent ⇒ the consultation's CURRENT encounter — an earlier encounter's sections are never served as the document of the one now open.",
+            "in": "query",
+            "name": "encounter",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
           }
         ],
         "responses": {
@@ -80735,6 +80762,9 @@
               }
             },
             "description": "Retrieving multiple DocumentSectionResponses by id and documentKey"
+          },
+          "400": {
+            "description": "`encounter` is not a positive integer."
           },
           "404": {
             "description": "Consultation not found, or not visible to this caller."
