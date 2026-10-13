@@ -30,6 +30,7 @@ const mockWorkflowDefinitionRepository = {
   findById: vi.fn(),
   findAll: vi.fn(),
   count: vi.fn(),
+  countDistinctSlugs: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   updateWithVersion: vi.fn(),
@@ -212,7 +213,7 @@ describe('WorkflowDefinitionService', () => {
 
     it('enforces the maxWorkflowDefinitions quota only when enforcement is enabled', async () => {
       mockEntitlements.isEnforcementEnabled.mockReturnValue(true);
-      mockWorkflowDefinitionRepository.count.mockResolvedValue(5);
+      mockWorkflowDefinitionRepository.countDistinctSlugs.mockResolvedValue(5);
       mockEntitlements.assertQuantityQuota.mockRejectedValue(new Error('QuotaExceeded'));
 
       await expect(service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: VALID_GRAPH })).rejects.toThrow(

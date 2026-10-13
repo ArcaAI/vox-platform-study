@@ -27,6 +27,7 @@ const mockWorkflowDefinitionRepository = {
   findById: vi.fn(),
   findAll: vi.fn(),
   count: vi.fn(),
+  countDistinctSlugs: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   updateWithVersion: vi.fn(),
@@ -275,14 +276,14 @@ describe('WorkflowDefinitionService — cloning ', () => {
 
       await service.clone('src-1', { targetSlug: 'copy_a' });
       expect(mockEntitlements.assertQuantityQuota).not.toHaveBeenCalled();
-      expect(mockWorkflowDefinitionRepository.count).not.toHaveBeenCalled();
+      expect(mockWorkflowDefinitionRepository.countDistinctSlugs).not.toHaveBeenCalled();
 
       vi.clearAllMocks();
       mockDatabaseService.baseClient.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback({}));
       mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? 'tenant-1' : undefined));
       mockWorkflowDefinitionRepository.findCloneSource.mockResolvedValue(createMockEntity());
       mockEntitlements.isEnforcementEnabled.mockReturnValue(true);
-      mockWorkflowDefinitionRepository.count.mockResolvedValue(5);
+      mockWorkflowDefinitionRepository.countDistinctSlugs.mockResolvedValue(5);
       mockEntitlements.assertQuantityQuota.mockRejectedValue(new Error('QuotaExceeded'));
 
       await expect(service.clone('src-1', { targetSlug: 'copy_b' })).rejects.toThrow('QuotaExceeded');

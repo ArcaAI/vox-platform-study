@@ -548,10 +548,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     // Plan quota precheck. Only pay the COUNT when the kill-switch is ON — `assertQuantityQuota`
     // throws `QuotaExceededException` (-> 409) when creating one more would exceed
-    // `maxWorkflowDefinitions`, grandfathering existing rows. Counts every version row for the
-    // tenant, mirroring `DepartmentService.create`'s `maxDepartments` precheck.
-    if (this.entitlements?.isEnforcementEnabled()) {
-      const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+    // `maxWorkflowDefinitions`, grandfathering existing rows. Counts LINEAGES (distinct slugs),
+    // never version rows, and a new version of an existing slug (`parentVersionId`) consumes none.
+    if (!dto.parentVersionId && this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.workflowDefinitionRepository.countDistinctSlugs(tenantId);
       await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
     }
 
@@ -672,11 +672,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       });
     }
 
-    // Byte-for-byte the precheck `create` runs: a draft is a new row.
-    if (this.entitlements?.isEnforcementEnabled()) {
-      const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
-      await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
-    }
+    // No quota precheck: a draft is a new VERSION of an existing lineage, and the quota counts lineages.
 
     this.assertKnownPaletteKey(source.paletteKey);
     const graph = this.parseGraphOrThrow(structuredClone(source.graph as unknown as Record<string, unknown>));
@@ -736,7 +732,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // Byte-for-byte the precheck `create` runs. A clone writes a row, so a clone path that
     // skipped this would be a `maxWorkflowDefinitions` bypass with extra steps.
     if (this.entitlements?.isEnforcementEnabled()) {
-      const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+      const currentCount = await this.workflowDefinitionRepository.countDistinctSlugs(tenantId);
       await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
     }
 
@@ -979,7 +975,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // Byte-for-byte the precheck `create` and `clone` run: an import writes a row, so an import
     // path that skipped this would be a `maxWorkflowDefinitions` bypass with extra steps.
     if (this.entitlements?.isEnforcementEnabled()) {
-      const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+      const currentCount = await this.workflowDefinitionRepository.countDistinctSlugs(tenantId);
       await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
     }
 
