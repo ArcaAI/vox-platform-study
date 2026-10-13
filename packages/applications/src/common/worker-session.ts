@@ -20,6 +20,8 @@ export type WorkerSessionKind =
   | 'ner'
   | 'comprehensive-summary'
   | 'transcription-created-event'
+  // The stop's EncounterStopped announcement (note re-finalisation / processing report).
+  | 'encounter-stopped-event'
   | 'summary-generated-event'
   | 'ner-extracted-event'
   // Inbound harness gate adapter (entities/assemble/draft).
