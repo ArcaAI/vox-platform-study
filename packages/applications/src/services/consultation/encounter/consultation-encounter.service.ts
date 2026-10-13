@@ -143,6 +143,12 @@ export class ConsultationEncounterService extends BaseService implements IConsul
     if (next.actor !== 'system') {
       consultation.updatedBy = next.actor;
     }
+    // Starting an encounter is activity: the idle auto-close deadline counts from the new
+    // encounter, not from the last thing that happened in the previous one.
+    const now = new Date();
+    if (now > consultation.lastActivityAt) {
+      consultation.lastActivityAt = now;
+    }
 
     const appended = await this.databaseService.baseClient.$transaction(async (tx) => {
       const updated = await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion, tx);

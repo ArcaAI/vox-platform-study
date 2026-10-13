@@ -930,7 +930,10 @@ export class HarnessInternalService extends BaseService {
     }
     try {
       const expectedVersion = consultation.version;
-      consultation.metadata = withGuardrailDeferredOutcome(consultation, { processing: next, reason: reason ?? null }) as ConsultationEntity['metadata'];
+      consultation.metadata = withGuardrailDeferredOutcome(consultation, {
+        processing: next,
+        reason: reason ?? null,
+      }) as ConsultationEntity['metadata'];
       await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
     } catch (error) {
       this.logger.warn({
@@ -1256,7 +1259,7 @@ export class HarnessInternalService extends BaseService {
   private async hasWrittenHarnessNote(consultation: ConsultationEntity): Promise<boolean> {
     if (consultation.processing === ConsultationProcessing.AWAITING_REVIEW) return true;
     if (consultation.processing !== ConsultationProcessing.IDLE) return false;
-    return (await this.findOwnHarnessDraft(consultation.id)) !== null;
+    return (await this.findOwnHarnessDraft(consultation.id, consultation.currentEncounterSeq)) !== null;
   }
 
   /**
@@ -2142,7 +2145,7 @@ export class HarnessInternalService extends BaseService {
         // of the WRITE PATH, which matters because `withHarnessIdempotency` degrades
         // to `work()` whenever Redis is absent or throws: a cache can never be the
         // guarantee for a clinical artifact.
-        const existingDraft = await this.findOwnHarnessDraft(consultationId);
+        const existingDraft = await this.findOwnHarnessDraft(consultationId, consultation?.currentEncounterSeq);
         // TASK-1020 (probe → guard) — a re-delivery must never overwrite a note the clinician has
         // already APPROVED. Signed documentation is immutable (BP-2); a change after signing is an
         // explicit addendum, never a late workflow execution. Measured before this guard: the
@@ -2937,10 +2940,18 @@ export class HarnessInternalService extends BaseService {
    * Newest-wins among our own rows, matching `findLatestPreSummaryWithDecryptedContent`:
    * a consultation that already accumulated duplicates from the defect this fixes
    * converges onto the most recent one.
+   *
+   * Scoped to ONE encounter when `encounterSeq` is given: each encounter owns its own note, so a
+   * draft for a new encounter must never adopt (and re-version) the previous encounter's note. A
+   * row written before notes were stamped with an encounter belongs to encounter 1.
    */
-  private async findOwnHarnessDraft(consultationId: string): Promise<ContextItemEntity | null> {
+  private async findOwnHarnessDraft(consultationId: string, encounterSeq?: number | null): Promise<ContextItemEntity | null> {
     const rows = (await this.contextItemRepository.findByType(consultationId, ContextItemType.RAW_SUMMARY)) ?? [];
-    const owned = rows.filter((row) => (row.metaData as Record<string, unknown> | undefined)?.subType === this.HARNESS_DRAFT_SUBTYPE);
+    const owned = rows.filter(
+      (row) =>
+        (row.metaData as Record<string, unknown> | undefined)?.subType === this.HARNESS_DRAFT_SUBTYPE &&
+        (typeof encounterSeq !== 'number' || (row.encounterSeq ?? 1) === encounterSeq),
+    );
     if (owned.length === 0) return null;
     return owned.reduce((a, b) => ((a.createdAt ?? 0) >= (b.createdAt ?? 0) ? a : b));
   }

@@ -169,6 +169,20 @@ function readBindingString(context: Record<string, unknown>, binding: { kindKey:
 }
 
 /**
+ * `context` with the value of the schema's visit-type binding replaced by `visitType`, when the
+ * caller sent one. Every other kind and field is the caller's, untouched.
+ */
+function withStatedVisitType(
+  context: Record<string, unknown>,
+  resolved: ResolvedOpenContext,
+  visitType: ConsultationVisitTypeKey,
+): Record<string, unknown> {
+  const binding = openBindingsFromDefinition(resolved.bundle?.definition).visitType;
+  if (!binding || readBindingString(context, binding) === null) return context;
+  return { ...context, [binding.kindKey]: { ...(context[binding.kindKey] as Record<string, unknown>), [binding.field]: visitType } };
+}
+
+/**
  * Consultation Service
  *
  * A consultation is an EPISODE of one patient with one clinician (and department), made of
@@ -1422,10 +1436,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * decided at its own open).
    */
   private async appendEncounter(open: ConsultationEntity, input: OpenEpisodeInput): Promise<ConsultationResponse> {
-    const { tenantId, request, openContext, declaredLanguageMode, externalRef, metadata } = input;
-    // A second encounter is a follow-up by definition: the stated visit type when there is one,
-    // otherwise `revisit`.
-    const visitType = resolveVisitTypeKey(this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE, tenantId, metadata, open.id);
+    const { tenantId, request, openContext, declaredLanguageMode, externalRef } = input;
+    // A second encounter is a return visit by definition, whatever the caller stated: a broker
+    // sends `visit_type` before HOPE answers, so it cannot know the open lands on an episode that
+    // is already open. The encounter row, the consultation's recorded marker (what every
+    // agent-input reader resolves the visit type from) and the stored open context all say so.
+    const visitType = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: true }).key as ConsultationVisitTypeKey;
+    open.metadata = withVisitTypeMarker(open.metadata, visitType) as typeof open.metadata;
     const { consultation } = await this.encounters.appendEncounter(open, {
       visitType,
       externalRef,
@@ -1436,7 +1453,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
     await this.recordOpenConsent(consultation);
     if (request.context) {
-      await this.persistOpenContext(consultation, request.context, openContext, { skipUnchanged: true });
+      await this.persistOpenContext(consultation, withStatedVisitType(request.context, openContext, visitType), openContext, { skipUnchanged: true });
     }
     if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(consultation)) !== declaredLanguageMode) {
       await this.reopenWithSpokenLanguageMode(consultation, declaredLanguageMode);

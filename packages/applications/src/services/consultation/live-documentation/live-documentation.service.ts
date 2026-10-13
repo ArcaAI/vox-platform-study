@@ -1073,6 +1073,11 @@ interface LiveSession {
   /** The single upserted PRE_SUMMARY snapshot row for this session (P1-C). */
   snapshotEntity?: ContextItemEntity;
   snapshotId?: string;
+  /**
+   * The consultation's encounter when this session first wrote its snapshot (`null` when it could
+   * not be read). An encounter cannot change while a session records, so it is read once.
+   */
+  snapshotEncounterSeq?: number | null;
   /** Observability counters (P2). */
   flushCount: number;
   staleDropCount: number;
@@ -3607,14 +3612,23 @@ return 0`;
     }
     for (const note of session.contextNotes) {
       if (!note.text.trim()) continue;
-      items.push({ id: note.contextItemId, kind: note.contextType === ContextItemType.ATTACHMENT ? 'attachment_text' : 'case_note', text: note.text });
+      items.push({
+        id: note.contextItemId,
+        kind: note.contextType === ContextItemType.ATTACHMENT ? 'attachment_text' : 'case_note',
+        text: note.text,
+      });
     }
     const previousVisits = input.previousVisits?.trim() ?? '';
     if (previousVisits) items.push({ id: LIVE_JUDGE_PREVIOUS_VISITS_ID, kind: 'prior_visit', text: previousVisits });
     const sameDayPrequel = input.sameDayPrequel.trim();
     if (sameDayPrequel) items.push({ id: LIVE_JUDGE_SAME_DAY_PREQUEL_ID, kind: 'prior_visit', text: sameDayPrequel });
 
-    const none: LiveContextJudgement = { excludedParts: new Set(), excludedNoteIds: new Set(), previousVisitsInScope: true, sameDayPrequelInScope: true };
+    const none: LiveContextJudgement = {
+      excludedParts: new Set(),
+      excludedNoteIds: new Set(),
+      previousVisitsInScope: true,
+      sameDayPrequelInScope: true,
+    };
     if (items.length === 0 || !this.contextJudge) return none;
 
     let result: Awaited<ReturnType<IContextMedicalJudgeService['judge']>>;
@@ -3642,7 +3656,9 @@ return 0`;
     );
     if (result.excludedIds.length > 0 || result.refused) {
       this.logger.log({
-        message: result.refused ? 'Live context refused by the medical judge — no in-scope context' : 'Live context items left out by the medical judge',
+        message: result.refused
+          ? 'Live context refused by the medical judge — no in-scope context'
+          : 'Live context items left out by the medical judge',
         consultationId: session.consultationId,
         itemCount: items.length,
         excludedCount: result.excludedIds.length,
@@ -6456,6 +6472,13 @@ return 0`;
 
     try {
       if (!session.snapshotEntity) {
+        // The snapshot is the running note of ONE encounter: stamp it with the consultation's current
+        // encounter, and never reuse a row an earlier encounter wrote (a row written before rows
+        // were stamped belongs to encounter 1) — a new encounter starts its own row.
+        if (session.snapshotEncounterSeq === undefined) {
+          session.snapshotEncounterSeq = await this.readCurrentEncounterSeq(session.consultationId);
+        }
+        const encounterSeq = session.snapshotEncounterSeq;
         // Deterministic dedup: a prior tick — on THIS
         // instance after a restart, or a racing second instance that slipped past the
         // lock — may already have persisted the live snapshot row. Reuse it instead of
@@ -6463,8 +6486,10 @@ return 0`;
         // subType (see findLiveSnapshotRow): `findLatestPreSummary` is NOT subType-aware,
         // so a legacy/case-note PRE_SUMMARY minted AFTER our snapshot would otherwise
         // defeat a naive newest-row guard and create a duplicate LIVE_SOAP_SNAPSHOT.
-        const existing = await this.findLiveSnapshotRow(session.consultationId);
+        const latest = await this.findLiveSnapshotRow(session.consultationId);
+        const existing = latest && (encounterSeq === null || (latest.encounterSeq ?? 1) === encounterSeq) ? latest : null;
         if (existing) {
+          if (encounterSeq !== null) existing.encounterSeq = encounterSeq;
           existing.content = content;
           // TASK-999 (D-3(a)) — the snapshot's body is REWRITTEN on every durable tick, so its
           // counters are restamped with it. A counter left behind would be a confident number
@@ -6492,6 +6517,7 @@ return 0`;
           );
           stampContentCounters(entity, content);
           entity.metaData = metaData;
+          if (encounterSeq !== null) entity.encounterSeq = encounterSeq;
           if (documentKey) entity.documentKey = documentKey;
           await this.encryptSnapshotContent(entity);
           await this.contextItemRepository.create(entity);
@@ -6552,6 +6578,17 @@ return 0`;
         contextItemId: item.id,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /** The consultation's current encounter, or `null` when it cannot be read (best-effort). */
+  private async readCurrentEncounterSeq(consultationId: string): Promise<number | null> {
+    if (!this.consultationRepository) return null;
+    try {
+      const seq = (await this.consultationRepository.findById(consultationId))?.currentEncounterSeq;
+      return typeof seq === 'number' ? seq : null;
+    } catch {
+      return null;
     }
   }
 
