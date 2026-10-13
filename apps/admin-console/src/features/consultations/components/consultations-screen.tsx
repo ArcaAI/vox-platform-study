@@ -250,10 +250,11 @@ function ConsultationsScreenBody() {
         // server-side sort support and stay `enableSorting: false`.
         enableSorting: true,
         enableHiding: false,
-        size: 140,
+        size: 220,
         meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
         cell: ({ row }) => (
           <ConsultationStatusBadge
+            compact
             status={row.original.status}
             processing={row.original.processing}
             processingReason={row.original.processingReason}

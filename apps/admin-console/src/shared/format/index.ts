@@ -35,10 +35,22 @@ function parseDate(value: string | Date | null | undefined): Date | null {
  * Relative time for recent instants ("5 min ago"), absolute date beyond a
  * week (rule 11 §8). `now` is injectable for tests.
  */
+function formatFuture(seconds: number, date: Date): string {
+  if (seconds < 60) return 'in a moment';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `in ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days <= 7) return `in ${days} d`;
+  return formatDateTime(date, 'date');
+}
+
 export function formatRelativeTime(value: string | Date | null | undefined, now: Date = new Date()): string {
   const date = parseDate(value);
   if (!date) return EM_DASH;
   const deltaSeconds = Math.round((now.getTime() - date.getTime()) / 1000);
+  if (deltaSeconds < 0) return formatFuture(-deltaSeconds, date);
   if (deltaSeconds < 60) return 'just now';
   const minutes = Math.floor(deltaSeconds / 60);
   if (minutes < 60) return `${minutes} min ago`;
