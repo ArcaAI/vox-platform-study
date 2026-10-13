@@ -342,7 +342,7 @@ def _guard(rss_mib: float, **limits):
 
     bounds.set_bounds(**limits)
     fired: list[str] = []
-    g = recycle.RecycleGuard(rss_reader=lambda: rss_mib, shutdown=fired.append)
+    g = recycle.RecycleGuard(rss_reader=lambda: rss_mib, shutdown=fired.append, worker_count=2)
     return g, fired
 
 

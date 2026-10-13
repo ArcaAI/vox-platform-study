@@ -5,6 +5,11 @@ itself: uvicorn drains in-flight requests first) when its RSS is above
 ``nlp.worker.recycleRssMib`` or it has served ``nlp.worker.recycleAfterRequests``
 requests. The supervisor / uvicorn multiprocess manager restarts it.
 
+The request-count recycle applies ONLY when the process is one of several
+uvicorn workers: a lone process (the cluster pod) exiting takes the whole
+service down while every model reloads, so there it is left to the RSS
+ceiling. ``0`` disables either recycle.
+
 RSS source: ``psutil`` if importable, else ``/proc/self/statm`` (Linux), else
 ``resource.getrusage`` peak RSS (a conservative over-estimate).
 """
@@ -55,9 +60,15 @@ class RecycleGuard:
         self,
         rss_reader: Callable[[], float] | None = None,
         shutdown: Callable[[str], None] | None = None,
+        worker_count: int | None = None,
     ) -> None:
         self._rss_reader = rss_reader
         self._shutdown = shutdown
+        if worker_count is None:
+            from nlp.core.config import settings
+
+            worker_count = settings.service.workers
+        self._worker_count = worker_count
         self._served = 0
         self._triggered = False
 
@@ -71,9 +82,13 @@ class RecycleGuard:
             return
         limits = bounds.get_bounds()
         reason = None
-        if rss_mib > limits.recycle_rss_mib:
+        if limits.recycle_rss_mib > 0 and rss_mib > limits.recycle_rss_mib:
             reason = "rss"
-        elif self._served >= limits.recycle_after_requests:
+        elif (
+            self._worker_count > 1
+            and limits.recycle_after_requests > 0
+            and self._served >= limits.recycle_after_requests
+        ):
             reason = "requests"
         if reason:
             self._triggered = True
