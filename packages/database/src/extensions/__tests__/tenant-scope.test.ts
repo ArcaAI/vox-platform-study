@@ -45,6 +45,7 @@ import {
   isTenantScopedModel,
   isSystemSharedReadModel,
   setTenantContextProvider,
+  resolveTenantContext,
   type TenantContextProvider,
 } from '../tenant-scope';
 
@@ -1160,5 +1161,94 @@ describe('setTenantContextProvider singleton', () => {
       isSuperAdmin: () => provider.isSuperAdmin?.() ?? false,
     });
     expect(config.name).toMatch(/tenantScope/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Write handlers — every branch, per operation (TASK-1067)
+// ---------------------------------------------------------------------------
+
+/** Minimal valid args per write op, on which the handler must do its work. */
+const WRITE_OPS: Record<string, () => Record<string, unknown>> = {
+  create: () => ({ data: { id: 'x' } }),
+  createMany: () => ({ data: [{ id: 'x' }] }),
+  upsert: () => ({ where: { id: 'x' }, create: { id: 'x' }, update: {} }),
+  update: () => ({ where: { id: 'x' }, data: {} }),
+  updateMany: () => ({ where: { id: 'x' }, data: {} }),
+  delete: () => ({ where: { id: 'x' } }),
+  deleteMany: () => ({ where: { id: 'x' } }),
+};
+
+describe.each(Object.keys(WRITE_OPS))('write handler %s', (op) => {
+  it('refuses a tenant-scoped write with no tenant context for a non-elevated caller', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => null, isSuperAdmin: () => false });
+    const query = vi.fn();
+
+    await expect(config.query.$allModels[op]({ model: 'Consultation', args: WRITE_OPS[op]!(), query })).rejects.toThrow(
+      new RegExp(`tenant context required for model Consultation operation ${op}`),
+    );
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('passes a super admin with no tenant context straight through, args untouched', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => undefined, isSuperAdmin: () => true });
+    const query = vi.fn().mockResolvedValue({});
+    const args = WRITE_OPS[op]!();
+
+    await config.query.$allModels[op]({ model: 'Consultation', args, query });
+
+    expect(query).toHaveBeenCalledWith(WRITE_OPS[op]!());
+  });
+
+  it('leaves a model outside TENANT_SCOPED_MODELS alone, even with no tenant context', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => null, isSuperAdmin: () => false });
+    const query = vi.fn().mockResolvedValue({});
+
+    await config.query.$allModels[op]({ model: 'User', args: WRITE_OPS[op]!(), query });
+
+    expect(query).toHaveBeenCalledWith(WRITE_OPS[op]!());
+  });
+});
+
+describe('write handlers — payload shapes', () => {
+  it('upsert pins BOTH the where and the create branch to the caller tenant', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue({});
+
+    await config.query.$allModels.upsert({ model: 'Consultation', args: WRITE_OPS.upsert!(), query });
+
+    expect(query).toHaveBeenCalledWith({
+      where: { id: 'x', tenantId: 'tenant-A' },
+      create: { id: 'x', tenantId: 'tenant-A' },
+      update: {},
+    });
+  });
+
+  it('create leaves a missing data payload for Prisma to reject rather than inventing one', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue({});
+
+    await config.query.$allModels.create({ model: 'Consultation', args: {}, query });
+
+    expect(query).toHaveBeenCalledWith({});
+  });
+
+  it('createMany leaves a non-object data payload untouched', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue({ count: 0 });
+
+    await config.query.$allModels.createMany({ model: 'Consultation', args: { data: null }, query });
+
+    expect(query).toHaveBeenCalledWith({ data: null });
+  });
+});
+
+describe('resolveTenantContext', () => {
+  afterEach(() => setTenantContextProvider(null));
+
+  it('treats a provider without isSuperAdmin as NOT elevated (fail closed)', () => {
+    setTenantContextProvider({ getTenantId: () => null });
+
+    expect(resolveTenantContext()).toEqual({ tenantId: null, isSuperAdmin: false });
   });
 });

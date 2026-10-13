@@ -118,3 +118,18 @@ pre-existing admin-console tests listed under Findings (workspace 2,440/2,440 fi
   to python-dotenv's CLI from the conda env). Full gate on HEAD 9c3462353: GREEN 10/10, 587 s.
   Coverage: workspace 80.9% lines · admin-console 85.9% · vox 87.2% · database 77.4% · harness 89.7% ·
   text 92.4% · guardrail 92.3%.
+- 2026-10-13 e — database package coverage 77.4% → 81.4% lines, 70.6% → 75.9% branches,
+  83.2% → 87.4% functions (132 files / 2528 tests green). Targeted the security-relevant gaps, each
+  new test proven by a mutation that it catches:
+  - `src/client.ts` 76.9 → 100% — soft-delete filter on `findFirst`/`count`/`aggregate`/`groupBy`
+    (`client.softDelete.read-ops.test.ts`); dropping the `count` filter now fails 2 tests.
+  - `src/extensions/tenant-scope.ts` 89.1 → 100% — no-tenant-context throw / super-admin pass-through /
+    unscoped model for every write op, upsert pinning both branches, provider without
+    `isSuperAdmin` fails closed. Removing the update/delete throw (an unscoped cross-tenant write)
+    used to pass the whole suite; it now fails 4 tests.
+  - `seed/phi-encryption.ts` 66.7 → 100% — AppRole wrapped/direct login, every fail-closed branch,
+    empty ciphertext, key-version fallback, null/empty values, JSON fields.
+  - `scripts/decrypt-row.ts` 48.6 → 91.1% and `scripts/dna-phi-scan.ts` 54.0 → 94.2% — `main()` end to
+    end with mocked Vault + Prisma: read-only, always disconnects, refuses without Vault, and the scan
+    never prints decrypted text (a mutation that leaks it fails).
+  - Found, not fixed: `@arcaai/database` has no `lint` script and no ESLint config.
