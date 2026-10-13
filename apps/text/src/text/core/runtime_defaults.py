@@ -66,6 +66,14 @@ LM_STUDIO_PARALLEL_FLOOR = 8  # TASK-1059 OD-1: LM Studio serves 8 parallel slot
 #: ``lmStudioServing.liveLaneSlots``; this floor equals that default.
 LIVE_LANE_SLOTS_FLOOR = 2
 
+#: How long a live-marked generation waits for a permit (its reserved live permit, or an idle
+#: user-lane permit it borrows) before answering 503 ``CONCURRENCY_LIMIT``. One live generation
+#: takes ~40 s on the cluster, so a wait shorter than that refuses every waiter behind a full
+#: lane; it stays well under the gateway's TEXT timeout. The governed value is
+#: `lmStudio.serving.liveLaneQueueTimeoutSeconds` (platform admin, default 90), served as
+#: ``lmStudioServing.liveLaneQueueTimeoutS``; this floor equals that default.
+LIVE_LANE_QUEUE_TIMEOUT_FLOOR_S = 90
+
 #: The request header that marks a generation's admission lane, and the one value
 #: that selects the live lane. Any other value — or none — is the user lane.
 LANE_HEADER = "X-Hope-Lane"

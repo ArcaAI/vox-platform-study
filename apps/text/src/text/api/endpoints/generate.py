@@ -105,6 +105,7 @@ from text.services.egress import (
 from text.services.external_guardrail import ExternalGuardrailClient
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from text.services.guardrail_notices import bind_guardrail_correlation
+from text.services.lane_admission import acquire_live_permit
 from text.services.output_gate import (
     OutputRejectedError,
     assemble_completion,
@@ -127,7 +128,11 @@ from text.services.retry_handler import (
     retry_after_from,
     should_retry,
 )
-from text.services.runtime_limits import lane_budget, live_lane_semaphore
+from text.services.runtime_limits import (
+    lane_budget,
+    live_lane_queue_timeout_s,
+    live_lane_semaphore,
+)
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
 
@@ -633,20 +638,29 @@ async def generate(
 
     # TASK-1062 D-2 A — a live-marked `lm-studio` generation is admitted into the LIVE
     # lane's own semaphore (`lmStudio.serving.liveLaneSlots`), so a live flush never
-    # queues behind finalize / pre-summary work on the user lane. Any other marker, no
+    # queues behind finalize / pre-summary work on the user lane. When every live permit
+    # is held it borrows an idle user-lane permit (ahead of queued user work) and waits
+    # `lmStudio.serving.liveLaneQueueTimeoutSeconds` for either. Any other marker, no
     # marker, or any other provider stays on the provider's user-lane semaphore.
-    semaphore: ResizableSemaphore | None = (
-        live_lane_semaphore(app_state)
-        if _is_live_lane(x_hope_lane) and request_body.provider == LM_STUDIO_PROVIDER
-        else provider_semaphores.get(request_body.provider)
-    )
+    is_live = _is_live_lane(x_hope_lane) and request_body.provider == LM_STUDIO_PROVIDER
+    user_semaphore = provider_semaphores.get(request_body.provider)
+    live_semaphore = live_lane_semaphore(app_state) if is_live else None
+    #: The semaphore the CURRENT permit came from — a live generation may hold a borrowed
+    #: user-lane permit, and a retry re-admits it from the live lane first.
+    semaphore: ResizableSemaphore | None = live_semaphore or user_semaphore
 
     async def _take_permit() -> None:
         """Acquire the provider's concurrency permit, or refuse with a typed 503."""
+        nonlocal semaphore
         if semaphore is None:
             return
         try:
-            await asyncio.wait_for(semaphore.acquire(), timeout=_SEMAPHORE_ACQUIRE_TIMEOUT)
+            if live_semaphore is not None:
+                semaphore = await acquire_live_permit(
+                    live_semaphore, user_semaphore, timeout=live_lane_queue_timeout_s(app_state)
+                )
+            else:
+                await asyncio.wait_for(semaphore.acquire(), timeout=_SEMAPHORE_ACQUIRE_TIMEOUT)
         except TimeoutError:
             raise ConcurrencyLimitError(
                 "Too many concurrent requests — try again later",

@@ -40,6 +40,8 @@ import type { AiModelService } from '../ai-model/aiModel.service';
 import { derivedLocalPath } from '../ai-model/constants';
 import { declaredContextLengthOf, platformServingProfileFrom, resolveServingProfile, servingProfileOf } from '../ai-model/serving-profile.util';
 import {
+  LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_DEFAULT,
+  LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_KEY,
   LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT,
   LM_STUDIO_LIVE_LANE_SLOTS_KEY,
   LM_STUDIO_SERVING_DEFAULTS,
@@ -483,8 +485,11 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       // TASK-1062 D-2 A — the live lane's reserved share, never served above `parallel`.
       const live = (await this.resolveKey(HOPE_SETTINGS_REGISTRY.getOrThrow(LM_STUDIO_LIVE_LANE_SLOTS_KEY))).value;
       const liveLaneSlots = Math.max(1, Math.min(typeof live === 'number' ? live : LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT, parallel));
+      // How long a live generation may wait for a permit before text refuses it.
+      const wait = (await this.resolveKey(HOPE_SETTINGS_REGISTRY.getOrThrow(LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_KEY))).value;
+      const liveLaneQueueTimeoutS = typeof wait === 'number' && wait > 0 ? wait : LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_DEFAULT;
       const agentUrl = this.lmStudioAgentUrl();
-      return agentUrl ? { parallel, liveLaneSlots, agentUrl } : { parallel, liveLaneSlots };
+      return agentUrl ? { parallel, liveLaneSlots, liveLaneQueueTimeoutS, agentUrl } : { parallel, liveLaneSlots, liveLaneQueueTimeoutS };
     }
     if (service !== 'lmstudio') return undefined;
 

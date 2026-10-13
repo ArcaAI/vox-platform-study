@@ -63,13 +63,27 @@ class ResizableSemaphore:
         # no-op: `_wake` only releases while `in_flight < limit`.
         self._wake()
 
-    async def acquire(self) -> None:
-        """Wait for capacity, then take a permit."""
+    def try_acquire(self) -> bool:
+        """Take a permit if one is free right now; never queue."""
+        if self._in_flight >= self._limit:
+            return False
+        self._in_flight += 1
+        return True
+
+    async def acquire(self, *, priority: bool = False) -> None:
+        """Wait for capacity, then take a permit.
+
+        ``priority`` queues this waiter AHEAD of ordinary waiters, so the next freed
+        permit goes to it first (used by a live generation borrowing user-lane capacity).
+        """
         # `while`, not `if`: a woken waiter must re-check, because several
         # waiters can be woken by one grow and only some will still fit.
         while self._in_flight >= self._limit:
             waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            self._waiters.append(waiter)
+            if priority:
+                self._waiters.appendleft(waiter)
+            else:
+                self._waiters.append(waiter)
             try:
                 await waiter
             except asyncio.CancelledError:

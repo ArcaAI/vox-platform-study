@@ -25,6 +25,7 @@ from text.core.defaults import apply_generation_defaults
 from text.core.effective_config import EffectiveConfigSnapshot
 from text.core.guardrail_posture import platform_posture
 from text.core.runtime_defaults import (
+    LIVE_LANE_QUEUE_TIMEOUT_FLOOR_S,
     LIVE_LANE_SLOTS_FLOOR,
     LM_STUDIO_PROVIDER,
     USER_LANE_FLOOR,
@@ -107,6 +108,9 @@ def apply_live_lane(snapshot: EffectiveConfigSnapshot, state: Any) -> None:
     """
     if not snapshot.ok:
         return
+    queue_timeout = snapshot.lm_studio_live_lane_queue_timeout_s()
+    if queue_timeout is not None:
+        state.live_lane_queue_timeout_s = queue_timeout
     parallel = snapshot.lm_studio_parallel()
     served = snapshot.lm_studio_live_lane_slots()
     if parallel is None and served is None:
@@ -117,6 +121,14 @@ def apply_live_lane(snapshot: EffectiveConfigSnapshot, state: Any) -> None:
         else _live_slots(snapshot)
     )
     _resize(f"{LM_STUDIO_PROVIDER}:live", live_lane_semaphore(state), live)
+
+
+def live_lane_queue_timeout_s(state: Any) -> float:
+    """How long a live generation waits for a permit: the served value, or its floor."""
+    served = getattr(state, "live_lane_queue_timeout_s", None)
+    if isinstance(served, (int, float)) and not isinstance(served, bool) and served > 0:
+        return float(served)
+    return float(LIVE_LANE_QUEUE_TIMEOUT_FLOOR_S)
 
 
 def _live_slots(snapshot: EffectiveConfigSnapshot) -> int:
