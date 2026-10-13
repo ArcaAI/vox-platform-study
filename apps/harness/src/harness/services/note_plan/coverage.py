@@ -9,8 +9,9 @@ Four checks, no model call:
   fact line of a ledger block the plan rendered);
 * every safety statement a checked section makes is grounded (``ungrounded`` gaps): an allergy's
   agent and a dosed drug are stated by the source the sentence cites (any input when it cites
-  none), and a blood pressure or pulse is the one the latest encounter's transcript states unless
-  the note dates it — and an earlier one is never stated in its place.
+  none), and a blood pressure or pulse is the one the visit's transcript states (the most recent
+  encounter that states it) unless the note dates it — and an earlier one is never stated in its
+  place.
 
 A citation is matched by its LABEL whatever its spelling: ``S8``, ``[S8]``, and the rendered
 ``[S8 E2]`` / ``[S8 E2 Doctor 00:00]`` all name ``S8``.
@@ -344,30 +345,17 @@ def _readings(text: str) -> dict[str, list[str]]:
 
 @dataclass(slots=True)
 class _StatedReading:
-    """One vital as the latest encounter states it: its values, and the lines that state them."""
+    """One vital as an encounter states it: its values, and the lines that state them."""
 
     values: list[str]
     encounter: str
     lines: list[str]
 
 
-def _current_readings(plan: NotePlanV1) -> dict[str, _StatedReading]:
-    """Per vital, what the LATEST encounter's transcript states, with the lines that state it.
-
-    The clinic's typed set and the previous visits are not encounters: their readings are the
-    earlier ones the encounter's reading supersedes.
-    """
-    transcripts = [
-        (int(m.group("seq")) if (m := _ENCOUNTER_KEY.match(block.key)) else 0, index, block)
-        for index, block in enumerate(plan.blocks)
-        if block.role == "encounter_transcript"
-    ]
-    if not transcripts:
-        return {}
-    seq, _, latest = max(transcripts, key=lambda item: (item[0], item[1]))
-    encounter = f"encounter {seq}" if seq else "the encounter"
-    current: dict[str, _StatedReading] = {}
-    for line in latest.content.splitlines():
+def _encounter_readings(content: str, encounter: str) -> dict[str, _StatedReading]:
+    """Every vital one encounter transcript states, with the ``[S17 E1]`` lines that state it."""
+    stated: dict[str, _StatedReading] = {}
+    for line in content.splitlines():
         label = _LINE_LABEL.match(line)
         cite = (
             f"[{' '.join(p for p in (label.group('label'), label.group('encounter')) if p)}]"
@@ -375,10 +363,35 @@ def _current_readings(plan: NotePlanV1) -> dict[str, _StatedReading]:
             else ""
         )
         for vital, values in _readings(normalise_text(_strip_lead_label(line))).items():
-            reading = current.setdefault(vital, _StatedReading([], encounter, []))
+            reading = stated.setdefault(vital, _StatedReading([], encounter, []))
             reading.values.extend(v for v in values if v not in reading.values)
             if cite and cite not in reading.lines:
                 reading.lines.append(cite)
+    return stated
+
+
+def _current_readings(plan: NotePlanV1) -> dict[str, _StatedReading]:
+    """Per vital, this visit's reading: what the most recent encounter whose transcript states
+    that vital states, with the lines that state it.
+
+    Every encounter of a consultation is the same visit, so a reading read out in encounter 1 is
+    still the visit's when encounter 2 (a results review) states none. The clinic's typed set and
+    the previous visits are not encounters: their readings are the earlier ones it supersedes.
+    """
+    transcripts = sorted(
+        (
+            (int(m.group("seq")) if (m := _ENCOUNTER_KEY.match(block.key)) else 0, index, block)
+            for index, block in enumerate(plan.blocks)
+            if block.role == "encounter_transcript"
+        ),
+        key=lambda item: (item[0], item[1]),
+        reverse=True,
+    )
+    current: dict[str, _StatedReading] = {}
+    for seq, _, block in transcripts:
+        encounter = f"encounter {seq}" if seq else "the encounter"
+        for vital, reading in _encounter_readings(block.content, encounter).items():
+            current.setdefault(vital, reading)
     return current
 
 
@@ -417,13 +430,12 @@ def _grounding_gaps(
       cites — or, when the sentence cites no source label, by some input of the plan. A note that
       pins an earlier visit's allergy on today's "allergic to penicillin" line passes the number and
       citation checks; this is the check that catches it.
-    * A blood pressure or pulse stated without a date, when the LATEST encounter's transcript
-      states a different one, is an earlier reading (the clinic's open-time vitals, a previous
-      visit) passed off as this encounter's. A sentence that dates or qualifies its reading, or
+    * A blood pressure or pulse stated without a date, when the most recent encounter of this
+      consultation that states that vital states a different one, is an earlier reading (the
+      clinic's open-time vitals, a previous visit) passed off as this visit's. A sentence that dates or qualifies its reading, or
       cites the transcript line that states it, is not.
     * A note that states an earlier blood pressure or pulse — dated or not — and nowhere states
-      the one the latest encounter states has dropped this encounter's reading: a gap in the
-      section stating the earlier one. A note that states no reading of that vital at all is not
+      this visit's has dropped it: a gap in the section stating the earlier one. A note that states no reading of that vital at all is not
       checked here.
     """
     corpus = normalise_text(
@@ -511,12 +523,12 @@ def _grounding_gaps(
                     _gap(
                         key,
                         f"{vital}:{value}",
-                        f"{title} states {vital} {value} as this encounter's reading, but "
+                        f"{title} states {vital} {value} as this visit's reading, but "
                         f"{reading.encounter}'s transcript states {vital} "
                         f"{', '.join(reading.values)} {' '.join(reading.lines)}".rstrip() + ".",
                     )
 
-    # This encounter's reading dropped for an earlier one.
+    # This visit's reading dropped for an earlier one.
     for vital, reading in current.items():
         if any(_states_reading(whole_note, vital, value) for value in reading.values):
             continue
@@ -529,7 +541,7 @@ def _grounding_gaps(
                 key,
                 f"{vital}:omitted",
                 f"{plan.heading_title(key)} states {vital} {', '.join(earlier)} from an earlier "
-                f"reading but not this encounter's {vital} {', '.join(reading.values)}, which "
+                f"reading but not this visit's {vital} {', '.join(reading.values)}, which "
                 f"{reading.encounter}'s transcript states"
                 + (
                     f" {' '.join(reading.lines)}; state it with that label."

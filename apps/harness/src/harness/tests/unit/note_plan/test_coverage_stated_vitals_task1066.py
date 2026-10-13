@@ -18,8 +18,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from harness.services.note_plan.coverage import check_coverage, repair_directive
 from harness.services.note_plan.models import NotePlanV1
 
@@ -111,14 +109,6 @@ def test_live_encounter_1_note_with_only_the_dated_clinic_set_is_a_gap() -> None
     assert "S17" in details
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Open decision: the check reads the LATEST encounter only, and encounter 2 states no vital."
-        " Widening it to the encounter that last states each vital flips this test and the sibling"
-        " test_no_reading_check_when_the_latest_encounter_states_none."
-    ),
-)
 def test_live_encounter_2_note_omits_the_reading_encounter_1_stated() -> None:
     # Encounter 2 states no vital; the reading of this consultation is still encounter 1's.
     gaps = _vital_gaps(ENC2_PLAN, ENC2_NOTE)
@@ -167,6 +157,25 @@ def test_no_vitals_gap_when_no_encounter_states_a_reading() -> None:
     )
     plan = _plan([_encounter(1, quiet), _results(LIVE["resultsEnc2"])], list(LIVE["noteEnc1"]))
     assert _vital_gaps(plan, ENC1_NOTE) == []
+
+
+def test_each_vital_is_taken_from_the_latest_encounter_that_states_it() -> None:
+    # Encounter 2 re-measures the BP only: its BP wins, the pulse is still encounter 1's.
+    e2 = LIVE["encounter2"]["content"] + "\n[S39 E2 Unknown 02:50] Your BP now is 138/86"
+    plan = _plan(
+        [_encounter(1), _results(LIVE["resultsEnc2"]), _encounter(2, e2)], list(LIVE["noteEnc2"])
+    )
+    good = "BP 138/86 mmHg [S39 E2], pulse 88 bpm [S17 E1]."
+    assert _vital_gaps(plan, {**ENC2_NOTE, EXAM2: good}) == []
+
+    bp = _vital_gaps(plan, {**ENC2_NOTE, EXAM2: "BP 152/94 mmHg, pulse 88 bpm."})
+    assert [(section, "152/94" in d and "138/86" in d and "S39 E2" in d) for section, d in bp] == [
+        (EXAM2, True)
+    ]
+    pulse = _vital_gaps(plan, {**ENC2_NOTE, EXAM2: "BP 138/86 mmHg [S39 E2]. Pulse 74 bpm."})
+    assert [(section, "74" in d and "88" in d and "S17 E1" in d) for section, d in pulse] == [
+        (EXAM2, True)
+    ]
 
 
 # --- an undated earlier reading, however it is worded ------------------------------------------

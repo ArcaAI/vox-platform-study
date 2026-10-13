@@ -18,6 +18,8 @@ export interface StatedReading {
   text: string;
   /** The citation label of the line that states it: `S17 E1`. */
   label: string;
+  /** The encounter whose transcript states it, when the caller read more than one. */
+  encounterSeq?: number;
 }
 
 const NO_LETTER_BEFORE = '(?<![a-z])';
@@ -92,6 +94,24 @@ export function readingsStatedIn(lines: ReadonlyArray<{ label: string; text: str
   return readings;
 }
 
+/**
+ * The visit's readings: each vital as the most recent encounter whose transcript states it states
+ * it, latest encounter first. Every encounter of a consultation is the same visit, so a reading
+ * read out in encounter 1 is still the visit's when encounter 2 (a results review) states none.
+ */
+export function visitReadings(encounters: ReadonlyArray<{ seq: number; lines: ReadonlyArray<{ label: string; text: string }> }>): StatedReading[] {
+  const readings: StatedReading[] = [];
+  const taken = new Set<StatedVital>();
+  for (const encounter of [...encounters].sort((a, b) => b.seq - a.seq)) {
+    const stated = readingsStatedIn(encounter.lines).filter((reading) => !taken.has(reading.vital));
+    for (const reading of stated) {
+      readings.push({ ...reading, encounterSeq: encounter.seq });
+      taken.add(reading.vital);
+    }
+  }
+  return readings;
+}
+
 /** The vitals a clinic line carries, by the prefix its renderer prints (`BP `, `HR `, …). */
 function vitalsCarriedBy(clinicLine: string): Set<StatedVital> {
   const carried = new Set<StatedVital>();
@@ -102,13 +122,25 @@ function vitalsCarriedBy(clinicLine: string): Set<StatedVital> {
 }
 
 /**
- * The clinic's vitals line with the readings the latest encounter states appended, each cited, and
- * marked as the ones for this encounter. Unchanged when the encounter states none the line carries.
+ * The clinic's vitals line with the visit's readings appended, each cited, grouped by the
+ * encounter that states them (`this encounter's` for `currentEncounterSeq`, `encounter 1's` for an
+ * earlier one) and marked as the ones for this encounter. Unchanged when no reading is one the
+ * line carries.
  */
-export function withSupersedingReadings(clinicLine: string, readings: readonly StatedReading[]): string {
+export function withSupersedingReadings(clinicLine: string, readings: readonly StatedReading[], currentEncounterSeq?: number): string {
   const carried = vitalsCarriedBy(clinicLine);
   const superseding = readings.filter((reading) => carried.has(reading.vital));
   if (superseding.length === 0) return clinicLine;
-  const stated = superseding.map((reading) => `${reading.text} [${reading.label}]`).join(', ');
-  return `${clinicLine} — clinic record; this encounter's transcript states ${stated}, which supersede it for this encounter.`;
+  const groups = new Map<number | undefined, StatedReading[]>();
+  for (const reading of superseding) {
+    const seq = reading.encounterSeq === currentEncounterSeq ? undefined : reading.encounterSeq;
+    groups.set(seq, [...(groups.get(seq) ?? []), reading]);
+  }
+  const stated = [...groups]
+    .map(([seq, group]) => {
+      const source = seq === undefined ? "this encounter's" : `encounter ${seq}'s`;
+      return `${source} transcript states ${group.map((reading) => `${reading.text} [${reading.label}]`).join(', ')}`;
+    })
+    .join('; ');
+  return `${clinicLine} — clinic record; ${stated}, which supersede it for this encounter.`;
 }
