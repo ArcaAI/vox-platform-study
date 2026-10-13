@@ -12,7 +12,8 @@
 #
 # Phases (each step's log lands in $GATE_LOG_DIR/<step>.log):
 #   1. fast     lint · ruff · api typecheck          (parallel, ~1 min, stops the gate on red)
-#   2. build    api build (turbo builds domains/applications) + the five API artifacts + checks
+#   2. build    api build (turbo builds domains/applications) + the five API artifacts + checks,
+#               FAILING if regeneration changed a committed artifact (they were stale)
 #   3. test     TS unit · database · harness · guardrail · text (parallel)
 #
 # Every step is killed after $GATE_STEP_TIMEOUT seconds (default 900) and reported as
@@ -123,8 +124,20 @@ fi
 if [ $FAST -eq 0 ] || [ $KEEP_GOING -eq 1 ]; then
   # ---- 2. build ------------------------------------------------------------
   echo "[2/3] build + API artifacts"
+  # Fingerprint the five generated artifacts BEFORE regenerating them: the generators rewrite
+  # them in place, so without this a stale committed artifact is silently "fixed" in the working
+  # tree and every later check compares the regenerated files with themselves.
+  ARTIFACTS="apps/api/openapi.json apps/api/route-manifest.json apps/admin-console/src/server/api-docs packages/vox-node/src/resources/admin"
+  artifact_sum() { find $ARTIFACTS -type f -not -path '*/__tests__/*' -print0 | sort -z | xargs -0 shasum | shasum; }
+  ARTIFACTS_BEFORE=$(artifact_sum)
   run api-artifacts sh -c 'pnpm api:build && pnpm api:route-manifest && pnpm api:openapi && pnpm api:portal && pnpm --filter @arcaai/vox-node gen:admin' \
     && run api-checks sh -c 'pnpm api:openapi:check && pnpm api:portal:check && pnpm --filter @arcaai/vox-node gen:admin:check'
+  if [ "$(artifact_sum)" != "$ARTIFACTS_BEFORE" ]; then
+    { echo "gate: the generated API artifacts were STALE — regenerating changed them:"; git status --short -- $ARTIFACTS; \
+      echo "commit the regenerated files (they are now in the working tree)"; } >"$LOG_DIR/api-artifacts-drift.log"
+    echo "api-artifacts-drift|1|0" >>"$RES"
+    printf '  %-16s %s  %4ss\n' "api-drift" FAIL 0
+  fi
 
   # ---- 3. test -------------------------------------------------------------
   echo "[3/3] tests"
