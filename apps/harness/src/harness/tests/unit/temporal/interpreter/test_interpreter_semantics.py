@@ -26,6 +26,7 @@ from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import CancelSignal, InterpreterInput
 from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
+from harness.temporal.interpreter.run_events import EVENT_NODE_STARTED
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.tests.unit.temporal._temporal_sync import await_history_event
 from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
@@ -127,11 +128,22 @@ async def _run(body: dict, *, signal_cancel_after_start: bool = False):
                 # long it took a busy machine to get there. A fixed `asyncio.sleep(...)`
                 # before the signal raced that same ordering against real wall-clock
                 # scheduling overhead and was observed flaky under load.
+                #
+                # The node activity itself never shows: `interpreter.noop` runs as a LOCAL
+                # activity, which records no ActivityTaskScheduled. Matching "anything but
+                # load_config" therefore matched the `run.started` mirror emit, scheduled BEFORE
+                # stage 0 — and whenever that emit was slow (a configured Redis that is down,
+                # i.e. the repo's .env files on a box without the dev stack) the cancel beat
+                # stage 0 and the run settled with no stages. The `workflow.node.started` emit
+                # is scheduled only once the walk has committed to stage 0 (`_emit_stage_started`
+                # runs straight into `_run_stage`), so it is the event to wait for.
                 def _stage0_node_scheduled(event: Any) -> bool:
-                    return (
-                        event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED
-                        and event.activity_task_scheduled_event_attributes.activity_type.name
-                        != "interpreter.load_config"
+                    if event.event_type != EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
+                        return False
+                    attrs = event.activity_task_scheduled_event_attributes
+                    return attrs.activity_type.name == "interpreter.emit_run_events" and any(
+                        EVENT_NODE_STARTED.encode() in payload.data
+                        for payload in attrs.input.payloads
                     )
 
                 await await_history_event(
