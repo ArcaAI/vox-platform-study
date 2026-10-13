@@ -52,9 +52,10 @@ export const CLIENT_INVESTIGATIONS_KIND_KEY = 'investigations';
  * The narrow projection of the client's validated `vitals` object these renderers need.
  *
  * `bloodPressure` is one string because that is how the pair is recorded and read (`128/82`);
- * splitting it into two numbers would invent a precision the source does not have. `temperature`
- * is °C and `oxygenSaturation` a percentage — the units are fixed by the kind's declaration rather
- * than carried per reading, so there is no unit to mis-read at render time.
+ * splitting it into two numbers would invent a precision the source does not have. The kind
+ * declares `temperature` in °C and `oxygenSaturation` a percentage, but a temperature is labelled
+ * by {@link temperatureUnitOf} from its value: an EMR that records Fahrenheit without a unit hands
+ * the client `97.8`, and printing that as °C states a reading no living patient has.
  *
  * Declared here rather than imported from the schema: the kind's JSON Schema is the contract, and
  * this is what one renderer needs from a payload that has already been validated against it.
@@ -143,6 +144,19 @@ export function latestContextItemOfKind(items: readonly ContextItemEntity[], kin
 }
 
 /**
+ * The scale a body-temperature value is on, read from the value: `°C` for 25–45, `°F` for 77–113,
+ * `null` for anything else. The two ranges cover every temperature a living patient can read in and
+ * do not overlap, so the value decides the scale without guessing; a value in neither range is not
+ * relabelled — the caller prints it without a unit rather than with a wrong one.
+ */
+export function temperatureUnitOf(value: number): '°C' | '°F' | null {
+  if (!Number.isFinite(value)) return null;
+  if (value >= 25 && value <= 45) return '°C';
+  if (value >= 77 && value <= 113) return '°F';
+  return null;
+}
+
+/**
  * Render a CLIENT-supplied vitals object as one prompt line, or `undefined` when it states nothing.
  *
  * `undefined` rather than `''` so the caller falls through to the next source, and finally to the
@@ -165,7 +179,10 @@ export function formatClientVitalsForPrompt(vitals: ClientVitalsPayload | undefi
   if (bp) parts.push(`BP ${bp} mmHg`);
   if (vitals.heartRate != null) parts.push(`HR ${vitals.heartRate} bpm`);
   if (vitals.respiratoryRate != null) parts.push(`RR ${vitals.respiratoryRate} /min`);
-  if (vitals.temperature != null) parts.push(`Temp ${vitals.temperature} °C`);
+  if (vitals.temperature != null) {
+    const unit = temperatureUnitOf(vitals.temperature);
+    parts.push(`Temp ${vitals.temperature} ${unit ?? '(unit not stated)'}`);
+  }
   if (vitals.oxygenSaturation != null) parts.push(`SpO2 ${vitals.oxygenSaturation} %`);
   if (vitals.weightKg != null) parts.push(`Wt ${vitals.weightKg} kg`);
   if (vitals.heightCm != null) parts.push(`Ht ${vitals.heightCm} cm`);
