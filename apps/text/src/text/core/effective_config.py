@@ -221,6 +221,17 @@ class EffectiveConfigSnapshot:
             return None
         return _positive_int(group.get("liveLaneSlots"))
 
+    def lm_studio_live_lane_queue_timeout_s(self) -> int | None:
+        """How long a live generation waits for a permit, ``lmStudioServing.liveLaneQueueTimeoutS``.
+
+        `lmStudio.serving.liveLaneQueueTimeoutSeconds` (platform admin). Absent / null /
+        invalid is "no opinion" -> None.
+        """
+        group = self.raw.get("lmStudioServing")
+        if not isinstance(group, dict):
+            return None
+        return _positive_int(group.get("liveLaneQueueTimeoutS"))
+
     def lm_studio_agent_url(self) -> str | None:
         """The LM Studio residency agent, ``lmStudioServing.agentUrl`` (TASK-1055 wave 3).
 

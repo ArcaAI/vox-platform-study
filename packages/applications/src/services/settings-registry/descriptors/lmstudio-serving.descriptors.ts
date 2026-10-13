@@ -100,6 +100,14 @@ export const LM_STUDIO_LIVE_LANE_SLOTS_KEY = 'lmStudio.serving.liveLaneSlots';
 export const LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT = 2;
 
 /**
+ * How long apps/text lets a live-marked generation wait for a permit (its reserved live permit, or
+ * an idle user-lane permit it borrows) before answering 503 `CONCURRENCY_LIMIT`. Served to text as
+ * `lmStudioServing.liveLaneQueueTimeoutS`; like the slots, not part of the pod's boot plan.
+ */
+export const LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_KEY = 'lmStudio.serving.liveLaneQueueTimeoutSeconds';
+export const LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_DEFAULT = 90;
+
+/**
  * The write-lane gate for one closed-vocabulary key. The vocabularies live in
  * `@arcaai/types` so the descriptor, the row parser and the admin UI share ONE
  * table; they are inlined as a `readonly string[]` here rather than imported so
@@ -281,6 +289,22 @@ export const LM_STUDIO_SERVING_SETTINGS: SettingDescriptor[] = [
       'How many of apps/text`s `lm-studio` permits are reserved for the live-documentation lane (default 2). The gateway marks every live-lane generation `X-Hope-Lane: live`; text admits those into their own semaphore of this size, so a live flush never queues behind finalize or pre-summary generations, and the user lane keeps `lmStudio.serving.parallel` minus this (never below 1). Never served above `lmStudio.serving.parallel`. Applies live, with no restart. The internal guardrail judge lane is unaffected.',
     default: LM_STUDIO_LIVE_LANE_SLOTS_DEFAULT,
     validate: wholeNumberBetween(1, 64, 'Live-lane slots'),
+  },
+  {
+    key: LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: CATEGORY,
+    label: 'Live documentation queue wait (seconds)',
+    description:
+      'How long apps/text lets a live-documentation generation wait for an LM Studio permit before refusing it with 503 CONCURRENCY_LIMIT (default 90). A live generation takes its reserved live-lane permit first; when every live permit is held it borrows an idle user-lane permit, ahead of queued finalize or pre-summary work, and otherwise waits this long for either. Keep it above one live generation`s duration and below the gateway`s live TEXT timeout. Applies live, with no restart.',
+    default: LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_DEFAULT,
+    validate: wholeNumberBetween(1, 290, 'Live-lane queue wait'),
   },
 
   // ── JIT defaults (owner decision D-4) ────────────────────────────────────

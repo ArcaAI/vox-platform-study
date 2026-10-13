@@ -31,7 +31,7 @@ function serviceWith(settings: EffectiveSettingsService): EffectiveConfigService
 describe('TASK-1062 — service=text: the live-lane admission budget', () => {
   it('serves the default (2) beside parallel', async () => {
     const response = await serviceWith(settingsStub()).resolveForService('text');
-    expect(response.lmStudioServing).toEqual({ parallel: 8, liveLaneSlots: 2 });
+    expect(response.lmStudioServing).toEqual({ parallel: 8, liveLaneSlots: 2, liveLaneQueueTimeoutS: 90 });
   });
 
   it('serves a platform admin`s stored value', async () => {

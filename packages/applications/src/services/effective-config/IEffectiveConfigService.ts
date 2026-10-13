@@ -241,6 +241,11 @@ export interface EffectiveLmStudioServingConcurrency {
    */
   liveLaneSlots: number;
   /**
+   * `lmStudio.serving.liveLaneQueueTimeoutSeconds`: how long text lets a live-marked generation wait
+   * for a permit (its reserved live permit, or an idle user-lane permit it borrows) before 503.
+   */
+  liveLaneQueueTimeoutS: number;
+  /**
    * TASK-1055 wave 3 — the LM Studio residency agent (the gateway's `LMSTUDIO_AGENT_URL`). Text asks
    * it to ensure a model is loaded, with the model's serving profile, before each request. Omitted
    * when the gateway has none.

@@ -27,12 +27,25 @@ function serviceWith(agentUrl: string | undefined): EffectiveConfigService {
 describe('TASK-1055 wave 3 — service=text: the LM Studio residency agent address', () => {
   it('serves the gateway`s LMSTUDIO_AGENT_URL beside the concurrency', async () => {
     const response = await serviceWith('http://hope-lmstudio:8869/').resolveForService('text');
-    expect(response.lmStudioServing).toEqual({ parallel: PARALLEL, liveLaneSlots: 2, agentUrl: 'http://hope-lmstudio:8869' });
+    expect(response.lmStudioServing).toEqual({
+      parallel: PARALLEL,
+      liveLaneSlots: 2,
+      liveLaneQueueTimeoutS: 90,
+      agentUrl: 'http://hope-lmstudio:8869',
+    });
   });
 
   it('omits agentUrl when the gateway has none (text then lets LM Studio JIT-load, as before)', async () => {
-    expect((await serviceWith(undefined).resolveForService('text')).lmStudioServing).toEqual({ parallel: PARALLEL, liveLaneSlots: 2 });
-    expect((await serviceWith('  ').resolveForService('text')).lmStudioServing).toEqual({ parallel: PARALLEL, liveLaneSlots: 2 });
+    expect((await serviceWith(undefined).resolveForService('text')).lmStudioServing).toEqual({
+      parallel: PARALLEL,
+      liveLaneSlots: 2,
+      liveLaneQueueTimeoutS: 90,
+    });
+    expect((await serviceWith('  ').resolveForService('text')).lmStudioServing).toEqual({
+      parallel: PARALLEL,
+      liveLaneSlots: 2,
+      liveLaneQueueTimeoutS: 90,
+    });
   });
 
   it('never serves the agent address to the LM Studio pod itself', async () => {
