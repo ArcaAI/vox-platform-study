@@ -25,6 +25,7 @@ from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats, stats_from_ollama_response
 from text.models.stream import StreamChunk
+from text.providers import probe_log
 from text.providers.base import CredentialPosture
 
 if TYPE_CHECKING:
@@ -366,8 +367,9 @@ class OllamaProvider:
             if resp is not None and resp.status_code == 200:
                 for m in resp.json().get("models", []):
                     models.append(ModelInfo(name=m["name"], supports_streaming=True))
+                probe_log.probe_succeeded(logger, "ollama", base_url)
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
-            logger.warning("get_info.failed", provider="ollama", error=str(exc))
+            probe_log.probe_failed(logger, "ollama", base_url, str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider="ollama", error=str(exc))
 

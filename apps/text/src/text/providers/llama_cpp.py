@@ -28,6 +28,7 @@ from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats, stats_from_llama_cpp
 from text.models.stream import StreamChunk
+from text.providers import probe_log
 from text.providers.base import CredentialPosture, reject_vision
 
 if TYPE_CHECKING:
@@ -259,8 +260,9 @@ class LlamaCppProvider:
             resp = await self._http.get(f"{base_url}/health") if base_url else None
             if resp is not None and resp.status_code == 200:
                 status = "available"
+                probe_log.probe_succeeded(logger, _ENGINE, base_url)
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
-            logger.warning("get_info.failed", provider=_ENGINE, error=str(exc))
+            probe_log.probe_failed(logger, _ENGINE, base_url, str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider=_ENGINE, error=str(exc))
         return status
