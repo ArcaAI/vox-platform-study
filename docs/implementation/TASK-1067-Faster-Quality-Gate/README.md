@@ -136,8 +136,15 @@ pre-existing admin-console tests listed under Findings (workspace 2,440/2,440 fi
 - 2026-10-13 f — `@arcaai/database` gets `lint` / `lint:fix` and an `eslint.config.mjs` (the
   `library` preset, as `packages/domains`); turbo `pnpm lint` — and so the gate — now covers it.
   0 errors; the 7 undescribed `eslint-disable` directives got their reasons. Left: ~10,294
-  `prettier/prettier` warnings (180 of 241 files were never Prettier-formatted — a reformat is held
-  for an owner decision) and 3 pre-existing warnings (two unused constants, one `any`).
+  `prettier/prettier` warnings (a reformat was held for an owner decision — done in g below) and 3 pre-existing warnings (two unused constants, one `any`).
   Runbook: `docs/operations/testing/test-execution.md` rewritten around `scripts/gate.sh` — gate,
   unit, integration, E2E, Python, coverage, troubleshooting — every command checked against
   `package.json`; the testing README links it.
+- 2026-10-13 g — Prettier reformat of `packages/database` as its own formatting-only commit: 57 files,
+  613+/336−. (The earlier "180 of 241 files" over-counted: that check also matched the generated
+  Prisma client.) The two `*.generated.ts` workflow seeds were left as `seed:regen:workflows` writes
+  them and added to the package's ESLint ignores, so a regeneration cannot re-introduce warnings.
+  Verified: token streams identical for 51/57 files; the other 6 differ only by unquoted object keys,
+  dropped type-literal `;`, redundant parentheses, and the ESLint-config edit itself. Lint 10,297 → 3
+  warnings, typecheck clean, 132 files / 2528 tests green. No task-1066 worktree had unmerged or
+  uncommitted database changes at the time.
