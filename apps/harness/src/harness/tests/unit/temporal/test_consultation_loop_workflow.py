@@ -59,8 +59,8 @@ from harness.tests.unit.temporal._loop_stubs import (
     make_loop_stub_activities,
 )
 from harness.tests.unit.temporal._temporal_sync import (
+    await_continued_as_new,
     await_query,
-    result_of_current_run,
     start_time_skipping,
 )
 
@@ -449,6 +449,9 @@ class TestCheckpointing:
 
             # Synchronise on the checkpoint actually having happened, rather
             # than assuming an ordering between client signals and workflow tasks.
+            # `describe()` first: a query racing the handover corrupts it in the
+            # test server (see `_temporal_sync`).
+            await await_continued_as_new(h.env.client, handle)
             after = await _await_state(handle, lambda s: s.continuations >= 1)
             # The continued execution answers the query — and it answers with
             # the state the previous one handed over, including its pinned config.
@@ -463,7 +466,7 @@ class TestCheckpointing:
             await handle.signal(
                 ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
             )
-            result = await result_of_current_run(h.env, ConsultationLoopWorkflow.run, handle)
+            result = await handle.result()
 
         assert result.continuations >= 1
         assert result.events_processed == 3

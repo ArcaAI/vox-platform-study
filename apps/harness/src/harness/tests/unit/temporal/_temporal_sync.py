@@ -15,13 +15,13 @@ the test asserts — and both used to surface as a test FAILURE:
   can take it in between (``Address already in use`` -> ``Failed starting test
   server``).
 
-* **A continued run's history can be left without its closing event.** Under
-  load the time-skipping server marks the first run ``CONTINUED_AS_NEW`` but its
-  history ends at a ``WorkflowTaskStarted`` with no ``ContinuedAsNew`` event (the
-  SDK logs "Task not found when completing ... already completed"). A
-  ``handle.result()`` that follows the chain FROM that run long-polls for the
-  missing event forever, although the continued run completed normally. See
-  ``result_of_current_run``.
+* **A query that races a ``continue_as_new`` corrupts the handover.** Under load
+  the time-skipping server then marks the first run ``CONTINUED_AS_NEW`` but leaves
+  its history ending at a ``WorkflowTaskStarted`` with no closing event (the SDK
+  logs "Task not found when completing ... already completed"). From then on
+  ``handle.result()`` long-polls that history forever, and the dangling task also
+  stops time skipping. Wait for a handover with ``await_continued_as_new`` — a
+  ``describe()``, answered by the server alone — BEFORE querying the workflow.
 
 The first two are retried here, bounded, so a busy machine costs seconds instead
 of a red build. Not collected by pytest (does not match ``test_*``).
@@ -35,7 +35,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from temporalio.api.testservice.v1 import LockTimeSkippingRequest, UnlockTimeSkippingRequest
+from temporalio.client import WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import WorkflowEnvironment
 
@@ -144,29 +144,21 @@ async def start_time_skipping(*, attempts: int = 3, **kwargs: Any) -> WorkflowEn
     raise AssertionError("unreachable")  # pragma: no cover
 
 
-async def result_of_current_run(env: WorkflowEnvironment, workflow_run: Any, handle: Any) -> Any:
-    """The result of the workflow's CURRENT run, not of the chain from its first.
+async def await_continued_as_new(
+    client: Any, handle: Any, *, timeout: float = _QUERY_TIMEOUT_S, delay: float = 0.02
+) -> None:
+    """Wait until the workflow's FIRST run has continued as new.
 
-    Call it only once the handover has happened (e.g. after awaiting
-    ``continuations >= 1``). The current run id is resolved by ``describe()`` on
-    the workflow id alone, and the typed handle is pinned to it, so ``result()``
-    never reads the possibly-truncated history of a run that already continued
-    (see the module docstring). ``workflow_run`` is the ``@workflow.run`` method,
-    which keeps the result typed.
-
-    Only a handle returned by ``start_workflow`` unlocks time skipping inside
-    ``result()``; a re-resolved one does not, so this does it the same way the SDK
-    does — through the test service — or a timer-driven run would never finish.
-
-    Use it only when the current run ends on a SIGNAL. A run that must still fire
-    a timer (an idle bound) hung here under load in 6 of 24 runs while the plain
-    ``handle.result()`` passed 48 of 48, so those tests keep ``handle.result()``.
+    Uses ``describe()``, which the server answers without the worker, so nothing
+    can race the handover (see the module docstring). Query the workflow only
+    after this returns.
     """
-    client = env.client
-    current = await client.get_workflow_handle(handle.id).describe()
-    pinned = client.get_workflow_handle_for(workflow_run, handle.id, run_id=current.run_id)
-    await client.test_service.unlock_time_skipping(UnlockTimeSkippingRequest())
-    try:
-        return await pinned.result()
-    finally:
-        await client.test_service.lock_time_skipping(LockTimeSkippingRequest())
+    first = client.get_workflow_handle(handle.id, run_id=handle.first_execution_run_id)
+    deadline = time.monotonic() + timeout
+    while True:
+        status = (await first.describe()).status
+        if status == WorkflowExecutionStatus.CONTINUED_AS_NEW:
+            return
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"first run never continued as new; last status: {status}")
+        await asyncio.sleep(delay)

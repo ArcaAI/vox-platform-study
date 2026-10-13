@@ -98,3 +98,14 @@ pre-existing admin-console tests listed under Findings (workspace 2,440/2,440 fi
     query, so its test now uses `renderWithProviders` with a stubbed `fetch`.
   - **text 30 s wait** — `_SEMAPHORE_ACQUIRE_TIMEOUT` moved to module level (value unchanged); the
     test patches it to 0.2 s.
+- 2026-10-13 c — real root cause of the harness hang, and the timer case.
+  - The trigger is a QUERY racing the `continue_as_new` handover: the test then leaves the first run's
+    history without its closing event, `handle.result()` long-polls it forever, and the dangling
+    workflow task also stops time skipping — which is why the earlier `result_of_current_run()`
+    workaround hung on the idle-timer test (server time never advanced past the 3,600 s bound).
+    `test_loop_lifecycle_bounds.py` at HEAD never queries, which is why it was always 48/48.
+  - Fix: `await_continued_as_new()` (`_temporal_sync.py`) waits for the handover with `describe()`,
+    which the server answers without the worker; the consultation test calls it BEFORE its state
+    query and is back on the plain `handle.result()`. `result_of_current_run()` is removed.
+  - Proof under full Vitest load, 6 parallel loops × 8: both checkpoint tests 48/48 runs (96
+    executions), no hangs; a describe-wait + timer debug variant 48/48; harness unit 3843 passed.
