@@ -42,14 +42,21 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import { TenantSettingsService } from '../tenant-settings.service';
-import { CONSULTATION_OCR_ENABLED_KEY, HARNESS_LOOP_EMERGENCY_STOP_KEY } from '../../consultation/consultation-gates.constants';
+import {
+  CONSULTATION_OCR_ENABLED_KEY,
+  CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY,
+  HARNESS_LOOP_EMERGENCY_STOP_KEY,
+} from '../../consultation/consultation-gates.constants';
 
 const SEED_FILE = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../../../database/src/prisma/db_main/seed/11c-consultation-gate-settings.ts',
 );
 
-const GATE_KEYS = [CONSULTATION_OCR_ENABLED_KEY];
+// The realtime graph executor is seeded ON as the platform default (TASK-852, owner decision
+// 2026-09-05). Its seed entry was mis-indented until the TASK-1067 reformat, so these
+// indentation-anchored regexes never saw it and the list below silently omitted it.
+const GATE_KEYS = [CONSULTATION_OCR_ENABLED_KEY, CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY];
 
 function seedSource(): string {
   return readFileSync(SEED_FILE, 'utf8');
@@ -101,9 +108,9 @@ describe('consultation-gate seed ↔ registry parity', () => {
 
   it('seeds the value ON while leaving `defaultValue` at the fail-safe OFF', () => {
     const source = seedSource();
-    // One row, turned on, resetting to OFF.
-    expect([...source.matchAll(/^\s{4}value: 'true',$/gm)]).toHaveLength(1);
-    expect([...source.matchAll(/^\s{4}defaultValue: 'false',$/gm)]).toHaveLength(1);
+    // Every row turned on, every row resetting to OFF.
+    expect([...source.matchAll(/^\s{4}value: 'true',$/gm)]).toHaveLength(GATE_KEYS.length);
+    expect([...source.matchAll(/^\s{4}defaultValue: 'false',$/gm)]).toHaveLength(GATE_KEYS.length);
     expect(source).not.toMatch(/^\s{4}value: 'false',$/gm);
   });
 
