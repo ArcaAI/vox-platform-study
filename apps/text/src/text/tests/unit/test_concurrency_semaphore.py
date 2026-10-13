@@ -311,7 +311,9 @@ class TestSemaphoreTimeoutReturns503:
     """When semaphore can't be acquired within timeout, returns 503."""
 
     @pytest.mark.asyncio
-    async def test_semaphore_timeout_returns_503(self, settings):
+    async def test_semaphore_timeout_returns_503(self, settings, monkeypatch):
+        # The real 30 s wait proves nothing more than a short one.
+        monkeypatch.setattr("text.api.endpoints.generate._SEMAPHORE_ACQUIRE_TIMEOUT", 0.2)
         registry = ProviderRegistry()
         registry.register("ollama", _make_provider(delay=5.0))
 

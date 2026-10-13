@@ -58,7 +58,11 @@ from harness.tests.unit.temporal._loop_stubs import (
     default_loop_config,
     make_loop_stub_activities,
 )
-from harness.tests.unit.temporal._temporal_sync import await_query, start_time_skipping
+from harness.tests.unit.temporal._temporal_sync import (
+    await_query,
+    result_of_current_run,
+    start_time_skipping,
+)
 
 
 def _wf_input(**overrides) -> ConsultationLoopWorkflowInput:
@@ -459,7 +463,7 @@ class TestCheckpointing:
             await handle.signal(
                 ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
             )
-            result = await handle.result()
+            result = await result_of_current_run(h.env, ConsultationLoopWorkflow.run, handle)
 
         assert result.continuations >= 1
         assert result.events_processed == 3

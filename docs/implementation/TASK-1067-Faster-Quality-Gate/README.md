@@ -69,7 +69,7 @@ pre-existing admin-console tests listed under Findings (workspace 2,440/2,440 fi
 | `packages/applications/.../consultation-read.service.task1038.test.ts` | flaky assertion scoped to `viewed.data` |
 | `apps/text/src/text/tests/conftest.py`, `apps/text/pyproject.toml`, `.../test_retry_and_timeout.py` | autouse zero-backoff stub + `real_backoff` opt-out marker |
 
-### Findings (out of scope — not fixed here)
+### Findings (fixed in the follow-up — see Change History 2026-10-13 b)
 
 | Finding | Evidence |
 |---|---|
@@ -83,3 +83,18 @@ pre-existing admin-console tests listed under Findings (workspace 2,440/2,440 fi
 - 2026-10-12 — ticket opened; gate script rewritten; flaky test fixed; CI-only clean.
 - 2026-10-13 — threads + `workspace-native` split, `fsModuleCache`, pytest-xdist, text zero-backoff stub,
   step watchdog; full gate measured at 413 s. Status → Review.
+- 2026-10-13 b — the three findings fixed; full gate GREEN 10/10 in 517 s.
+  - **harness hang** — root cause: under load the time-skipping test server marks the first run
+    `CONTINUED_AS_NEW` but leaves its history without the closing event (ends at a
+    `WorkflowTaskStarted`; SDK logs "Task not found when completing ... already completed"), so
+    `handle.result()` following the chain from that run long-polls forever. The workflow itself
+    completed correctly (`phase=DONE`, counts as asserted). Fix: `result_of_current_run()` in
+    `_temporal_sync.py` reads the CURRENT run's result (typed, time skipping unlocked via the test
+    service). Hammer under full Vitest load: before 2 hangs in < 1 min; after 48/48 passed.
+    `test_loop_lifecycle_bounds.py` was tried with the same helper and REVERTED — its run needs an
+    idle timer, and the helper hung there (6/24) while the original `handle.result()` passed 48/48.
+  - **admin-console** — both were stale tests, not regressions: `app-sidebar.test.tsx` still expected
+    "Tools & MCP", which TASK-1065 locked off (`LOCKED_OFF_GATES`); `FindingsList` gained a catalog
+    query, so its test now uses `renderWithProviders` with a stubbed `fetch`.
+  - **text 30 s wait** — `_SEMAPHORE_ACQUIRE_TIMEOUT` moved to module level (value unchanged); the
+    test patches it to 0.2 s.

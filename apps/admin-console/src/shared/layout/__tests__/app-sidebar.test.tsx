@@ -235,8 +235,11 @@ describe('AppSidebar — platform-wide feature gates (TASK-932 §3.2)', () => {
 
     const opsLinks = within(scopedNav('Platform Ops')).getAllByRole('link').map((link) => link.textContent);
     expect(opsLinks).toEqual(
-      expect.arrayContaining(['Feature availability', 'Rate limits', 'Agentic policy', 'MLflow', 'Settings registry', 'Settings rows & secrets', 'Tools & MCP', 'Storage browser']),
+      expect.arrayContaining(['Feature availability', 'Rate limits', 'Agentic policy', 'MLflow', 'Settings registry', 'Settings rows & secrets', 'Storage browser']),
     );
+    // TASK-1065 parked MCP & Tools: `console.tools.mcp.enabled` is in LOCKED_OFF_GATES, so
+    // `useFeatureGates` forces it closed even when the backend answers true.
+    expect(opsLinks).not.toContain('Tools & MCP');
   });
 
   it('treats an absent key (loading/error) as closed, never as an assumed default', async () => {

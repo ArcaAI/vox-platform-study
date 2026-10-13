@@ -335,6 +335,11 @@ router = APIRouter(tags=["generate"])
 # handlers below still declare the header because they READ it, not to guard it.
 
 
+# How long a request waits for a provider concurrency permit before answering 503.
+# Module-level (read at call time) so tests can shorten it.
+_SEMAPHORE_ACQUIRE_TIMEOUT = 30.0
+
+
 @router.post(
     "/generate",
     response_model=None,
@@ -625,8 +630,6 @@ async def generate(
             headers=SSE_HEADERS,
             ping=SSE_PING_SECONDS,
         )
-
-    _SEMAPHORE_ACQUIRE_TIMEOUT = 30.0
 
     # TASK-1062 D-2 A — a live-marked `lm-studio` generation is admitted into the LIVE
     # lane's own semaphore (`lmStudio.serving.liveLaneSlots`), so a live flush never
