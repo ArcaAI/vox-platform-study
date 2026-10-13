@@ -134,19 +134,31 @@ export class EncounterRefinalizeService {
    * The stop announced the encounter. A session final that landed BEFORE the stop (the client
    * closed its STT session first) found the consultation still capturing and reported nothing, and
    * the stop then restored IDLE: the governed encounter-1 note is reported here instead, under the
-   * same rule. Re-finalisation (a later encounter) stays the session final's.
+   * same rule. A governed re-finalisation that early final could not start is started here — only
+   * for the transcript version that final recorded (`earlyFinalKey`), through the same claim and
+   * supersede marker, so a stop with no new transcript since the last re-finalisation does nothing.
    */
   @OnEvent(ConsultationPipelineEvent.EncounterStopped, { async: true })
   async onEncounterStopped(payload: EncounterStoppedPayload): Promise<void> {
     if (!payload.tenantId) return;
     await this.cls.run(async () => {
       this.cls.set('tenantId', payload.tenantId);
-      this.cls.set('user', createWorkerSession({ userId: payload.userId, tenantId: payload.tenantId, kind: 'transcription-created-event' }));
+      this.cls.set('user', createWorkerSession({ userId: payload.userId, tenantId: payload.tenantId, kind: 'encounter-stopped-event' }));
       try {
         const consultation = await this.consultationRepository.findByIdOrNull(payload.consultationId);
         if (!consultation || consultation.tenantId !== payload.tenantId) return;
         const found = await this.contextItemRepository.findFullTranscript(consultation.id);
-        await this.markGovernedFirstSummarizing(consultation, found && found.consultationId === consultation.id ? found : null);
+        const item = found && found.consultationId === consultation.id ? found : null;
+        await this.markGovernedFirstSummarizing(consultation, item);
+        if (item && (await this.takeEarlyFinal(consultation.id, refinalizeStateKey(item)))) {
+          await this.refinalize({
+            consultationId: consultation.id,
+            tenantId: payload.tenantId,
+            userId: payload.userId,
+            trigger: 'stop',
+            contextItemId: item.id,
+          });
+        }
       } catch (error) {
         this.logger.warn({
           message: 'Governed encounter-1 note could not be reported at the stop (best-effort)',
@@ -194,6 +206,17 @@ export class EncounterRefinalizeService {
     // too — the default engine would write a second, ungoverned note beside it.
     const governedFirst = input.trigger === 'explicit' && kind === 'first' && tenantWorkflowGoverns(consultation.metadata);
     if (input.trigger === 'stop') await this.markGovernedFirstSummarizing(consultation, item);
+    // A governed session final that re-finalises once stopped, ingested while the consultation is
+    // still capturing (the client closed its STT session before the stop): the stop starts it.
+    if (
+      input.trigger === 'stop' &&
+      kind === 'not-stopped' &&
+      item &&
+      tenantWorkflowGoverns(consultation.metadata) &&
+      classifySessionFinal({ status: 'STOPPED', currentEncounterSeq: consultation.currentEncounterSeq }, item) === 'refinalize'
+    ) {
+      await this.recordEarlyFinal(consultation.id, refinalizeStateKey(item));
+    }
     if ((kind !== 'refinalize' && !governedFirst) || !item) {
       return { kind: 'not-refinalize', reason: kind === 'refinalize' ? 'not-full-transcript' : kind };
     }
@@ -405,6 +428,38 @@ export class EncounterRefinalizeService {
     }
   }
 
+  /** Remember the transcript state an early session final could not re-finalise. Best-effort. */
+  private async recordEarlyFinal(consultationId: string, stateKey: string): Promise<void> {
+    try {
+      await this.redis?.eval(
+        "return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
+        1,
+        earlyFinalKey(consultationId),
+        stateKey,
+        NOTE_REFINALIZE_CLAIM_TTL_SECONDS,
+      );
+    } catch (error) {
+      this.logger.warn({
+        message: 'Early session final could not be recorded — the stop will not re-finalise it',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** `true` (and forgotten) when the early session final recorded exactly `stateKey`. Redis down ⇒ `false`. */
+  private async takeEarlyFinal(consultationId: string, stateKey: string): Promise<boolean> {
+    if (!this.redis) return false;
+    try {
+      const key = earlyFinalKey(consultationId);
+      if ((await this.redis.get(key)) !== stateKey) return false;
+      await this.redis.del(key);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** `SET NX` (`onlyIfAbsent`) or plain `SET`, with the claim TTL. `true` when written. Redis down ⇒ `true`. */
   private async claim(key: string, value: RefinalizeClaim, onlyIfAbsent: boolean): Promise<boolean> {
     if (!this.redis) return true;
@@ -430,6 +485,11 @@ export class EncounterRefinalizeService {
       return null;
     }
   }
+}
+
+/** The transcript state a governed session final ingested before its stop left for the stop to re-finalise. */
+function earlyFinalKey(consultationId: string): string {
+  return `consultation:note-refinalize:early-final:${consultationId}`;
 }
 
 function refusalCode(error: unknown): string | undefined {
