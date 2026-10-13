@@ -2,11 +2,11 @@ import { ConflictException, Inject, Injectable, Logger, NotFoundException, Optio
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { DocumentSectionEntity, DocumentSectionRepository, ResourceType, SysEventType } from '@arcaai/domains';
+import { ConsultationRepository, DocumentSectionEntity, DocumentSectionRepository, ResourceType, SysEventType } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
-import { DocumentSectionStore, type SectionWriteRefusal } from '../live-documentation/realtime/section-store';
+import { DocumentSectionStore, sectionEncounterSeq, type SectionWriteRefusal } from '../live-documentation/realtime/section-store';
 import { IDocumentSectionService } from './IDocumentSectionService';
 import { DocumentSectionDtoMapper } from './document-section.dto.mapper';
 import { DocumentSectionResponse, UpdateDocumentSectionRequest } from './dto';
@@ -70,6 +70,9 @@ export class DocumentSectionService extends BaseService implements IDocumentSect
     // The consultation-level content lock (approved / closed ⇒ 409). Optional + trailing so the
     // positional fixtures keep their arity; unwired ⇒ only the section's own lock applies.
     @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: Pick<IConsultationLifecycleGate, 'assertContentWritable'>,
+    // The consultation's `currentEncounterSeq` — the encounter the list reads default to. Optional +
+    // trailing for the same arity reason; unwired ⇒ the reads are not narrowed to an encounter.
+    @Optional() @Inject(ConsultationRepository) private readonly consultationRepository?: Pick<ConsultationRepository, 'findByIdOrNull'>,
   ) {
     // `ResourceType.Consultation`, not a DocumentSection member — there is none,
     // and `finalizeDocuments` (the LOCK half of this same state
@@ -87,8 +90,9 @@ export class DocumentSectionService extends BaseService implements IDocumentSect
     return this.store;
   }
 
-  async listSections(consultationId: string, documentKey: string): Promise<DocumentSectionResponse[]> {
-    return this.toResponses(await this.documentSectionRepository.findByDocument(this.tenantId, consultationId, documentKey));
+  async listSections(consultationId: string, documentKey: string, encounterSeq?: number): Promise<DocumentSectionResponse[]> {
+    const rows = await this.documentSectionRepository.findByDocument(this.tenantId, consultationId, documentKey);
+    return this.toResponses(await this.inEncounter(consultationId, rows, encounterSeq));
   }
 
   /**
@@ -108,8 +112,27 @@ export class DocumentSectionService extends BaseService implements IDocumentSect
    * read has no stream to inherit an order from, and a deterministic one is what
    * makes two clients hydrating the same encounter render it the same way.
    */
-  async listAllSections(consultationId: string): Promise<DocumentSectionResponse[]> {
-    return this.toResponses(await this.documentSectionRepository.findByConsultation(this.tenantId, consultationId));
+  async listAllSections(consultationId: string, encounterSeq?: number): Promise<DocumentSectionResponse[]> {
+    const rows = await this.documentSectionRepository.findByConsultation(this.tenantId, consultationId);
+    return this.toResponses(await this.inEncounter(consultationId, rows, encounterSeq));
+  }
+
+  /**
+   * Narrow a read to ONE encounter's sections — the one asked for, else the consultation's current
+   * one. Rows are keyed per consultation and outlive the append of a new encounter, so without this
+   * the previous encounter's sections (its draft, its lock) were served as the document of the one
+   * now open. When the current encounter cannot be read every row is returned, each still labelled
+   * with its `encounterSeq`, rather than guessing which encounter is current.
+   */
+  private async inEncounter(consultationId: string, rows: DocumentSectionEntity[], requested?: number): Promise<DocumentSectionEntity[]> {
+    const encounterSeq = requested ?? (await this.currentEncounterSeq(consultationId));
+    return encounterSeq === null ? rows : rows.filter((row) => sectionEncounterSeq(row) === encounterSeq);
+  }
+
+  private async currentEncounterSeq(consultationId: string): Promise<number | null> {
+    if (!this.consultationRepository) return null;
+    const seq = (await this.consultationRepository.findByIdOrNull(consultationId))?.currentEncounterSeq;
+    return typeof seq === 'number' ? seq : null;
   }
 
   /** Decrypt-and-map a read result. Shared by both list reads, which differ only in their query. */

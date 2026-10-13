@@ -44,6 +44,13 @@ export class DocumentSectionResponse {
 
   @ApiProperty({
     description:
+      'The consultation encounter (visit, 1-based) this section belongs to. A later encounter writing the same section starts it over, so a row always describes exactly one encounter. Rows written before encounters were tracked report `1`.',
+    minimum: 1,
+  })
+  encounterSeq: number;
+
+  @ApiProperty({
+    description:
       'Section state. `empty` renders as a SKELETON, not an error. `provisional` is model-written and freely replaceable by the next flush. `confirmed` is clinician-touched and never overwritten by a flush. `locked` is finalized at the endpoint and rejects EVERY writer — a PATCH against it returns 409.',
     enum: ['empty', 'provisional', 'confirmed', 'locked'],
   })

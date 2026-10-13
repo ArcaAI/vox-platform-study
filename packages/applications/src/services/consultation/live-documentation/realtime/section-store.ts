@@ -107,6 +107,17 @@ export interface SectionWriteInput {
    * `applyClinicianEdit` consults it; a flush's staleness token is `generation`.
    */
   readonly expectedVersion?: number;
+  /**
+   * The consultation ENCOUNTER this flush belongs to. Rows are keyed per consultation, so a row an
+   * earlier encounter wrote is still there when the next one starts: a flush from a LATER encounter
+   * supersedes it (the section starts fresh for that encounter), and a late flush from an EARLIER
+   * encounter is refused (`stale-encounter`) rather than writing into a row a later encounter owns.
+   * Stamped on the row's `_metadata` — see {@link sectionEncounterSeq}.
+   *
+   * Absent or null ⇒ no encounter check and no stamp: exactly the behaviour before encounters were
+   * tracked. Only `applyFlushPatch` consults it.
+   */
+  readonly encounterSeq?: number | null;
 }
 
 export type SectionWriteRefusal =
@@ -116,6 +127,8 @@ export type SectionWriteRefusal =
   /** TASK-939 — an `append` whose new part was empty. Not a failure; there was simply nothing to add. */
   | 'nothing-to-append'
   | 'stale-generation'
+  /** A flush from an earlier encounter, against a row a later encounter already owns. */
+  | 'stale-encounter'
   | 'occ-conflict'
   | 'unavailable';
 
@@ -143,6 +156,40 @@ const STATE_WIRE: Readonly<Record<DocumentSectionState, SectionPatchDto['state']
   [DocumentSectionState.CONFIRMED]: 'confirmed',
   [DocumentSectionState.LOCKED]: 'locked',
 });
+
+/**
+ * The encounter a section row belongs to: the `encounterSeq` its last flush stamped on `_metadata`.
+ * A row written before rows were stamped belongs to encounter 1 — the same convention the live
+ * snapshot `ContextItem` uses.
+ */
+export function sectionEncounterSeq(section: Pick<DocumentSectionEntity, 'metaData'>): number {
+  const stamped = (section.metaData as Record<string, unknown> | null | undefined)?.encounterSeq;
+  return typeof stamped === 'number' && Number.isInteger(stamped) && stamped > 0 ? stamped : 1;
+}
+
+function stampEncounter(section: DocumentSectionEntity, encounterSeq: number): void {
+  if ((section.metaData as Record<string, unknown> | null | undefined)?.encounterSeq === encounterSeq) return;
+  section.metaData = { ...((section.metaData as Record<string, unknown> | null) ?? {}), encounterSeq };
+}
+
+/**
+ * Start a row over for a LATER encounter. The earlier encounter's body, annotations, provenance,
+ * confirmation, lock and deletion record describe THAT encounter's document; none of it is this
+ * one's. The encounter's own note is kept as its `ContextItem`; the section row is the working
+ * document, so the new encounter takes it over. `revision` is NOT reset — it keeps advancing, so a
+ * client's revision gate still orders the new encounter's patches after the old ones.
+ */
+function supersedeForEncounter(section: DocumentSectionEntity, encounterSeq: number): void {
+  section.state = DocumentSectionState.EMPTY;
+  section.content = '';
+  section.annotations = null;
+  section.provenance = null;
+  section.confirmedAt = null;
+  section.confirmedBy = null;
+  section.lockedAt = null;
+  const { lastDeletion: _previousEncounter, ...metaData } = (section.metaData as Record<string, unknown> | null) ?? {};
+  section.metaData = { ...metaData, encounterSeq };
+}
 
 function sectionAddress(input: Pick<SectionWriteInput, 'consultationId' | 'documentKey' | 'sectionKey'>): string {
   return `${input.consultationId}::${input.documentKey}::${input.sectionKey}`;
@@ -196,10 +243,13 @@ export class DocumentSectionStore {
     consultationId: string,
     documentKey: string,
     order: readonly { readonly key: string; readonly title: string }[],
+    /** Resume only from rows this encounter wrote — an earlier encounter's note is not this one's. Absent ⇒ every row. */
+    encounterSeq?: number | null,
   ): Promise<{ title: string; content: string }[] | null> {
     if (!this.repository) return null;
     try {
-      const rows = await this.repository.findByDocument(tenantId, consultationId, documentKey);
+      const all = await this.repository.findByDocument(tenantId, consultationId, documentKey);
+      const rows = typeof encounterSeq === 'number' ? all.filter((row) => sectionEncounterSeq(row) === encounterSeq) : all;
       if (rows.length === 0) return null;
 
       const byKey = new Map(rows.map((row) => [row.sectionKey, row]));
@@ -269,6 +319,14 @@ export class DocumentSectionStore {
       return { applied: false, reason: 'unavailable' };
     }
 
+    const encounterSeq = typeof input.encounterSeq === 'number' ? input.encounterSeq : null;
+    if (section && encounterSeq !== null) {
+      const owner = sectionEncounterSeq(section);
+      if (owner > encounterSeq) return { applied: false, reason: 'stale-encounter' };
+      if (owner < encounterSeq) supersedeForEncounter(section, encounterSeq);
+      else stampEncounter(section, encounterSeq);
+    }
+
     if (section && !section.isWritable()) return { applied: false, reason: 'locked' };
     // REPLACE only. An append leaves the clinician's text in place, so there is nothing here for
     // this guard to protect — see the method doc.
@@ -300,6 +358,7 @@ export class DocumentSectionStore {
           documentTemplateVersionId: input.documentTemplateVersionId ?? null,
           createdBy: input.userId ?? null,
         });
+        if (encounterSeq !== null) stampEncounter(created, encounterSeq);
         if (appending) created.appendMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
         else created.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
         // A new row has no prior flags to carry — only this write's own.

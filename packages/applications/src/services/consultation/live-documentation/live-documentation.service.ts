@@ -24,6 +24,7 @@ import {
   AgentStepType,
   AiDeploymentKind,
   type ConsultationEntity,
+  ConsultationEncounterRepository,
   ConsultationProcessing,
   ConsultationRepository,
   DepartmentRepository,
@@ -250,6 +251,7 @@ import {
 } from '../../guardrail-context-judge/IContextMedicalJudgeService';
 import {
   DocumentSectionStore,
+  sectionEncounterSeq,
   GuardMemo,
   reanchorAnnotations,
   PLATFORM_REALTIME_LANE,
@@ -1074,8 +1076,9 @@ interface LiveSession {
   snapshotEntity?: ContextItemEntity;
   snapshotId?: string;
   /**
-   * The consultation's encounter when this session first wrote its snapshot (`null` when it could
-   * not be read). An encounter cannot change while a session records, so it is read once.
+   * The consultation's encounter when this session first needed it — its snapshot row or its first
+   * section write (`null` when it could not be read). An encounter cannot change while a session
+   * records, so it is read once (`sessionEncounterSeq`).
    */
   snapshotEncounterSeq?: number | null;
   /** Observability counters (P2). */
@@ -1614,6 +1617,28 @@ function storedMode(result: { value: unknown; sourceScope: string }): AgenticTra
   return result.value === 'windowed' || result.value === 'whole' ? result.value : undefined;
 }
 
+/** TEXT's 503 `CONCURRENCY_LIMIT` refusal (`{ detail, error_code }`): its provider queue was full for this request. */
+function isTextConcurrencyLimit(error: unknown): boolean {
+  const response = (error as { response?: { status?: unknown; data?: unknown } } | null)?.response;
+  if (!response || response.status !== 503) return false;
+  const data = response.data as { error_code?: unknown } | null | undefined;
+  return typeof data === 'object' && data !== null && data.error_code === 'CONCURRENCY_LIMIT';
+}
+
+/** Wait `ms`, returning early if `signal` aborts (the caller re-checks `signal.aborted`). */
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
+}
+
 @Injectable()
 export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LiveDocumentationService.name);
@@ -1764,6 +1789,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * value before the first flush is the same one the flush would resolve.
    */
   private textTimeoutMs: number;
+  /**
+   * Backoff before the ONE re-post of a live TEXT call TEXT refused with 503 `CONCURRENCY_LIMIT`
+   * (its provider queue was full for this request). Short on purpose: the live note is on the
+   * clinician's screen, and a longer wait is better spent on the next flush. See `postLiveText`.
+   */
+  private textConcurrencyRetryMs = 1500;
   // `textProvider` / `textModel` were here, seeded from `LIVE_DOC_TEXT_PROVIDER` /
   // `LIVE_DOC_TEXT_MODEL`. TASK-940 deleted both: all three TEXT call sites
   // overwrite the pair from `resolveTextSelection`, and the module imports
@@ -1987,6 +2018,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Optional + trailing like every dependency above it; ABSENT ⇒ nothing is judged here (the
     // composer is unchanged), which is what keeps every positional fixture byte-identical.
     @Optional() @Inject(IContextMedicalJudgeService) private readonly contextJudge?: IContextMedicalJudgeService,
+    // When the consultation's current encounter STARTED — the late join leaves out a cached note
+    // written before it (an earlier encounter's). Optional + trailing; ABSENT ⇒ the cached note is
+    // replayed as before.
+    @Optional() @Inject(ConsultationEncounterRepository) private readonly encounterRepository?: Pick<ConsultationEncounterRepository, 'findBySeq'>,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -3680,6 +3715,8 @@ return 0`;
       session.consultationId,
       template.slug,
       template.compiled.checklist.map(({ key, title }) => ({ key, title })),
+      // Only THIS encounter's rows: an earlier encounter's note is not the note this one continues.
+      await this.sessionEncounterSeq(session),
     );
     // A consultation with no rows, or with rows that are all empty, is an ordinary first recording.
     if (!resumed || !resumed.some((section) => section.content.trim().length > 0)) return;
@@ -4190,6 +4227,9 @@ return 0`;
     }
 
     if (!graph) {
+      // The TEXT wait, for a call that FAILS: `firstCall.latencyMs` only exists on success, and a
+      // failed flush reporting `textLatencyMs: 0` hid exactly the slow calls worth seeing.
+      const textStartedAt = Date.now();
       try {
         // Bounded JSON auto-repair. The strict parser is now the TURN parser
         // (TASK-939 OD-2(a)); the tolerant path reproduces the PRE-ticket whole-document
@@ -4293,6 +4333,7 @@ return 0`;
       } catch (error) {
         if (isStale()) return this.dropStale(session);
         textFailed = true;
+        if (textLatencyMs === 0) textLatencyMs = Date.now() - textStartedAt;
         // TASK-1000 OD-5 — an output truncation shrinks the NEXT delta. The cursor has correctly
         // not advanced, so without this the retry re-sends the same material plus more.
         if (error instanceof TruncatedGenerationError) this.shrinkDelta(session);
@@ -4855,6 +4896,8 @@ return 0`;
           ...ctx.template.compiled,
           responseFormat: buildTurnResponseFormat(ctx.template.compiled),
         };
+        // The TEXT wait is reported for a FAILED call too — see the legacy branch.
+        const textStartedAt = Date.now();
         const outcome = await this.withDeltaShrinkOnTruncation(session, () =>
           generateJsonWithRepair<AppliedTurn, LiveSoapCall>({
             generate: async (retry) => {
@@ -4894,7 +4937,10 @@ return 0`;
             // fragment. See the legacy branch for why `structured` is part of the condition.
             isTruncated: (call) => call.structured && call.stats?.stop_reason === 'length',
           }),
-        );
+        ).catch((error: unknown) => {
+          textLatencyMs = Date.now() - textStartedAt;
+          throw error;
+        });
 
         const [firstCall, repairCall] = outcome.calls;
         textLatencyMs = firstCall.latencyMs;
@@ -5168,6 +5214,9 @@ return 0`;
     // makes a second one addressable without reshaping anything.
     const documentKey = ctx.template.slug;
     const perSection = reanchorAnnotations(ctx.sections, ctx.runningSummary, ctx.entities, ctx.groundedness, ctx.findings);
+    // The encounter these writes belong to: the store supersedes a row an earlier encounter wrote
+    // (its draft, its lock) and refuses to let a late write touch a row a later encounter owns.
+    const encounterSeq = await this.sessionEncounterSeq(session);
 
     for (const write of ctx.writes) {
       const { sectionKey, idx } = write;
@@ -5192,6 +5241,7 @@ return 0`;
           ...(write.contradiction ? { contradiction: write.contradiction } : {}),
           documentTemplateVersionId: ctx.template.documentTemplateVersionId,
           generation: ctx.generation,
+          encounterSeq,
           userId: session.userId ?? null,
         });
 
@@ -5764,11 +5814,14 @@ return 0`;
    * flush's patches, then `closed`.
    */
   private async loadLiveSummaryLateJoin(consultationId: string, tenantId?: string): Promise<string[]> {
-    const [snapshot, preSummary, sections] = await Promise.all([
+    const encounter = await this.readLateJoinEncounter(consultationId);
+    const [cachedSnapshot, cachedPreSummary, sections] = await Promise.all([
       this.cacheService.get(this.snapshotKey(consultationId)),
       this.cacheService.get(this.preSummaryKey(consultationId)),
-      this.readLateJoinSections(consultationId, tenantId),
+      this.readLateJoinSections(consultationId, tenantId, encounter.seq),
     ]);
+    const snapshot = this.writtenInEncounter(cachedSnapshot, encounter.startedAt) ? cachedSnapshot : null;
+    const preSummary = this.writtenInEncounter(cachedPreSummary, encounter.startedAt) ? cachedPreSummary : null;
     const note = typeof snapshot === 'string' && snapshot !== '' ? this.stampSnapshotSections(snapshot, sections) : null;
     const replayed = sections.map((section) => JSON.stringify(section));
     const background = typeof preSummary === 'string' && preSummary !== '' ? [preSummary] : [];
@@ -5790,12 +5843,19 @@ return 0`;
    * the patch that restores it. For the same reason a section whose body cannot be decrypted is
    * left out rather than replayed empty. Never throws; logs counts, never content (PHI).
    */
-  private async readLateJoinSections(consultationId: string, tenantId: string | undefined): Promise<SectionPatchDto[]> {
+  private async readLateJoinSections(
+    consultationId: string,
+    tenantId: string | undefined,
+    encounterSeq: number | null = null,
+  ): Promise<SectionPatchDto[]> {
     const repository = this.documentSectionRepository;
     const secrets = this.secretsService;
     if (!repository || !secrets || !tenantId) return [];
     try {
-      const rows = await repository.findByConsultation(tenantId, consultationId);
+      const all = await repository.findByConsultation(tenantId, consultationId);
+      // Rows outlive the append of a new encounter: replay only the current encounter's, or a
+      // client joining encounter 2 is handed encounter 1's draft (and its lock) as this note.
+      const rows = encounterSeq === null ? all : all.filter((row) => sectionEncounterSeq(row) === encounterSeq);
       const read = await Promise.all(
         rows.map(async (row): Promise<SectionPatchDto | null> => {
           try {
@@ -5822,6 +5882,40 @@ return 0`;
         error: error instanceof Error ? error.message : String(error),
       });
       return [];
+    }
+  }
+
+  /**
+   * The encounter a late joiner is owed: the consultation's current one, and when it started.
+   * Either part may be unknown (`null`) — unwired or unreadable — and an unknown part filters
+   * nothing, which is exactly the late join that shipped before encounters were scoped. Never throws.
+   */
+  private async readLateJoinEncounter(consultationId: string): Promise<{ seq: number | null; startedAt: Date | null }> {
+    const seq = await this.readCurrentEncounterSeq(consultationId);
+    if (seq === null || !this.encounterRepository) return { seq, startedAt: null };
+    try {
+      const startedAt = (await this.encounterRepository.findBySeq(consultationId, seq))?.startedAt;
+      return { seq, startedAt: startedAt instanceof Date ? startedAt : null };
+    } catch {
+      return { seq, startedAt: null };
+    }
+  }
+
+  /**
+   * False only for a cached payload provably written BEFORE the current encounter started — an
+   * earlier encounter's note or pre-summary (its terminal `closed: true` included, which would also
+   * end the new encounter's stream before it produced anything). No start time, no `updatedAt`, or a
+   * payload that cannot be read ⇒ true: never drop what cannot be shown to be stale.
+   */
+  private writtenInEncounter(raw: string | null | undefined, startedAt: Date | null): boolean {
+    if (!startedAt || typeof raw !== 'string' || raw === '') return true;
+    try {
+      const updatedAt = (JSON.parse(raw) as { updatedAt?: unknown }).updatedAt;
+      if (typeof updatedAt !== 'string') return true;
+      const written = Date.parse(updatedAt);
+      return Number.isNaN(written) || written >= startedAt.getTime();
+    } catch {
+      return true;
     }
   }
 
@@ -6475,10 +6569,7 @@ return 0`;
         // The snapshot is the running note of ONE encounter: stamp it with the consultation's current
         // encounter, and never reuse a row an earlier encounter wrote (a row written before rows
         // were stamped belongs to encounter 1) — a new encounter starts its own row.
-        if (session.snapshotEncounterSeq === undefined) {
-          session.snapshotEncounterSeq = await this.readCurrentEncounterSeq(session.consultationId);
-        }
-        const encounterSeq = session.snapshotEncounterSeq;
+        const encounterSeq = await this.sessionEncounterSeq(session);
         // Deterministic dedup: a prior tick — on THIS
         // instance after a restart, or a racing second instance that slipped past the
         // lock — may already have persisted the live snapshot row. Reuse it instead of
@@ -6579,6 +6670,18 @@ return 0`;
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * The encounter this session records into — read once, on first need, and kept: an encounter
+   * cannot change while a session records. Shared by the snapshot row and the section writes, so
+   * both are stamped with the same encounter. `null` when it cannot be read.
+   */
+  private async sessionEncounterSeq(session: LiveSession): Promise<number | null> {
+    if (session.snapshotEncounterSeq === undefined) {
+      session.snapshotEncounterSeq = await this.readCurrentEncounterSeq(session.consultationId);
+    }
+    return session.snapshotEncounterSeq;
   }
 
   /** The consultation's current encounter, or `null` when it cannot be read (best-effort). */
@@ -7827,8 +7930,8 @@ return 0`;
     if (responseItems.length > 0) payload.response_items = responseItems.map(({ itemId, itemVersion }) => ({ itemId, itemVersion }));
     const correlation = consultationId ? liveCorrelationHeaders({ consultationId, itemId: session?.snapshotId ?? null }) : {};
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
-    try {
-      const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
+    const post = () =>
+      this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
         timeout: this.textTimeoutMs,
         headers: internalServiceHeaders({
           serviceToken,
@@ -7838,6 +7941,24 @@ return 0`;
         }),
         signal,
       });
+    // The flush this call belongs to — a retry is only worth making while it is still the current one.
+    const generation = session?.generation;
+    try {
+      let response: { data: unknown };
+      try {
+        response = await post();
+      } catch (error) {
+        if (!isTextConcurrencyLimit(error)) throw error;
+        // TEXT's provider queue was full for THIS request: a transient refusal, not a verdict. Re-post
+        // the same payload ONCE after a short backoff — unless the flush was aborted or superseded in
+        // the meantime, in which case its result would be dropped anyway. A second refusal fails the
+        // call exactly as the first used to.
+        await abortableDelay(this.textConcurrencyRetryMs, signal);
+        const current = consultationId ? this.sessions.get(consultationId) : undefined;
+        if (signal?.aborted || (session && (current !== session || session.generation !== generation))) throw error;
+        this.logger.log({ message: 'Live TEXT call refused with CONCURRENCY_LIMIT — retrying once', consultationId });
+        response = await post();
+      }
       if (turn) turn.notices.push(...textResponseNotices(response.data));
       return response;
     } catch (error) {
