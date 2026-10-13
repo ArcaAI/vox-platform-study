@@ -73,6 +73,8 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Persist transformed modules on disk and reuse them across runs (TASK-1067).
+    fsModuleCache: true,
     setupFiles: [fromHere('./src/test/setup.ts')],
     // The 5s default is comfortable locally (this suite's slowest file spends
     // ~300ms in tests) but not on a shared CI runner, where every test job of

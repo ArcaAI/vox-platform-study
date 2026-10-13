@@ -676,6 +676,7 @@ class TestVendorRateLimitThroughTheEndpoint:
         # 1 initial + 2 retries: the budget was spent on a condition that CAN change.
         assert mock_provider.generate.call_count == 3
 
+    @pytest.mark.real_backoff
     @pytest.mark.asyncio
     async def test_a_vendor_429_backs_off_for_the_wait_the_vendor_asked_for(self, _app_factory):
         """`retry_after_from` was written for this case and was unreachable."""

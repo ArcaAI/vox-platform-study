@@ -224,6 +224,7 @@ describe('ConsultationReadService.read', () => {
       paths: ['consultation.patient.age'],
       phiPathCount: 1,
     });
-    expect(JSON.stringify(viewed)).not.toContain('54');
+    // Only the audit payload — the event's own id is a random UUID that may contain "54".
+    expect(JSON.stringify(viewed.data)).not.toContain('54');
   });
 });

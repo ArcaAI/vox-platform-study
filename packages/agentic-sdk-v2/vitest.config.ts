@@ -4,6 +4,8 @@ import { resolve } from 'path';
 export default defineConfig({
   test: {
     globals: true,
+    // Persist transformed modules on disk and reuse them across runs (TASK-1067).
+    fsModuleCache: true,
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.test.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/integration/**'],

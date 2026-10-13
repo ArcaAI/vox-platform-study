@@ -48,6 +48,9 @@ const SHARED_EXCLUDE = [
 // an aggregate suite at all).
 const BROWSER_PACKAGE_DIRS = ['packages/ui/**', 'packages/agentic-sdk-v2/**', 'apps/admin-console/**'];
 
+// Suites that load a native addon unsafe under worker_threads — run on `forks`.
+const NATIVE_ADDON_SUITES = ['packages/applications/src/services/baseServices/storage/__tests__/image-thumbnail.service.test.ts'];
+
 export default defineConfig({
   // Vitest 4.1.10 → Vite 8/Oxc: keep NestJS legacy decorators, skip metadata
   // (see packages/applications/vitest.config.ts).
@@ -60,9 +63,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // `.test.js` catches the eslint-plugin RuleTester suites (node); the `.tsx`
-    // component suites are covered by the referenced browser projects below.
-    include: ['**/*.test.ts', '**/*.spec.ts', '**/*.test.js'],
     exclude: SHARED_EXCLUDE,
     setupFiles: ['./tests/setup/vitest.setup.ts'],
     projects: [
@@ -70,10 +70,15 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'workspace',
+          // `.test.js` catches the eslint-plugin RuleTester suites (node); the `.tsx`
+          // component suites run under their own package configs (see below). `include`
+          // is per project, not on the root: `extends: true` CONCATENATES arrays, so a
+          // root include would make `workspace-native` run every suite a second time.
+          include: ['**/*.test.ts', '**/*.spec.ts', '**/*.test.js'],
           // Node/`.ts` suites across the whole repo (incl. the top-level
           // tests/contracts + tests/cross-tenant, which no package owns), MINUS
           // the browser packages that run under their own config below.
-          exclude: [...SHARED_EXCLUDE, ...BROWSER_PACKAGE_DIRS],
+          exclude: [...SHARED_EXCLUDE, ...BROWSER_PACKAGE_DIRS, ...NATIVE_ADDON_SUITES],
           // Unit suites run with MOCKED repositories/SecretsService and assert the PHI
           // encrypt-on-write SOFT no-op path (phi-field-encryption.ts: SECRETS_PROVIDER
           // != 'vault' → skip; == 'vault' → fail-closed throw). `.env.test` deliberately
@@ -86,15 +91,27 @@ export default defineConfig({
           env: {
             SECRETS_PROVIDER: 'env',
           },
-          // `packages/applications/.../image-thumbnail.service.test.ts` deliberately
-          // exercises the REAL `sharp` codec (not mocked). sharp's native libvips
-          // addon is not safe under Node's worker_threads (Vitest's default `threads`
-          // pool) — it segfaults (SIGSEGV, exit 139) nondeterministically, worse here
-          // since two libvips builds are resolvable in this workspace (sharp 0.35.3
+          // Native-addon suites run in their own `forks` project below; every other
+          // node suite runs on `threads`, which start far faster than one process per file.
+          pool: 'threads',
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'workspace-native',
+          // `image-thumbnail.service.test.ts` deliberately exercises the REAL `sharp`
+          // codec (not mocked). sharp's native libvips addon is not safe under Node's
+          // worker_threads — it segfaults (SIGSEGV, exit 139) nondeterministically, worse
+          // here since two libvips builds are resolvable in this workspace (sharp 0.35.3
           // direct dep of @arcaai/applications vs 0.34.5 transitive via
-          // @huggingface/transformers / Next.js). `forks` isolates each test file in
-          // its own OS process instead of a shared V8 isolate, which native addons
-          // require. Same fix already applied in vitest.integration.config.ts.
+          // @huggingface/transformers / Next.js). `forks` gives each file its own OS
+          // process, which native addons require. `sharp` is imported lazily, so no other
+          // suite loads it; add any new real-native-addon suite to NATIVE_ADDON_SUITES.
+          include: NATIVE_ADDON_SUITES,
+          env: {
+            SECRETS_PROVIDER: 'env',
+          },
           pool: 'forks',
         },
       },
@@ -134,6 +151,9 @@ export default defineConfig({
         '**/mocks/**',
       ],
     },
+    // Persist transformed modules on disk (node_modules/.vite/vitest) and reuse them across
+    // runs — transform was ~22% of the unit run, re-done every time without it.
+    fsModuleCache: true,
     testTimeout: 30000,
     hookTimeout: 30000,
     pool: 'threads',

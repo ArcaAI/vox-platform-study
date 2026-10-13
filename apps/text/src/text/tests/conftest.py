@@ -166,6 +166,17 @@ def stub_endpoint(provider, url: str = "http://engine.local"):
 
 
 @pytest.fixture(autouse=True)
+def _no_retry_backoff(request, monkeypatch):
+    """Stub `/generate`'s retry backoff to 0 s — each provider-error test otherwise
+    sleeps the real ~7.5 s exponential. Tests asserting the wait itself opt out with
+    `@pytest.mark.real_backoff`. Only the endpoint's binding is patched, so
+    `retry_handler.calculate_backoff`'s own unit tests are unaffected."""
+    if request.node.get_closest_marker("real_backoff"):
+        return
+    monkeypatch.setattr("text.api.endpoints.generate.calculate_backoff", lambda *_a, **_k: 0.0)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_egress_client_cache():
     """Reset the process-wide egress client cache and pool policy per test.
 

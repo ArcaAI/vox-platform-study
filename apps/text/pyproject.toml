@@ -211,6 +211,8 @@ markers = [
     # tests that assert the mandatory-header contract itself (an absent header
     # must reach the endpoint and get a 428).
     "no_default_tenant_header: send requests with no X-Tenant-Id (contract tests)",
+    # opt OUT of conftest's zero-backoff stub, for tests asserting the real retry wait.
+    "real_backoff: keep /generate's computed retry backoff (default: stubbed to 0)",
 ]
 
 # Coverage configuration

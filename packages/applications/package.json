@@ -5,7 +5,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "rimraf dist tsconfig.tsbuildinfo && tsc",
+    "build": "([ -z \"$CI\" ] || rimraf dist tsconfig.tsbuildinfo) && tsc",
+    "build:clean": "rimraf dist tsconfig.tsbuildinfo && tsc",
     "dev": "tsc --watch",
     "dev:watch": "tsc --watch",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
