@@ -2715,6 +2715,11 @@ return 0`;
     try {
       const consultation = await this.consultationRepository.findById(session.consultationId);
       governed = tenantWorkflowGoverns(consultation?.metadata);
+      // The session's encounter off the SAME row read, so stamping a flush costs no extra I/O.
+      if (session.snapshotEncounterSeq === undefined) {
+        const seq = consultation?.currentEncounterSeq;
+        session.snapshotEncounterSeq = typeof seq === 'number' ? seq : null;
+      }
       // TASK-932 §3.7 — freeze the declared SOURCE language off the SAME row read, so the run
       // context's `language` costs no extra I/O on the start path. (TASK-1001: it no longer decides
       // the note's output language — see `operatingFrame`.)

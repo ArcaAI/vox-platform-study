@@ -23,6 +23,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_MODEL_SERVING_GPU_SPLIT_STRATEGIES, AI_MODEL_SERVING_KV_CACHE_QUANTIZATION_TYPES } from '@arcaai/types';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import {
+  LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_KEY,
   LM_STUDIO_LIVE_LANE_SLOTS_KEY,
   LM_STUDIO_SERVING_DEFAULTS,
   LM_STUDIO_SERVING_SETTINGS,
@@ -47,8 +48,9 @@ describe('LM Studio serving descriptors', () => {
       'lmStudio.jit.modelTtlSeconds',
     ]);
     for (const key of ALL_KEYS) expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(true);
-    // TASK-1062 — plus the text-only live-lane budget, which is not part of the pod's boot plan.
-    expect(LM_STUDIO_SERVING_SETTINGS.map((d) => d.key).filter((key) => key !== LM_STUDIO_LIVE_LANE_SLOTS_KEY)).toEqual(ALL_KEYS);
+    // TASK-1062 / TASK-1066 — plus the text-only live-lane budget and queue wait, which are not part of the pod's boot plan.
+    const textOnly = new Set([LM_STUDIO_LIVE_LANE_SLOTS_KEY, LM_STUDIO_LIVE_LANE_QUEUE_TIMEOUT_KEY]);
+    expect(LM_STUDIO_SERVING_SETTINGS.map((d) => d.key).filter((key) => !textOnly.has(key))).toEqual(ALL_KEYS);
   });
 
   it('scopes them to the platform: SYSTEM-only, super-admin-editable, global-kv', () => {
