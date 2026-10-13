@@ -124,6 +124,7 @@ export default defineConfig({
       // The 'all' option would include all files matching include patterns
       // but can cause issues in monorepos
       include: [
+        'apps/api/src/**/*.ts',
         'packages/applications/src/**/*.ts',
         'packages/domains/src/**/*.ts',
         'packages/exceptions/src/**/*.ts',

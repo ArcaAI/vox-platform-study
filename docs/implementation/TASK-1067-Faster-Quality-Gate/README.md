@@ -109,3 +109,12 @@ pre-existing admin-console tests listed under Findings (workspace 2,440/2,440 fi
     query and is back on the plain `handle.result()`. `result_of_current_run()` is removed.
   - Proof under full Vitest load, 6 parallel loops × 8: both checkpoint tests 48/48 runs (96
     executions), no hangs; a describe-wait + timer debug variant 48/48; harness unit 3843 passed.
+- 2026-10-13 d — local coverage reports. `scripts/gate.sh` collects coverage by default on a full
+  run (`--no-coverage` skips; off for `--changed` unless `--coverage`), reports in `coverage/gate/`
+  (gitignored) plus a per-suite totals table. Python: the pyprojects' existing `--cov` plus gate
+  json/html/xml reports. TS: V8 provider with `--pool=forks` — istanbul made the unit run 787 s and
+  timed out 13 tests; V8 under `threads` died with SIGBUS (even a quarter shard). Root coverage
+  `include` gained `apps/api/src/**`. `dotenv` is called as `pnpm exec dotenv` (bare `dotenv` resolves
+  to python-dotenv's CLI from the conda env). Full gate on HEAD 9c3462353: GREEN 10/10, 587 s.
+  Coverage: workspace 80.9% lines · admin-console 85.9% · vox 87.2% · database 77.4% · harness 89.7% ·
+  text 92.4% · guardrail 92.3%.

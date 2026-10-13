@@ -4,6 +4,11 @@
 #   scripts/gate.sh                 full gate
 #   scripts/gate.sh --changed       only suites touched since $GATE_BASE (default origin/dev-2.2)
 #   scripts/gate.sh --keep-going    don't stop after a red fast phase
+#   scripts/gate.sh --no-coverage   skip coverage (it is ON for a full gate, OFF for --changed;
+#                                   --coverage forces it on)
+#
+# Coverage reports land in $GATE_COVERAGE_DIR (default coverage/gate/, gitignored): one
+# html/ + lcov/json per suite, and a per-suite total table at the end of the run.
 #
 # Phases (each step's log lands in $GATE_LOG_DIR/<step>.log):
 #   1. fast     lint · ruff · api typecheck          (parallel, ~1 min, stops the gate on red)
@@ -20,11 +25,13 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-CHANGED=0 KEEP_GOING=0
+CHANGED=0 KEEP_GOING=0 COVERAGE=
 for a in "$@"; do
   case "$a" in
     --changed) CHANGED=1 ;;
     --keep-going) KEEP_GOING=1 ;;
+    --coverage) COVERAGE=1 ;;
+    --no-coverage) COVERAGE=0 ;;
     *) echo "unknown flag: $a" >&2; exit 2 ;;
   esac
 done
@@ -36,6 +43,10 @@ PY="$CONDA_BIN/python"
 PY_WORKERS="${PY_WORKERS:-4}"                                  # 0 = serial pytest
 STEP_TIMEOUT="${GATE_STEP_TIMEOUT:-900}"                       # seconds; a hung step fails (rc 124)
 rm -rf "$LOG_DIR" && mkdir -p "$LOG_DIR"
+# A partial (--changed) run's percentages would mislead, so coverage defaults off there.
+[ -n "$COVERAGE" ] || COVERAGE=$([ $CHANGED -eq 1 ] && echo 0 || echo 1)
+COV_DIR="${GATE_COVERAGE_DIR:-$PWD/coverage/gate}"
+[ $COVERAGE -eq 1 ] && rm -rf "$COV_DIR" && mkdir -p "$COV_DIR"
 
 RES="$LOG_DIR/.results"   # one "name|rc|seconds" line per step
 : >"$RES"
@@ -83,8 +94,21 @@ changed() { [ $CHANGED -eq 0 ] && return 0; ! git diff --quiet "$(git merge-base
 pyxdist() {
   echo "-o faulthandler_timeout=300 $([ "$PY_WORKERS" = 0 ] || echo "-n $PY_WORKERS")"
 }
+# pycov <svc> — each pyproject already measures `--cov=<pkg>`; add the gate's reports, or turn it off
+pycov() {
+  [ $COVERAGE -eq 1 ] || { echo "--no-cov"; return; }
+  echo "--cov-report=json:$COV_DIR/py-$1/coverage.json --cov-report=html:$COV_DIR/py-$1/html --cov-report=xml:$COV_DIR/py-$1/coverage.xml"
+}
+# vcov <suite> — Vitest coverage flags. V8, not istanbul: istanbul instruments every
+# module, which made the unit run 4x slower (787 s vs 189 s) and timed out 13 tests.
+# `forks`, not `threads`: V8 coverage under worker_threads kills the run with SIGBUS
+# here (even a quarter shard), while forks + V8 covers the full suite in ~336 s.
+vcov() {
+  [ $COVERAGE -eq 1 ] || return 0
+  echo "--pool=forks --coverage.enabled --coverage.provider=v8 --coverage.reporter=json-summary --coverage.reporter=html --coverage.reporter=lcov --coverage.reportsDirectory=$COV_DIR/ts-$1"
+}
 
-echo "gate: base=$BASE changed=$CHANGED logs=$LOG_DIR"
+echo "gate: base=$BASE changed=$CHANGED coverage=$COVERAGE logs=$LOG_DIR"
 
 # ---- 1. fast ---------------------------------------------------------------
 echo "[1/3] fast checks"
@@ -105,15 +129,18 @@ if [ $FAST -eq 0 ] || [ $KEEP_GOING -eq 1 ]; then
   # ---- 3. test -------------------------------------------------------------
   echo "[3/3] tests"
   if [ $CHANGED -eq 1 ]; then
-    TS="dotenv -e .env.test -- vitest run --changed $BASE --exclude '**/integration/**' --exclude '**/e2e/**' --passWithNoTests && pnpm --filter @arcaai/vox --filter @arcaai/admin-console exec vitest run --changed $BASE --passWithNoTests"
+    TS="pnpm exec dotenv -e .env.test -- vitest run --changed $BASE --exclude '**/integration/**' --exclude '**/e2e/**' --passWithNoTests && pnpm --filter @arcaai/vox --filter @arcaai/admin-console exec vitest run --changed $BASE --passWithNoTests"
+  elif [ $COVERAGE -eq 1 ]; then
+    # `pnpm test:unit`, spelled out so each of its three Vitest runs can write its own report
+    TS="pnpm exec dotenv -e .env.test -- vitest run --exclude '**/integration/**' --exclude '**/e2e/**' $(vcov workspace) && pnpm --filter @arcaai/vox exec vitest run $(vcov vox) && pnpm --filter @arcaai/admin-console exec vitest run $(vcov admin-console)"
   else
     TS="pnpm test:unit"
   fi
   STEPS=("ts-unit=$TS")
-  changed packages/database && STEPS+=("db-test=pnpm --filter @arcaai/database test")
-  changed apps/harness packages/py-* && STEPS+=("harness-py=cd apps/harness && $PY -m pytest -q $(pyxdist) src/harness/tests/unit")
-  changed apps/guardrail packages/py-* && STEPS+=("guardrail-py=cd apps/guardrail && $PY -m pytest -q $(pyxdist) src/guardrail/tests")
-  changed apps/text packages/py-* && STEPS+=("text-py=cd apps/text && $PY -m pytest -q $(pyxdist) src/text/tests/unit")
+  changed packages/database && STEPS+=("db-test=pnpm --filter @arcaai/database exec vitest run $(vcov database)")
+  changed apps/harness packages/py-* && STEPS+=("harness-py=cd apps/harness && $PY -m pytest -q $(pyxdist) $(pycov harness) src/harness/tests/unit")
+  changed apps/guardrail packages/py-* && STEPS+=("guardrail-py=cd apps/guardrail && $PY -m pytest -q $(pyxdist) $(pycov guardrail) src/guardrail/tests")
+  changed apps/text packages/py-* && STEPS+=("text-py=cd apps/text && $PY -m pytest -q $(pyxdist) $(pycov text) src/text/tests/unit")
   par "${STEPS[@]}"
 fi
 
@@ -126,4 +153,26 @@ while IFS='|' read -r n rc s; do
   [ "$rc" = 0 ] || { FAILED=1; echo "    ↳ $LOG_DIR/$n.log"; }
 done <"$RES"
 echo "total ${SECONDS}s"
+
+if [ $COVERAGE -eq 1 ]; then
+  echo
+  python3 - "$COV_DIR" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+rows = []
+for d in sorted(root.iterdir()):
+    ts, py = d / "coverage-summary.json", d / "coverage.json"
+    if ts.exists():
+        t = json.loads(ts.read_text())["total"]
+        rows.append((d.name, t["lines"]["pct"], t["branches"]["pct"], t["functions"]["pct"], t["lines"]["total"]))
+    elif py.exists():
+        t = json.loads(py.read_text())["totals"]
+        rows.append((d.name, t["percent_covered"], None, None, t["num_statements"]))
+fmt = lambda v: "   -  " if v is None else f"{v:5.1f}%"
+print(f"{'COVERAGE':16} {'LINES':>6} {'BRANCH':>6} {'FUNCS':>6} {'SIZE':>7}")
+for name, lines, br, fn, size in rows:
+    print(f"{name:16} {fmt(lines)} {fmt(br)} {fmt(fn)} {size:7d}")
+print(f"html: {root}/<suite>/html/index.html (Vitest: {root}/ts-<suite>/index.html)")
+PY
+fi
 exit $FAILED
