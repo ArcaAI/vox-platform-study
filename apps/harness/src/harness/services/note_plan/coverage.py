@@ -1,12 +1,15 @@
 """Deterministic note coverage — the check the harness runs BEFORE the note is persisted.
 
-Three checks, no model call:
+Four checks, no model call:
 
 * every active critical fact of the ledger is present in the note (one of its anchors, and each
   value with its unit);
 * every number+unit a checked section states matches a source that section cites;
 * every citation label in ``sources[].refs`` resolves through ``coverage.sourceIds`` (or names a
-  fact line of a ledger block the plan rendered).
+  fact line of a ledger block the plan rendered);
+* every safety statement a checked section makes is grounded (``ungrounded`` gaps): an allergy's
+  agent and a dosed drug are stated by the source the sentence cites (any input when it cites
+  none), and a blood pressure or pulse stated as today's is the one the latest encounter states.
 
 A citation is matched by its LABEL whatever its spelling: ``S8``, ``[S8]``, and the rendered
 ``[S8 E2]`` / ``[S8 E2 Doctor 00:00]`` all name ``S8``.
@@ -245,6 +248,212 @@ def _gap_section(
     return checked[0]
 
 
+#: An allergy statement and the agent it names: "allergic to X", "allergy to X", "allergies: X",
+#: "X allergy" / "X-allergic". Applied to normalised text.
+_ALLERGY_AGENT = (
+    re.compile(
+        r"\ballerg(?:ic|y|ies)\s+(?:reaction\s+)?(?:to|with)\s+(?:the\s+|a\s+|an\s+)?"
+        r"(?P<agent>[a-z][a-z0-9-]{2,})"
+    ),
+    re.compile(r"\ballerg(?:y|ies)\s*[:–-]\s*(?P<agent>[a-z][a-z0-9-]{2,})"),
+    re.compile(r"\b(?P<agent>[a-z][a-z0-9]{2,})[\s-]+allerg(?:y|ies|ic)\b"),
+)
+#: Words in an agent's position that name no agent ("no known drug allergies", "has allergy").
+#: A lexicon of the checker, not a setting.
+_NOT_AN_AGENT = frozenset(
+    {
+        "drug", "drugs", "food", "foods", "known", "any", "medication", "medications", "medicine",
+        "medicines", "seasonal", "contact", "skin", "severe", "mild", "the", "his", "her", "their",
+        "has", "had", "have", "reported", "documented", "history", "previous", "prior", "new",
+        "other", "multiple", "environmental", "patient", "noted", "and", "with", "was", "not",
+        "denies", "nil", "none",
+    }
+)  # fmt: skip
+#: A drug named with its dose ("metformin 500 mg"), on normalised text. Weights ("77 kg") and
+#: concentrations ("mg/dl") are not doses and are not matched.
+_DOSED_DRUG = re.compile(
+    r"(?<![\w-])(?P<drug>[a-z][a-z-]{3,})\s+\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|iu)(?![a-z0-9/])"
+)
+#: Words before a dose that are not a drug ("increased to 10 mg", "dose of 5 mg"). A lexicon of
+#: the checker, not a setting.
+_NOT_A_DRUG = frozenset(
+    {
+        "from", "with", "dose", "doses", "dosage", "about", "around", "total", "only", "daily",
+        "then", "than", "once", "twice", "take", "takes", "taking", "took", "given", "give",
+        "start", "started", "starting", "increase", "increased", "increasing", "reduce",
+        "reduced", "reducing", "decrease", "decreased", "continue", "continued", "continuing",
+        "stop", "stopped", "each", "every", "plus", "also", "into", "upto", "over", "under",
+        "least", "most", "more", "less", "night", "morning", "evening", "bedtime", "tablet",
+        "tablets", "capsule", "capsules", "injection", "units", "unit", "approximately",
+        "nearly", "just", "same", "current", "currently", "dosed", "back", "down", "high",
+        "low", "further", "additional", "extra", "maximum", "minimum", "usual", "regular",
+    }
+)  # fmt: skip
+#: A vital reading as a note or a transcript states it (normalised text): blood pressure as a
+#: paired value, pulse as one value.
+_VITAL_READINGS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "BP",
+        re.compile(
+            r"(?<![a-z])(?:bp|b\.p\.?|blood pressure)(?![a-z])[^.;!?\d]{0,30}?"
+            r"(?P<value>\d{2,3}/\d{2,3})(?!\d|\.\d|/)"
+        ),
+    ),
+    (
+        "pulse",
+        re.compile(
+            r"(?<![a-z])(?:pulse(?: rate)?|heart rate|hr|p\.r\.?)(?![a-z])[^.;!?\d]{0,20}?"
+            r"(?P<value>\d{2,3})(?!\d|\.\d|/)"
+        ),
+    ),
+)
+#: A sentence that dates its reading or calls it an earlier one ("recorded 2025-06-20",
+#: "previous", "baseline") is not stating today's reading.
+_EARLIER_READING = re.compile(
+    r"\b(?:recorded|previous(?:ly)?|prior|earlier|last visit|history|baseline|initial|"
+    r"first encounter|on admission)\b|\d{4}-\d{2}-\d{2}|(?<![\d/])\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"
+)
+_ANY_BRACKET = re.compile(r"\[[^\]]*\]")
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _sentences(text: str) -> list[str]:
+    return [sentence for sentence in _SENTENCE_BREAK.split(text) if sentence.strip()]
+
+
+def _readings(text: str) -> dict[str, list[str]]:
+    """Every vital reading the (normalised) text states, by vital, in order."""
+    found: dict[str, list[str]] = {}
+    for vital, pattern in _VITAL_READINGS:
+        for match in pattern.finditer(text):
+            found.setdefault(vital, [])
+            if match.group("value") not in found[vital]:
+                found[vital].append(match.group("value"))
+    return found
+
+
+def _allergy_agents(text: str) -> list[str]:
+    agents = (
+        match.group("agent").strip("-")
+        for pattern in _ALLERGY_AGENT
+        for match in pattern.finditer(text)
+    )
+    return list(dict.fromkeys(a for a in agents if a not in _NOT_AN_AGENT))
+
+
+def _dosed_drugs(text: str) -> list[str]:
+    drugs = (match.group("drug").strip("-") for match in _DOSED_DRUG.finditer(text))
+    return list(dict.fromkeys(d for d in drugs if d not in _NOT_A_DRUG))
+
+
+def _grounding_gaps(
+    plan: NotePlanV1,
+    sections: Mapping[str, str],
+    checked: Sequence[str],
+    texts: Mapping[str, list[str]],
+) -> list[CoverageGap]:
+    """Safety statements a checked section makes that its sources do not support.
+
+    * An allergy's agent, and a drug named with its dose, must be stated by a source the sentence
+      cites — or, when the sentence cites no source label, by some input of the plan. A note that
+      pins an earlier visit's allergy on today's "allergic to penicillin" line passes the number and
+      citation checks; this is the check that catches it.
+    * A blood pressure or pulse stated as today's, when the LATEST encounter's transcript states a
+      different one, is an earlier reading (the clinic's open-time vitals, a previous visit) passed
+      off as today's. A sentence that dates or qualifies its reading, or cites the transcript line
+      that states it, is not.
+    """
+    corpus = normalise_text(
+        "\n".join(
+            [
+                _strip_lead_label(line)
+                for block in plan.blocks
+                for line in block.content.splitlines()
+            ]
+            + [anchor for fact in plan.coverage.critical_facts or () for anchor in fact.anchors]
+        )
+    )
+    spoken_labels = {
+        label
+        for block in plan.blocks
+        if block.role in ("encounter_transcript", "encounter_ledger", "attachment_transcript")
+        for line in block.content.splitlines()
+        for label in [m.group("label") for m in _BRACKETED_LABEL.finditer(line)]
+    }
+    latest = next(
+        (block for block in reversed(plan.blocks) if block.role == "encounter_transcript"), None
+    )
+    latest_readings = _readings(normalise_text(latest.content)) if latest else {}
+
+    gaps: list[CoverageGap] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _gap(key: str, term: str, detail: str) -> None:
+        if (key, term) in seen:
+            return
+        seen.add((key, term))
+        gaps.append(CoverageGap(kind="ungrounded", section_key=key, detail=detail))
+
+    for key in checked:
+        title = plan.heading_title(key)
+        for sentence in _sentences(sections.get(key, "")):
+            labels = [label for label in dict.fromkeys(_inline_labels(sentence)) if label in texts]
+            body = normalise_text(_ANY_BRACKET.sub(" ", sentence))
+            cited = normalise_text(
+                "\n".join(_strip_lead_label(line) for label in labels for line in texts[label])
+            )
+            support = cited if labels else corpus
+            named = ", ".join(labels)
+            for agent in _allergy_agents(body):
+                if contains(support, agent):
+                    continue
+                _gap(
+                    key,
+                    f"allergy:{agent}",
+                    (
+                        f"{title} states an allergy to {agent}, but {named} does not state it."
+                        if labels
+                        else f"{title} states an allergy to {agent}, which no source states."
+                    ),
+                )
+            for drug in _dosed_drugs(body):
+                if contains(support, drug):
+                    continue
+                _gap(
+                    key,
+                    f"drug:{drug}",
+                    (
+                        f"{title} states {drug} with a dose, but {named} does not name it."
+                        if labels
+                        else f"{title} states {drug} with a dose, which no source names."
+                    ),
+                )
+            if not latest_readings or _EARLIER_READING.search(body):
+                continue
+            spoken = normalise_text(
+                "\n".join(
+                    _strip_lead_label(line)
+                    for label in labels
+                    if label in spoken_labels
+                    for line in texts[label]
+                )
+            )
+            for vital, values in _readings(body).items():
+                today = latest_readings.get(vital)
+                if not today:
+                    continue
+                for value in values:
+                    if value in today or contains(spoken, value):
+                        continue
+                    _gap(
+                        key,
+                        f"{vital}:{value}",
+                        f"{title} states {vital} {value} as today's reading, but the latest "
+                        f"encounter's transcript states {vital} {', '.join(today)}.",
+                    )
+    return gaps
+
+
 def check_coverage(
     plan: NotePlanV1,
     sections: Mapping[str, str],
@@ -362,6 +571,8 @@ def check_coverage(
                 )
             )
 
+    gaps.extend(_grounding_gaps(plan, sections, checked, texts))
+
     return CoverageResultV1(
         status="gaps" if gaps else "complete",
         repair_passes=repair_passes,
@@ -447,6 +658,6 @@ def repair_directive(
                 lines.append(f'- {kind} {labels}: "{quoted}"')
             else:
                 lines.append(f"- {kind}: {'; '.join(_fact_terms(fact))} {labels}".rstrip())
-        elif gap.kind in ("number_mismatch", "unresolved_citation"):
+        elif gap.kind in ("number_mismatch", "unresolved_citation", "ungrounded"):
             lines.append(f"- Fix: {gap.detail}")
     return "\n".join(lines)
