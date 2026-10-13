@@ -36,6 +36,12 @@ export class LiveHandoffResponse {
   @ApiPropertyOptional({ description: 'When the live session handed off (ISO 8601). Absent while `ended` is false.' })
   endedAt?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Why `ended` is false although capture is over. `NOTE_PLAN_COMPOSING`: the live session handed off, but the note plan is still being composed (it waits for each encounter’s fact ledger). The read waits for it only for a bound well below the harness client timeout, then answers this; the composition finishes in the background and the next poll is answered from the handoff record. Absent on every other answer.',
+  })
+  pendingReason?: 'NOTE_PLAN_COMPOSING';
+
   @ApiProperty({
     description:
       "The live lane's final outputs, keyed by the graph node id that produced them, filtered to the node ids the caller asked about. Each value is that node's own output object (a `core.agent` running the note publishes `{ text, sections, … }`). TASK-1022: on a note output (one carrying `sections`) the handed-off `text` is the HEADED rendering — `## <title>\\n<content>` per section in template order, `Not discussed` under an empty section, the `Running Summary` parser fallback without a heading, the flat text kept when nothing was said — because the finalizer binds the `out` socket, which the `core.agent` registry declares as `text`. The live session's own `text` (the NER offset base) is unchanged. Legitimately EMPTY for a consultation that never recorded — the finalizer then degrades with its own named reason rather than being handed a fabricated note.",

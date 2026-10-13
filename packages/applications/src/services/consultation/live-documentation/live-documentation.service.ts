@@ -1350,6 +1350,18 @@ const LIVE_CAPTURE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'RECORDING',
 const NOTE_PLAN_FAIL_CLOSED_CODES: ReadonlySet<string> = new Set([NOTE_INPUT_EXCEEDS_CONTEXT, 'NOTE_MODEL_CONTEXT_UNDECLARED']);
 
 /**
+ * How long a live-handoff read waits for an in-flight note-plan composition before answering
+ * `ended: false` (`pendingReason: NOTE_PLAN_COMPOSING`). Composition waits for each encounter's fact
+ * ledger — an LLM job that can land a minute after the stop under load — so an unbounded read held
+ * the request past the harness client's 30 s timeout. This bound sits well below it; the composition
+ * keeps running and remembers its plan on the record, which the harness's next poll reads.
+ */
+export const LIVE_HANDOFF_NOTE_PLAN_WAIT_MS = 10_000;
+
+/** The declared `pendingReason` of a handoff that has ended but whose note plan is still composing. */
+export const LIVE_HANDOFF_PENDING_NOTE_PLAN = 'NOTE_PLAN_COMPOSING';
+
+/**
  * The handoff record plus what {@link LiveDocumentationService.readLiveHandoff} learned composing it,
  * and the consultation's segment head it was composed for (`notePlanSegmentHead`).
  */
@@ -8969,6 +8981,8 @@ return 0`;
     // gets the plan: the note is written from the transcript record, not from the live text.
     const noteNodeIds = new Set((record?.noteNodeIds ?? []).filter(isRequested));
     const outputs = record ? await this.withNotePlan(consultationId, consultation, record, filtered, noteNodeIds) : filtered;
+    // The note plan is still composing past the read's bound: "ask again", declared as such.
+    if (outputs === null) return { ended: false, outputs: {}, context: {}, pendingReason: LIVE_HANDOFF_PENDING_NOTE_PLAN };
     return {
       ended: true,
       ...(record ? { endedAt: record.endedAt } : {}),
@@ -8995,6 +9009,9 @@ return 0`;
    * EMPTY (no text, no sections, `note_plan_error`): the finalizer then has nothing to write from
    * rather than a truncated fallback. Any other failure propagates, which the durable lane reads
    * as "not ready yet". Without a composer wired the outputs are returned unchanged.
+   *
+   * `null` when a composition is still running after {@link LIVE_HANDOFF_NOTE_PLAN_WAIT_MS}: the read
+   * answers "not ended yet" and the composition finishes in the background.
    */
   private async withNotePlan(
     consultationId: string,
@@ -9002,12 +9019,13 @@ return 0`;
     record: LiveHandoffRecordWithPlan,
     outputs: Record<string, Record<string, unknown>>,
     noteNodeIds: ReadonlySet<string> = new Set(),
-  ): Promise<Record<string, Record<string, unknown>>> {
+  ): Promise<Record<string, Record<string, unknown>> | null> {
     const withNoteNodes: Record<string, Record<string, unknown>> = { ...outputs };
     for (const nodeId of noteNodeIds) withNoteNodes[nodeId] ??= {};
     const isNote = (nodeId: string, output: Record<string, unknown>): boolean => noteNodeIds.has(nodeId) || isNoteOutput(output);
     if (!this.notePlanComposer || !Object.entries(withNoteNodes).some(([nodeId, output]) => isNote(nodeId, output))) return outputs;
-    const planned = rememberedPlanIsCurrent(record, consultation) ? record : await this.composeHandoffNotePlan(consultationId, consultation, record);
+    const planned = rememberedPlanIsCurrent(record, consultation) ? record : await this.awaitHandoffNotePlan(consultationId, consultation, record);
+    if (!planned) return null;
     return Object.fromEntries(
       Object.entries(withNoteNodes).map(([nodeId, output]) => {
         if (!isNote(nodeId, output)) return [nodeId, output];
@@ -9016,6 +9034,39 @@ return 0`;
         return [nodeId, { ...rest, text: '', note_plan_error: planned.notePlanError }];
       }),
     );
+  }
+
+  /**
+   * The composition's outcome if it settles within {@link LIVE_HANDOFF_NOTE_PLAN_WAIT_MS}, otherwise
+   * `null` — the composition keeps running, remembers its plan on the record, and a failure after
+   * the bound is logged (the next read composes again).
+   */
+  private async awaitHandoffNotePlan(
+    consultationId: string,
+    consultation: ConsultationEntity | null,
+    record: LiveHandoffRecordWithPlan,
+  ): Promise<LiveHandoffRecordWithPlan | null> {
+    const composition = this.composeHandoffNotePlan(consultationId, consultation, record);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const bound = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), LIVE_HANDOFF_NOTE_PLAN_WAIT_MS);
+    });
+    try {
+      const planned = await Promise.race([composition, bound]);
+      if (planned === null) {
+        this.logger.log({ message: 'Live handoff note plan still composing — answering not ended yet', consultationId });
+        composition.catch((error: unknown) => {
+          this.logger.warn({
+            message: 'Live handoff note-plan composition failed after the read answered — the next read composes again',
+            consultationId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
+      return planned;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Compose (single-flight per consultation) and remember the outcome on the handoff record. */

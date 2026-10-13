@@ -425,6 +425,13 @@ class SpeechSynthesisResponse(BaseModel):
     characters: int = 0
 
 
+#: The live-handoff read's own timeout. The gateway answers that route within a bound well below
+#: it (``ended: false`` + ``pendingReason: NOTE_PLAN_COMPOSING`` while the note plan composes), and
+#: it stays below the ``interpreter.load_live_outputs`` activity's 30 s start-to-close, so a slow read
+#: surfaces as the activity's logged "not ready yet" rather than racing Temporal's timeout.
+LIVE_HANDOFF_READ_TIMEOUT_S = 20.0
+
+
 class ApiClient:
     """Thin async client for the apps/api ``/internal/harness/*`` endpoints."""
 
@@ -473,15 +480,21 @@ class ApiClient:
             return cast("dict[str, Any]", resp.json())
 
     async def _get(
-        self, path: str, params: dict[str, Any], *, tenant_id: str | None = None
+        self,
+        path: str,
+        params: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         headers = self._headers()
         if tenant_id:
             headers["X-Tenant-Id"] = tenant_id
+        effective = self._timeout if timeout is None else timeout
         async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
                 resp = await client.get(
-                    self._url(path), params=params, headers=headers, timeout=self._timeout
+                    self._url(path), params=params, headers=headers, timeout=effective
                 )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
@@ -1329,6 +1342,8 @@ class ApiClient:
         * ``ended: false`` — the live session has not handed off yet. The interpreter's poll
           loop sleeps and asks again; it never fabricates an empty handoff, because an empty one
           is indistinguishable from "the clinician is still speaking".
+          ``pendingReason: NOTE_PLAN_COMPOSING`` marks a handoff whose note plan is still being
+          composed; it is polled the same way.
         * ``ended: true`` — the live lane is finished. ``outputs`` is keyed by the node id the
           lane ran, and may legitimately be empty for a consultation that never recorded.
 
@@ -1345,7 +1360,11 @@ class ApiClient:
         params: dict[str, Any] = {"tenantId": tenant_id, "runId": run_id}
         if node_ids:
             params["nodeIds"] = ",".join(node_ids)
-        return await self._get(f"/consultations/{consultation_id}/live-handoff", params)
+        return await self._get(
+            f"/consultations/{consultation_id}/live-handoff",
+            params,
+            timeout=min(self._timeout, LIVE_HANDOFF_READ_TIMEOUT_S),
+        )
 
     async def verify_governed_prompts(
         self, *, tenant_id: str, digests: list[str], pieces: list[dict[str, str]] | None
