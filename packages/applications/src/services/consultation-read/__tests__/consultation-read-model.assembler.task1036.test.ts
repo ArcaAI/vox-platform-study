@@ -195,4 +195,9 @@ describe('pure helpers', () => {
     expect(vitalsListOf(undefined)).toEqual([]);
     expect(vitalsListOf({ temperature: 37.2 })).toEqual([{ name: 'Temperature', value: '37.2', unit: '°C', measuredAt: null }]);
   });
+
+  it('vitalsListOf labels the temperature unit by its range, not a fixed °C', () => {
+    expect(vitalsListOf({ temperature: 97.8 })[0]?.unit).toBe('°F');
+    expect(vitalsListOf({ temperature: 12 })[0]?.unit).toBe('');
+  });
 });

@@ -23,6 +23,7 @@ import {
 } from '../consultation/context/client-clinical-context';
 import { readSpokenLanguageMode } from '../consultation/consultation/summary-language';
 import { resolveVisitTypeKey } from '../consultation/consultation/open-markers';
+import { temperatureUnitOf } from '../consultation/context/client-clinical-context';
 import { selectAuthoritativeNoteText } from '../consultation/harness/prior-visit-summary';
 import { resolvePlatformOutputLanguage } from '../consultation/summary/platform-output-language';
 import { DEFAULT_VISIT_TYPE_SERVICE } from '../consultation/visit-type/visit-type.service';
@@ -277,6 +278,7 @@ export function vitalsListOf(
   return VITAL_FIELDS.flatMap(({ key, name, unit }) => {
     const value = vitals[key];
     if (value === undefined || value === null || value === '') return [];
-    return [{ name, value: String(value), unit, measuredAt }];
+    const shownUnit = key === 'temperature' ? (temperatureUnitOf(Number(value)) ?? '') : unit;
+    return [{ name, value: String(value), unit: shownUnit, measuredAt }];
   });
 }
