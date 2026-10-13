@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { formatDateTime } from '@/shared/format';
 import { useConsultation, visitTypeOf } from '../../api';
+import { ConsultationWorkflowMeta } from '../consultation-workflow-meta';
 import { doctorDisplayName } from '../../lib/doctor-name';
 
 const EM_DASH = '—';
@@ -60,6 +61,7 @@ export function ConsultationHeaderMeta({ consultationId }: { consultationId: str
       <Field label="Encounters" loading={loading}>
         {c?.encounters ? String(c.encounters.length) : null}
       </Field>
+      {c ? <ConsultationWorkflowMeta run={c.governingRun} awaitingReview={c.processing === 'AWAITING_REVIEW'} /> : null}
     </dl>
   );
 }

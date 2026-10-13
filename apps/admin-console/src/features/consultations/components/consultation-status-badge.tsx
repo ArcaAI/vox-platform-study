@@ -77,14 +77,30 @@ export function ConsultationStatusBadge({
   processing,
   processingReason,
   governingRun,
+  compact = false,
 }: {
   status: string | undefined;
   processing?: string;
   processingReason?: string | null;
   governingRun?: GoverningRun | null;
+  /** Grid-cell form: one badge plus a single truncated muted line, so the row height never grows. */
+  compact?: boolean;
 }) {
   const meta = consultationStatusMeta(status, processing, processingReason);
   const runChip = processing === 'FAILED' || !governingRun ? undefined : GOVERNING_RUN_CHIP[governingRun.status];
+  if (compact) {
+    const secondary = [meta.processing?.label, meta.reason?.label, runChip?.label].filter(Boolean).join(' \u00b7 ');
+    return (
+      <span className="flex min-w-0 flex-col items-start gap-0.5">
+        <StatusBadge label={meta.status.label} colorRole={meta.status.role} icon={<StatusDot colorRole={meta.status.role} size="sm" />} />
+        {secondary ? (
+          <span data-testid="status-secondary" title={secondary} className="text-muted-foreground max-w-full truncate text-xs">
+            {secondary}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <StatusBadge label={meta.status.label} colorRole={meta.status.role} icon={<StatusDot colorRole={meta.status.role} size="sm" />} />
