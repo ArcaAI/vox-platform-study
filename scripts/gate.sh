@@ -167,7 +167,7 @@ while IFS='|' read -r n rc s; do
 done <"$RES"
 echo "total ${SECONDS}s"
 
-if [ $COVERAGE -eq 1 ]; then
+if [ $COVERAGE -eq 1 ] && [ -n "$(ls -A "$COV_DIR" 2>/dev/null)" ]; then
   echo
   python3 - "$COV_DIR" <<'PY'
 import json, pathlib, sys
