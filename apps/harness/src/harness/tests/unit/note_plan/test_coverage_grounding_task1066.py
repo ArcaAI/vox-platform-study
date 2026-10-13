@@ -180,12 +180,31 @@ def test_an_earlier_reading_stated_as_earlier_is_not_a_gap() -> None:
     assert _ungrounded({**SECTIONS, "objective": objective}) == []
 
 
-def test_no_reading_check_when_the_latest_encounter_states_none() -> None:
+def _without_spoken_readings(*replacements: str) -> NotePlanV1:
     raw = json.loads(PLAN.model_dump_json(by_alias=True))
-    raw["blocks"][-1]["content"] = raw["blocks"][-1]["content"].replace(
-        "Your blood pressure today is 152/94 and your pulse is 88.", "Thank you."
+    for block in raw["blocks"]:
+        for spoken in replacements:
+            block["content"] = block["content"].replace(spoken, "Thank you.")
+    return NotePlanV1.model_validate(raw)
+
+
+def test_an_earlier_encounters_reading_is_the_visits_when_the_latest_states_none() -> None:
+    # Encounter 2 states no reading; encounter 1's "150 over 95" is still this visit's BP.
+    plan = _without_spoken_readings("Your blood pressure today is 152/94 and your pulse is 88.")
+    result = check_coverage(plan, {**SECTIONS, "objective": "BP 110/60 mmHg, HR 74 bpm [R1]."}, {})
+    gaps = [(g.section_key, g.detail) for g in result.gaps if g.kind == "ungrounded"]
+
+    assert len(gaps) == 1
+    section, detail = gaps[0]
+    assert section == "objective"
+    assert "110/60" in detail and "150/95" in detail and "encounter 1" in detail
+
+
+def test_no_reading_check_when_no_encounter_states_one() -> None:
+    plan = _without_spoken_readings(
+        "Your blood pressure today is 152/94 and your pulse is 88.",
+        "Your blood pressure today is 150 over 95.",
     )
-    plan = NotePlanV1.model_validate(raw)
     result = check_coverage(plan, {**SECTIONS, "objective": "BP 110/60 mmHg, HR 74 bpm [R1]."}, {})
 
     assert [g for g in result.gaps if g.kind == "ungrounded"] == []

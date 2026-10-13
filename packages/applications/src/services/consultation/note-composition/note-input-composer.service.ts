@@ -53,7 +53,7 @@ import {
   resultLabel,
   segmentLabel,
 } from './labelled-transcript.renderer';
-import { readingsStatedIn, withSupersedingReadings } from './stated-vitals';
+import { visitReadings, withSupersedingReadings } from './stated-vitals';
 import { planNoteBudget, planSectionGroups, type BudgetPlan, type NoteBudgetSettings, type PlannerPriorEncounter } from './note-budget-planner';
 import {
   NOTE_INPUT_EXCEEDS_CONTEXT,
@@ -420,18 +420,22 @@ function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): Inp
     if (text) head.push({ key: entry.key, role: 'pre_summary', label: entry.label, lines: [text] });
   }
 
-  // The clinic's typed vitals may be days or months old; a reading the LATEST encounter states is
-  // today's. Both stay in the plan, each with its provenance, and the spoken one is marked as the
-  // one for this encounter.
-  const latestSpoken = spoken.length > 0 ? encounters.find((encounter) => encounter.seq === Math.max(...spoken.map((e) => e.seq))) : undefined;
-  const latestReadings = latestSpoken
-    ? readingsStatedIn(
-        latestSpoken.segments.map((segment) => ({ label: `${segmentLabel(segment.segmentSeq)} E${latestSpoken.seq}`, text: segment.text })),
-      )
-    : [];
+  // The clinic's typed vitals may be days or months old; a reading this visit's transcript states
+  // (each vital from the most recent encounter that states it) is today's. Both stay in the plan,
+  // each with its provenance, and the spoken one is marked as the one for this encounter.
+  const spokenSeqs = new Set(spoken.map((encounter) => encounter.seq));
+  const currentSeq = spoken.length > 0 ? Math.max(...spokenSeqs) : undefined;
+  const statedReadings = visitReadings(
+    encounters
+      .filter((encounter) => spokenSeqs.has(encounter.seq))
+      .map((encounter) => ({
+        seq: encounter.seq,
+        lines: encounter.segments.map((segment) => ({ label: `${segmentLabel(segment.segmentSeq)} E${encounter.seq}`, text: segment.text })),
+      })),
+  );
   const resultLines = snapshot.results.flatMap((result, index) =>
     result.text.trim()
-      ? [renderLabelledLine(resultLabel(index), result.clinicVitals ? withSupersedingReadings(result.text, latestReadings) : result.text)]
+      ? [renderLabelledLine(resultLabel(index), result.clinicVitals ? withSupersedingReadings(result.text, statedReadings, currentSeq) : result.text)]
       : [],
   );
   const resultItems = snapshot.results.filter((result) => result.text.trim()).map((result) => ref(result.itemId, result.versionNumber));

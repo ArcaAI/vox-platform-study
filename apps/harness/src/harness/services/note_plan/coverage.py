@@ -9,7 +9,9 @@ Four checks, no model call:
   fact line of a ledger block the plan rendered);
 * every safety statement a checked section makes is grounded (``ungrounded`` gaps): an allergy's
   agent and a dosed drug are stated by the source the sentence cites (any input when it cites
-  none), and a blood pressure or pulse stated as today's is the one the latest encounter states.
+  none), and a blood pressure or pulse is the one the visit's transcript states (the most recent
+  encounter that states it) unless the note dates it — and an earlier one is never stated in its
+  place.
 
 A citation is matched by its LABEL whatever its spelling: ``S8``, ``[S8]``, and the rendered
 ``[S8 E2]`` / ``[S8 E2 Doctor 00:00]`` all name ``S8``.
@@ -34,6 +36,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 
 from harness.services.note_plan.models import (
     CoverageCitationCounts,
@@ -290,23 +293,26 @@ _NOT_A_DRUG = frozenset(
     }
 )  # fmt: skip
 #: A vital reading as a note or a transcript states it (normalised text): blood pressure as a
-#: paired value, pulse as one value.
+#: paired value ("152/94", or "152 by 94" as it is often spoken), pulse as one value ("88",
+#: "88/min"). "PR" is the pulse rate, but an ECG's "PR interval" is not.
 _VITAL_READINGS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "BP",
         re.compile(
             r"(?<![a-z])(?:bp|b\.p\.?|blood pressure)(?![a-z])[^.;!?\d]{0,30}?"
-            r"(?P<value>\d{2,3}/\d{2,3})(?!\d|\.\d|/)"
+            r"(?P<high>\d{2,3})\s*(?:/|\bby\b)\s*(?P<low>\d{2,3})(?!\d|\.\d|/)"
         ),
     ),
     (
         "pulse",
         re.compile(
-            r"(?<![a-z])(?:pulse(?: rate)?|heart rate|hr|p\.r\.?)(?![a-z])[^.;!?\d]{0,20}?"
-            r"(?P<value>\d{2,3})(?!\d|\.\d|/)"
+            r"(?<![a-z])(?:pulse(?: rate)?|heart rate|hr|p\.r\.?|pr(?!\s*interval))(?![a-z])"
+            r"[^.;!?\d]{0,20}?(?P<value>\d{2,3})(?!\d|\.\d|/\d)"
         ),
     ),
 )
+_LINE_LABEL = re.compile(r"^\s*\[(?P<label>S\d+)(?:\s+(?P<encounter>E\d+))?[\s\]]")
+_ENCOUNTER_KEY = re.compile(r"^encounter_(?P<seq>\d+)$")
 #: A sentence that dates its reading or calls it an earlier one ("recorded 2025-06-20",
 #: "previous", "baseline") is not stating today's reading.
 _EARLIER_READING = re.compile(
@@ -321,15 +327,81 @@ def _sentences(text: str) -> list[str]:
     return [sentence for sentence in _SENTENCE_BREAK.split(text) if sentence.strip()]
 
 
+def _reading_value(match: re.Match[str]) -> str:
+    groups = match.groupdict()
+    return f"{groups['high']}/{groups['low']}" if groups.get("high") else groups["value"]
+
+
 def _readings(text: str) -> dict[str, list[str]]:
     """Every vital reading the (normalised) text states, by vital, in order."""
     found: dict[str, list[str]] = {}
     for vital, pattern in _VITAL_READINGS:
         for match in pattern.finditer(text):
             found.setdefault(vital, [])
-            if match.group("value") not in found[vital]:
-                found[vital].append(match.group("value"))
+            if _reading_value(match) not in found[vital]:
+                found[vital].append(_reading_value(match))
     return found
+
+
+@dataclass(slots=True)
+class _StatedReading:
+    """One vital as an encounter states it: its values, and the lines that state them."""
+
+    values: list[str]
+    encounter: str
+    lines: list[str]
+
+
+def _encounter_readings(content: str, encounter: str) -> dict[str, _StatedReading]:
+    """Every vital one encounter transcript states, with the ``[S17 E1]`` lines that state it."""
+    stated: dict[str, _StatedReading] = {}
+    for line in content.splitlines():
+        label = _LINE_LABEL.match(line)
+        cite = (
+            f"[{' '.join(p for p in (label.group('label'), label.group('encounter')) if p)}]"
+            if label
+            else ""
+        )
+        for vital, values in _readings(normalise_text(_strip_lead_label(line))).items():
+            reading = stated.setdefault(vital, _StatedReading([], encounter, []))
+            reading.values.extend(v for v in values if v not in reading.values)
+            if cite and cite not in reading.lines:
+                reading.lines.append(cite)
+    return stated
+
+
+def _current_readings(plan: NotePlanV1) -> dict[str, _StatedReading]:
+    """Per vital, this visit's reading: what the most recent encounter whose transcript states
+    that vital states, with the lines that state it.
+
+    Every encounter of a consultation is the same visit, so a reading read out in encounter 1 is
+    still the visit's when encounter 2 (a results review) states none. The clinic's typed set and
+    the previous visits are not encounters: their readings are the earlier ones it supersedes.
+    """
+    transcripts = sorted(
+        (
+            (int(m.group("seq")) if (m := _ENCOUNTER_KEY.match(block.key)) else 0, index, block)
+            for index, block in enumerate(plan.blocks)
+            if block.role == "encounter_transcript"
+        ),
+        key=lambda item: (item[0], item[1]),
+        reverse=True,
+    )
+    current: dict[str, _StatedReading] = {}
+    for seq, _, block in transcripts:
+        encounter = f"encounter {seq}" if seq else "the encounter"
+        for vital, reading in _encounter_readings(block.content, encounter).items():
+            current.setdefault(vital, reading)
+    return current
+
+
+def _states_reading(note: str, vital: str, value: str) -> bool:
+    """The (normalised, label-free) note states this reading, with or without its vital's name."""
+    if value in _readings(note).get(vital, ()):
+        return True
+    if vital == "BP":
+        return re.search(rf"(?<![\d/.]){re.escape(value)}(?![\d/]|\.\d)", note) is not None
+    return re.search(rf"(?<![\d/.]){re.escape(value)}\s*(?:bpm|/min)", note) is not None
 
 
 def _allergy_agents(text: str) -> list[str]:
@@ -358,10 +430,13 @@ def _grounding_gaps(
       cites — or, when the sentence cites no source label, by some input of the plan. A note that
       pins an earlier visit's allergy on today's "allergic to penicillin" line passes the number and
       citation checks; this is the check that catches it.
-    * A blood pressure or pulse stated as today's, when the LATEST encounter's transcript states a
-      different one, is an earlier reading (the clinic's open-time vitals, a previous visit) passed
-      off as today's. A sentence that dates or qualifies its reading, or cites the transcript line
-      that states it, is not.
+    * A blood pressure or pulse stated without a date, when the most recent encounter of this
+      consultation that states that vital states a different one, is an earlier reading (the
+      clinic's open-time vitals, a previous visit) passed off as this visit's. A sentence that dates or qualifies its reading, or
+      cites the transcript line that states it, is not.
+    * A note that states an earlier blood pressure or pulse — dated or not — and nowhere states
+      this visit's has dropped it: a gap in the section stating the earlier one. A note that states no reading of that vital at all is not
+      checked here.
     """
     corpus = normalise_text(
         "\n".join(
@@ -380,10 +455,10 @@ def _grounding_gaps(
         for line in block.content.splitlines()
         for label in [m.group("label") for m in _BRACKETED_LABEL.finditer(line)]
     }
-    latest = next(
-        (block for block in reversed(plan.blocks) if block.role == "encounter_transcript"), None
+    current = _current_readings(plan)
+    whole_note = normalise_text(
+        _ANY_BRACKET.sub(" ", "\n\n".join(sections.get(h.key, "") for h in plan.headings))
     )
-    latest_readings = _readings(normalise_text(latest.content)) if latest else {}
 
     gaps: list[CoverageGap] = []
     seen: set[tuple[str, str]] = set()
@@ -428,7 +503,7 @@ def _grounding_gaps(
                         else f"{title} states {drug} with a dose, which no source names."
                     ),
                 )
-            if not latest_readings or _EARLIER_READING.search(body):
+            if not current or _EARLIER_READING.search(body):
                 continue
             spoken = normalise_text(
                 "\n".join(
@@ -439,18 +514,41 @@ def _grounding_gaps(
                 )
             )
             for vital, values in _readings(body).items():
-                today = latest_readings.get(vital)
-                if not today:
+                reading = current.get(vital)
+                if not reading:
                     continue
                 for value in values:
-                    if value in today or contains(spoken, value):
+                    if value in reading.values or contains(spoken, value):
                         continue
                     _gap(
                         key,
                         f"{vital}:{value}",
-                        f"{title} states {vital} {value} as today's reading, but the latest "
-                        f"encounter's transcript states {vital} {', '.join(today)}.",
+                        f"{title} states {vital} {value} as this visit's reading, but "
+                        f"{reading.encounter}'s transcript states {vital} "
+                        f"{', '.join(reading.values)} {' '.join(reading.lines)}".rstrip() + ".",
                     )
+
+    # This visit's reading dropped for an earlier one.
+    for vital, reading in current.items():
+        if any(_states_reading(whole_note, vital, value) for value in reading.values):
+            continue
+        for key in checked:
+            section = normalise_text(_ANY_BRACKET.sub(" ", sections.get(key, "")))
+            earlier = [v for v in _readings(section).get(vital, ()) if v not in reading.values]
+            if not earlier or any((key, f"{vital}:{value}") in seen for value in earlier):
+                continue
+            _gap(
+                key,
+                f"{vital}:omitted",
+                f"{plan.heading_title(key)} states {vital} {', '.join(earlier)} from an earlier "
+                f"reading but not this visit's {vital} {', '.join(reading.values)}, which "
+                f"{reading.encounter}'s transcript states"
+                + (
+                    f" {' '.join(reading.lines)}; state it with that label."
+                    if reading.lines
+                    else "."
+                ),
+            )
     return gaps
 
 

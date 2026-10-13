@@ -7,7 +7,8 @@
  * today is 152/94 and your pulse is 88" in the same encounter. Nothing in the plan said which of the
  * two was today's. The R line now names the readings the LATEST encounter's transcript states, with
  * the line that states them, so both are carried with their provenance and the spoken one is marked
- * as the one for this encounter.
+ * as the one for this encounter. An earlier encounter of the same consultation is the same visit:
+ * a vital the latest encounter does not state is taken from the most recent one that does.
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -88,15 +89,17 @@ describe('clinic vitals vs the readings spoken in the encounter', () => {
     expect(content).toContain('[R1] Case note: BP 140/90 last week.');
   });
 
-  it('reads only the LATEST encounter: an earlier encounter’s reading does not supersede the clinic set', async () => {
+  it('an earlier encounter’s reading still supersedes the clinic set when the latest states none', async () => {
     const content = await resultsBlock(
       snapshot([
         { seq: 1, text: 'Your blood pressure is 150 over 95.', encounterSeq: 1 },
         { seq: 2, text: 'Your sugars are high.', encounterSeq: 2 },
       ]),
     );
-    expect(content).toContain(`[R2] ${CLINIC_VITALS}`);
-    expect(content).not.toMatch(/supersede/i);
+    const line = content.split('\n').find((l) => l.startsWith('[R2]')) ?? '';
+    expect(line).toContain(CLINIC_VITALS);
+    expect(line).toContain("encounter 1's transcript states BP 150/95 mmHg [S1 E1]");
+    expect(line).toMatch(/supersede/i);
   });
 
   it('leaves the line untouched when the encounter states no reading', async () => {
