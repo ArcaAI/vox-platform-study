@@ -1,5 +1,6 @@
 import { DocumentSectionEntity, DocumentSectionState } from '@arcaai/domains';
 import { SectionAnnotationDto, SectionProvenanceDto } from '../live-documentation/realtime/dto/section-patch.dto';
+import { sectionEncounterSeq } from '../live-documentation/realtime/section-store';
 import { DocumentSectionResponse } from './dto';
 
 /**
@@ -34,6 +35,7 @@ export class DocumentSectionDtoMapper {
       sectionKey: entity.sectionKey,
       title: entity.title,
       idx: entity.idx,
+      encounterSeq: sectionEncounterSeq(entity),
       state: STATE_WIRE[entity.state],
       revision: entity.revision,
       version: entity.version,

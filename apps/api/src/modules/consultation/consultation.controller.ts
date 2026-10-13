@@ -73,6 +73,7 @@ import {
   Param,
   Inject,
   Query,
+  ParseIntPipe,
   Headers,
   BadRequestException,
   ForbiddenException,
@@ -217,6 +218,13 @@ function requireExpectedVersion(expectedVersion: number | undefined): number {
     );
   }
   return expectedVersion;
+}
+
+/** `?encounter=n` on the section reads: encounters are 1-based, so anything below 1 is a 400. */
+function assertEncounterSeq(encounter: number | undefined): void {
+  if (encounter !== undefined && encounter < 1) {
+    throw new BadRequestException('encounter must be a positive integer.');
+  }
 }
 
 /** The real lifecycle status of a consultation response, whatever its `status` was projected to. */
@@ -1853,11 +1861,23 @@ export class ConsultationController {
       'consultation whose documents have not been written yet is an empty array, not a 404.',
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiQuery({
+    name: 'encounter',
+    required: false,
+    type: Number,
+    description:
+      "The consultation encounter (1-based) whose sections to return. Absent ⇒ the consultation's CURRENT encounter — an earlier encounter's sections are never served as the document of the one now open.",
+  })
+  @ApiResponse({ status: 400, description: '`encounter` is not a positive integer.' })
   @ApiResponse({ status: 404, description: 'Consultation not found, or not visible to this caller.' })
   @RequiredSvcScopes('svc:consultation:report:read')
-  async listAllDocumentSections(@Param('id') id: string): Promise<DocumentSectionResponse[]> {
+  async listAllDocumentSections(
+    @Param('id') id: string,
+    @Query('encounter', new ParseIntPipe({ optional: true })) encounter?: number,
+  ): Promise<DocumentSectionResponse[]> {
+    assertEncounterSeq(encounter);
     await this.verifyConsultationAccess(id);
-    return this.documentSectionService.listAllSections(id);
+    return encounter === undefined ? this.documentSectionService.listAllSections(id) : this.documentSectionService.listAllSections(id, encounter);
   }
 
   @ApiEndpoint({
@@ -1875,11 +1895,26 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'documentKey', description: "The tenant's `DocumentTemplate.slug` (e.g. `soap_note`, `discharge_summary`)" })
+  @ApiQuery({
+    name: 'encounter',
+    required: false,
+    type: Number,
+    description:
+      "The consultation encounter (1-based) whose sections to return. Absent ⇒ the consultation's CURRENT encounter — an earlier encounter's sections are never served as the document of the one now open.",
+  })
+  @ApiResponse({ status: 400, description: '`encounter` is not a positive integer.' })
   @ApiResponse({ status: 404, description: 'Consultation not found, or not visible to this caller.' })
   @RequiredSvcScopes('svc:consultation:report:read')
-  async listDocumentSections(@Param('id') id: string, @Param('documentKey') documentKey: string): Promise<DocumentSectionResponse[]> {
+  async listDocumentSections(
+    @Param('id') id: string,
+    @Param('documentKey') documentKey: string,
+    @Query('encounter', new ParseIntPipe({ optional: true })) encounter?: number,
+  ): Promise<DocumentSectionResponse[]> {
+    assertEncounterSeq(encounter);
     await this.verifyConsultationAccess(id);
-    return this.documentSectionService.listSections(id, documentKey);
+    return encounter === undefined
+      ? this.documentSectionService.listSections(id, documentKey)
+      : this.documentSectionService.listSections(id, documentKey, encounter);
   }
 
   @ApiEndpoint({
