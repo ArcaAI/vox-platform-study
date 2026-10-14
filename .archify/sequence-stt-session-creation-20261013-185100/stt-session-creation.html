@@ -1,0 +1,1916 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STT Session Creation: Step-by-Step Flow & Component Storage</title>
+  <style>
+    :root {
+      --bg: #0B0F19;
+      --card-bg: rgba(17, 24, 39, 0.88);
+      --card-border: rgba(55, 65, 81, 0.65);
+      --card-border-hover: rgba(99, 102, 241, 0.75);
+      --text: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --primary: #6366F1;
+      --primary-light: #818CF8;
+      --primary-glow: rgba(99, 102, 241, 0.25);
+      --emerald: #10B981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --amber: #F59E0B;
+      --amber-glow: rgba(245, 158, 11, 0.2);
+      --rose: #F43F5E;
+      --rose-glow: rgba(244, 63, 94, 0.2);
+      --cyan: #06B6D4;
+      --cyan-glow: rgba(6, 182, 212, 0.2);
+      --code-bg: #030712;
+      --border-radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #172554 0%, #0B0F19 55%, #030712 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    header {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+      padding: 18px 32px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-titles h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-live {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34D399;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .badge-live::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: #10B981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10B981;
+    }
+
+    .header-titles p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #4F46E5, #6366F1);
+      border-color: rgba(99, 102, 241, 0.5);
+      color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #4338CA, #4F46E5);
+      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.5);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1380px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 32px 24px 80px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .hint-bar {
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 0.84rem;
+      color: #C7D2FE;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .flow-container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+
+    .flow-block {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      position: relative;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .flow-block:hover {
+      border-color: var(--card-border-hover);
+      box-shadow: 0 12px 32px rgba(99, 102, 241, 0.15);
+    }
+
+    .block-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+      cursor: pointer;
+    }
+
+    .block-title-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .block-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.95rem;
+    }
+
+    .num-frontend {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60A5FA;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+    }
+
+    .num-router {
+      background: rgba(245, 158, 11, 0.2);
+      color: #FBBF24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    .num-guard {
+      background: rgba(244, 63, 94, 0.2);
+      color: #FB7185;
+      border: 1px solid rgba(244, 63, 94, 0.4);
+    }
+
+    .num-response {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .num-gateway {
+      background: rgba(139, 92, 246, 0.2);
+      color: #A78BFA;
+      border: 1px solid rgba(139, 92, 246, 0.4);
+    }
+
+    .block-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: -0.01em;
+    }
+
+    .block-subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .method-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .method-post {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+
+    .method-internal {
+      background: rgba(245, 158, 11, 0.15);
+      color: #FBBF24;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+    }
+
+    .method-status {
+      background: rgba(99, 102, 241, 0.15);
+      color: #818CF8;
+      border: 1px solid rgba(99, 102, 241, 0.35);
+    }
+
+    .flow-connector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: -6px 0;
+      z-index: 2;
+    }
+
+    .flow-line {
+      height: 20px;
+      width: 2px;
+      background: linear-gradient(to bottom, rgba(99, 102, 241, 0.7), rgba(99, 102, 241, 0.2));
+    }
+
+    .connector-badge {
+      background: rgba(17, 24, 39, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #94A3B8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pills-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .field-pill {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.76rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #E2E8F0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .field-pill .req {
+      color: #F43F5E;
+      font-weight: bold;
+    }
+
+    .field-pill .type-hint {
+      color: #64748B;
+      font-size: 0.7rem;
+    }
+
+    /* Sub-flow container */
+    .subflow-container {
+      margin-top: 22px;
+      background: rgba(11, 15, 25, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .subflow-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .subflow-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #FBBF24;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .subflow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 14px;
+    }
+
+    .sub-card {
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .sub-card:hover {
+      background: rgba(99, 102, 241, 0.08);
+      border-color: rgba(99, 102, 241, 0.45);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    }
+
+    .sub-card-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .sub-card-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .tag-guard {
+      color: #F43F5E;
+    }
+
+    .tag-spec {
+      color: #06B6D4;
+    }
+
+    .tag-state {
+      color: #F59E0B;
+    }
+
+    .tag-runtime {
+      color: #818CF8;
+    }
+
+    .tag-redis {
+      color: #10B981;
+    }
+
+    .comp-tier-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .tier-hash {
+      background: rgba(244, 63, 94, 0.15);
+      color: #FB7185;
+      border: 1px solid rgba(244, 63, 94, 0.35);
+    }
+
+    .tier-ram {
+      background: rgba(245, 158, 11, 0.15);
+      color: #FBBF24;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+    }
+
+    .tier-stream {
+      background: rgba(6, 182, 212, 0.15);
+      color: #22D3EE;
+      border: 1px solid rgba(6, 182, 212, 0.35);
+    }
+
+    .tier-task {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+
+    .tier-assembly {
+      background: rgba(139, 92, 246, 0.15);
+      color: #A78BFA;
+      border: 1px solid rgba(139, 92, 246, 0.35);
+    }
+
+    .sub-card-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.77rem;
+      color: #E2E8F0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 4px;
+    }
+
+    .sub-card-desc {
+      font-size: 0.77rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-top: 6px;
+    }
+
+    /* CODE BLOCKS - FIXED WHITE-SPACE PRE-WRAP AND INDENTATION */
+    .code-block {
+      background: var(--code-bg);
+      padding: 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.82rem;
+      color: #E2E8F0;
+      overflow-x: auto;
+      line-height: 1.6;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      white-space: pre-wrap;
+      word-break: break-word;
+      tab-size: 4;
+    }
+
+    .token-kw {
+      color: #F43F5E;
+      font-weight: 600;
+    }
+
+    .token-fn {
+      color: #60A5FA;
+    }
+
+    .token-str {
+      color: #34D399;
+    }
+
+    .token-var {
+      color: #FBBF24;
+    }
+
+    .token-comment {
+      color: #64748B;
+      font-style: italic;
+    }
+
+    .token-key {
+      color: #93C5FD;
+    }
+
+    .token-req {
+      color: #F43F5E;
+      font-weight: bold;
+    }
+
+    /* Modal / Drawer */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(3, 7, 18, 0.82);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .drawer {
+      background: #0D1322;
+      border-left: 1px solid rgba(255, 255, 255, 0.12);
+      width: 840px;
+      max-width: 95vw;
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -20px 0 50px rgba(0, 0, 0, 0.9);
+      animation: slideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+      }
+
+      to {
+        transform: translateX(0);
+      }
+    }
+
+    .drawer-header {
+      padding: 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      position: sticky;
+      top: 0;
+      background: #0D1322;
+      z-index: 10;
+    }
+
+    .drawer-header h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .drawer-header p {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .close-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      color: #9CA3AF;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.25rem;
+      transition: all 0.2s;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: #FFF;
+    }
+
+    .drawer-body {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .drawer-section {
+      background: rgba(17, 24, 39, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .section-title {
+      padding: 12px 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #93C5FD;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px 16px;
+      color: #94A3B8;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    td {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #E2E8F0;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: #64748B;
+      font-size: 0.78rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      margin-top: auto;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="header-titles">
+      <h1>
+        STT Session Creation Architecture
+        <span class="badge-live">Live Code & Storage Flow Inspector</span>
+      </h1>
+      <p>Doctor UI &rarr; Router (Step 1, Step 2 & 2.1 Sub-Flow) &rarr; Capacity &rarr; HTTP 201 Created</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-primary" onclick="openDrawer('block-stt-req')">📦 Inspect Full Payload</button>
+      <button class="btn" onclick="openDrawer('step-2-full-code')">💻 View Step 2 Full Python Code</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="hint-bar">
+      <span>💡 <strong>Click any block or sub-flow card</strong> to inspect the exact Python code, schemas, and fields
+        stored in memory and Redis.</span>
+      <span style="font-size:0.75rem; color:#94A3B8;">Verified on <code>project-hope/apps/stt</code></span>
+    </div>
+
+    <div class="flow-container">
+
+      <!-- ================= BLOCK 1 ================= -->
+      <div class="flow-block" id="block-frontend" onclick="openDrawer('block-frontend')">
+        <div class="block-header">
+          <div class="block-title-area">
+            <div class="block-num num-frontend">1</div>
+            <div>
+              <div class="block-title">Doctor UI Client Ingress</div>
+              <div class="block-subtitle">Clinical Browser / Mobile Client starts stream session</div>
+            </div>
+          </div>
+          <span class="method-tag method-post">POST /consultations/{id}/stream/init</span>
+        </div>
+        <p style="font-size:0.86rem; color:#CBD5E1;">
+          Doctor initiates consultation speech session. The frontend transmits consultation identity, language mode
+          selection, and audio sample rate.
+        </p>
+        <div class="pills-grid">
+          <span class="field-pill"><span class="req">*</span>consultationId<span class="type-hint">uuid</span></span>
+          <span class="field-pill"><span class="req">*</span>languageMode<span
+              class="type-hint">'en'|'ml'|'auto'</span></span>
+          <span class="field-pill"><span class="req">*</span>tenantId<span class="type-hint">uuid</span></span>
+          <span class="field-pill">sampleRate<span class="type-hint">16000 Hz</span></span>
+        </div>
+      </div>
+
+      <!-- Connector 1 -->
+      <div class="flow-connector">
+        <div class="flow-line"></div>
+        <div class="connector-badge">API Gateway Verification & ResolvedAsrSpec Compilation</div>
+        <div class="flow-line"></div>
+      </div>
+
+      <!-- ================= BLOCK 2 ================= -->
+      <div class="flow-block" id="block-stt-req">
+        <div class="block-header" onclick="openDrawer('block-stt-req')">
+          <div class="block-title-area">
+            <div class="block-num num-router">2</div>
+            <div>
+              <div class="block-title">STT Service Router (FastAPI routes.py)</div>
+              <div class="block-subtitle">Endpoint: <code>POST /internal/streaming/sessions</code> (routes.py:99-216)
+              </div>
+            </div>
+          </div>
+          <span class="method-tag method-internal">CreateStreamingSessionRequest</span>
+        </div>
+        <p style="font-size:0.86rem; color:#CBD5E1;">
+          Handles internal session creation across sequential steps. Receives 17 request parameters (required fields
+          marked with <span style="color:#F43F5E; font-weight:bold;">*</span>).
+        </p>
+
+        <!-- STEP 1 CARD -->
+        <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px;">
+
+          <div
+            style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;"
+            onclick="openDrawer('step-1');">
+            <div>
+              <span style="color:#818CF8; font-weight:700; font-size:0.8rem; margin-right:8px;">STEP 1</span>
+              <code style="color:#F3F4F6; font-size:0.85rem; font-weight:600;">mgr = _require_session_manager()</code>
+              <p style="font-size:0.77rem; color:#9CA3AF; margin-top:2px;">Verifies SessionManager singleton startup.
+                Raises <code>HTTP 503 "Streaming module not initialized"</code> if unready.</p>
+            </div>
+            <span class="btn" style="padding: 4px 10px; font-size:0.72rem;">Inspect Step 1 &rarr;</span>
+          </div>
+
+          <!-- STEP 2: EXACT CALL CODE BLOCK -->
+          <div
+            style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 10px; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div>
+                <span style="color:#FBBF24; font-weight:700; font-size:0.82rem; margin-right:8px;">STEP 2</span>
+                <span style="color:#FFFFFF; font-weight:700; font-size:0.95rem;">SessionManager Call in routes.py (lines
+                  127–146)</span>
+              </div>
+              <button class="btn btn-primary" style="padding: 4px 10px; font-size:0.72rem;"
+                onclick="openDrawer('step-2-full-code')">View Full Implementation &rarr;</button>
+            </div>
+
+            <div class="code-block"><span class="token-kw">session</span> = <span class="token-kw">await</span>
+              mgr.<span class="token-fn">create_session</span>(
+              session_id=request.session_id,
+              tenant_id=request.tenant_id,
+              pipeline_id=request.pipeline_id,
+              consultation_id=request.consultation_id,
+              sample_rate=request.sample_rate,
+              audio_bucket_name=request.audio_bucket_name <span class="token-kw">or</span> <span
+                class="token-str">"hope-audio"</span>,
+              user_id=request.user_id,
+              language=request.language,
+              storage=request.storage,
+              provider_overrides=request.provider_overrides,
+              fallback_pipeline_id=request.fallback_pipeline_id,
+              language_mode=request.language_mode,
+              start_on=request.start_on <span class="token-kw">or</span> <span class="token-str">"primary"</span>,
+              auto_switch_enabled=request.auto_switch_enabled,
+              consecutive_failure_threshold=request.consecutive_failure_threshold,
+              channel_count=request.channel_count,
+              resolved_spec=request.resolved_spec,
+              voice_profiles=request.voice_profiles,
+              )</div>
+            <p style="font-size:0.8rem; color:#D1D5DB; margin-top:8px;">
+              Executes the complete creation lifecycle inside <code>session_manager.py:1435–1750</code>. Invokes the
+              sub-steps in <strong>2.1</strong> below.
+            </p>
+          </div>
+
+        </div>
+
+        <!-- ================= SUB-FLOW INSIDE STEP 2: STEP 2.1 ================= -->
+        <div class="subflow-container">
+          <div class="subflow-top">
+            <div class="subflow-title">
+              <span>⚡</span> STEP 2.1: Inside <code>async def create_session(...)</code> Execution & Components
+            </div>
+            <span style="font-size:0.74rem; color:#FCD34D;">Single unified lifecycle &bull; Returns
+              <code>StreamSession | None</code></span>
+          </div>
+
+          <div class="subflow-grid">
+
+            <!-- 2.1.1 Draining Guard -->
+            <div class="sub-card" onclick="openDrawer('sub-draining');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-guard">2.1.1 Draining Guard (lines 1435-1438)</span>
+                </div>
+                <div class="sub-card-code">if getattr(self, "_draining", False): raise SessionManagerDrainingError(...)
+                </div>
+                <div class="sub-card-desc">Rejects incoming sessions if pod is terminating/scaling down (HTTP 503
+                  Retry-After: 30).</div>
+              </div>
+            </div>
+
+            <!-- 2.1.2 Capacity Guard -->
+            <div class="sub-card" onclick="openDrawer('sub-capacity');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-guard">2.1.2 Capacity Guard (lines 1441-1442)</span>
+                </div>
+                <div class="sub-card-code">if not await self._capacity_guard.try_acquire(session_id): return None</div>
+                <div class="sub-card-desc">Checks <code>active &lt; max_streams</code>. If at ceiling &rarr; returns
+                  <code>None</code> immediately.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.3 Cold Load Guard -->
+            <div class="sub-card" onclick="openDrawer('sub-creating');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-guard">2.1.3 Slot Leak Guard (line 1454)</span>
+                </div>
+                <div class="sub-card-code">self._creating.add(session_id) [TASK-985 N-1]</div>
+                <div class="sub-card-desc">Protects slot from 10s background heartbeat reconciler during 4.6s–16.4s cold
+                  model loads.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.4 Spec Registration -->
+            <div class="sub-card" onclick="openDrawer('sub-spec');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-spec">2.1.4 Spec Registration (lines 1458-1485)</span>
+                </div>
+                <div class="sub-card-code">bundle = self._register_resolved_spec(session_id, resolved_spec)</div>
+                <div class="sub-card-desc">Registers ResolvedAsrSpec bundle, extracts runtime keys, auto_switch, and
+                  resolves language_mode.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.5 Storage Routing -->
+            <div class="sub-card" onclick="openDrawer('sub-storage');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-state">2.1.5 Storage Routing (lines 1489-1494)</span>
+                </div>
+                <div class="sub-card-code">blob._resolver.set_tenant_storage(tenant_id, storage)</div>
+                <div class="sub-card-desc">Pins tenant storage routing (MinIO, S3, or Azure Blob) before any audio
+                  uplink begins.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.6 Metadata & Session Object -->
+            <div class="sub-card" onclick="openDrawer('comp-metadata');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-state">2.1.6 metadata & session (lines 1497-1520)</span>
+                  <span class="comp-tier-badge tier-hash">Redis Hash + RAM</span>
+                </div>
+                <div class="sub-card-code">metadata = SessionMetadata(...); session = StreamSession(...)</div>
+                <div class="sub-card-desc"><strong>metadata:</strong> Durable Redis Hash. <strong>session:</strong> RAM
+                  PCM accumulators (<code>audio_buffer</code>, <code>ring_buffer</code>). Synchronously persisted to
+                  Redis.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.7 In-Memory Stashing -->
+            <div class="sub-card" onclick="openDrawer('sub-stashing');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-state">2.1.7 RAM Stash (lines 1525-1541)</span>
+                  <span class="comp-tier-badge tier-ram">RAM Only</span>
+                </div>
+                <div class="sub-card-code">self._provider_overrides, voice_profiles, channel_count</div>
+                <div class="sub-card-desc">Stashes BYO API keys, voice biometric vectors, and mic channels in process
+                  RAM; never logged or written to disk.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.8 Pipeline Config Loading -->
+            <div class="sub-card" onclick="openDrawer('sub-config');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-runtime">2.1.8 Pipeline Config & Model Origins (lines 1558-1563)</span>
+                  <span class="comp-tier-badge tier-assembly">Spec + Local / Cloud</span>
+                </div>
+                <div class="sub-card-code">pipeline_config = await self._load_pipeline_config(initial_pipeline_id)</div>
+                <div class="sub-card-desc">Resolves model origin paths: In-Memory Spec Bundle, Local NVMe (/models),
+                  HuggingFace cache, or Cloud BYOK endpoints.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.9 Assemble Runtime & Fallback -->
+            <div class="sub-card" onclick="openDrawer('comp-runtime');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-runtime">2.1.9 runtime (_SessionRuntime) (lines 1573-1633)</span>
+                  <span class="comp-tier-badge tier-assembly">RAM Dataclass</span>
+                </div>
+                <div class="sub-card-code">runtime = await self._assemble_session_runtime(...) [Fail-Open]</div>
+                <div class="sub-card-desc">Loads Silero VAD, Whisper ASR & DeepFilterNet. If primary fails to load,
+                  automatically opens on fallback engine!</div>
+              </div>
+            </div>
+
+            <!-- 2.1.10 Handlers: Publisher, Preprocessor, Worker -->
+            <div class="sub-card" onclick="openDrawer('sub-handlers-trio');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-runtime">2.1.10 publisher, preprocessor, worker (lines 1634-1666)</span>
+                  <span class="comp-tier-badge tier-stream">Egress & DSP</span>
+                </div>
+                <div class="sub-card-code">publisher, preprocessor, inference_worker; streaming_session_started()</div>
+                <div class="sub-card-desc">Binds real-time publisher (Redis stream), VAD preprocessor, inference worker
+                  (RepeatGuard, lexicon), and Prometheus metrics.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.11 Redis Consumers & Listeners -->
+            <div class="sub-card" onclick="openDrawer('sub-consumers-duo');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-redis">2.1.11 consumer & controllistener (lines 1677-1691)</span>
+                  <span class="comp-tier-badge tier-task">Asyncio Tasks</span>
+                </div>
+                <div class="sub-card-code">consumer = IngestionConsumer(...); control_listener = ControlListener(...)
+                </div>
+                <div class="sub-card-desc"><strong>consumer:</strong> Reads <code>stt:audio:{id}</code> via consumer
+                  group. <strong>controllistener:</strong> Reads <code>stt:control:{id}</code> for FINALIZE.</div>
+              </div>
+            </div>
+
+            <!-- 2.1.12 Switch Controller & Start -->
+            <div class="sub-card" onclick="openDrawer('comp-switch-controller');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-redis">2.1.12 switch_controller &amp; Start (lines 1696-1733)</span>
+                  <span class="comp-tier-badge tier-ram">Failover State Machine</span>
+                </div>
+                <div class="sub-card-code">await consumer.start()<br>await control_listener.start()</div>
+                <div class="sub-card-desc">Spawns background asyncio tasks: <code>consumer.start()</code> polls Redis <code>AUDIO_CONSUMER_GROUP</code> for incoming 16kHz PCM audio buffers; <code>control_listener.start()</code> polls <code>stt:control</code> commands. Logs session created and returns session!</div>
+              </div>
+            </div>
+
+            <!-- 2.1.13 Rollback & Slot Cleanup -->
+            <div class="sub-card" onclick="openDrawer('sub-rollback');">
+              <div>
+                <div class="sub-card-top-bar">
+                  <span class="sub-card-tag tag-guard">2.1.13 Rollback & Slot Cleanup (lines 1734-1750)</span>
+                </div>
+                <div class="sub-card-code">except Exception: await self.remove_session(); finally:
+                  self._creating.discard()</div>
+                <div class="sub-card-desc">Safely pops spec bundles, releases capacity slot, tears down Redis state on
+                  failure, and clears creating set.</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Connector 2 -->
+      <div class="flow-connector">
+        <div class="flow-line"></div>
+        <div class="connector-badge">Step 2 Execution Returns &rarr; Evaluation in routes.py</div>
+        <div class="flow-line"></div>
+      </div>
+
+      <!-- ================= BLOCK 3: STEP 3 ================= -->
+      <div class="flow-block" id="block-step-3" onclick="openDrawer('step-3')">
+        <div class="block-header">
+          <div class="block-title-area">
+            <div class="block-num num-guard">3</div>
+            <div>
+              <div class="block-title">Step 3: Capacity Guard Evaluation</div>
+              <div class="block-subtitle"><code>guard = mgr.capacity_guard</code> (routes.py:196-205)</div>
+            </div>
+          </div>
+          <span class="method-tag method-status">503 Capacity Gate</span>
+        </div>
+        <div class="code-block"><span class="token-kw">guard</span> = mgr.capacity_guard
+
+          <span class="token-kw">if</span> session <span class="token-kw">is</span> <span class="token-var">None</span>:
+          <span class="token-comment"># At capacity — return 503 with retry hint</span>
+          <span class="token-kw">raise</span> <span class="token-fn">HTTPException</span>(
+          status_code=<span class="token-var">503</span>,
+          detail=<span class="token-str">"At capacity"</span>,
+          headers={<span class="token-str">"Retry-After"</span>: <span class="token-str">"5"</span>},
+          )
+        </div>
+        <p style="font-size:0.84rem; color:#9CA3AF; margin-top:10px;">
+          Inspects <code>guard.max_streams</code> and <code>guard.active_count</code>. If Step 2 returned
+          <code>None</code>, raises HTTP 503 with <code>Retry-After: 5</code> so the Gateway reroutes traffic to another
+          worker.
+        </p>
+      </div>
+
+      <!-- Connector 3 -->
+      <div class="flow-connector">
+        <div class="flow-line"></div>
+        <div class="connector-badge">Session Admitted &rarr; Construct Egress Response</div>
+        <div class="flow-line"></div>
+      </div>
+
+      <!-- ================= BLOCK 4: STEP 4 ================= -->
+      <div class="flow-block" id="block-step-4" onclick="openDrawer('step-4')">
+        <div class="block-header">
+          <div class="block-title-area">
+            <div class="block-num num-response">4</div>
+            <div>
+              <div class="block-title">Step 4: STT Response Generation</div>
+              <div class="block-subtitle"><code>return StreamingSessionResponse(...)</code> (routes.py:206-216)</div>
+            </div>
+          </div>
+          <span class="method-tag method-post">HTTP 201 Created</span>
+        </div>
+        <div class="code-block">active_pipeline_id, active_engine = <span
+            class="token-fn">_resolve_active_pipeline</span>(mgr, session)
+
+          <span class="token-kw">return</span> <span class="token-fn">StreamingSessionResponse</span>(
+          session_id=session.session_id,
+          status=<span class="token-str">"active"</span>,
+          max_concurrent=guard.max_streams,
+          current_active=guard.active_count,
+          pipeline_id=active_pipeline_id,
+          active_engine=active_engine,
+          voice_profile_seeded=mgr.<span class="token-fn">get_voice_profile_seeded</span>(session.session_id),
+          )
+        </div>
+        <div class="pills-grid" style="margin-top:14px;">
+          <span class="field-pill"><span class="req">*</span>session_id<span class="type-hint">uuid</span></span>
+          <span class="field-pill"><span class="req">*</span>status<span class="type-hint">"active"</span></span>
+          <span class="field-pill"><span class="req">*</span>max_concurrent<span class="type-hint">10</span></span>
+          <span class="field-pill"><span class="req">*</span>current_active<span class="type-hint">1</span></span>
+          <span class="field-pill"><span class="req">*</span>pipeline_id<span class="type-hint">uuid</span></span>
+          <span class="field-pill"><span class="req">*</span>active_engine<span
+              class="type-hint">"primary"|"fallback"</span></span>
+          <span class="field-pill">voice_profile_seeded<span class="type-hint">true|false</span></span>
+        </div>
+      </div>
+
+      <!-- Connector 4 -->
+      <div class="flow-connector">
+        <div class="flow-line"></div>
+        <div class="connector-badge">HTTP 201 Created Returned to Gateway &rarr; Handshake Ready</div>
+        <div class="flow-line"></div>
+      </div>
+
+      <!-- ================= BLOCK 5 ================= -->
+      <div class="flow-block" id="block-gateway-res" onclick="openDrawer('block-gateway-res')">
+        <div class="block-header">
+          <div class="block-title-area">
+            <div class="block-num num-gateway">5</div>
+            <div>
+              <div class="block-title">Gateway to Frontend Handshake</div>
+              <div class="block-subtitle">Gateway completes handshake and returns WebSocket URL</div>
+            </div>
+          </div>
+          <span class="method-tag method-status">HTTP 200 Ready</span>
+        </div>
+        <p style="font-size:0.86rem; color:#CBD5E1;">
+          The API Gateway maps the response and returns the final WebSocket connection handshake to the Doctor UI:
+        </p>
+        <div class="code-block" style="margin-top:10px;">{
+          <span class="token-key">"status"</span>: <span class="token-str">"ready"</span>,
+          <span class="token-key">"sessionId"</span>: <span
+            class="token-str">"c7a8b0e1-4567-4890-a123-b123456789ab"</span>,
+          <span class="token-key">"websocketUrl"</span>: <span
+            class="token-str">"wss://api.vox.ai/v1/stt/streaming/c7a8b0e1-4567-4890-a123-b123456789ab"</span>
+          }
+        </div>
+        <p style="font-size:0.82rem; color:#34D399; margin-top:8px;">
+          &check; Doctor's browser opens <code>websocketUrl</code> &rarr; Microphone streams 16kHz PCM audio buffers
+          directly into Redis audio stream <code>stt:audio:{sessionId}</code>.
+        </p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Modal / Drawer -->
+  <div class="modal-overlay" id="modal-overlay" onclick="closeDrawer()">
+    <div class="drawer" onclick="event.stopPropagation()">
+      <div class="drawer-header">
+        <div>
+          <h3 id="drawer-title">Details Inspector</h3>
+          <p id="drawer-subtitle">Detailed field specifications and implementation</p>
+        </div>
+        <button class="close-btn" onclick="closeDrawer()">&times;</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </div>
+  </div>
+
+  <footer>
+    <p>Project Hope STT Platform Study &bull; Generated from repository evidence at
+      <code>apps/stt/src/stt/streaming/</code></p>
+  </footer>
+
+  <script>
+    const drawerData = {
+      'block-frontend': {
+        title: 'Block 1: Frontend Client Ingress',
+        subtitle: 'Endpoint: POST /consultations/{id}/stream/init',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title"><span>Incoming JSON Payload</span><span style="color:#F43F5E;">* = Required Field</span></div>
+            <div class="code-block">{
+  <span class="token-key">"consultationId"</span><span class="token-req">*</span>: <span class="token-str">"0199a861-1234-7000-8000-000000000042"</span>,
+  <span class="token-key">"languageMode"</span><span class="token-req">*</span>: <span class="token-str">"en"</span>,
+  <span class="token-key">"tenantId"</span><span class="token-req">*</span>: <span class="token-str">"00000000-0000-0000-0000-000000000000"</span>,
+  <span class="token-key">"sampleRate"</span>: <span class="token-var">16000</span>
+}</div>
+          </div>
+          <div class="drawer-section">
+            <div class="section-title">Field Specification Table</div>
+            <div class="table-container">
+              <table>
+                <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>consultationId</code></td><td>string (UUID)</td><td><span style="color:#F43F5E;font-weight:bold;">Yes *</span></td><td>Unique clinical consultation ID for EHR sync.</td></tr>
+                  <tr><td><code>languageMode</code></td><td>string</td><td><span style="color:#F43F5E;font-weight:bold;">Yes *</span></td><td><code>'en'</code>, <code>'ml'</code>, <code>'ml-en'</code>, or <code>'auto'</code>.</td></tr>
+                  <tr><td><code>tenantId</code></td><td>string (UUID)</td><td><span style="color:#F43F5E;font-weight:bold;">Yes *</span></td><td>Organization tenant ID for multi-tenant isolation.</td></tr>
+                  <tr><td><code>sampleRate</code></td><td>integer</td><td>No (16000)</td><td>Audio capture frequency in Hertz.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `
+      },
+
+      'block-stt-req': {
+        title: 'Block 2: CreateStreamingSessionRequest',
+        subtitle: 'Full Pydantic Model (schemas.py:10-126)',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title"><span>Full Request JSON Payload</span><span style="color:#F43F5E;">* = Required Field</span></div>
+            <div class="code-block">{
+  <span class="token-key">"session_id"</span><span class="token-req">*</span>: <span class="token-str">"c7a8b0e1-4567-4890-a123-b123456789ab"</span>,
+  <span class="token-key">"tenant_id"</span><span class="token-req">*</span>: <span class="token-str">"00000000-0000-0000-0000-000000000000"</span>,
+  <span class="token-key">"pipeline_id"</span><span class="token-req">*</span>: <span class="token-str">"0199a861-0000-7000-8000-000000000001"</span>,
+  <span class="token-key">"consultation_id"</span>: <span class="token-str">"0199a861-1234-7000-8000-000000000042"</span>,
+  <span class="token-key">"sample_rate"</span>: <span class="token-var">16000</span>,
+  <span class="token-key">"channel_count"</span>: <span class="token-var">1</span>,
+  <span class="token-key">"language_mode"</span>: <span class="token-str">"en"</span>,
+  <span class="token-key">"audio_bucket_name"</span>: <span class="token-str">"hope-audio"</span>,
+  <span class="token-key">"resolved_spec"</span>: {
+    <span class="token-key">"models"</span>: {
+      <span class="token-key">"asr"</span>: { <span class="token-key">"slug"</span>: <span class="token-str">"whisper-turbo"</span> },
+      <span class="token-key">"vad"</span>: { <span class="token-key">"slug"</span>: <span class="token-str">"silero-vad"</span> }
+    },
+    <span class="token-key">"parameters"</span>: {
+      <span class="token-key">"decoding"</span>: { <span class="token-key">"prompt"</span>: <span class="token-str">"Clinical terminology"</span>, <span class="token-key">"hotwords"</span>: [<span class="token-str">"paracetamol"</span>] }
+    }
+  },
+  <span class="token-key">"voice_profiles"</span>: [
+    { <span class="token-key">"profile_id"</span>: <span class="token-str">"prof-dr-smith"</span>, <span class="token-key">"embedding"</span>: [0.0124, -0.0451, 0.1235] }
+  ]
+}</div>
+          </div>
+        `
+      },
+
+      'step-1': {
+        title: 'Step 1: _require_session_manager()',
+        subtitle: 'Source: routes.py:40-48',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Implementation</div>
+            <div class="code-block"><span class="token-kw">def</span> <span class="token-fn">_require_session_manager</span>() -&gt; SessionManager:
+    <span class="token-str">"""Return the SessionManager or raise 503 if streaming is not initialized."""</span>
+    mgr = <span class="token-fn">get_session_manager</span>()
+    <span class="token-kw">if</span> mgr <span class="token-kw">is</span> <span class="token-var">None</span>:
+        <span class="token-kw">raise</span> <span class="token-fn">HTTPException</span>(
+            status_code=<span class="token-var">503</span>,
+            detail=<span class="token-str">"Streaming module not initialized"</span>,
+        )
+    <span class="token-kw">return</span> mgr</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1;">
+              Ensures the STT worker has finished its initialization (PyTorch, ONNX Runtime, Redis connection pool, CapacityGuard).
+            </p>
+          </div>
+        `
+      },
+
+      'step-2-full-code': {
+        title: 'Step 2: Full Python Implementation',
+        subtitle: 'SessionManager.create_session (session_manager.py:1435-1745)',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Exact session_manager.py Source Code</div>
+            <div class="code-block"><span class="token-comment"># 1. Planned scale-down check</span>
+<span class="token-kw">if</span> <span class="token-fn">getattr</span>(self, <span class="token-str">"_draining"</span>, <span class="token-var">False</span>):
+    <span class="token-kw">raise</span> <span class="token-fn">SessionManagerDrainingError</span>(
+        <span class="token-str">f"worker {self._worker_id} is draining; rejecting new session {session_id}"</span>
+    )
+
+<span class="token-comment"># 2. Check capacity</span>
+<span class="token-kw">if not await</span> self._capacity_guard.<span class="token-fn">try_acquire</span>(session_id):
+    <span class="token-kw">return</span> <span class="token-var">None</span>
+
+<span class="token-comment"># 3. TASK-985 N-1: Cold model load leak guard</span>
+self._creating.<span class="token-fn">add</span>(session_id)
+<span class="token-kw">try</span>:
+    <span class="token-comment"># 4. TASK-861: Register spec bundle</span>
+    <span class="token-kw">if</span> resolved_spec <span class="token-kw">is not</span> <span class="token-var">None</span>:
+        bundle = self.<span class="token-fn">_register_resolved_spec</span>(session_id, resolved_spec)
+        pipeline_id = bundle.runtime_key
+        fallback_pipeline_id = bundle.fallback_runtime_key
+        <span class="token-kw">if</span> auto_switch_enabled <span class="token-kw">is</span> <span class="token-var">None</span>:
+            auto_switch_enabled = bundle.spec.fallback.auto_switch
+        <span class="token-kw">if</span> consecutive_failure_threshold <span class="token-kw">is</span> <span class="token-var">None</span>:
+            consecutive_failure_threshold = (
+                bundle.spec.fallback.switch_after_consecutive_failures
+            )
+        <span class="token-kw">if not</span> language_mode:
+            language_mode = <span class="token-fn">_language_mode_for_declared_language</span>(language)
+            <span class="token-kw">if not</span> language_mode <span class="token-kw">and not</span> language:
+                language_mode = bundle.spec.decoding.language_mode
+
+    <span class="token-comment"># 5. Storage routing</span>
+    <span class="token-kw">if</span> storage <span class="token-kw">and</span> tenant_id:
+        blob = self.<span class="token-fn">_get_blob_service</span>()
+        blob._resolver.<span class="token-fn">set_tenant_storage</span>(tenant_id, storage)
+    <span class="token-kw">elif</span> audio_bucket_name <span class="token-kw">and</span> tenant_id:
+        blob = self.<span class="token-fn">_get_blob_service</span>()
+        blob._resolver.<span class="token-fn">set_tenant_bucket</span>(tenant_id, <span class="token-str">"audio"</span>, audio_bucket_name)
+
+    <span class="token-comment"># 6. Build metadata & session object</span>
+    metadata = <span class="token-fn">SessionMetadata</span>(
+        session_id=session_id,
+        tenant_id=tenant_id,
+        pipeline_id=pipeline_id,
+        consultation_id=consultation_id,
+        status=SessionStatus.ACTIVE,
+        sample_rate=sample_rate,
+        worker_id=self._worker_id,
+        user_id=user_id,
+        resolved_spec_json=json.<span class="token-fn">dumps</span>(resolved_spec) <span class="token-kw">if</span> resolved_spec <span class="token-kw">else</span> <span class="token-str">""</span>,
+        language_mode=language_mode <span class="token-kw">or</span> <span class="token-str">""</span>,
+    )
+    session = <span class="token-fn">StreamSession</span>(metadata=metadata, redis=self._redis)
+    <span class="token-kw">await</span> session.<span class="token-fn">force_persist</span>()
+
+    <span class="token-comment"># 7. In-memory stashing</span>
+    self._provider_overrides[session_id] = <span class="token-fn">dict</span>(provider_overrides <span class="token-kw">or</span> {})
+    <span class="token-kw">if</span> voice_profiles:
+        self._session_voice_profiles[session_id] = <span class="token-fn">list</span>(voice_profiles)
+    <span class="token-kw">if</span> fallback_pipeline_id:
+        self._fallback_pipeline_ids[session_id] = fallback_pipeline_id
+    <span class="token-kw">if</span> language_mode:
+        self._session_language_modes[session_id] = language_mode
+    <span class="token-kw">if</span> channel_count <span class="token-kw">and</span> channel_count &gt; 1:
+        self._session_channel_counts[session_id] = channel_count
+
+    <span class="token-comment"># 8. Load pipeline config & assemble runtime (with fail-open fallback!)</span>
+    started_on_fallback = start_on == <span class="token-str">"fallback"</span> <span class="token-kw">and</span> <span class="token-fn">bool</span>(fallback_pipeline_id)
+    created_on_fallback = <span class="token-var">False</span>
+    initial_pipeline_id = fallback_pipeline_id <span class="token-kw">if</span> started_on_fallback <span class="token-kw">else</span> pipeline_id
+
+    pipeline_config = <span class="token-kw">await</span> self.<span class="token-fn">_load_pipeline_config</span>(
+        initial_pipeline_id, tenant_id=tenant_id, session_id=session_id
+    )
+
+    <span class="token-kw">try</span>:
+        runtime = <span class="token-kw">await</span> self.<span class="token-fn">_assemble_session_runtime</span>(
+            session_id=session_id,
+            tenant_id=tenant_id,
+            consultation_id=consultation_id,
+            user_id=user_id,
+            sample_rate=sample_rate,
+            pipeline_config=pipeline_config,
+            build_speaker_identifier=<span class="token-var">True</span>,
+            provider_overrides=provider_overrides,
+            active_pipeline_id=pipeline_id,
+        )
+    <span class="token-kw">except Exception as</span> primary_exc:
+        <span class="token-kw">if not</span> fallback_pipeline_id:
+            <span class="token-kw">raise</span>
+        logger.<span class="token-fn">warning</span>(<span class="token-str">"Primary ASR failed; opening on fallback"</span>, error=<span class="token-fn">str</span>(primary_exc))
+        pipeline_config = <span class="token-kw">await</span> self.<span class="token-fn">_load_pipeline_config</span>(fallback_pipeline_id, tenant_id=tenant_id)
+        runtime = <span class="token-kw">await</span> self.<span class="token-fn">_assemble_session_runtime</span>(active_pipeline_id=fallback_pipeline_id)
+        created_on_fallback = <span class="token-var">True</span>
+
+    publisher = runtime.publisher
+    preprocessor = runtime.preprocessor
+    inference_worker = runtime.inference_worker
+
+    <span class="token-comment"># 9. Register consumers & switch controller</span>
+    consumer = <span class="token-fn">IngestionConsumer</span>(
+        redis=self._redis, session_id=session_id,
+        on_frame=self.<span class="token-fn">_make_frame_handler</span>(session, preprocessor),
+        on_batch=self.<span class="token-fn">_make_batch_handler</span>(session),
+        consumer_name=self._worker_id,
+    )
+    control_listener = <span class="token-fn">ControlListener</span>(
+        redis=self._redis, session_id=session_id,
+        on_control=self.<span class="token-fn">_make_control_handler</span>(session, preprocessor),
+    )
+    switch_controller = self.<span class="token-fn">_make_switch_controller</span>(
+        session_id=session_id, tenant_id=tenant_id, primary_pipeline_id=pipeline_id,
+        fallback_pipeline_id=fallback_pipeline_id, auto_switch_enabled=auto_switch_enabled,
+        consecutive_failure_threshold=consecutive_failure_threshold,
+    )
+
+    <span class="token-comment"># 10. Start loops and return</span>
+    <span class="token-kw">await</span> consumer.<span class="token-fn">start</span>()
+    <span class="token-kw">await</span> control_listener.<span class="token-fn">start</span>()
+    logger.<span class="token-fn">info</span>(<span class="token-str">"Session created"</span>, session_id=session_id, active_sessions=self.active_session_count)
+    <span class="token-kw">return</span> session
+<span class="token-kw">finally</span>:
+    self._creating.<span class="token-fn">discard</span>(session_id)</div>
+          </div>
+        `
+      },
+
+      /* ===== 2.1 SUBFLOW DRAWERS INCLUDING DETAILED COMPONENTS ===== */
+      'sub-draining': {
+        title: 'Stage 2.1.1: Planned Scale-Down Guard',
+        subtitle: 'session_manager.py:1435-1438',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block"><span class="token-kw">if</span> <span class="token-fn">getattr</span>(self, <span class="token-str">"_draining"</span>, <span class="token-var">False</span>):
+    <span class="token-kw">raise</span> <span class="token-fn">SessionManagerDrainingError</span>(
+        <span class="token-str">f"worker {self._worker_id} is draining; rejecting new session {session_id}"</span>
+    )</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              When Kubernetes scales down a pod or begins a rolling deployment, the worker enters draining mode. New sessions are immediately rejected with HTTP 503 (<code>Retry-After: 30</code>) so load balancers route traffic to active healthy pods.
+            </p>
+          </div>
+        `
+      },
+
+      'sub-capacity': {
+        title: 'Stage 2.1.2: Capacity Guard Acquisition',
+        subtitle: 'session_manager.py:1441-1442',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block"><span class="token-kw">if not await</span> self._capacity_guard.<span class="token-fn">try_acquire</span>(session_id):
+    <span class="token-kw">return</span> <span class="token-var">None</span></div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              Tests whether worker has available slots (<code>active &lt; max_streams</code>, typically 10-20 streams). If capacity is reached, returns <code>None</code> which translates to HTTP 503 with <code>Retry-After: 5</code> in routes.py.
+            </p>
+          </div>
+        `
+      },
+
+      'sub-creating': {
+        title: 'Stage 2.1.3: Cold Model Slot Leak Guard',
+        subtitle: 'session_manager.py:1454 [TASK-985 N-1]',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block">self._creating.<span class="token-fn">add</span>(session_id)
+<span class="token-kw">try</span>:
+    <span class="token-comment"># session construction...</span>
+<span class="token-kw">finally</span>:
+    self._creating.<span class="token-fn">discard</span>(session_id)</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              During cold ASR model loading (4.6s–16.4s), the background 10s reconciler loop could mistakenly treat the uninitialized slot as orphaned and release it. Registering in <code>_creating</code> guards the slot.
+            </p>
+          </div>
+        `
+      },
+
+      'sub-spec': {
+        title: 'Stage 2.1.4: Spec Bundle Registration',
+        subtitle: 'session_manager.py:1458-1485 [TASK-861]',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block"><span class="token-kw">if</span> resolved_spec <span class="token-kw">is not</span> <span class="token-var">None</span>:
+    bundle = self.<span class="token-fn">_register_resolved_spec</span>(session_id, resolved_spec)
+    pipeline_id = bundle.runtime_key
+    fallback_pipeline_id = bundle.fallback_runtime_key
+    <span class="token-kw">if</span> auto_switch_enabled <span class="token-kw">is</span> <span class="token-var">None</span>:
+        auto_switch_enabled = bundle.spec.fallback.auto_switch
+    <span class="token-kw">if</span> consecutive_failure_threshold <span class="token-kw">is</span> <span class="token-var">None</span>:
+        consecutive_failure_threshold = (
+            bundle.spec.fallback.switch_after_consecutive_failures
+        )
+    <span class="token-kw">if not</span> language_mode:
+        language_mode = <span class="token-fn">_language_mode_for_declared_language</span>(language)
+        <span class="token-kw">if not</span> language_mode <span class="token-kw">and not</span> language:
+            language_mode = bundle.spec.decoding.language_mode</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              Registers the Gateway's pre-compiled <code>ResolvedAsrSpec</code>. It governs the engine chain, fallback policy, and decoding language without needing any database reads.
+            </p>
+          </div>
+        `
+      },
+
+      'sub-storage': {
+        title: 'Stage 2.1.5: Storage Routing Configuration',
+        subtitle: 'session_manager.py:1489-1494',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block"><span class="token-kw">if</span> storage <span class="token-kw">and</span> tenant_id:
+    blob = self.<span class="token-fn">_get_blob_service</span>()
+    blob._resolver.<span class="token-fn">set_tenant_storage</span>(tenant_id, storage)
+<span class="token-kw">elif</span> audio_bucket_name <span class="token-kw">and</span> tenant_id:
+    blob = self.<span class="token-fn">_get_blob_service</span>()
+    blob._resolver.<span class="token-fn">set_tenant_bucket</span>(tenant_id, <span class="token-str">"audio"</span>, audio_bucket_name)</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              Pins tenant storage destination (MinIO, S3, or Azure Blob Storage) so all subsequent audio uploads (<code>raw.wav</code>, <code>complete.wav</code>) and transcripts reach the correct tenant bucket.
+            </p>
+          </div>
+        `
+      },
+
+      'comp-metadata': {
+        title: 'Stage 2.1.6: Components metadata & session',
+        subtitle: 'schemas.py:316-370 & session.py:60-185 | Tier 1 (Redis Hash) + Tier 2 (RAM)',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Exact Construction Code</div>
+            <div class="code-block">metadata = <span class="token-fn">SessionMetadata</span>(
+    session_id=session_id, tenant_id=tenant_id, pipeline_id=pipeline_id,
+    consultation_id=consultation_id, status=SessionStatus.ACTIVE,
+    sample_rate=sample_rate, worker_id=self._worker_id, user_id=user_id,
+    resolved_spec_json=json.<span class="token-fn">dumps</span>(resolved_spec) <span class="token-kw">if</span> resolved_spec <span class="token-kw">else</span> <span class="token-str">""</span>,
+    language_mode=language_mode <span class="token-kw">or</span> <span class="token-str">""</span>,
+)
+session = <span class="token-fn">StreamSession</span>(metadata=metadata, redis=self._redis)
+<span class="token-kw">await</span> session.<span class="token-fn">force_persist</span>()</div>
+          </div>
+          <div class="drawer-section">
+            <div class="section-title">1. metadata (SessionMetadata) — Tier 1 Redis Hash</div>
+            <div style="padding:14px; font-size:0.83rem; color:#CBD5E1; line-height:1.5;">
+              <strong>Persistence:</strong> Durable Redis Hash at <code>session:{id}:metadata</code>. Survives pod crashes.<br>
+              <strong>Stores:</strong> <code>session_id</code>, <code>tenant_id</code>, <code>pipeline_id</code>, <code>resolved_spec_json</code>, <code>last_stream_id</code>, <code>last_seq</code>, <code>status</code>, <code>sample_rate</code>, and S3 artifact URIs (<code>raw_audio_uri</code>, <code>transcript_uri</code>).
+            </div>
+          </div>
+          <div class="drawer-section">
+            <div class="section-title">2. session (StreamSession) — Tier 2 Process RAM</div>
+            <div style="padding:14px; font-size:0.83rem; color:#CBD5E1; line-height:1.5;">
+              <strong>Persistence:</strong> In-memory ephemeral object.<br>
+              <strong>Stores:</strong> <code>audio_buffer</code> (full-session raw PCM), <code>processed_audio_buffer</code> (normalized PCM for MinIO), <code>ring_buffer</code> (30s diagnostic rolling window), and cumulative finalized segments list (<code>results: list[SegmentResult]</code>).
+            </div>
+          </div>
+        `
+      },
+
+      'sub-stashing': {
+        title: 'Stage 2.1.7: RAM Credential & Biometric Stashing',
+        subtitle: 'session_manager.py:1525-1541',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block">self._provider_overrides[session_id] = <span class="token-fn">dict</span>(provider_overrides <span class="token-kw">or</span> {})
+<span class="token-kw">if</span> voice_profiles:
+    self._session_voice_profiles[session_id] = <span class="token-fn">list</span>(voice_profiles)
+<span class="token-kw">if</span> fallback_pipeline_id:
+    self._fallback_pipeline_ids[session_id] = fallback_pipeline_id
+<span class="token-kw">if</span> language_mode:
+    self._session_language_modes[session_id] = language_mode
+<span class="token-kw">if</span> channel_count <span class="token-kw">and</span> channel_count &gt; 1:
+    self._session_channel_counts[session_id] = channel_count</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              Stashes sensitive parameters strictly in worker memory: BYO cloud API keys (held in RAM only, never persisted), speaker biometric embedding vectors for diarization, and dual-channel mic counts.
+            </p>
+          </div>
+        `
+      },
+
+      'sub-config': {
+        title: 'Stage 2.1.8: Load Pipeline Config & Model Origins',
+        subtitle: 'session_manager.py:2401-2447 & cache.py:684-725 | Exact Sources Where Models Are Loaded',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code in session_manager.py:1558-1563</div>
+            <div class="code-block">pipeline_config = <span class="token-kw">await</span> self.<span class="token-fn">_load_pipeline_config</span>(
+    initial_pipeline_id, tenant_id=tenant_id, session_id=session_id
+)
+<span class="token-kw">if</span> language <span class="token-kw">is not</span> <span class="token-var">None</span> <span class="token-kw">and</span> pipeline_config:
+    pipeline_config.inference.language = language</div>
+          </div>
+
+          <div class="drawer-section">
+            <div class="section-title">1. Resolution Hierarchy: Where Pipeline Config Comes From</div>
+            <div style="padding:16px; font-size:0.84rem; color:#CBD5E1; line-height:1.55;">
+              <p><strong>Primary Path (TASK-861 — Zero Database Read):</strong> The session looks up its registered spec bundle via <code>_spec_bundles_of(self).get(session_id)</code>. If found, it returns a fresh <code>copy.deepcopy(bundle.pipeline_specs[initial_pipeline_id])</code>. This ensures zero SQL latency and isolates mutable inference language overrides.</p>
+              <p style="margin-top:8px;"><strong>Secondary Sibling Path:</strong> If not registered under <code>session_id</code>, it checks active sibling bundles for the same runtime key (agent version ID).</p>
+              <p style="margin-top:8px;"><strong>Legacy DB Path (Deprecated):</strong> Calls <code>get_pipeline_reader().get_pipeline(initial_pipeline_id, tenant_id=tenant_id)</code> against PostgreSQL. Fails if the pipeline belongs to a different tenant.</p>
+            </div>
+          </div>
+
+          <div class="drawer-section">
+            <div class="section-title">2. Physical Model Sources: From Where Weights Are Loaded</div>
+            <div class="table-container">
+              <table>
+                <thead><tr><th>Model Type</th><th>Format / Library</th><th>Loader Class</th><th>Physical Origin / Storage Location</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td><strong>ASR (Whisper Local)</strong></td>
+                    <td><code>faster-whisper</code> / <code>CTranslate2</code></td>
+                    <td><code>FasterWhisperLoader</code></td>
+                    <td><strong>Local NVMe (/models)</strong> or <strong>HuggingFace Cache</strong> (<code>~/.cache/huggingface/hub/</code>). Weights pre-baked in Docker image or persistent cluster volumes.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>ASR (Whisper.cpp)</strong></td>
+                    <td><code>whisper.cpp</code> (GGML / GGUF)</td>
+                    <td><code>WhisperCppLoader</code></td>
+                    <td>Quantized binary weights mounted on local disk (<code>/models/whisper.cpp/...</code>).</td>
+                  </tr>
+                  <tr>
+                    <td><strong>ASR (Cloud BYOK)</strong></td>
+                    <td><code>azure-speech</code>, <code>azure-foundry</code>, <code>sarvam</code>, <code>openai</code></td>
+                    <td>Cloud BYOK Loaders (REST / gRPC)</td>
+                    <td><strong>Remote Vendor APIs:</strong> Direct authenticated endpoints called using runtime <code>provider_overrides</code> API keys stashed in RAM. Bypasses local model cache.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>VAD (Voice Activity)</strong></td>
+                    <td><code>onnxruntime</code> (Silero VAD)</td>
+                    <td><code>get_vad_service()</code></td>
+                    <td><code>ResolvedAsrSpec.models.vad.localPath</code> (e.g. <code>/models/silero_vad.onnx</code>) or downloads to Silero ONNX runtime. Process-wide singleton ONNX session.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Denoiser (DeepFilterNet)</strong></td>
+                    <td><code>deepfilternet</code></td>
+                    <td><code>DeepFilterNetService</code></td>
+                    <td><strong>Runtime-Owned:</strong> Pre-packaged inside the Python wheel library (no external weight downloads needed).</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Denoiser (RNNoise)</strong></td>
+                    <td><code>pyrnnoise</code></td>
+                    <td><code>RNNoiseService</code></td>
+                    <td><strong>Runtime-Owned:</strong> C-compiled recurrent weights embedded directly in binary wheel.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Speaker Diarization</strong></td>
+                    <td><code>pyannote-audio</code></td>
+                    <td><code>PyannoteEmbeddingService</code></td>
+                    <td><strong>Runtime-Owned:</strong> Reads <code>config.yaml</code> + <code>pytorch_model.bin</code> from local cache or HuggingFace repo via PyAnnote loader.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="drawer-section">
+            <div class="section-title">3. ModelCache In-Memory Pinning (Single-Flight & GPU Pin)</div>
+            <div style="padding:16px; font-size:0.84rem; color:#CBD5E1; line-height:1.55;">
+              <code>_warm_and_pin_pipeline_models()</code> queries <code>ModelCache.get_or_load_from_ref()</code>.<br>
+              &bull; <strong>Single-Flight:</strong> Concurrent sessions requesting the same model share a single in-flight future, avoiding duplicate model loading.<br>
+              &bull; <strong>GPU Resident Pin:</strong> Active session slugs are pinned into GPU RAM (<code>_session_pinned_models[session_id]</code>), preventing LRU eviction while audio is actively streaming.
+            </div>
+          </div>
+        `
+      },
+
+      'comp-runtime': {
+        title: 'Stage 2.1.9: Component runtime (_SessionRuntime)',
+        subtitle: 'session_manager.py:178-195 & 1573-1633 | In-Memory Component Assembly',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Assembly & Fail-Open Fallback Code</div>
+            <div class="code-block"><span class="token-kw">try</span>:
+    runtime = <span class="token-kw">await</span> self.<span class="token-fn">_assemble_session_runtime</span>(
+        session_id=session_id, tenant_id=tenant_id, consultation_id=consultation_id,
+        user_id=user_id, sample_rate=sample_rate, pipeline_config=pipeline_config,
+        build_speaker_identifier=<span class="token-var">True</span>, provider_overrides=provider_overrides,
+        active_pipeline_id=pipeline_id,
+    )
+<span class="token-kw">except Exception as</span> primary_exc:
+    <span class="token-kw">if not</span> fallback_pipeline_id:
+        <span class="token-kw">raise</span>
+    logger.<span class="token-fn">warning</span>(<span class="token-str">"Primary ASR failed; opening on fallback"</span>, error=<span class="token-fn">str</span>(primary_exc))
+    pipeline_config = <span class="token-kw">await</span> self.<span class="token-fn">_load_pipeline_config</span>(fallback_pipeline_id, tenant_id=tenant_id)
+    runtime = <span class="token-kw">await</span> self.<span class="token-fn">_assemble_session_runtime</span>(active_pipeline_id=fallback_pipeline_id)
+    created_on_fallback = <span class="token-var">True</span></div>
+          </div>
+          <div class="drawer-section">
+            <div class="section-title">What runtime (_SessionRuntime) Stores</div>
+            <div style="padding:14px; font-size:0.83rem; color:#CBD5E1; line-height:1.5;">
+              <strong>Definition:</strong> In-memory assembly dataclass holding loaded ML models and handlers:<br>
+              &bull; <code>publisher</code>: ResultPublisher instance.<br>
+              &bull; <code>preprocessor</code>: StreamingPreprocessor instance.<br>
+              &bull; <code>inference_worker</code>: StreamingInferenceWorker instance.<br>
+              &bull; <code>vad_service</code>: Silero VAD ONNX model wrapper.<br>
+              &bull; <code>asr_pipeline</code>: Loaded ASR model callable (Whisper, CT2, etc.).<br>
+              &bull; <code>denoiser</code>: DeepFilterNet3 or RNNoise instance.<br>
+              &bull; <code>vad_enabled</code>, <code>target_sr</code> (16000), <code>effective_diarization</code>.
+            </div>
+          </div>
+        `
+      },
+
+      'sub-handlers-trio': {
+        title: 'Stage 2.1.10: publisher, preprocessor, inference_worker',
+        subtitle: 'session_manager.py:1634-1666 | Egress, DSP & ML Decoders',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block">publisher = runtime.publisher
+preprocessor = runtime.preprocessor
+inference_worker = runtime.inference_worker
+
+session.processed_sample_rate = runtime.target_sr
+session._vad_active = runtime.vad_service <span class="token-kw">is not</span> <span class="token-var">None</span>
+metadata.diarization = runtime.effective_diarization
+<span class="token-kw">await</span> session.<span class="token-fn">force_persist</span>()
+
+self.<span class="token-fn">_register_inference_runtime</span>(session, inference_worker)
+self._sessions[session_id] = session
+<span class="token-fn">streaming_session_started</span>(self.active_session_count)
+self.<span class="token-fn">_start_usage_segments</span>(session_id)</div>
+          </div>
+          <div class="drawer-section">
+            <div class="section-title">Component Breakdown</div>
+            <div style="padding:14px; font-size:0.83rem; color:#CBD5E1; line-height:1.5;">
+              <strong>1. publisher (ResultPublisher):</strong> Writes transcript frames to <code>stt:result:{session_id}</code> with approximate <code>MAXLEN ~ 2000</code> and W3C traceparent headers.<br><br>
+              <strong>2. preprocessor (StreamingPreprocessor):</strong> Real-time DSP state machine. Stores Silero VAD LSTM recurrent states, anti-aliased polyphase resampler buffer (<code>_resample_carry</code>), and cuts speech into utterances.<br><br>
+              <strong>3. inference_worker (StreamingInferenceWorker):</strong> ML execution engine. Stores loaded model callable (<code>_asr_pipeline</code>), clinical <code>_lexicon_corrector</code>, and hallucination <code>_repeat_guard</code>.
+            </div>
+          </div>
+        `
+      },
+
+      'sub-consumers-duo': {
+        title: 'Stage 2.1.11: consumer & controllistener',
+        subtitle: 'session_manager.py:1677-1691 | Redis Stream Asyncio Tasks',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block">consumer = <span class="token-fn">IngestionConsumer</span>(
+    redis=self._redis, session_id=session_id,
+    on_frame=self.<span class="token-fn">_make_frame_handler</span>(session, preprocessor),
+    on_batch=self.<span class="token-fn">_make_batch_handler</span>(session),
+    consumer_name=self._worker_id,
+)
+control_listener = <span class="token-fn">ControlListener</span>(
+    redis=self._redis, session_id=session_id,
+    on_control=self.<span class="token-fn">_make_control_handler</span>(session, preprocessor),
+)
+self._consumers[session_id] = consumer
+self._control_listeners[session_id] = control_listener</div>
+          </div>
+          <div class="drawer-section">
+            <div class="section-title">Component Breakdown</div>
+            <div style="padding:14px; font-size:0.83rem; color:#CBD5E1; line-height:1.5;">
+              <strong>1. consumer (IngestionConsumer):</strong> Asyncio background task consuming <code>stt:audio:{session_id}</code> via consumer group. Auto-claims dead worker pending entries via <code>XAUTOCLAIM</code> and dispatches frames to preprocessor.<br><br>
+              <strong>2. controllistener (ControlListener):</strong> Asyncio background task reading <code>stt:control:{session_id}</code> via <code>XREAD</code>. Listens for <code>FINALIZE</code>, <code>SWITCH_ENGINE</code>, or <code>HEARTBEAT</code> signals.
+            </div>
+          </div>
+        `
+      },
+
+      'comp-switch-controller': {
+        title: 'Stage 2.1.12: switch_controller & Start Ingestion',
+        subtitle: 'engine_switch.py:74-150 & session_manager.py:1696-1733',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code in session_manager.py (Lines 1696-1733)</div>
+            <div class="code-block">switch_controller = self.<span class="token-fn">_make_switch_controller</span>(
+    session_id=session_id, tenant_id=tenant_id, primary_pipeline_id=pipeline_id,
+    fallback_pipeline_id=fallback_pipeline_id, auto_switch_enabled=auto_switch_enabled,
+    consecutive_failure_threshold=consecutive_failure_threshold,
+)
+self._switch_controllers[session_id] = switch_controller
+
+<span class="token-kw">if</span> created_on_fallback:
+    <span class="token-kw">await</span> switch_controller.<span class="token-fn">note_switched_at_create</span>()
+<span class="token-kw">elif</span> started_on_fallback:
+    <span class="token-kw">await</span> switch_controller.<span class="token-fn">note_started_on_fallback</span>()
+
+<span class="token-comment"># Start consuming background loops</span>
+<span class="token-kw">await</span> consumer.<span class="token-fn">start</span>()
+<span class="token-kw">await</span> control_listener.<span class="token-fn">start</span>()
+
+logger.<span class="token-fn">info</span>(
+    <span class="token-str">"Session created"</span>,
+    session_id=session_id,
+    tenant_id=tenant_id,
+    pipeline_id=pipeline_id,
+    has_vad=runtime.vad_service <span class="token-kw">is not</span> <span class="token-var">None</span>,
+    has_asr=runtime.asr_pipeline <span class="token-kw">is not</span> <span class="token-var">None</span>,
+    has_denoiser=runtime.denoiser <span class="token-kw">is not</span> <span class="token-var">None</span>,
+    on_fallback=created_on_fallback,
+    start_on=start_on,
+    started_on_fallback=started_on_fallback,
+    active_sessions=self.active_session_count,
+)
+<span class="token-kw">return</span> session</div>
+          </div>
+
+          <div class="drawer-section">
+            <div class="section-title">1. await consumer.start() &mdash; Audio Stream Ingestion Loop</div>
+            <div style="padding:14px; font-size:0.84rem; color:#CBD5E1; line-height:1.6;">
+              <p style="margin-bottom:8px;">
+                <strong>Component:</strong> <code>IngestionConsumer</code> (<a href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L103-L268" style="color:#60A5FA;">redis_streams.py:103-268</a>)
+              </p>
+              <ul style="padding-left:20px; margin-bottom:8px;">
+                <li><strong>Async Worker Task:</strong> Calls <code>self._task = asyncio.create_task(self._run())</code> to launch the background ingestion loop without blocking session creation.</li>
+                <li><strong>Consumer Group Registration:</strong> Creates consumer group <code>AUDIO_CONSUMER_GROUP</code> on stream <code>stt:audio:{session_id}</code> using <code>xgroup_create(..., id="$", mkstream=True)</code> so only new audio frames are ingested.</li>
+                <li><strong>Long-Poll Streaming:</strong> Continuously polls Redis via <code>xreadgroup(group=AUDIO_CONSUMER_GROUP, consumer=self._consumer_id, streams={self._audio_stream: ">"}, count=10, block=5000)</code>.</li>
+                <li><strong>Audio Chunk Dispatch:</strong> Decodes incoming 16kHz PCM audio buffers pushed by the WebSocket Gateway, and triggers the callback:
+                  <br><code style="color:#34D399;">await on_audio(pcm_bytes, seq, is_last, timestamp_ms)</code>
+                  <br>This feeds raw microphone audio directly into <strong>DeepFilterNet Denoiser &rarr; Silero VAD &rarr; InferenceWorker chunk buffer</strong>.</li>
+                <li><strong>Fault-Tolerant Auto-Claim:</strong> Runs periodic <code>xautoclaim</code> (every 1000ms, min-idle 2000ms) to re-assign unacknowledged audio chunks if a worker pod crashes mid-session.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="drawer-section">
+            <div class="section-title">2. await control_listener.start() &mdash; Control Commands Loop</div>
+            <div style="padding:14px; font-size:0.84rem; color:#CBD5E1; line-height:1.6;">
+              <p style="margin-bottom:8px;">
+                <strong>Component:</strong> <code>ControlListener</code> (<a href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L270-L350" style="color:#60A5FA;">redis_streams.py:270-350</a>)
+              </p>
+              <ul style="padding-left:20px; margin-bottom:8px;">
+                <li><strong>Async Worker Task:</strong> Calls <code>self._task = asyncio.create_task(self._run())</code> to process steering events concurrently.</li>
+                <li><strong>Command Monitoring:</strong> Polls Redis stream <code>stt:control:{session_id}</code> for runtime control signals dispatched by the Doctor UI or API Gateway:
+                  <ul style="margin-top:6px; padding-left:16px;">
+                    <li><code>pause</code> &mdash; Temporarily pauses audio feeding into ASR inference while keeping socket open.</li>
+                    <li><code>resume</code> &mdash; Resumes audio processing loop.</li>
+                    <li><code>stop</code> &mdash; Flushes remaining audio, finalizes transcription, sends EOS token, and closes session.</li>
+                    <li><code>switch_provider</code> &mdash; Initiates on-the-fly failover/fallback between Whisper and alternate ASR provider.</li>
+                    <li><code>force_endpoint</code> &mdash; Forces Silero VAD to commit an immediate speech boundary chunk.</li>
+                  </ul>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="drawer-section">
+            <div class="section-title">3. EngineSwitchController &amp; Session Activation</div>
+            <div style="padding:14px; font-size:0.84rem; color:#CBD5E1; line-height:1.6;">
+              <ul style="padding-left:20px;">
+                <li><strong>Failover State Machine:</strong> Instantiated as <code>self._switch_controllers[session_id]</code> to track primary vs fallback health, failure thresholds (default 2 consecutive failures), and atomic pipeline swapping.</li>
+                <li><strong>Final Return:</strong> Emits structured log <code>"Session created"</code> with <code>active_sessions=self.active_session_count</code> and returns the running, background-listening <code>StreamingSession</code> back to <code>routes.py</code>!</li>
+              </ul>
+            </div>
+          </div>
+        `
+      },
+
+      'sub-rollback': {
+        title: 'Stage 2.1.13: Exception Rollback & Slot Release',
+        subtitle: 'session_manager.py:1734-1750',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code</div>
+            <div class="code-block"><span class="token-kw">except Exception as</span> exc:
+    _spec_bundles_of(self).<span class="token-fn">pop</span>(session_id, <span class="token-var">None</span>)
+    logger.<span class="token-fn">error</span>(
+        <span class="token-str">"Failed to create session, rolling back"</span>,
+        session_id=session_id,
+        tenant_id=tenant_id,
+        pipeline_id=pipeline_id,
+        error=<span class="token-fn">str</span>(exc),
+    )
+    <span class="token-kw">await</span> self.<span class="token-fn">remove_session</span>(session_id)
+    <span class="token-kw">raise</span>
+<span class="token-kw">finally</span>:
+    self._creating.<span class="token-fn">discard</span>(session_id)</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              <strong>Atomic Rollback:</strong> If any stage fails during session construction, <code>remove_session()</code> releases the capacity slot and clears Redis metadata to avoid ghost sessions. In the <code>finally</code> block, <code>self._creating.discard(session_id)</code> unfreezes the slot for the heartbeat reconciler.
+            </p>
+          </div>
+        `
+      },
+
+      'step-3': {
+        title: 'Step 3: Capacity Guard Evaluation',
+        subtitle: 'routes.py:196-205',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code in routes.py</div>
+            <div class="code-block"><span class="token-kw">guard</span> = mgr.capacity_guard
+
+<span class="token-kw">if</span> session <span class="token-kw">is</span> <span class="token-var">None</span>:
+    <span class="token-comment"># At capacity — return 503 with retry hint</span>
+    <span class="token-kw">raise</span> <span class="token-fn">HTTPException</span>(
+        status_code=<span class="token-var">503</span>,
+        detail=<span class="token-str">"At capacity"</span>,
+        headers={<span class="token-str">"Retry-After"</span>: <span class="token-str">"5"</span>},
+    )</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              If Step 2 returned <code>None</code> (because <code>_capacity_guard.try_acquire()</code> hit worker capacity), raises <code>HTTP 503 Service Unavailable</code> with <code>Retry-After: 5</code> so Gateway load balancers reroute to another pod.
+            </p>
+          </div>
+        `
+      },
+
+      'step-4': {
+        title: 'Step 4: StreamingSessionResponse',
+        subtitle: 'routes.py:206-216',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Code in routes.py</div>
+            <div class="code-block">active_pipeline_id, active_engine = <span class="token-fn">_resolve_active_pipeline</span>(mgr, session)
+
+<span class="token-kw">return</span> <span class="token-fn">StreamingSessionResponse</span>(
+    session_id=session.session_id,
+    status=<span class="token-str">"active"</span>,
+    max_concurrent=guard.max_streams,
+    current_active=guard.active_count,
+    pipeline_id=active_pipeline_id,
+    active_engine=active_engine,
+    voice_profile_seeded=mgr.<span class="token-fn">get_voice_profile_seeded</span>(session.session_id),
+)</div>
+          </div>
+          <div class="drawer-section">
+            <div class="section-title">Response JSON</div>
+            <div class="code-block">{
+  <span class="token-key">"session_id"</span>: <span class="token-str">"c7a8b0e1-4567-4890-a123-b123456789ab"</span>,
+  <span class="token-key">"status"</span>: <span class="token-str">"active"</span>,
+  <span class="token-key">"pipeline_id"</span>: <span class="token-str">"0199a861-0000-7000-8000-000000000001"</span>,
+  <span class="token-key">"active_engine"</span>: <span class="token-str">"primary"</span>,
+  <span class="token-key">"max_concurrent"</span>: <span class="token-var">10</span>,
+  <span class="token-key">"current_active"</span>: <span class="token-var">1</span>,
+  <span class="token-key">"voice_profile_seeded"</span>: <span class="token-var">true</span>,
+  <span class="token-key">"reason"</span>: <span class="token-var">null</span>
+}</div>
+          </div>
+        `
+      },
+
+      'block-gateway-res': {
+        title: 'Block 5: Gateway Response to Frontend',
+        subtitle: 'Final Handshake Ready (HTTP 200 OK)',
+        body: `
+          <div class="drawer-section">
+            <div class="section-title">Gateway Output Payload</div>
+            <div class="code-block">{
+  <span class="token-key">"status"</span>: <span class="token-str">"ready"</span>,
+  <span class="token-key">"sessionId"</span>: <span class="token-str">"c7a8b0e1-4567-4890-a123-b123456789ab"</span>,
+  <span class="token-key">"websocketUrl"</span>: <span class="token-str">"wss://api.vox.ai/v1/stt/streaming/c7a8b0e1-4567-4890-a123-b123456789ab"</span>
+}</div>
+          </div>
+          <div class="drawer-section" style="padding:16px;">
+            <p style="font-size:0.86rem; color:#CBD5E1; line-height: 1.5;">
+              <strong>Frontend Live Audio Uplink:</strong> The Doctor UI connects its microphone to <code>websocketUrl</code> and begins streaming 16kHz PCM audio buffers over WebSocket directly into Redis stream <code>stt:audio:{sessionId}</code>.
+            </p>
+          </div>
+        `
+      }
+    };
+
+    function openDrawer(id) {
+      const data = drawerData[id];
+      if (!data) return;
+      document.getElementById('drawer-title').innerText = data.title;
+      document.getElementById('drawer-subtitle').innerText = data.subtitle;
+      document.getElementById('drawer-body').innerHTML = data.body;
+      document.getElementById('modal-overlay').classList.add('open');
+    }
+
+    function closeDrawer() {
+      document.getElementById('modal-overlay').classList.remove('open');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeDrawer();
+    });
+  </script>
+</body>
+
+</html>

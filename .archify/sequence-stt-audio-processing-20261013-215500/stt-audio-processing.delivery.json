@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "09897756-3f0f-4ade-a174-a1ce3800efb3",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/Desktop/vox/.archify/sequence-stt-audio-processing-20261013-215500/candidate.json",
+  "output": "/Users/apple/Desktop/vox/.archify/sequence-stt-audio-processing-20261013-215500/stt-audio-processing.html",
+  "specification": {
+    "sha256": "9f29d89ca85f28b27d9dc60048a4d87649b88d14ffa5837971601dfccfd3d99b",
+    "bytes": 7033
+  },
+  "artifact": {
+    "sha256": "044d57d1a5a1d773188a06b6f5c36545d558bcd98634abfb5e6911e1aa5decaa",
+    "bytes": 767439
+  }
+}

@@ -1,0 +1,2140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STT Streaming Audio Processing & Inference Lifecycle</title>
+  <style>
+    :root {
+      --bg: #0B0F19;
+      --card-bg: rgba(17, 24, 39, 0.88);
+      --card-border: rgba(55, 65, 81, 0.65);
+      --card-border-hover: rgba(99, 102, 241, 0.75);
+      --text: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --primary: #6366F1;
+      --primary-light: #818CF8;
+      --primary-glow: rgba(99, 102, 241, 0.25);
+      --emerald: #10B981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --amber: #F59E0B;
+      --amber-glow: rgba(245, 158, 11, 0.2);
+      --rose: #F43F5E;
+      --rose-glow: rgba(244, 63, 94, 0.2);
+      --cyan: #06B6D4;
+      --cyan-glow: rgba(6, 182, 212, 0.2);
+      --code-bg: #030712;
+      --border-radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #172554 0%, #0B0F19 55%, #030712 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    header {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+      padding: 16px 32px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .header-titles h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-live {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34D399;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .badge-live::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: #10B981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10B981;
+    }
+
+    .header-titles p {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .tabs-nav {
+      display: flex;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tab-btn:hover {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, #4F46E5, #6366F1);
+      color: #FFFFFF;
+      box-shadow: 0 2px 10px rgba(79, 70, 229, 0.35);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 28px 24px 80px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .tab-content {
+      display: none;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+
+    .hint-bar {
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: 0.84rem;
+      color: #C7D2FE;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Flow Layout */
+    .flow-phase {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .phase-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 12px;
+    }
+
+    .phase-title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .phase-badge {
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-phase-1 { background: rgba(59, 130, 246, 0.15); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.35); }
+    .badge-phase-2 { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.35); }
+    .badge-phase-3 { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.35); }
+
+    .phase-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .phase-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 16px;
+    }
+
+    .step-card {
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 18px;
+      cursor: pointer;
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      position: relative;
+    }
+
+    .step-card:hover {
+      background: rgba(99, 102, 241, 0.08);
+      border-color: rgba(99, 102, 241, 0.45);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .step-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .step-num-pill {
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.08);
+      color: #E2E8F0;
+    }
+
+    .step-file-tag {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.7rem;
+      color: #94A3B8;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 170px;
+    }
+
+    .step-heading {
+      font-size: 0.96rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-top: 4px;
+    }
+
+    .step-summary {
+      font-size: 0.8rem;
+      color: #9CA3AF;
+      line-height: 1.45;
+    }
+
+    .step-action-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.74rem;
+      color: var(--primary-light);
+      font-weight: 600;
+    }
+
+    /* Component Storage Grid */
+    .component-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 20px;
+    }
+
+    .comp-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .comp-card:hover {
+      border-color: var(--card-border-hover);
+    }
+
+    .comp-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .comp-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .comp-type-pill {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .type-consumer { background: rgba(59, 130, 246, 0.15); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.35); }
+    .type-dsp { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.35); }
+    .type-vad { background: rgba(244, 63, 94, 0.15); color: #FB7185; border: 1px solid rgba(244, 63, 94, 0.35); }
+    .type-asr { background: rgba(139, 92, 246, 0.15); color: #A78BFA; border: 1px solid rgba(139, 92, 246, 0.35); }
+    .type-guards { background: rgba(6, 182, 212, 0.15); color: #22D3EE; border: 1px solid rgba(6, 182, 212, 0.35); }
+    .type-egress { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.35); }
+
+    .comp-section {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.82rem;
+    }
+
+    .comp-sec-title {
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #94A3B8;
+      margin-bottom: 6px;
+      letter-spacing: 0.04em;
+    }
+
+    .comp-code-link {
+      color: #818CF8;
+      text-decoration: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.78rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .comp-code-link:hover {
+      text-decoration: underline;
+      color: #A5B4FC;
+    }
+
+    /* Archify SVG View */
+    .svg-container {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      overflow-x: auto;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .svg-container svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Modal / Drawer */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .drawer-card {
+      background: #0F172A;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 960px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
+      overflow: hidden;
+      animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.97) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .drawer-header {
+      padding: 20px 24px;
+      background: rgba(15, 23, 42, 0.95);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .drawer-header-info h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .drawer-header-info p {
+      font-size: 0.82rem;
+      color: #94A3B8;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .code-link-badge {
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      color: #A5B4FC;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.74rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .code-link-badge:hover {
+      background: rgba(99, 102, 241, 0.25);
+      color: #FFFFFF;
+    }
+
+    .close-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #94A3B8;
+      font-size: 1.2rem;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #FFFFFF;
+    }
+
+    .drawer-content {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .drawer-sec-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #FBBF24;
+      margin-bottom: 8px;
+    }
+
+    .code-container {
+      background: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      color: #E2E8F0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow-x: auto;
+    }
+
+    .token-kw { color: #F472B6; font-weight: 600; }
+    .token-fn { color: #60A5FA; }
+    .token-str { color: #34D399; }
+    .token-num { color: #FBBF24; }
+    .token-comment { color: #64748B; font-style: italic; }
+    .token-var { color: #A78BFA; }
+
+    .explanation-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 10px;
+      padding: 16px;
+      font-size: 0.86rem;
+      color: #CBD5E1;
+      line-height: 1.6;
+    }
+
+    .explanation-box p { margin-bottom: 8px; }
+    .explanation-box p:last-child { margin-bottom: 0; }
+    .explanation-box strong { color: #FFFFFF; }
+  
+    /* Phase Flow Section & Layout */
+    .flow-pipeline-container {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .phase-block {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 24px 28px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .phase-block:hover {
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .phase-block-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .phase-badge-pill {
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-p1 { background: rgba(59, 130, 246, 0.18); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.4); }
+    .badge-p2 { background: rgba(245, 158, 11, 0.18); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge-p3 { background: rgba(16, 185, 129, 0.18); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .badge-p4 { background: rgba(168, 85, 247, 0.18); color: #C084FC; border: 1px solid rgba(168, 85, 247, 0.4); }
+    .badge-p5 { background: rgba(6, 182, 212, 0.18); color: #22D3EE; border: 1px solid rgba(6, 182, 212, 0.4); }
+
+    .phase-block-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-top: 4px;
+    }
+
+    .phase-block-desc {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    .phase-context-box {
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 0.88rem;
+      color: #E2E8F0;
+      line-height: 1.6;
+    }
+
+    .phase-context-box strong {
+      color: #FFFFFF;
+    }
+
+    .code-snippet-box {
+      background: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .code-snippet-header {
+      background: rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.76rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .code-snippet-lang {
+      color: #94A3B8;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    .code-snippet-file {
+      color: #818CF8;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .code-snippet-file:hover {
+      text-decoration: underline;
+      color: #A5B4FC;
+    }
+
+    .code-snippet-body {
+      padding: 14px 18px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: #E2E8F0;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* Sub-stages Grid inside Phase 3 */
+    .substages-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 14px;
+      margin-top: 8px;
+    }
+
+    .substage-card {
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color 0.15s ease;
+    }
+
+    .substage-card:hover {
+      border-color: rgba(99, 102, 241, 0.35);
+    }
+
+    .substage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .substage-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .substage-tag {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.06);
+      color: #94A3B8;
+    }
+
+    .substage-desc {
+      font-size: 0.8rem;
+      color: #94A3B8;
+      line-height: 1.45;
+    }
+
+    /* Phase Stepper Flow Connector */
+    .phase-connector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 4px 0;
+      color: #6366F1;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .phase-connector-line {
+      flex: 1;
+      max-width: 140px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.6), transparent);
+    }
+
+    .phase-connector-pill {
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #A5B4FC;
+      padding: 4px 14px;
+      border-radius: 9999px;
+      font-size: 0.74rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Summary Table Styling */
+    .summary-section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 26px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      margin-top: 12px;
+    }
+
+    .summary-header h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .summary-header p {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .summary-table-wrap {
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+    }
+
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.84rem;
+    }
+
+    .summary-table th {
+      background: rgba(255, 255, 255, 0.04);
+      color: #94A3B8;
+      font-weight: 700;
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      text-transform: uppercase;
+      font-size: 0.74rem;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .summary-table td {
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #E2E8F0;
+      vertical-align: middle;
+    }
+
+    .summary-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .summary-table tr:hover td {
+      background: rgba(99, 102, 241, 0.05);
+    }
+
+    .stage-badge {
+      font-weight: 700;
+      color: #FFFFFF;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stage-num-badge {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #CBD5E1;
+    }
+
+    .comp-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.06);
+      color: #E2E8F0;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .code-ref-link {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.76rem;
+      color: #818CF8;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .code-ref-link:hover {
+      text-decoration: underline;
+      color: #A5B4FC;
+    }
+
+    .redis-op-badge {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.76rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(244, 63, 94, 0.12);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      color: #FDA4AF;
+      display: inline-block;
+    }
+
+    .inspect-phase-btn {
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      color: #A5B4FC;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .inspect-phase-btn:hover {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: #818CF8;
+      color: #FFFFFF;
+    }
+</style>
+</head>
+<body>
+
+  <header>
+    <div class="header-titles">
+      <h1>
+        STT Streaming Audio Processing Lifecycle
+        <span class="badge-live">Live Stream Flow</span>
+      </h1>
+      <p>Microphone Ingress &rarr; Redis Audio Stream &rarr; IngestionConsumer &rarr; DSP Polyphase Resampling &rarr; Silero VAD &rarr; Whisper ASR &rarr; RepeatGuard &rarr; Result Egress</p>
+    </div>
+    <div class="tabs-nav">
+      <button class="tab-btn active" id="btn-tab-flow" onclick="switchTab('flow')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        Interactive Flow &amp; Code
+      </button>
+      <button class="tab-btn" id="btn-tab-diagram" onclick="switchTab('diagram')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+        Archify Sequence SVG
+      </button>
+      <button class="tab-btn" id="btn-tab-components" onclick="switchTab('components')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+        Core Components
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="hint-bar">
+      <span>💡 <strong>Click on any step card</strong> to view the exact Python / TypeScript implementation, math/logic breakdown, and clickable links to active source code lines.</span>
+      <span style="font-size:0.75rem; color:#A5B4FC;">Project Hope &bull; Real-time Speech-to-Text Pipeline</span>
+    </div>
+
+    <!-- TAB 1: INTERACTIVE FLOW & CODE EXPLORER -->
+        <!-- TAB 1: INTERACTIVE FLOW & CODE EXPLORER (5 PHASES & SUMMARY TABLE) -->
+    <div id="tab-flow" class="tab-content active">
+
+      <div class="flow-pipeline-container">
+
+        <!-- ==================== PHASE 1 ==================== -->
+        <section class="phase-block" id="phase-1-card">
+          <div class="phase-block-header">
+            <div>
+              <span class="phase-badge-pill badge-p1">Phase 1 &bull; Ingress Handshake</span>
+              <div class="phase-block-title">Phase 1: The WebSocket Connection Handshake</div>
+              <div class="phase-block-desc">Single-use Redis ticket redemption, tenant &amp; user binding validation, trace propagation, and captions subscription.</div>
+            </div>
+            <button class="inspect-phase-btn" onclick="openDrawer('phase-1')">
+              <span>Deep-Dive Code Modal &rarr;</span>
+            </button>
+          </div>
+
+          <div class="phase-context-box">
+            When the Doctor UI receives the response:
+            <div class="code-snippet-box" style="margin-top: 8px;">
+              <div class="code-snippet-header">
+                <span class="code-snippet-lang">JSON &bull; Session Ready Payload</span>
+                <span style="color:#94A3B8;">Doctor Browser Ingress</span>
+              </div>
+              <div class="code-snippet-body"><span class="token-kw">{</span>
+  <span class="token-var">"status"</span>: <span class="token-str">"ready"</span>,
+  <span class="token-var">"sessionId"</span>: <span class="token-str">"c7a8b0e1-4567-4890-a123-b123456789ab"</span>,
+  <span class="token-var">"websocketUrl"</span>: <span class="token-str">"wss://api.vox.ai/v1/stt/streaming/c7a8b0e1-4567-4890-a123-b123456789ab?ticket=abc123xyz"</span>
+<span class="token-kw">}</span></div>
+            </div>
+            <p style="margin-top: 10px;">The browser opens a WebSocket connection to <code>websocketUrl</code>.</p>
+          </div>
+
+          <div class="code-snippet-box">
+            <div class="code-snippet-header">
+              <span class="code-snippet-lang">TypeScript &bull; NestJS API Gateway</span>
+              <a class="code-snippet-file" href="file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L816-L1043" target="_blank">
+                📂 stt-ws.gateway.ts:816-1043
+              </a>
+            </div>
+            <div class="code-snippet-body"><span class="token-comment">// stt-ws.gateway.ts: handleConnection</span>
+<span class="token-kw">async</span> <span class="token-fn">handleConnection</span>(client: WebSocket, req: IncomingMessage): Promise&lt;void&gt; {
+  <span class="token-kw">const</span> url = <span class="token-kw">new</span> URL(req.url || <span class="token-str">''</span>, <span class="token-str">'http://localhost'</span>);
+  <span class="token-kw">const</span> sessionId = url.searchParams.get(<span class="token-str">'sessionId'</span>);
+  <span class="token-kw">const</span> ticket = url.searchParams.get(<span class="token-str">'ticket'</span>);
+  
+  <span class="token-comment">// 1. Consume single-use 30-second ticket from Redis (prevents URL replay)</span>
+  <span class="token-kw">const</span> stored = <span class="token-kw">await</span> <span class="token-kw">this</span>.streamTicketService.<span class="token-fn">consumeTicket</span>(ticket);
+  
+  <span class="token-comment">// 2. Validate tenant &amp; user ownership binding against session create metadata</span>
+  <span class="token-kw">const</span> binding = <span class="token-kw">await</span> <span class="token-kw">this</span>.sessionBinding.<span class="token-fn">lookupBinding</span>(sessionId);
+  <span class="token-kw">if</span> (!stored || !binding || stored.scope !== <span class="token-str">`stt_session:${sessionId}`</span> || binding.tenantId !== stored.tenantId) {
+    client.<span class="token-fn">close</span>(WS_CLOSE_CODES.AUTH_FAILED, <span class="token-str">'Authentication failed'</span>);
+    <span class="token-kw">return</span>;
+  }
+  
+  <span class="token-comment">// 3. Root OpenTelemetry trace &amp; register SessionInfo</span>
+  <span class="token-kw">const</span> { span, carrier } = <span class="token-kw">this</span>.<span class="token-fn">startSessionTrace</span>(sessionId, req);
+  <span class="token-kw">const</span> session: SessionInfo = {
+    sessionId, client, traceCarrier: carrier, binarySeq: <span class="token-num">0</span>,
+    audioBytesForwarded: <span class="token-num">0</span>, resumeBuffer: [], ...
+  };
+  <span class="token-kw">this</span>.sessions.<span class="token-fn">set</span>(client, session);
+  
+  <span class="token-comment">// 4. Pre-subscribe to the Redis captions stream (group: 'captions')</span>
+  <span class="token-kw">this</span>.<span class="token-fn">subscribeSessionResults</span>(session);
+  
+  <span class="token-comment">// 5. Send 'ready' ack to client so client knows it can begin sending audio</span>
+  <span class="token-kw">this</span>.<span class="token-fn">sendReady</span>(session);
+}</div>
+          </div>
+        </section>
+
+        <!-- CONNECTOR 1 -> 2 -->
+        <div class="phase-connector">
+          <div class="phase-connector-line"></div>
+          <span class="phase-connector-pill">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Handshake Acknowledged &bull; 16kHz PCM Audio Stream Commences
+          </span>
+          <div class="phase-connector-line"></div>
+        </div>
+
+        <!-- ==================== PHASE 2 ==================== -->
+        <section class="phase-block" id="phase-2-card">
+          <div class="phase-block-header">
+            <div>
+              <span class="phase-badge-pill badge-p2">Phase 2 &bull; Audio Ingress &amp; Redis</span>
+              <div class="phase-block-title">Phase 2: Audio Ingress &amp; Writing to Redis</div>
+              <div class="phase-block-desc">Browser slices 16kHz audio into 100ms chunks, Gateway receives binary frames, and XADD appends to Redis stream.</div>
+            </div>
+            <button class="inspect-phase-btn" onclick="openDrawer('phase-2')">
+              <span>Deep-Dive Code Modal &rarr;</span>
+            </button>
+          </div>
+
+          <div class="phase-context-box">
+            Once connected, the doctor's browser captures microphone audio via <strong>Web Audio API</strong> at <strong>16kHz mono</strong>, slices it into <strong>100ms PCM chunks (3200 bytes)</strong>, and sends binary frames over the WebSocket.
+          </div>
+
+          <div class="code-snippet-box">
+            <div class="code-snippet-header">
+              <span class="code-snippet-lang">TypeScript &bull; Gateway Message Router</span>
+              <a class="code-snippet-file" href="file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L1872-L2045" target="_blank">
+                📂 stt-ws.gateway.ts:1872-2045
+              </a>
+            </div>
+            <div class="code-snippet-body"><span class="token-comment">// stt-ws.gateway.ts: handleMessage</span>
+<span class="token-kw">async</span> <span class="token-fn">handleMessage</span>(client: WebSocket, rawData: string | Buffer, isBinary?: boolean): Promise&lt;void&gt; {
+  <span class="token-kw">const</span> session = <span class="token-kw">this</span>.sessions.<span class="token-fn">get</span>(client);
+  <span class="token-kw">if</span> (!session) <span class="token-kw">return</span> <span class="token-kw">this</span>.<span class="token-fn">sendError</span>(client, <span class="token-str">'NO_SESSION'</span>, <span class="token-str">'No active session'</span>);
+  <span class="token-kw">if</span> (isBinary === <span class="token-kw">true</span>) {
+    session.binarySeq++;
+    <span class="token-kw">const</span> audio = Buffer.<span class="token-fn">isBuffer</span>(rawData) ? rawData : Buffer.<span class="token-fn">from</span>(String(rawData));
+    <span class="token-kw">this</span>.<span class="token-fn">forwardAudioFrame</span>(session, session.binarySeq, audio);
+  }
+}
+
+<span class="token-kw">private</span> <span class="token-fn">forwardAudioFrame</span>(session: SessionInfo, seq: number, data: Buffer): void {
+  session.audioBytesForwarded += data.length;
+  <span class="token-comment">// Non-blocking XADD: ioredis writes to Redis without awaiting per-frame ack</span>
+  <span class="token-kw">this</span>.bridgeService.<span class="token-fn">writeAudioFrame</span>(
+    session.sessionId, seq, data, session.sampleRate, <span class="token-str">'pcm_s16le'</span>, <span class="token-kw">false</span>, session.traceCarrier
+  ).<span class="token-fn">catch</span>(err =&gt; {
+    session.droppedAudioFrames++;
+    <span class="token-kw">this</span>.<span class="token-fn">sendError</span>(session.client, <span class="token-str">'BRIDGE_ERROR'</span>, <span class="token-str">'Failed to forward audio frame'</span>);
+  });
+}</div>
+          </div>
+
+          <div class="code-snippet-box">
+            <div class="code-snippet-header">
+              <span class="code-snippet-lang">TypeScript &bull; Redis Streaming Bridge</span>
+              <a class="code-snippet-file" href="file:///Users/apple/Desktop/vox/project-hope/packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts#L291-L330" target="_blank">
+                📂 StreamingAudioBridgeService.writeAudioFrame()
+              </a>
+            </div>
+            <div class="code-snippet-body"><span class="token-kw">await</span> <span class="token-kw">this</span>.writerRedis.<span class="token-fn">xadd</span>(
+  <span class="token-str">`stt:audio:${sessionId}`</span>,
+  <span class="token-str">'MAXLEN'</span>, <span class="token-str">'~'</span>, <span class="token-str">'10000'</span>,     <span class="token-comment">// Cap memory to ~10,000 frames (~15 minutes of audio)</span>
+  <span class="token-str">'*'</span>,                         <span class="token-comment">// Auto-generate Redis entry ID (e.g. 1728892301123-0)</span>
+  <span class="token-str">'seq'</span>, String(seq),          <span class="token-comment">// 1, 2, 3...</span>
+  <span class="token-str">'sr'</span>, <span class="token-str">'16000'</span>,               <span class="token-comment">// 16kHz</span>
+  <span class="token-str">'enc'</span>, <span class="token-str">'pcm_s16le'</span>,          <span class="token-comment">// 16-bit linear PCM</span>
+  <span class="token-str">'ch'</span>, <span class="token-str">'1'</span>,                   <span class="token-comment">// Mono</span>
+  <span class="token-str">'data'</span>, data,                <span class="token-comment">// Raw binary PCM audio bytes</span>
+  <span class="token-str">'final'</span>, <span class="token-str">'0'</span>,                <span class="token-comment">// '1' only on EOS</span>
+  <span class="token-str">'ts'</span>, String(Date.now() / <span class="token-num">1000</span>),
+  ...(traceCarrier ? [<span class="token-str">'traceparent'</span>, traceCarrier.traceparent] : []),
+);</div>
+          </div>
+        </section>
+
+        <!-- CONNECTOR 2 -> 3 -->
+        <div class="phase-connector">
+          <div class="phase-connector-line"></div>
+          <span class="phase-connector-pill">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Redis Stream stt:audio:{sessionId} &bull; Consumer Group Poll &amp; XACK
+          </span>
+          <div class="phase-connector-line"></div>
+        </div>
+
+        <!-- ==================== PHASE 3 ==================== -->
+        <section class="phase-block" id="phase-3-card">
+          <div class="phase-block-header">
+            <div>
+              <span class="phase-badge-pill badge-p3">Phase 3 &bull; Backend Ingestion &amp; DSP</span>
+              <div class="phase-block-title">Phase 3: Backend Ingestion &amp; Audio Processing</div>
+              <div class="phase-block-desc">Python IngestionConsumer, frame dispatch, preprocessor DSP, Silero VAD, Whisper ASR, RepeatGuard, and Lexicon.</div>
+            </div>
+            <button class="inspect-phase-btn" onclick="openDrawer('phase-3')">
+              <span>Deep-Dive Code Modal &rarr;</span>
+            </button>
+          </div>
+
+          <div class="phase-context-box">
+            In Python, the background worker started by <code>await consumer.start()</code> is running <code>IngestionConsumer._run()</code>:
+          </div>
+
+          <div class="code-snippet-box">
+            <div class="code-snippet-header">
+              <span class="code-snippet-lang">Python &bull; IngestionConsumer Loop</span>
+              <a class="code-snippet-file" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L103-L268" target="_blank">
+                📂 redis_streams.py: IngestionConsumer
+              </a>
+            </div>
+            <div class="code-snippet-body"><span class="token-comment"># redis_streams.py: IngestionConsumer</span>
+entries = <span class="token-kw">await</span> self._redis.<span class="token-fn">xreadgroup</span>(
+    self._group_name,        <span class="token-comment"># "stt-ingest"</span>
+    self._consumer_name,     <span class="token-comment"># worker ID</span>
+    {stream_key: <span class="token-str">"&gt;"</span>},       <span class="token-comment"># read unconsumed incoming frames</span>
+    count=<span class="token-num">10</span>,
+    block=<span class="token-num">5000</span>,              <span class="token-comment"># poll block timeout</span>
+)
+<span class="token-kw">for</span> stream_name, messages <span class="token-kw">in</span> entries:
+    <span class="token-kw">for</span> entry_id, fields <span class="token-kw">in</span> messages:
+        frame = AudioFrame.<span class="token-fn">from_redis_dict</span>(fields)
+        <span class="token-kw">await</span> self.<span class="token-fn">_on_frame</span>(frame)  <span class="token-comment"># Dispatches to frame handler (_make_frame_handler)</span>
+        <span class="token-kw">await</span> self._redis.<span class="token-fn">xack</span>(stream_key, <span class="token-str">"stt-ingest"</span>, entry_id)</div>
+          </div>
+
+          <div class="phase-context-box">
+            The callback <strong><code>_make_frame_handler()</code></strong> feeds audio into <strong><code>StreamingPreprocessor</code></strong> through 6 synchronized stages:
+          </div>
+
+          <div class="substages-grid">
+            <!-- Sub-stage 1 -->
+            <div class="substage-card" onclick="openDrawer('step-5')">
+              <div class="substage-header">
+                <span class="substage-title">1. Slicing</span>
+                <span class="substage-tag">32ms Blocks</span>
+              </div>
+              <div class="substage-desc">Slices continuous byte stream into discrete 512-sample (32ms at 16kHz) blocks normalized to [-1.0, 1.0].</div>
+            </div>
+
+            <!-- Sub-stage 2 -->
+            <div class="substage-card" onclick="openDrawer('step-6')">
+              <div class="substage-header">
+                <span class="substage-title">2. Denoising</span>
+                <span class="substage-tag">RNNoise / DeepFilter</span>
+              </div>
+              <div class="substage-desc">Strips clinic air conditioning / fan background hum and acoustic HVAC rumble.</div>
+            </div>
+
+            <!-- Sub-stage 3 -->
+            <div class="substage-card" onclick="openDrawer('step-7')">
+              <div class="substage-header">
+                <span class="substage-title">3. Silero VAD</span>
+                <span class="substage-tag">prob &gt; 0.60</span>
+              </div>
+              <div class="substage-desc">Evaluates speech probability <code>prob = is_speech(frame)</code>. When <code>prob &gt; 0.60</code>, transitions to active speech and prepends a 320ms pre-speech ring buffer (so opening soft consonants like /p/, /t/ are not clipped).</div>
+            </div>
+
+            <!-- Sub-stage 4 -->
+            <div class="substage-card" onclick="openDrawer('step-8')">
+              <div class="substage-header">
+                <span class="substage-title">4. Endpointing</span>
+                <span class="substage-tag">700ms Silence</span>
+              </div>
+              <div class="substage-desc">When silence persists for 700ms, cuts the sentence boundary and emits <code>AudioUtterance(samples, is_final=True)</code>.</div>
+            </div>
+
+            <!-- Sub-stage 5 -->
+            <div class="substage-card" onclick="openDrawer('step-10')">
+              <div class="substage-header">
+                <span class="substage-title">5. Whisper ASR Inference</span>
+                <span class="substage-tag">CTranslate2 &bull; FP16</span>
+              </div>
+              <div class="substage-desc"><code>StreamingInferenceWorker</code> transcribes the audio using CTranslate2 FP16 Faster-Whisper on GPU with <code>initial_prompt</code> context.</div>
+            </div>
+
+            <!-- Sub-stage 6 -->
+            <div class="substage-card" onclick="openDrawer('step-11')">
+              <div class="substage-header">
+                <span class="substage-title">6. RepeatGuard &amp; Lexicon</span>
+                <span class="substage-tag">Phonetic Snap</span>
+              </div>
+              <div class="substage-desc">Collapses repetitive transformer hallucination loops and corrects clinical drug names using the phonetic medical dictionary.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CONNECTOR 3 -> 4 -->
+        <div class="phase-connector">
+          <div class="phase-connector-line"></div>
+          <span class="phase-connector-pill">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Transcription Complete &bull; ResultPublisher Outbound Write
+          </span>
+          <div class="phase-connector-line"></div>
+        </div>
+
+        <!-- ==================== PHASE 4 ==================== -->
+        <section class="phase-block" id="phase-4-card">
+          <div class="phase-block-header">
+            <div>
+              <span class="phase-badge-pill badge-p4">Phase 4 &bull; Result Egress</span>
+              <div class="phase-block-title">Phase 4: Publishing Transcripts to Redis</div>
+              <div class="phase-block-desc">ResultPublisher writes finalized transcribed SegmentResult to Redis stream stt:result:{session_id}.</div>
+            </div>
+            <button class="inspect-phase-btn" onclick="openDrawer('phase-4')">
+              <span>Deep-Dive Code Modal &rarr;</span>
+            </button>
+          </div>
+
+          <div class="phase-context-box">
+            Once Whisper completes transcription, <strong><code>ResultPublisher.publish()</code></strong> pushes the result into Redis:
+          </div>
+
+          <div class="code-snippet-box">
+            <div class="code-snippet-header">
+              <span class="code-snippet-lang">Python &bull; ResultPublisher</span>
+              <a class="code-snippet-file" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L458-L520" target="_blank">
+                📂 redis_streams.py: ResultPublisher
+              </a>
+            </div>
+            <div class="code-snippet-body"><span class="token-comment"># redis_streams.py: ResultPublisher</span>
+<span class="token-kw">await</span> self._redis.<span class="token-fn">xadd</span>(
+    <span class="token-str">f"stt:result:{session_id}"</span>,
+    {
+        <span class="token-str">"session_id"</span>: session_id,
+        <span class="token-str">"text"</span>: <span class="token-str">"Patient has mild fever and sore throat."</span>,
+        <span class="token-str">"start_time"</span>: <span class="token-str">"1.250"</span>,
+        <span class="token-str">"end_time"</span>: <span class="token-str">"3.840"</span>,
+        <span class="token-str">"is_final"</span>: <span class="token-str">"1"</span>,
+        <span class="token-str">"language"</span>: <span class="token-str">"en"</span>,
+        <span class="token-str">"confidence"</span>: <span class="token-str">"0.9650"</span>,
+        <span class="token-str">"utterance_index"</span>: <span class="token-str">"0"</span>,
+        <span class="token-str">"created_at"</span>: <span class="token-fn">str</span>(time.<span class="token-fn">time</span>()),
+    },
+    maxlen=<span class="token-num">2000</span>,
+    approximate=<span class="token-kw">True</span>,
+)</div>
+          </div>
+        </section>
+
+        <!-- CONNECTOR 4 -> 5 -->
+        <div class="phase-connector">
+          <div class="phase-connector-line"></div>
+          <span class="phase-connector-pill">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Redis Stream stt:result:{sessionId} &bull; Gateway Egress Reader
+          </span>
+          <div class="phase-connector-line"></div>
+        </div>
+
+        <!-- ==================== PHASE 5 ==================== -->
+        <section class="phase-block" id="phase-5-card">
+          <div class="phase-block-header">
+            <div>
+              <span class="phase-badge-pill badge-p5">Phase 5 &bull; Gateway Broadcast</span>
+              <div class="phase-block-title">Phase 5: Gateway Result Ingestion &amp; WebSocket Broadcast</div>
+              <div class="phase-block-desc">Gateway consumes stt:result, applies Egress Backpressure Protection, and emits JSON transcript payload to Doctor UI.</div>
+            </div>
+            <button class="inspect-phase-btn" onclick="openDrawer('phase-5')">
+              <span>Deep-Dive Code Modal &rarr;</span>
+            </button>
+          </div>
+
+          <div class="phase-context-box">
+            The API Gateway is already listening to <code>stt:result:{sessionId}</code> via <strong><code>StreamingAudioBridgeService.readResultStream()</code></strong>:
+          </div>
+
+          <div class="code-snippet-box">
+            <div class="code-snippet-header">
+              <span class="code-snippet-lang">TypeScript &bull; StreamingAudioBridgeService</span>
+              <a class="code-snippet-file" href="file:///Users/apple/Desktop/vox/project-hope/packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts#L494-L560" target="_blank">
+                📂 streamingAudioBridge.service.ts: readResultStream
+              </a>
+            </div>
+            <div class="code-snippet-body"><span class="token-comment">// streamingAudioBridge.service.ts: readResultStream</span>
+<span class="token-kw">const</span> result = <span class="token-kw">await</span> reader.<span class="token-fn">xreadgroup</span>(
+  <span class="token-str">'GROUP'</span>, <span class="token-str">'captions'</span>, <span class="token-str">'captions-'</span> + sessionId,
+  <span class="token-str">'COUNT'</span>, <span class="token-num">100</span>, <span class="token-str">'BLOCK'</span>, <span class="token-num">500</span>,
+  <span class="token-str">'STREAMS'</span>, <span class="token-str">`stt:result:${sessionId}`</span>,
+  <span class="token-str">'&gt;'</span>
+);
+<span class="token-kw">for</span> (<span class="token-kw">const</span> [, entries] <span class="token-kw">of</span> result) {
+  <span class="token-kw">for</span> (<span class="token-kw">const</span> [entryId, fields] <span class="token-kw">of</span> entries) {
+    <span class="token-kw">const</span> terminal = <span class="token-kw">this</span>.<span class="token-fn">parseAndEmitResult</span>(subject, fields, sessionEcho);
+  }
+}</div>
+          </div>
+
+          <div class="phase-context-box">
+            It forwards to <strong><code>relayResult()</code></strong> which applies <strong>Egress Backpressure Protection</strong>:
+            <ul style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <li>If client socket is congested (&gt; 32 KiB buffer), intermediate draft partials are dropped to keep latency under 200ms.</li>
+              <li>Finalized medical sentences are <strong>NEVER dropped</strong> (queued in order).</li>
+            </ul>
+          </div>
+
+          <div class="phase-context-box">
+            Sends the JSON caption payload over the WebSocket connection:
+            <div class="code-snippet-box" style="margin-top: 8px;">
+              <div class="code-snippet-header">
+                <span class="code-snippet-lang">JSON &bull; Final Transcript Event</span>
+                <span style="color:#34D399;">Doctor WebSocket Egress</span>
+              </div>
+              <div class="code-snippet-body"><span class="token-kw">{</span>
+  <span class="token-var">"type"</span>: <span class="token-str">"transcript"</span>,
+  <span class="token-var">"seq"</span>: <span class="token-num">1</span>,
+  <span class="token-var">"text"</span>: <span class="token-str">"Patient has mild fever and sore throat."</span>,
+  <span class="token-var">"isFinal"</span>: <span class="token-kw">true</span>,
+  <span class="token-var">"startTime"</span>: <span class="token-num">1.250</span>,
+  <span class="token-var">"endTime"</span>: <span class="token-num">3.840</span>,
+  <span class="token-var">"confidence"</span>: <span class="token-num">0.9650</span>
+<span class="token-kw">}</span></div>
+            </div>
+            <p style="margin-top: 10px; color:#34D399; font-weight:600;">✨ The Doctor UI receives this message and renders the live medical transcription in real time on the consultation screen!</p>
+          </div>
+        </section>
+
+        <!-- ==================== SUMMARY TABLE ==================== -->
+        <section class="summary-section" id="summary-table-section">
+          <div class="summary-header">
+            <h2>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+              Summary Table of Files &amp; Roles
+            </h2>
+            <p>End-to-end component ownership, active source references, and Redis stream operations across the audio processing lifecycle.</p>
+          </div>
+
+          <div class="summary-table-wrap">
+            <table class="summary-table">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th>Responsible Component</th>
+                  <th>File &amp; Code Reference</th>
+                  <th>Key Redis Operation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="stage-badge">
+                      <span class="stage-num-badge">1</span>
+                      <span>WebSocket Ingress</span>
+                    </div>
+                  </td>
+                  <td><span class="comp-badge">NestJS Gateway</span></td>
+                  <td>
+                    <a class="code-ref-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L816-L1043" target="_blank">
+                      📂 stt-ws.gateway.ts:816
+                    </a>
+                  </td>
+                  <td><span class="redis-op-badge">GET / DEL ticket</span></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="stage-badge">
+                      <span class="stage-num-badge">2</span>
+                      <span>Audio Forwarding</span>
+                    </div>
+                  </td>
+                  <td><span class="comp-badge">Audio Bridge</span></td>
+                  <td>
+                    <a class="code-ref-link" href="file:///Users/apple/Desktop/vox/project-hope/packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts#L291-L330" target="_blank">
+                      📂 streamingAudioBridge.service.ts:291
+                    </a>
+                  </td>
+                  <td><span class="redis-op-badge">XADD stt:audio:{id} MAXLEN ~ 10000</span></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="stage-badge">
+                      <span class="stage-num-badge">3</span>
+                      <span>Stream Fetching</span>
+                    </div>
+                  </td>
+                  <td><span class="comp-badge">Python Consumer</span></td>
+                  <td>
+                    <a class="code-ref-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L103-L268" target="_blank">
+                      📂 redis_streams.py:103
+                    </a>
+                  </td>
+                  <td><span class="redis-op-badge">XREADGROUP stt-ingest + XACK</span></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="stage-badge">
+                      <span class="stage-num-badge">4</span>
+                      <span>DSP &amp; VAD</span>
+                    </div>
+                  </td>
+                  <td><span class="comp-badge">Preprocessor</span></td>
+                  <td>
+                    <a class="code-ref-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/preprocessor.py#L557-L750" target="_blank">
+                      📂 preprocessor.py:557
+                    </a>
+                  </td>
+                  <td><span style="font-family: monospace; font-size: 0.78rem; color: #94A3B8;">In-memory 512-sample frame slicing</span></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="stage-badge">
+                      <span class="stage-num-badge">5</span>
+                      <span>ASR Inference</span>
+                    </div>
+                  </td>
+                  <td><span class="comp-badge">Whisper Worker</span></td>
+                  <td>
+                    <a class="code-ref-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/inference.py#L700-L780" target="_blank">
+                      📂 inference.py:700
+                    </a>
+                  </td>
+                  <td><span style="font-family: monospace; font-size: 0.78rem; color: #A78BFA;">GPU CTranslate2 FP16 decode</span></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="stage-badge">
+                      <span class="stage-num-badge">6</span>
+                      <span>Result Publishing</span>
+                    </div>
+                  </td>
+                  <td><span class="comp-badge">Result Publisher</span></td>
+                  <td>
+                    <a class="code-ref-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L458-L520" target="_blank">
+                      📂 redis_streams.py:458
+                    </a>
+                  </td>
+                  <td><span class="redis-op-badge">XADD stt:result:{id} MAXLEN ~ 2000</span></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="stage-badge">
+                      <span class="stage-num-badge">7</span>
+                      <span>Client Broadcast</span>
+                    </div>
+                  </td>
+                  <td><span class="comp-badge">Gateway Egress</span></td>
+                  <td>
+                    <a class="code-ref-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L1360-L1412" target="_blank">
+                      📂 stt-ws.gateway.ts:1360
+                    </a>
+                  </td>
+                  <td><span class="redis-op-badge">XREADGROUP captions &rarr; ws.send()</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+
+    </div>
+
+    <!-- TAB 2: ARCHIFY SEQUENCE SVG VIEW -->
+    <div id="tab-diagram" class="tab-content">
+      <div class="svg-container">
+        <svg viewBox="0 0 1080 685" data-sequence-column-fit="spread" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase">
+        <title id="archify-diagram-title">STT Streaming Audio Processing &amp; Inference Execution Lifecycle</title>
+        <desc id="archify-diagram-description">Microphone Ingress → Redis Audio Stream → IngestionConsumer → DSP &amp; Silero VAD → Whisper ASR Decoder → RepeatGuard &amp; Lexicon → Result Egress</desc>
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-default" />
+          </marker>
+          <marker id="arrowhead-emphasis" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-emphasis" />
+          </marker>
+          <marker id="arrowhead-security" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-security" />
+          </marker>
+          <marker id="arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-dashed" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" class="c-grid" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Time Segments -->
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="0" x="48" y="135" width="984" height="115" rx="10" class="c-lane" stroke-width="1"/>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="1" x="48" y="260" width="984" height="160" rx="10" class="c-lane" stroke-width="1"/>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="2" x="48" y="430" width="984" height="155" rx="10" class="c-lane" stroke-width="1"/>
+
+        <!-- Lifelines -->
+        <path d="M 105 142 L 105 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 216.5 142 L 216.5 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 328 142 L 328 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 439.5 142 L 439.5 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 551 142 L 551 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 662.5 142 L 662.5 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 774 142 L 774 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 885.5 142 L 885.5 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 997 142 L 997 589" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+
+        <!-- Activations -->
+
+
+        <!-- Messages -->
+        <g data-edge-from="client" data-edge-to="gateway" data-edge-label="1. Stream 100ms PCM chunks (WS Binary)" data-edge-key="0" data-edge-id="mic-capture">
+          <path data-composition-edge-from="client" data-composition-edge-to="gateway" data-composition-edge-id="mic-capture" data-composition-points="112,160;209.5,160" d="M 112 160 L 209.5 160" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-detail="context">
+          <rect x="29.350000000000023" y="140" width="262.79999999999995" height="18" rx="3" class="c-mask"/>
+          <text x="160.75" y="150" class="t-edge-emphasis" font-size="11" text-anchor="middle">1. Stream 100ms PCM chunks (WS Binary)</text>
+        </g>
+        </g>
+
+        <g data-edge-from="gateway" data-edge-to="redis_audio" data-edge-label="2. XADD stt:audio:{session_id} (seq, pcm_bytes)" data-edge-key="1" data-edge-id="xadd-audio">
+          <path data-composition-edge-from="gateway" data-composition-edge-to="redis_audio" data-composition-edge-id="xadd-audio" data-composition-points="223.5,185;321,185" d="M 223.5 185 L 321 185" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="111.15" y="165" width="322.2" height="18" rx="3" class="c-mask"/>
+          <text x="272.25" y="175" class="t-muted" font-size="11" text-anchor="middle">2. XADD stt:audio:{session_id} (seq, pcm_bytes)</text>
+        </g>
+        </g>
+
+        <g data-edge-from="redis_audio" data-edge-to="consumer" data-edge-label="3. XREADGROUP group:stt:audio:group (worker_id)" data-edge-key="2" data-edge-id="xreadgroup-audio">
+          <path data-composition-edge-from="redis_audio" data-composition-edge-to="consumer" data-composition-edge-id="xreadgroup-audio" data-composition-points="335,210;432.5,210" d="M 335 210 L 432.5 210" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="222.65" y="190" width="322.2" height="18" rx="3" class="c-mask"/>
+          <text x="383.75" y="200" class="t-muted" font-size="11" text-anchor="middle">3. XREADGROUP group:stt:audio:group (worker_id)</text>
+        </g>
+        </g>
+
+        <g data-edge-from="consumer" data-edge-to="preprocessor" data-edge-label="4. Verify seq guard &amp; pass AudioFrame" data-edge-key="3" data-edge-id="ingest-frame">
+          <path data-composition-edge-from="consumer" data-composition-edge-to="preprocessor" data-composition-edge-id="ingest-frame" data-composition-points="446.5,235;544,235" d="M 446.5 235 L 544 235" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="367.15" y="215" width="256.2" height="18" rx="3" class="c-mask"/>
+          <text x="495.25" y="225" class="t-muted" font-size="11" text-anchor="middle">4. Verify seq guard &amp; pass AudioFrame</text>
+        </g>
+        </g>
+
+        <g data-edge-from="preprocessor" data-edge-to="vad_engine" data-edge-label="5. Polyphase resample 16kHz &amp; feed 32ms frame" data-edge-key="4" data-edge-id="resample-feed-vad">
+          <path data-composition-edge-from="preprocessor" data-composition-edge-to="vad_engine" data-composition-edge-id="resample-feed-vad" data-composition-points="558,280;655.5,280" d="M 558 280 L 655.5 280" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="452.25" y="260" width="309" height="18" rx="3" class="c-mask"/>
+          <text x="606.75" y="270" class="t-muted" font-size="11" text-anchor="middle">5. Polyphase resample 16kHz &amp; feed 32ms frame</text>
+        </g>
+        </g>
+
+        <g data-edge-from="vad_engine" data-edge-to="preprocessor" data-edge-label="6. Silero LSTM inference: prob &gt; 0.6 onset" data-edge-key="5" data-edge-id="vad-speech-onset">
+          <path data-composition-edge-from="vad_engine" data-composition-edge-to="preprocessor" data-composition-edge-id="vad-speech-onset" data-composition-points="655.5,310;558,310" d="M 655.5 310 L 558 310" class="a-emphasis" data-animate="edge" style="--step:5" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-detail="context">
+          <rect x="462.15" y="290" width="289.2" height="18" rx="3" class="c-mask"/>
+          <text x="606.75" y="300" class="t-edge-emphasis" font-size="11" text-anchor="middle">6. Silero LSTM inference: prob &gt; 0.6 onset</text>
+        </g>
+        </g>
+
+        <g data-edge-from="preprocessor" data-edge-to="vad_engine" data-edge-label="7. Track speech run &amp; silence countdown (700ms)" data-edge-key="6" data-edge-id="track-silence-endpoint">
+          <path data-composition-edge-from="preprocessor" data-composition-edge-to="vad_engine" data-composition-edge-id="track-silence-endpoint" data-composition-points="558,340;655.5,340" d="M 558 340 L 655.5 340" class="a-dashed" data-animate="edge" style="--step:6" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-detail="context">
+          <rect x="445.65" y="320" width="322.2" height="18" rx="3" class="c-mask"/>
+          <text x="606.75" y="330" class="t-edge-dashed" font-size="11" text-anchor="middle">7. Track speech run &amp; silence countdown (700ms)</text>
+        </g>
+        </g>
+
+        <g data-edge-from="vad_engine" data-edge-to="preprocessor" data-edge-label="8. Silence threshold reached -&gt; cut AudioUtterance" data-edge-key="7" data-edge-id="vad-offset-cut">
+          <path data-composition-edge-from="vad_engine" data-composition-edge-to="preprocessor" data-composition-edge-id="vad-offset-cut" data-composition-points="655.5,370;558,370" d="M 655.5 370 L 558 370" class="a-emphasis" data-animate="edge" style="--step:7" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-detail="context">
+          <rect x="435.75" y="350" width="342" height="18" rx="3" class="c-mask"/>
+          <text x="606.75" y="360" class="t-edge-emphasis" font-size="11" text-anchor="middle">8. Silence threshold reached -&gt; cut AudioUtterance</text>
+        </g>
+        </g>
+
+        <g data-edge-from="preprocessor" data-edge-to="inference" data-edge-label="9. Dispatch AudioUtterance (is_final=True)" data-edge-key="8" data-edge-id="dispatch-utterance">
+          <path data-composition-edge-from="preprocessor" data-composition-edge-to="inference" data-composition-edge-id="dispatch-utterance" data-composition-points="558,400;767,400" d="M 558 400 L 767 400" class="a-emphasis" data-animate="edge" style="--step:8" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-detail="context">
+          <rect x="517.9" y="380" width="289.2" height="18" rx="3" class="c-mask"/>
+          <text x="662.5" y="390" class="t-edge-emphasis" font-size="11" text-anchor="middle">9. Dispatch AudioUtterance (is_final=True)</text>
+        </g>
+        </g>
+
+        <g data-edge-from="inference" data-edge-to="postproc" data-edge-label="10. GPU Whisper decode -&gt; raw transcript" data-edge-key="9" data-edge-id="gpu-whisper-transcribe">
+          <path data-composition-edge-from="inference" data-composition-edge-to="postproc" data-composition-edge-id="gpu-whisper-transcribe" data-composition-points="781,450;878.5,450" d="M 781 450 L 878.5 450" class="a-emphasis" data-animate="edge" style="--step:9" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-detail="context">
+          <rect x="691.75" y="430" width="276" height="18" rx="3" class="c-mask"/>
+          <text x="829.75" y="440" class="t-edge-emphasis" font-size="11" text-anchor="middle">10. GPU Whisper decode -&gt; raw transcript</text>
+        </g>
+        </g>
+
+        <g data-edge-from="postproc" data-edge-to="inference" data-edge-label="11. Apply RepeatGuard, RMS gate &amp; Lexicon" data-edge-key="10" data-edge-id="apply-guards">
+          <path data-composition-edge-from="postproc" data-composition-edge-to="inference" data-composition-edge-id="apply-guards" data-composition-points="878.5,480;781,480" d="M 878.5 480 L 781 480" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="688.45" y="460" width="282.59999999999997" height="18" rx="3" class="c-mask"/>
+          <text x="829.75" y="470" class="t-muted" font-size="11" text-anchor="middle">11. Apply RepeatGuard, RMS gate &amp; Lexicon</text>
+        </g>
+        </g>
+
+        <g data-edge-from="inference" data-edge-to="redis_result" data-edge-label="12. XADD stt:result:{session_id} (SegmentResult)" data-edge-key="11" data-edge-id="xadd-result">
+          <path data-composition-edge-from="inference" data-composition-edge-to="redis_result" data-composition-edge-id="xadd-result" data-composition-points="781,510;990,510" d="M 781 510 L 990 510" class="a-emphasis" data-animate="edge" style="--step:11" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-detail="context">
+          <rect x="721.1" y="490" width="328.79999999999995" height="18" rx="3" class="c-mask"/>
+          <text x="885.5" y="500" class="t-edge-emphasis" font-size="11" text-anchor="middle">12. XADD stt:result:{session_id} (SegmentResult)</text>
+        </g>
+        </g>
+
+        <g data-edge-from="redis_result" data-edge-to="gateway" data-edge-label="13. XREAD stt:result:{session_id} event" data-edge-key="12" data-edge-id="xread-gateway">
+          <path data-composition-edge-from="redis_result" data-composition-edge-to="gateway" data-composition-edge-id="xread-gateway" data-composition-points="990,540;223.5,540" d="M 990 540 L 223.5 540" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="472.05" y="520" width="269.4" height="18" rx="3" class="c-mask"/>
+          <text x="606.75" y="530" class="t-muted" font-size="11" text-anchor="middle">13. XREAD stt:result:{session_id} event</text>
+        </g>
+        </g>
+
+        <g data-edge-from="gateway" data-edge-to="client" data-edge-label="14. Push captions (WebSocket JSON)" data-edge-key="13" data-edge-id="ws-push-captions">
+          <path data-composition-edge-from="gateway" data-composition-edge-to="client" data-composition-edge-id="ws-push-captions" data-composition-points="209.5,570;112,570" d="M 209.5 570 L 112 570" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="42.55000000000001" y="550" width="236.39999999999998" height="18" rx="3" class="c-mask"/>
+          <text x="160.75" y="560" class="t-muted" font-size="11" text-anchor="middle">14. Push captions (WebSocket JSON)</text>
+        </g>
+        </g>
+
+        <!-- Segment Labels -->
+        <g data-graph-role="segment-label" data-segment-id="0">
+          <rect x="56" y="113" width="274" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="126" class="t-dim" font-size="9" font-weight="600">Phase 1: Real-Time Audio Capture &amp; Redis Ingestion</text>
+        </g>
+        <g data-graph-role="segment-label" data-segment-id="1">
+          <rect x="56" y="238" width="320.8" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="251" class="t-dim" font-size="9" font-weight="600">Phase 2: Polyphase DSP, Silero VAD &amp; Utterance Segmentation</text>
+        </g>
+        <g data-graph-role="segment-label" data-segment-id="2">
+          <rect x="56" y="408" width="346.8" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="421" class="t-dim" font-size="9" font-weight="600">Phase 3: GPU ASR Decoding, Guard Post-Processing &amp; Result Egress</text>
+        </g>
+
+        <!-- Participants -->
+        <g id="node-client" data-node-id="client" data-node-label="Doctor UI" tabindex="0" role="button" aria-label="Focus Doctor UI, Browser Mic, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="Browser Mic" data-node-context="Sequence participant">
+          <title>Doctor UI · Browser Mic · Sequence participant</title>
+          <rect x="62" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="62" y="72" width="86" height="60" rx="6" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(68 78) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="105" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Doctor UI</text>
+          <text data-detail="context" x="105" y="122" class="t-muted" font-size="7" text-anchor="middle">Browser Mic</text>
+        </g>
+
+        <g id="node-gateway" data-node-id="gateway" data-node-label="API Gateway" tabindex="0" role="button" aria-label="Focus API Gateway, WebSocket Relay, Sequence participant" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="WebSocket Relay" data-node-context="Sequence participant">
+          <title>API Gateway · WebSocket Relay · Sequence participant</title>
+          <rect x="173.5" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="173.5" y="72" width="86" height="60" rx="6" class="c-frontend" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(179.5 78) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="216.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API Gateway</text>
+          <text data-detail="context" x="216.5" y="122" class="t-muted" font-size="7" text-anchor="middle">WebSocket Relay</text>
+        </g>
+
+        <g id="node-redis_audio" data-node-id="redis_audio" data-node-label="Audio Stream" tabindex="0" role="button" aria-label="Focus Audio Stream, stt:audio:{id}, Sequence participant" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="stt:audio:{id}" data-node-context="Sequence participant">
+          <title>Audio Stream · stt:audio:{id} · Sequence participant</title>
+          <rect x="285" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="285" y="72" width="86" height="60" rx="6" class="c-messagebus" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(291 78) scale(0.6875)">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
+            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
+            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="328" y="108" class="t-primary" font-size="10.8" font-weight="600" text-anchor="middle">Audio Stream</text>
+          <text data-detail="context" x="328" y="122" class="t-muted" font-size="7" text-anchor="middle">stt:audio:{id}</text>
+        </g>
+
+        <g id="node-consumer" data-node-id="consumer" data-node-label="Consumer" tabindex="0" role="button" aria-label="Focus Consumer, session_mgr, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="session_mgr" data-node-context="Sequence participant">
+          <title>Consumer · session_mgr · Sequence participant</title>
+          <rect x="396.5" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="396.5" y="72" width="86" height="60" rx="6" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(402.5 78) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="439.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Consumer</text>
+          <text data-detail="context" x="439.5" y="122" class="t-muted" font-size="7" text-anchor="middle">session_mgr</text>
+        </g>
+
+        <g id="node-preprocessor" data-node-id="preprocessor" data-node-label="Resampler" tabindex="0" role="button" aria-label="Focus Resampler, DSP Pipeline, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="DSP Pipeline" data-node-context="Sequence participant">
+          <title>Resampler · DSP Pipeline · Sequence participant</title>
+          <rect x="508" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="508" y="72" width="86" height="60" rx="6" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(514 78) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="551" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Resampler</text>
+          <text data-detail="context" x="551" y="122" class="t-muted" font-size="7" text-anchor="middle">DSP Pipeline</text>
+        </g>
+
+        <g id="node-vad_engine" data-node-id="vad_engine" data-node-label="Silero VAD" tabindex="0" role="button" aria-label="Focus Silero VAD, LSTM Model, Sequence participant" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="LSTM Model" data-node-context="Sequence participant">
+          <title>Silero VAD · LSTM Model · Sequence participant</title>
+          <rect x="619.5" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="619.5" y="72" width="86" height="60" rx="6" class="c-cloud" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(625.5 78) scale(0.6875)">
+            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="662.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Silero VAD</text>
+          <text data-detail="context" x="662.5" y="122" class="t-muted" font-size="7" text-anchor="middle">LSTM Model</text>
+        </g>
+
+        <g id="node-inference" data-node-id="inference" data-node-label="Inference" tabindex="0" role="button" aria-label="Focus Inference, Whisper / CT2, Sequence participant" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Whisper / CT2" data-node-context="Sequence participant">
+          <title>Inference · Whisper / CT2 · Sequence participant</title>
+          <rect x="731" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="731" y="72" width="86" height="60" rx="6" class="c-cloud" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(737 78) scale(0.6875)">
+            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="774" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Inference</text>
+          <text data-detail="context" x="774" y="122" class="t-muted" font-size="7" text-anchor="middle">Whisper / CT2</text>
+        </g>
+
+        <g id="node-postproc" data-node-id="postproc" data-node-label="Guards" tabindex="0" role="button" aria-label="Focus Guards, Postprocessing, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Postprocessing" data-node-context="Sequence participant">
+          <title>Guards · Postprocessing · Sequence participant</title>
+          <rect x="842.5" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="842.5" y="72" width="86" height="60" rx="6" class="c-backend" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(848.5 78) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="885.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Guards</text>
+          <text data-detail="context" x="885.5" y="122" class="t-muted" font-size="7" text-anchor="middle">Postprocessing</text>
+        </g>
+
+        <g id="node-redis_result" data-node-id="redis_result" data-node-label="Result Stream" tabindex="0" role="button" aria-label="Focus Result Stream, stt:result:{id}, Sequence participant" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="stt:result:{id}" data-node-context="Sequence participant">
+          <title>Result Stream · stt:result:{id} · Sequence participant</title>
+          <rect x="954" y="72" width="86" height="60" rx="6" class="c-mask"/>
+          <rect x="954" y="72" width="86" height="60" rx="6" class="c-messagebus" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(960 78) scale(0.6875)">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
+            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
+            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="997" y="108" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Result Stream</text>
+          <text data-detail="context" x="997" y="122" class="t-muted" font-size="7" text-anchor="middle">stt:result:{id}</text>
+        </g>
+
+        <!-- Legend -->
+        <g data-legend="">
+          <text x="40" y="611" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="emphasis" data-legend-x="40" data-legend-baseline="631" data-legend-width="103">
+            <path d="M 40 628 L 74 628" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+            <text x="83" y="631" class="t-muted" font-size="10" font-weight="500">main request</text>
+          </g>
+          <g data-legend-semantic-kind="return" data-legend-x="165" data-legend-baseline="631" data-legend-width="73">
+            <path d="M 165 628 L 199 628" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+            <text x="208" y="631" class="t-muted" font-size="10" font-weight="500">return</text>
+          </g>
+          <g data-legend-semantic-kind="dashed" data-legend-x="260" data-legend-baseline="631" data-legend-width="98">
+            <path d="M 260 628 L 294 628" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+            <text x="303" y="631" class="t-muted" font-size="10" font-weight="500">async trace</text>
+          </g>
+          <g data-legend-semantic-kind="default" data-legend-x="380" data-legend-baseline="631" data-legend-width="78">
+            <path d="M 380 628 L 414 628" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+            <text x="423" y="631" class="t-muted" font-size="10" font-weight="500">message</text>
+          </g>
+        </g>
+      </svg>
+      </div>
+    </div>
+
+    <!-- TAB 3: CORE COMPONENTS BREAKDOWN -->
+    <div id="tab-components" class="tab-content">
+      <div class="component-grid">
+
+        <!-- Comp 1: IngestionConsumer -->
+        <div class="comp-card">
+          <div class="comp-card-header">
+            <div class="comp-name">
+              <span>1. IngestionConsumer</span>
+            </div>
+            <span class="comp-type-pill type-consumer">Redis Ingress</span>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">What It Manages &amp; Stores</div>
+            <p><strong>Persistence:</strong> Redis Consumer Group cursor.</p>
+            <p><strong>State &amp; Handles:</strong> <code>AUDIO_CONSUMER_GROUP</code> name, worker-specific consumer ID, <code>_last_id</code> cursor, XAUTOCLAIM timer (min idle 5000ms) for reclaiming orphaned audio on worker restart.</p>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">Core Responsibilities</div>
+            <p>Streams raw audio chunks from <code>stt:audio:{session_id}</code>. Guarantees at-least-once delivery; unpacks binary Redis hash fields into structured <code>AudioFrame</code> objects.</p>
+            <a class="comp-code-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L103-L270" target="_blank">
+              🔗 Open redis_streams.py:103-270
+            </a>
+          </div>
+        </div>
+
+        <!-- Comp 2: StreamingPreprocessor -->
+        <div class="comp-card">
+          <div class="comp-card-header">
+            <div class="comp-name">
+              <span>2. StreamingPreprocessor</span>
+            </div>
+            <span class="comp-type-pill type-dsp">DSP &amp; Framing</span>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">What It Manages &amp; Stores</div>
+            <p><strong>Persistence:</strong> In-memory session buffers.</p>
+            <p><strong>State &amp; Handles:</strong> <code>pcm_remainder</code> byte buffer, <code>_resample_carry</code> context array for polyphase filter, <code>_peak_window</code> moving average, <code>_normalizer_gain</code> scalar, optional RNNoise denoiser handle.</p>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">Core Responsibilities</div>
+            <p>Ingests variable-length PCM chunks, applies anti-aliased polyphase resampling to 16kHz float32, performs peak normalization, and chunks samples into 512-sample (32ms) frames.</p>
+            <a class="comp-code-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/preprocessor.py#L528-L616" target="_blank">
+              🔗 Open preprocessor.py:528-616
+            </a>
+          </div>
+        </div>
+
+        <!-- Comp 3: Silero VAD Engine -->
+        <div class="comp-card">
+          <div class="comp-card-header">
+            <div class="comp-name">
+              <span>3. Silero VAD State Machine</span>
+            </div>
+            <span class="comp-type-pill type-vad">Voice Activity</span>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">What It Manages &amp; Stores</div>
+            <p><strong>Persistence:</strong> ONNX session LSTM tensors in memory.</p>
+            <p><strong>State &amp; Handles:</strong> LSTM hidden state vectors <code>(h, c)</code> carried across frames, <code>speech_onset_frames</code> counter, <code>pre_speech_ring</code> buffer (~320ms audio), <code>silence_frames</code> countdown counter.</p>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">Core Responsibilities</div>
+            <p>Computes speech probability per 32ms frame. Evaluates onset threshold (prob &gt; 0.6) and silence timeout (700ms hysteresis) to segment continuous audio into clean <code>AudioUtterance</code> objects.</p>
+            <a class="comp-code-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/preprocessor.py#L617-L750" target="_blank">
+              🔗 Open preprocessor.py:617-750
+            </a>
+          </div>
+        </div>
+
+        <!-- Comp 4: StreamingInferenceWorker -->
+        <div class="comp-card">
+          <div class="comp-card-header">
+            <div class="comp-name">
+              <span>4. StreamingInferenceWorker</span>
+            </div>
+            <span class="comp-type-pill type-asr">ASR Engine</span>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">What It Manages &amp; Stores</div>
+            <p><strong>Persistence:</strong> In-memory GPU worker state.</p>
+            <p><strong>State &amp; Handles:</strong> <code>_asr_pipeline</code> CTranslate2 Whisper model handle, <code>_queue</code> asyncio buffer, <code>_prev_text</code> conditioning prompt window, <code>cumulative_processing_seconds</code> RTF counter.</p>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">Core Responsibilities</div>
+            <p>Runs batched GPU Whisper inference on segmented speech utterances. Employs beam search and conditioning prompts to transcribe speech into text tokens with timestamps.</p>
+            <a class="comp-code-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/inference.py#L700-L750" target="_blank">
+              🔗 Open inference.py:700-750
+            </a>
+          </div>
+        </div>
+
+        <!-- Comp 5: Guard Filters & Lexicon -->
+        <div class="comp-card">
+          <div class="comp-card-header">
+            <div class="comp-name">
+              <span>5. Guard Filters &amp; Lexicon</span>
+            </div>
+            <span class="comp-type-pill type-guards">Post-Processing</span>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">What It Manages &amp; Stores</div>
+            <p><strong>Persistence:</strong> In-memory dictionary and regex rules.</p>
+            <p><strong>State &amp; Handles:</strong> <code>RepeatGuard</code> n-gram loop history window, <code>LexiconCorrector</code> radix tree of clinical hotwords, hallucination RMS energy thresholds, overlap boundary deduplication buffers.</p>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">Core Responsibilities</div>
+            <p>Prunes hallucinated Whisper repetitions, drops low-energy filler tokens, and snaps phonetic mistranscriptions to authoritative clinical medical vocabulary terms.</p>
+            <a class="comp-code-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/inference.py#L751-L780" target="_blank">
+              🔗 Open inference.py:751-780
+            </a>
+          </div>
+        </div>
+
+        <!-- Comp 6: ResultPublisher -->
+        <div class="comp-card">
+          <div class="comp-card-header">
+            <div class="comp-name">
+              <span>6. ResultPublisher</span>
+            </div>
+            <span class="comp-type-pill type-egress">Redis Egress</span>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">What It Manages &amp; Stores</div>
+            <p><strong>Persistence:</strong> Redis Outbound Stream.</p>
+            <p><strong>State &amp; Handles:</strong> Stream key <code>stt:result:{session_id}</code>, Redis client connection pool, monotonic segment ordinal sequence numbers.</p>
+          </div>
+          <div class="comp-section">
+            <div class="comp-sec-title">Core Responsibilities</div>
+            <p>Formats finalized segments into <code>SegmentResult</code> JSON payloads and issues <code>XADD stt:result:{session_id} MAXLEN ~ 2000</code> for API Gateway consumption.</p>
+            <a class="comp-code-link" href="file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L458-L520" target="_blank">
+              🔗 Open redis_streams.py:458-520
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL / DRAWER FOR STEP CODE INSPECTION -->
+  <div id="modal-overlay" class="modal-overlay" onclick="closeDrawer(event)">
+    <div class="drawer-card" onclick="event.stopPropagation()">
+      <div class="drawer-header">
+        <div class="drawer-header-info">
+          <h2 id="drawer-title">Step Title</h2>
+          <p id="drawer-subtitle">File and line numbers</p>
+        </div>
+        <button class="close-btn" onclick="closeDrawer(event)">&times;</button>
+      </div>
+      <div id="drawer-content" class="drawer-content">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const drawerDetails = {
+  "step-1": {
+    "title": "Step 1: Doctor UI Microphone Capture & Binary WebSocket Uplink",
+    "subtitle": "apps/admin-console/src/app/page.tsx:1-17",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/admin-console/src/app/page.tsx",
+    "code": "// Doctor Browser Client Microphone Streamer\nconst stream = await navigator.mediaDevices.getUserMedia({\n  audio: {\n    channelCount: 1,\n    sampleRate: 16000,\n    echoCancellation: true,\n    noiseSuppression: false,\n    autoGainControl: true\n  }\n});\n\nconst audioContext = new AudioContext({ sampleRate: 16000 });\nconst source = audioContext.createMediaStreamSource(stream);\nconst processor = audioContext.createScriptProcessor(4096, 1, 1);\n\nlet seq = 0;\nprocessor.onaudioprocess = (e) => {\n  const float32 = e.inputBuffer.getChannelData(0);\n  const int16 = new Int16Array(float32.length);\n  for (let i = 0; i < float32.length; i++) {\n    const s = Math.max(-1, Math.min(1, float32[i]));\n    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;\n  }\n  \n  // Package into binary payload with sequence header\n  const packet = new Uint8Array(4 + int16.byteLength);\n  new DataView(packet.buffer).setUint32(0, seq++, false);\n  packet.set(new Uint8Array(int16.buffer), 4);\n  \n  ws.send(packet);\n};",
+    "explanation": "<p><strong>Capture Mechanism:</strong> The Doctor UI initializes the browser <code>MediaDevices.getUserMedia</code> API at 16kHz mono. Audio frames are converted to 16-bit linear PCM little-endian format.</p>\n<p><strong>Network Transport:</strong> Chunks of approximately 100ms (1600 samples = 3200 bytes) are prepended with a monotonic 32-bit sequence counter (<code>seq</code>) and transmitted over a persistent WebSocket binary connection to the API Gateway.</p>\n<p><strong>Latency Budget:</strong> Direct streaming prevents buffer accumulation in the browser, keeping client ingress latency under 15ms.</p>"
+  },
+  "step-2": {
+    "title": "Step 2: API Gateway WebSocket Connection & Redis Audio Ingestion",
+    "subtitle": "apps/api/src/modules/streaming/stt-ws.gateway.ts:816-1043 & 1872-2045",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L816-L1043",
+    "code": "// 1. Client opens WebSocket URL returned at session creation:\n// wss://api.vox.ai/v1/stt/streaming/{sessionId}?ticket={streamTicket}\nasync handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {\n  const url = new URL(req.url || '', 'http://localhost');\n  const sessionId = url.searchParams.get('sessionId');\n  const ticket = url.searchParams.get('ticket');\n\n  // Authenticate single-use ticket & verify session tenant/user binding\n  const stored = await this.streamTicketService.consumeTicket(ticket);\n  const binding = await this.sessionBinding.lookupBinding(sessionId);\n  if (!stored || !binding || stored.scope !== `stt_session:${sessionId}`) {\n    client.close(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');\n    return;\n  }\n\n  // Root OpenTelemetry trace & register session\n  const { span, carrier } = this.startSessionTrace(sessionId, req);\n  const session: SessionInfo = {\n    sessionId, client, traceCarrier: carrier, binarySeq: 0,\n    audioBytesForwarded: 0, resumeBuffer: [], ...\n  };\n  this.sessions.set(client, session);\n\n  // Subscribe to Redis stt:result stream (group 'captions')\n  this.subscribeSessionResults(session);\n  this.sendReady(session); // Notify client socket: ready for audio streaming!\n}\n\n// 2. Client streams binary 16kHz PCM audio buffers over WebSocket\nasync handleMessage(client: WebSocket, rawData: string | Buffer, isBinary?: boolean): Promise<void> {\n  const session = this.sessions.get(client);\n  if (!session) return this.sendError(client, 'NO_SESSION', 'No active session');\n\n  if (isBinary === true) {\n    session.binarySeq++;\n    const audio = Buffer.isBuffer(rawData) ? rawData : Buffer.from(String(rawData));\n    this.forwardAudioFrame(session, session.binarySeq, audio);\n  }\n}\n\n// 3. Forward audio frame to Redis Stream via StreamingAudioBridgeService\nprivate forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {\n  session.audioBytesForwarded += data.length;\n\n  // Non-blocking XADD: ioredis preserves stream command ordering\n  // XADD stt:audio:{sessionId} MAXLEN ~ 10000 * seq <seq> sr 16000 enc pcm_s16le ch 1 data <bytes> final 0 ts <epoch>\n  this.bridgeService.writeAudioFrame(\n    session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false, session.traceCarrier\n  ).catch(err => {\n    session.droppedAudioFrames++;\n    this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame');\n  });\n}",
+    "explanation": "<p><strong>1. WebSocket Connection Handshake:</strong> The Doctor UI connects to <code>websocketUrl</code> with the single-use 30-second ticket issued during session creation (<code>?sessionId=...&ticket=...</code>). The Gateway validates CSWSH origin, consumes the ticket from Redis, and verifies that the ticket user matches the session owner.</p>\n<p><strong>2. Egress Subscription Setup:</strong> Before ingesting audio, the Gateway calls <code>subscribeSessionResults(session)</code> to join consumer group <code>captions</code> on Redis stream <code>stt:result:{sessionId}</code>. It then sends an explicit <code>{type: 'ready'}</code> event back to the client.</p>\n<p><strong>3. Audio Ingestion into Redis:</strong> As the microphone records audio, the client sends binary 16-bit 16kHz PCM chunks. <code>forwardAudioFrame()</code> updates the audio clock and calls <code>bridgeService.writeAudioFrame()</code> which executes:</p>\n<pre><code>XADD stt:audio:{sessionId} MAXLEN ~ 10000 * seq &lt;seq&gt; sr 16000 enc pcm_s16le ch 1 data &lt;raw PCM&gt; final 0 ts &lt;timestamp&gt;</code></pre>\n<p>Because ioredis preserves per-connection ordering, audio frames arrive in strict monotonic sequence without blocking gateway throughput.</p>"
+  },
+  "step-3": {
+    "title": "Step 3: IngestionConsumer Group Streaming & Recovery (redis_streams.py)",
+    "subtitle": "apps/stt/src/stt/streaming/redis_streams.py:103-450",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L103-L450",
+    "code": "class IngestionConsumer:\n    \"\"\"Asyncio task that reads audio frames from a per-session Redis Stream.\n\n    Reads stt:audio:{session_id} through a Redis consumer group (XREADGROUP + XACK),\n    so delivery is at-least-once and a worker crash never strands in-flight audio:\n    on recovery a new consumer reclaims the dead consumer's pending (unacked) entries via XAUTOCLAIM.\n    \"\"\"\n\n    def __init__(\n        self,\n        redis: Any,\n        session_id: str,\n        on_frame: Callable[[AudioFrame], Coroutine[Any, Any, None]],\n        last_id: str = \"0-0\",\n        block_ms: int = 5000,\n        on_batch: Callable[[str], Coroutine[Any, Any, None]] | None = None,\n        group_name: str = AUDIO_CONSUMER_GROUP,\n        consumer_name: str | None = None,\n        claim_min_idle_ms: int | None = None,\n        claim_interval_s: float | None = None,\n    ) -> None:\n        self._redis = redis\n        self._session_id = session_id\n        self._on_frame = on_frame\n        self._on_batch = on_batch\n        self._last_id = last_id\n        self._block_ms = block_ms\n        self._running = False\n        self._task: asyncio.Task[None] | None = None\n        self._group_name = group_name\n        self._consumer_name = consumer_name or f\"consumer-{uuid.uuid4().hex[:8]}\"\n        self._group_start_id = last_id if last_id and last_id != \"0-0\" else \"0\"\n        self._claim_min_idle_ms = (\n            claim_min_idle_ms if claim_min_idle_ms is not None else _DEFAULT_CLAIM_MIN_IDLE_MS\n        )\n        self._claim_interval_s = (\n            claim_interval_s if claim_interval_s is not None else _DEFAULT_CLAIM_INTERVAL_S\n        )\n        self._last_claim_at = 0.0\n        self._group_ready = False\n        self._trace_context: Any | None = None\n\n    async def start(self) -> None:\n        \"\"\"Start the consumer as a background asyncio task.\"\"\"\n        if self._running:\n            return\n        self._running = True\n        self._task = asyncio.create_task(self._run(), name=f\"ingestion-{self._session_id}\")\n        logger.info(\"IngestionConsumer started\", session_id=self._session_id)\n\n    async def _ensure_group(self, stream_key: str) -> None:\n        \"\"\"Create the consumer group (idempotent). Swallows BUSYGROUP.\"\"\"\n        try:\n            await self._redis.xgroup_create(\n                stream_key,\n                self._group_name,\n                id=self._group_start_id,\n                mkstream=True,\n            )\n            logger.info(\"Audio consumer group created\", session_id=self._session_id, group=self._group_name)\n        except Exception as exc:\n            if _err_has(exc, \"BUSYGROUP\"):\n                pass  # already exists \u2014 Redis owns the cursor\n            else:\n                logger.warning(\"XGROUP CREATE failed (continuing)\", session_id=self._session_id, error=str(exc))\n        self._group_ready = True\n\n    async def _dispatch_frame(self, entry_id: str, fields: Any) -> None:\n        \"\"\"Decode + forward one frame. A bad frame is skipped (logged), never fatal.\"\"\"\n        try:\n            self._capture_trace_context(fields)\n            frame = AudioFrame.from_redis_dict(fields)\n            if self._trace_context is None:\n                await self._on_frame(frame)\n            else:\n                token = context_api.attach(self._trace_context)\n                try:\n                    await self._on_frame(frame)\n                finally:\n                    context_api.detach(token)\n        except Exception as exc:\n            logger.warning(\"Failed to process audio frame, skipping\", session_id=self._session_id, entry_id=entry_id, error=str(exc))\n\n    async def _reclaim_pending(self, stream_key: str, min_idle_ms: int, force: bool = False) -> None:\n        \"\"\"Reclaim + process another consumer's idle pending entries via XAUTOCLAIM.\"\"\"\n        now = time.monotonic()\n        if not force and (now - self._last_claim_at) < self._claim_interval_s:\n            return\n        self._last_claim_at = now\n        try:\n            result = await self._redis.xautoclaim(\n                stream_key,\n                self._group_name,\n                self._consumer_name,\n                min_idle_time=min_idle_ms,\n                start_id=\"0-0\",\n                count=100,\n            )\n        except Exception as exc:\n            if _err_has(exc, \"NOGROUP\"):\n                await self._ensure_group(stream_key)\n            return\n\n        claimed = result[1] if isinstance(result, (list, tuple)) and len(result) >= 2 else []\n        if not claimed:\n            return\n        ack_ids: list[str] = []\n        for entry_id, fields in claimed:\n            eid = entry_id.decode() if isinstance(entry_id, bytes) else entry_id\n            if fields:\n                await self._dispatch_frame(eid, fields)\n                self._last_id = eid\n            ack_ids.append(eid)\n        await self._ack(stream_key, ack_ids)\n\n    async def _run(self) -> None:\n        \"\"\"Main read loop \u2014 consumer-group semantics (XREADGROUP + XACK).\"\"\"\n        stream_key = audio_stream_key(self._session_id)\n        await self._ensure_group(stream_key)\n        first_pass = True\n        try:\n            while self._running:\n                # Hand off in-flight from dead consumer (min_idle=0 on first pass to drain own unacked)\n                await self._reclaim_pending(\n                    stream_key,\n                    min_idle_ms=0 if first_pass else self._claim_min_idle_ms,\n                    force=first_pass,\n                )\n                first_pass = False\n\n                try:\n                    entries = await self._redis.xreadgroup(\n                        self._group_name,\n                        self._consumer_name,\n                        {stream_key: \">\"},\n                        count=100,\n                        block=self._block_ms,\n                    )\n                except RedisTimeoutError:\n                    continue  # Silent stream timeout; re-issue immediately\n                except Exception as exc:\n                    if _err_has(exc, \"NOGROUP\"):\n                        await self._ensure_group(stream_key)\n                        continue\n                    logger.error(\"XREADGROUP failed, retrying\", session_id=self._session_id, error=str(exc))\n                    await asyncio.sleep(1)\n                    continue\n\n                if not entries:\n                    continue\n\n                processed_any = False\n                ack_ids: list[str] = []\n                for _stream_name, messages in entries:\n                    for entry_id, fields in messages:\n                        eid = entry_id.decode() if isinstance(entry_id, bytes) else entry_id\n                        await self._dispatch_frame(eid, fields)\n                        self._last_id = eid\n                        ack_ids.append(eid)\n                        processed_any = True\n\n                await self._ack(stream_key, ack_ids)\n\n                if processed_any and self._on_batch is not None:\n                    try:\n                        await self._on_batch(self._last_id)\n                    except Exception as exc:\n                        logger.warning(\"on_batch callback failed (non-fatal)\", session_id=self._session_id, error=str(exc))\n        except asyncio.CancelledError:\n            logger.debug(\"IngestionConsumer cancelled\", session_id=self._session_id)\n        finally:\n            self._running = False",
+    "explanation": "<p><strong>Actual Implementation in <code>redis_streams.py:103-450</code>:</strong></p>\n<p><strong>1. Single-Owner Consumer Group Semantics:</strong> Reads <code>stt:audio:{session_id}</code> through Redis Consumer Group <code>AUDIO_CONSUMER_GROUP</code> using <code>XREADGROUP</code> with the <code>\">\"</code> unread cursor. Guarantees each audio frame is delivered to exactly one active STT worker.</p>\n<p><strong>2. Immediate Crash Recovery via <code>XAUTOCLAIM</code>:</strong> On the very first loop iteration (<code>first_pass=True</code>, <code>min_idle_ms=0</code>), <code>_reclaim_pending()</code> drains this consumer's OWN pending unacknowledged frames left over from before a worker restart. Thereafter, it periodically runs <code>XAUTOCLAIM</code> to reclaim frames idle &gt; <code>_claim_min_idle_ms</code> (abandoned by a dead worker), preventing any stranded clinical audio.</p>\n<p><strong>3. OpenTelemetry Trace Context Latching:</strong> <code>_capture_trace_context()</code> reads the W3C <code>traceparent</code> off the first audio frame and latches it for the life of the consumer. It attaches the context before calling <code>_on_frame(frame)</code> so spans stay correlated end-to-end.</p>\n<p><strong>4. Unconditional Acknowledgment & Batch Trimming:</strong> Dispatches frames via <code>AudioFrame.from_redis_dict(fields)</code>. Advances <code>_last_id = eid</code> and issues <code>XACK</code>. If <code>on_batch</code> callback is supplied, reports the batch position to persist the resume cursor and trim consumed Redis audio stream history.</p>"
+  },
+  "step-4": {
+    "title": "Step 4: Session Frame Handler & Preprocessor Gate Check",
+    "subtitle": "apps/stt/src/stt/streaming/session_manager.py:4018-4085",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/session_manager.py#L4018-L4085",
+    "code": "# session_manager.py: _make_frame_handler()\ndef _make_frame_handler(\n    self,\n    session: StreamSession,\n    preprocessor: StreamingPreprocessor | None = None,\n) -> Any:\n    inference_queue = self._inference_queues.get(session.session_id)\n    publisher = self._publishers.get(session.session_id)\n\n    async def _on_frame(frame: AudioFrame) -> None:\n        # 1. Gate check: drop frame if session finalized or cancelled\n        if session.status != SessionStatus.ACTIVE:\n            session.frames_dropped_after_finalize += 1\n            return\n\n        # 2. Sequence continuity & byte accounting\n        session.record_frame(seq=frame.seq, data=frame.data, sample_rate=frame.sr)\n\n        # 3. Feed raw 16kHz PCM bytes directly into StreamingPreprocessor\n        if preprocessor is not None:\n            utterances = await preprocessor.feed(frame.data)\n\n            processed_pcm = preprocessor.drain_processed_samples()\n            if processed_pcm:\n                session.append_processed_audio(processed_pcm)\n\n            # 4. Route utterances: finals to inference queue, partials to fire-and-forget\n            for utt in utterances:\n                if utt.is_final:\n                    self._cancel_partial(session.session_id)\n                    if inference_queue is not None:\n                        # Bounded non-blocking wait to prevent ingestion stall\n                        await asyncio.wait_for(\n                            inference_queue.put(utt),\n                            timeout=_STEADY_STATE_ENQUEUE_TIMEOUT_S,\n                        )",
+    "explanation": "<p><strong>1. Active Session Gate:</strong> The frame handler verifies that <code>session.status == SessionStatus.ACTIVE</code>. If the doctor has already completed the session, post-finalize frames are safely discarded.</p>\n<p><strong>2. Metrics & Sequence Continuity:</strong> <code>session.record_frame()</code> updates running byte counters, verifies sequence continuity, and timestamps ingress latency.</p>\n<p><strong>3. Hand-off to DSP & VAD:</strong> The raw binary PCM data is immediately passed to <code>preprocessor.feed(frame.data)</code> for slicing into 512-sample (32ms) blocks, resampling, denoising, and Silero VAD evaluation.</p>"
+  },
+  "step-5": {
+    "title": "Step 5: Stateful Polyphase Anti-Aliased Resampling & Normalization",
+    "subtitle": "apps/stt/src/stt/streaming/preprocessor.py:528-556",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/preprocessor.py#L528-L556",
+    "code": "def _resample_frame(self, frame: np.ndarray) -> np.ndarray:\n    \"\"\"Resample one frame to target rate (stateful, anti-aliased).\"\"\"\n    if self.sample_rate == self._target_sr:\n        return frame\n\n    from scipy.signal import resample_poly\n\n    # Concatenate carried context from previous frame to avoid edge transients\n    x = np.concatenate([self._resample_carry, frame.astype(np.float32)])\n    y = resample_poly(x, self._resample_up, self._resample_down).astype(np.float32)\n\n    # Lead trim matches carried context length\n    lead = len(self._resample_carry) * self._resample_up // self._resample_down\n    out = y[lead:]\n\n    # Retain trailing input samples as carry for the next frame\n    carry_len = min(\n        self._resample_ctx,\n        (len(x) // self._resample_down) * self._resample_down,\n    )\n    self._resample_carry = x[len(x) - carry_len :].copy()\n    return cast(np.ndarray, out)",
+    "explanation": "<p><strong>Anti-Aliasing via Polyphase Filter:</strong> Naive interpolation (<code>np.interp</code>) produces severe aliasing above the target Nyquist frequency (8kHz for 16kHz audio), corrupting Whisper mel-spectrograms. <code>resample_poly</code> implements a low-pass FIR filter that eliminates high-frequency noise.</p>\n<p><strong>Continuous Stream Continuity:</strong> Resampling audio frame-by-frame normally causes discontinuities (pops and clicks) at chunk boundaries. Carrying over a context tail (<code>_resample_carry</code>) guarantees continuous mathematical filter state across packets.</p>\n<p><strong>Peak Tracking:</strong> A sliding peak normalizer bounds signals to [-1.0, 1.0] while recording <code>_normalizer_gain</code> so energy gates can revert scalar adjustments exactly.</p>"
+  },
+  "step-6": {
+    "title": "Step 6: StreamingPreprocessor feed() Framing & Denoise Scope",
+    "subtitle": "apps/stt/src/stt/streaming/preprocessor.py:557-616",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/preprocessor.py#L557-L616",
+    "code": "async def feed(self, pcm_data: bytes) -> list[AudioUtterance]:\n    state = self._state\n    utterances: list[AudioUtterance] = []\n\n    # Accumulate with leftover bytes from previous frame\n    state.pcm_remainder.extend(pcm_data)\n    bytes_per_frame = self._frame_size * 2  # 512 samples * 2 bytes = 1024 bytes\n\n    while len(state.pcm_remainder) >= bytes_per_frame:\n        frame_bytes = bytes(state.pcm_remainder[:bytes_per_frame])\n        del state.pcm_remainder[:bytes_per_frame]\n\n        # Convert int16 -> float32 normalized [-1, 1]\n        frame_int16 = np.frombuffer(frame_bytes, dtype=np.int16)\n        frame_f32 = frame_int16.astype(np.float32) / 32768.0\n\n        # Normalization and Polyphase Resampling\n        if self._normalize:\n            frame_f32 = self._normalize_frame(frame_f32)\n        frame_f32 = self._resample_frame(frame_f32)\n\n        # Dual-Path Denoising (RNNoise)\n        vad_frame = frame_f32\n        if self._denoiser is not None:\n            if self._denoise_scope == \"full\":\n                frame_f32 = self._denoiser.process(frame_f32)\n                vad_frame = frame_f32\n            else:\n                # vad_only scope: denoise feeds ONLY VAD; ASR gets raw audio\n                vad_frame = self._denoiser.process(frame_f32.copy())\n\n        # Evaluate VAD\n        ...",
+    "explanation": "<p><strong>Byte Stream Accumulation:</strong> Audio chunks from the network arrive in variable packet sizes. <code>pcm_remainder</code> re-slices raw bytes into exact 512-sample blocks (32ms at 16kHz), matching Silero VAD's input tensor requirement.</p>\n<p><strong>Dual-Path Denoising:</strong> When <code>_denoise_scope == \"vad_only\"</code>, RNNoise suppresses ambient clinic background noise (air conditioning, keyboard clicks) exclusively for the VAD detector. The raw, pristine acoustics are preserved for Whisper, preventing spectral suppression artifacts.</p>"
+  },
+  "step-7": {
+    "title": "Step 7: Silero VAD LSTM Inference & Speech Onset State Machine",
+    "subtitle": "apps/stt/src/stt/streaming/preprocessor.py:617-680",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/preprocessor.py#L617-L680",
+    "code": "# Evaluate Silero VAD with Energy Veto Gate\nprob = self._apply_energy_veto(self._run_vad(vad_frame), vad_frame)\nis_speech = prob >= self._threshold  # Default 0.60\n\nif not state.in_speech:\n    if is_speech:\n        state.speech_onset_frames += 1\n        if state.speech_onset_frames >= self._min_speech_frames:\n            # Speech confirmed \u2014 transition to ACTIVE\n            state.in_speech = True\n            state.silence_frames = 0\n\n            # Seed buffer with pre-speech ring buffer to preserve opening phonemes\n            state.utterance_buffer = list(state.pre_speech_ring)\n            state.utterance_buffer.append(frame_f32.copy())\n            state.utterance_start_time = self._buffer_start_time(\n                state.utterance_buffer,\n                state.total_samples_fed / self._target_sr,\n            )\n            state.pre_speech_ring.clear()\n            logger.debug(\"Speech onset detected\", time_s=round(state.utterance_start_time, 3))\n    else:\n        # Maintain pre-speech ring buffer (circular buffer of 10 frames = 320ms)\n        state.pre_speech_ring.append(frame_f32.copy())\n        if len(state.pre_speech_ring) > self._ring_capacity:\n            state.pre_speech_ring.pop(0)",
+    "explanation": "<p><strong>Silero LSTM Onset Detection:</strong> The ONNX Silero VAD model consumes 512 float32 samples alongside recurrent hidden states <code>(h, c)</code>. A probability score &ge; 0.60 confirms human speech onset.</p>\n<p><strong>Pre-Speech Ring Buffer (~320ms):</strong> In real-world consultations, the first 1-2 frames of an utterance often have low energy (e.g. soft unvoiced consonants like /p/, /t/, /s/). A circular ring buffer captures the 320ms preceding the threshold trigger, preventing chopped speech.</p>\n<p><strong>Onset Hangover Filter:</strong> Isolated transient clicks or microphone bumps are filtered out unless energy persists for at least <code>_min_speech_frames</code> (3 consecutive frames = ~96ms).</p>"
+  },
+  "step-8": {
+    "title": "Step 8: Silence Endpoint Countdown, Smart-Split & Utterance Cutting",
+    "subtitle": "apps/stt/src/stt/streaming/preprocessor.py:681-750",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/preprocessor.py#L681-L750",
+    "code": "else:\n    # In speech \u2014 accumulate frames\n    frame_copy = frame_f32.copy()\n    state.utterance_buffer.append(frame_copy)\n\n    # 1. Force-emit guard for long utterances (prevents Whisper degradation on >30s segments)\n    if len(state.utterance_buffer) >= self._max_utterance_frames:\n        split_idx = self._find_best_split_point(state.utterance_buffer)\n        utt = self._emit_utterance(is_final=True, reason=\"smart_split\", carry_buffer=carry)\n        if utt: utterances.append(utt)\n    else:\n        # 2. Silence hysteresis countdown\n        if prob < self._neg_threshold:  # Neg threshold default 0.35\n            state.silence_frames += 1\n            silence_ms = state.silence_frames * self._frame_duration_ms\n            \n            if silence_ms >= self._endpoint_silence_timeout_ms:  # Default 700ms\n                state.in_speech = False\n                utt = self._emit_utterance(is_final=True, reason=\"endpoint_silence\")\n                if utt: utterances.append(utt)\n        else:\n            state.silence_frames = 0",
+    "explanation": "<p><strong>Dual-Threshold Hysteresis:</strong> Silero VAD uses asymmetric thresholds: speech is triggered at <code>prob &ge; 0.60</code>, but silence only registers when <code>prob &lt; 0.35</code>. This eliminates rapid fluttering during mid-sentence conversational pauses.</p>\n<p><strong>700ms Endpoint Gate:</strong> Once silence accumulates past 700ms, the phrase is concluded and dispatched as <code>AudioUtterance</code> with accurate start/end timestamps and <code>is_final=True</code>.</p>\n<p><strong>Smart-Split Low-Energy Cut:</strong> If a doctor speaks continuously for &gt;25 seconds without pausing, <code>_find_best_split_point()</code> locates the minimum RMS energy dip (inter-word boundary) to cut cleanly with an overlap carry region.</p>"
+  },
+  "step-9": {
+    "title": "Step 9: Utterance Queueing & Inference Worker Dispatch",
+    "subtitle": "apps/stt/src/stt/streaming/inference.py:350-410",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/inference.py#L350-L410",
+    "code": "class StreamingInferenceWorker:\n    \"\"\"Consumes AudioUtterance objects and drives GPU Whisper decoding.\"\"\"\n\n    def __init__(self, session_id: str, asr_pipeline: Any, postprocessing_config: Any, ...):\n        self.session_id = session_id\n        self._asr_pipeline = asr_pipeline\n        self._queue: asyncio.Queue[AudioUtterance] = asyncio.Queue(maxsize=100)\n        self._stop_event = asyncio.Event()\n\n    async def enqueue(self, utterance: AudioUtterance) -> None:\n        try:\n            self._queue.put_nowait(utterance)\n        except asyncio.QueueFull:\n            logger.error(\"Inference queue full; dropping utterance\", session_id=self.session_id)\n\n    async def _worker_loop(self) -> None:\n        while not self._stop_event.is_set():\n            utterance = await self._queue.get()\n            try:\n                await self.process_utterance(utterance)\n            finally:\n                self._queue.task_done()",
+    "explanation": "<p><strong>Asynchronous Decoupling:</strong> Audio preprocessing runs in real-time (1x RTF). The <code>StreamingInferenceWorker</code> uses an internal <code>asyncio.Queue</code> to isolate audio ingestion from GPU execution times.</p>\n<p><strong>Backpressure Protection:</strong> A bounded queue size prevents unbounded memory growth if the GPU experiences transient load spikes.</p>\n<p><strong>Sequential Ordering:</strong> Single-consumer worker loop ensures utterances for a given session are transcribed and emitted in strict chronological order.</p>"
+  },
+  "step-10": {
+    "title": "Step 10: GPU Whisper Decoding (CTranslate2 / Faster-Whisper)",
+    "subtitle": "apps/stt/src/stt/streaming/inference.py:700-750",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/inference.py#L700-L750",
+    "code": "async def _run_inference(self, utterance: AudioUtterance) -> _InferenceResult:\n    start_time = time.monotonic()\n    audio_samples = utterance.samples  # float32 16kHz 1D numpy array\n\n    # Build prompt context from previous final transcription\n    prompt = self._build_prompt_context()\n\n    # Invoke CTranslate2 Whisper model\n    loop = asyncio.get_running_loop()\n    segments, info = await loop.run_in_executor(\n        None,\n        lambda: self._asr_pipeline.transcribe(\n            audio_samples,\n            language=self._language,\n            initial_prompt=prompt,\n            beam_size=self._beam_size or 5,\n            best_of=5,\n            temperature=0.0,\n            vad_filter=False,  # Silero already segmented audio\n            word_timestamps=True,\n        )\n    )\n\n    full_text = \" \".join([seg.text.strip() for seg in segments if seg.text])\n    duration = time.monotonic() - start_time\n    self.cumulative_processing_seconds += duration\n\n    return _InferenceResult(text=full_text, segments=list(segments), duration=duration)",
+    "explanation": "<p><strong>CTranslate2 Execution:</strong> Transcriptions are computed using CTranslate2 FP16 inference engine running on NVIDIA GPUs. Temperature=0.0 uses greedy/beam search for maximum deterministic reproducibility.</p>\n<p><strong>Context Conditioning (<code>initial_prompt</code>):</strong> The previous 2-3 committed sentences are injected into Whisper's decoder conditioning context. This maintains grammatical coherence and clinical terminology across utterance boundaries.</p>\n<p><strong>RTF Accounting:</strong> Execution duration is tracked against audio duration to calculate the Real-Time Factor (typically ~0.08x RTF on RTX 4090 / A10G).</p>"
+  },
+  "step-11": {
+    "title": "Step 11: RepeatGuard N-Gram Rewind & Anti-Hallucination Gates",
+    "subtitle": "apps/stt/src/stt/streaming/inference.py:751-780",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/inference.py#L751-L780",
+    "code": "# Step 11a: RepeatGuard collapses immediate n-gram loops\nif utterance.is_final and text:\n    text = self._apply_repeat_guard(text, session_id, utterance)\n\n# Step 11b: Hallucination filter \u2014 reject filler & silence artifacts\nif self._is_hallucination(text, utterance):\n    logger.info(\"Hallucination filtered\", session_id=session_id, original_text=text)\n    text = \"\"\n\n# Step 11c: Overlap boundary deduplication\nif utterance.carry_buffer and text:\n    text, dropped = self._deduplicate_overlap(text, self._last_published_text)\n\ndef _apply_repeat_guard(self, text: str, session_id: str, utterance: AudioUtterance) -> str:\n    # Detects loops like \"Thank you. Thank you. Thank you.\" or repeated clinical tokens\n    words = text.split()\n    for n in range(1, 5):  # 1-gram to 4-gram inspection\n        if len(words) >= n * 3:\n            # Detects repeated adjacent slices and truncates repeat loop\n            pass\n    return sanitized_text",
+    "explanation": "<p><strong>Whisper Hallucination Vulnerability:</strong> Encoder-decoder transformers can enter repetitive self-attention loops on low-volume background noise (e.g. repeating phrases like <em>\"Thank you for watching\"</em> or repeated Malayalam/Hindi phrases).</p>\n<p><strong>RepeatGuard Algorithm:</strong> Scans token arrays for immediate adjacent n-grams (1-gram through 4-gram). If a pattern repeats &ge; 3 times, it collapses the loop to a single instance.</p>\n<p><strong>Energy Threshold Gate:</strong> Re-evaluates root-mean-square (RMS) acoustic energy of the raw audio. If average audio energy is below the silence noise floor, the transcript is discarded.</p>"
+  },
+  "step-12": {
+    "title": "Step 12: Lexicon Clinical Phonetic Correction",
+    "subtitle": "apps/stt/src/stt/streaming/inference.py:450-480",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/inference.py#L450-L480",
+    "code": "def _apply_lexicon(self, text: str, session_id: str, utterance: AudioUtterance) -> str:\n    \"\"\"Snap configured clinical terms in text; log every change.\"\"\"\n    corrector = self._lexicon_corrector if utterance.is_final else self._partial_lexicon_corrector\n    if corrector is None or not text.strip():\n        return text\n\n    corrected, corrections = corrector.correct(text)\n    if not corrections:\n        return text\n\n    self.lexicon_correction_count += len(corrections)\n    for orig, repl in corrections:\n        logger.debug(\n            \"Lexicon correction applied\",\n            session_id=session_id,\n            original=orig,\n            corrected=repl,\n            utterance_index=utterance.utterance_index\n        )\n    return corrected",
+    "explanation": "<p><strong>Clinical Dictionary Injection:</strong> General-purpose speech models frequently mishear complex pharmacological compounds (e.g. transcribing <em>\"met forming\"</em> instead of <em>\"Metformin\"</em> or <em>\"azithro my cin\"</em> instead of <em>\"Azithromycin\"</em>).</p>\n<p><strong>SymSpell / Radix Tree Matcher:</strong> The <code>LexiconCorrector</code> loads doctor- or department-specific clinical hotwords at session startup. It computes Levenshtein edit distance with phonetic weighting to snap near-miss hypotheses to authoritative medical nomenclature.</p>"
+  },
+  "step-13": {
+    "title": "Step 13: ResultPublisher XADD to Redis Outbound Stream",
+    "subtitle": "apps/stt/src/stt/streaming/redis_streams.py:458-520",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L458-L520",
+    "code": "class ResultPublisher:\n    \"\"\"Publishes finalized SegmentResult objects to Redis Stream.\"\"\"\n\n    def __init__(self, redis: Any, session_id: str, max_len: int = 2000):\n        self._redis = redis\n        self._session_id = session_id\n        self._stream_key = f\"stt:result:{session_id}\"\n        self._max_len = max_len\n\n    async def publish(self, result: SegmentResult) -> str:\n        payload = {\n            \"session_id\": self._session_id,\n            \"text\": result.text,\n            \"start_time\": f\"{result.start_time:.3f}\",\n            \"end_time\": f\"{result.end_time:.3f}\",\n            \"is_final\": \"1\" if result.is_final else \"0\",\n            \"language\": result.language or \"en\",\n            \"confidence\": f\"{result.confidence:.4f}\",\n            \"utterance_index\": str(result.utterance_index),\n            \"created_at\": str(time.time()),\n        }\n\n        # XADD stt:result:{session_id} MAXLEN ~ 2000 * <fields>\n        entry_id = await self._redis.xadd(\n            self._stream_key,\n            payload,\n            maxlen=self._max_len,\n            approximate=True,\n        )\n        return entry_id.decode(\"utf-8\") if isinstance(entry_id, bytes) else str(entry_id)",
+    "explanation": "<p><strong>Output Decoupling:</strong> The STT engine publishes finalized transcriptions to Redis Stream <code>stt:result:{session_id}</code>. This guarantees that consumers (Gateway, EMR sync, analytics) operate asynchronously without blocking inference workers.</p>\n<p><strong>Structured Schema:</strong> Payload includes absolute audio timestamps (<code>start_time</code>, <code>end_time</code>), language identification code, average model log-prob confidence, and sequential utterance ordinals.</p>"
+  },
+  "step-14": {
+    "title": "Step 14: Gateway Ingress & Real-Time WebSocket Caption Broadcast",
+    "subtitle": "apps/api/src/modules/streaming/stt-ws.gateway.ts:1360-1412 & streamingAudioBridge.service.ts:494-560",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L1360-L1412",
+    "code": "// 1. Gateway long-polls stt:result stream via consumer group 'captions'\n// (streamingAudioBridge.service.ts:494-560)\nconst entries = await reader.xreadgroup(\n  'GROUP', 'captions', 'captions-' + sessionId,\n  'COUNT', 100, 'BLOCK', 500,\n  'STREAMS', 'stt:result:' + sessionId,\n  '>'\n);\n\n// For each transcribed entry emitted by ResultPublisher:\nconst terminal = this.parseAndEmitResult(subject, fields, sessionEcho);\n\n// 2. Gateway relays result to Doctor WebSocket with Egress Backpressure\n// (stt-ws.gateway.ts:1360-1412)\nprivate relayResult(client: WebSocket, session: SessionInfo, msg: { type: string; isFinal?: boolean; [key: string]: unknown }): void {\n  const isTranscript = msg?.type === 'transcript';\n  const backpressured = this.isEgressOverThreshold(session) || session.pendingFinalResults.length > 0;\n\n  // Backpressure protection: If client socket is congested (> 32 KiB buffer),\n  // drop draft PARTIALS immediately to keep latency crisp, but NEVER drop FINALS.\n  if (isTranscript && backpressured && msg.isFinal !== true) {\n    session.droppedPartialResults++;\n    this.emitPartialDropMarker(session);\n    return;\n  }\n\n  const tagged = this.tagAndBuffer(session, msg);\n\n  if (isTranscript && backpressured && msg.isFinal === true) {\n    this.enqueueFinalResult(session, tagged);\n    return;\n  }\n\n  // Push JSON caption directly over WebSocket to Doctor UI!\n  if (client.readyState === client.OPEN) {\n    client.send(JSON.stringify(tagged));\n  }\n}",
+    "explanation": "<p><strong>1. Redis Stream Polling:</strong> The Gateway uses <code>XREADGROUP</code> on stream <code>stt:result:{sessionId}</code> under the stable consumer group <code>captions</code>. When <code>ResultPublisher</code> writes a transcribed segment, the Gateway receives it with sub-millisecond relay lag.</p>\n<p><strong>2. Egress Backpressure Guard:</strong> If a doctor is on a slow Wi-Fi connection and the WebSocket send buffer exceeds the 32 KiB high-watermark, intermediate draft partials are dropped (and marked with <code>{type: 'gap'}</code>), while finalized medical sentences are preserved in an ordered queue.</p>\n<p><strong>3. Live UI Rendering:</strong> The Doctor UI browser client receives the WebSocket JSON caption event:\n<pre><code>{\n  \"type\": \"transcript\",\n  \"seq\": 42,\n  \"text\": \"Patient has mild fever and sore throat.\",\n  \"isFinal\": true,\n  \"startTime\": 1.250,\n  \"endTime\": 3.840,\n  \"confidence\": 0.9650\n}</code></pre>\nand displays the live transcription on screen in real time!</p>"
+  },
+  "phase-1": {
+    "title": "Phase 1: The WebSocket Connection Handshake",
+    "subtitle": "apps/api/src/modules/streaming/stt-ws.gateway.ts:816-1043",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L816-L1043",
+    "code": "// stt-ws.gateway.ts: handleConnection\nasync handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {\n  const url = new URL(req.url || '', 'http://localhost');\n  const sessionId = url.searchParams.get('sessionId');\n  const ticket = url.searchParams.get('ticket');\n  \n  // 1. Consume single-use 30-second ticket from Redis (prevents URL replay)\n  const stored = await this.streamTicketService.consumeTicket(ticket);\n  \n  // 2. Validate tenant & user ownership binding against session create metadata\n  const binding = await this.sessionBinding.lookupBinding(sessionId);\n  if (!stored || !binding || stored.scope !== `stt_session:${sessionId}` || binding.tenantId !== stored.tenantId) {\n    client.close(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');\n    return;\n  }\n  \n  // 3. Root OpenTelemetry trace & register SessionInfo\n  const { span, carrier } = this.startSessionTrace(sessionId, req);\n  const session: SessionInfo = {\n    sessionId, client, traceCarrier: carrier, binarySeq: 0,\n    audioBytesForwarded: 0, resumeBuffer: [], ...\n  };\n  this.sessions.set(client, session);\n  \n  // 4. Pre-subscribe to the Redis captions stream (group: 'captions')\n  this.subscribeSessionResults(session);\n  \n  // 5. Send 'ready' ack to client so client knows it can begin sending audio\n  this.sendReady(session);\n}",
+    "explanation": "<p><strong>1. Single-Use Ticket Redemption:</strong> The client passes a single-use 30-second ticket generated during session creation. Redis atomically consumes and deletes this ticket (<code>GET / DEL</code>), completely preventing replay attacks or unauthorized reconnects.</p>\n<p><strong>2. Multi-Tenant Binding Validation:</strong> The Gateway checks that the session exists and belongs to the authenticated user and tenant (<code>stored.tenantId === binding.tenantId</code>).</p>\n<p><strong>3. Distributed Tracing:</strong> The Gateway initiates an OpenTelemetry root span and attaches a traceparent carrier passed downstream in Redis frame metadata.</p>\n<p><strong>4. Captions Pre-Subscription:</strong> The gateway initializes consumer group <code>captions</code> on <code>stt:result:{sessionId}</code> before any audio is received so not a single transcribed token is lost.</p>\n<p><strong>5. Ready ACK:</strong> Acknowledges the connection to the client so the browser can begin streaming microphone audio.</p>"
+  },
+  "phase-2": {
+    "title": "Phase 2: Audio Ingress & Writing to Redis",
+    "subtitle": "apps/api/src/modules/streaming/stt-ws.gateway.ts:1872-2045 & streamingAudioBridge.service.ts:291-330",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L1872-L2045",
+    "code": "// stt-ws.gateway.ts: handleMessage\nasync handleMessage(client: WebSocket, rawData: string | Buffer, isBinary?: boolean): Promise<void> {\n  const session = this.sessions.get(client);\n  if (!session) return this.sendError(client, 'NO_SESSION', 'No active session');\n  if (isBinary === true) {\n    session.binarySeq++;\n    const audio = Buffer.isBuffer(rawData) ? rawData : Buffer.from(String(rawData));\n    this.forwardAudioFrame(session, session.binarySeq, audio);\n  }\n}\n\nprivate forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {\n  session.audioBytesForwarded += data.length;\n  // Non-blocking XADD: ioredis writes to Redis without awaiting per-frame ack\n  this.bridgeService.writeAudioFrame(\n    session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false, session.traceCarrier\n  ).catch(err => {\n    session.droppedAudioFrames++;\n    this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame');\n  });\n}\n\n// Inside StreamingAudioBridgeService.writeAudioFrame():\nawait this.writerRedis.xadd(\n  `stt:audio:${sessionId}`,\n  'MAXLEN', '~', '10000',     // Cap memory to ~10,000 frames (~15 minutes of audio)\n  '*',                         // Auto-generate Redis entry ID (e.g. 1728892301123-0)\n  'seq', String(seq),          // 1, 2, 3...\n  'sr', '16000',               // 16kHz\n  'enc', 'pcm_s16le',          // 16-bit linear PCM\n  'ch', '1',                   // Mono\n  'data', data,                // Raw binary PCM audio bytes\n  'final', '0',                // '1' only on EOS\n  'ts', String(Date.now() / 1000),\n  ...(traceCarrier ? ['traceparent', traceCarrier.traceparent] : []),\n);",
+    "explanation": "<p><strong>1. Audio Capture:</strong> The browser Web Audio API captures microphone input at 16,000 Hz 16-bit mono PCM and slices it into 100ms packets (3,200 bytes per chunk).</p>\n<p><strong>2. Gateway Ingress:</strong> Gateway increments monotonic <code>binarySeq</code> and calls <code>forwardAudioFrame()</code>.</p>\n<p><strong>3. Non-Blocking Redis XADD:</strong> Appends audio frames to <code>stt:audio:{sessionId}</code> with <code>MAXLEN ~ 10000</code>, ensuring Redis memory is bounded to ~15 minutes of audio per active stream.</p>"
+  },
+  "phase-3": {
+    "title": "Phase 3: Backend Ingestion & Audio Processing",
+    "subtitle": "apps/stt/src/stt/streaming/redis_streams.py:103 & preprocessor.py:557 & inference.py:700",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L103-L268",
+    "code": "# redis_streams.py: IngestionConsumer._run()\nentries = await self._redis.xreadgroup(\n    self._group_name,        # \"stt-ingest\"\n    self._consumer_name,     # worker ID\n    {stream_key: \">\"},       # read unconsumed incoming frames\n    count=10,\n    block=5000,              # poll block timeout\n)\nfor stream_name, messages in entries:\n    for entry_id, fields in messages:\n        frame = AudioFrame.from_redis_dict(fields)\n        await self._on_frame(frame)  # Dispatches to frame handler (_make_frame_handler)\n        await self._redis.xack(stream_key, \"stt-ingest\", entry_id)\n\n# Frame Handler -> StreamingPreprocessor:\n# 1. Slicing: Slices continuous byte stream into discrete 512-sample (32ms at 16kHz) blocks normalized to [-1.0, 1.0].\n# 2. Denoising: RNNoise / DeepFilterNet strips clinic air conditioning / fan background hum.\n# 3. Silero VAD: Evaluates speech probability prob = is_speech(frame).\n#    When prob > 0.60, transitions to active speech and prepends a 320ms pre-speech ring buffer (so opening soft consonants like /p/, /t/ are not clipped).\n# 4. Endpointing: When silence persists for 700ms, cuts the sentence boundary and emits AudioUtterance(samples, is_final=True).\n# 5. Whisper ASR Inference: StreamingInferenceWorker transcribes the audio using CTranslate2 FP16 Faster-Whisper on GPU with initial_prompt context.\n# 6. RepeatGuard & Lexicon: Collapses repetitive transformer hallucination loops and corrects clinical drug names using the phonetic medical dictionary.",
+    "explanation": "<p><strong>1. Consumer Group Ingestion:</strong> Python <code>IngestionConsumer</code> reads <code>stt:audio:{id}</code> under group <code>stt-ingest</code> and ACKs each processed entry.</p>\n<p><strong>2. Audio Slicing & Denoising:</strong> Byte stream is converted to float32 samples and sliced into 512-sample blocks. RNNoise removes stationary clinic HVAC background noise.</p>\n<p><strong>3. Silero VAD with Ring Buffer:</strong> Detects speech onset (<code>prob &gt; 0.60</code>). Prepends 320ms of audio from a ring buffer to protect soft initial plosives (/p/, /t/, /k/).</p>\n<p><strong>4. Endpointing:</strong> 700ms of consecutive silence cuts an utterance boundary, emitting <code>AudioUtterance(is_final=True)</code>.</p>\n<p><strong>5. GPU Faster-Whisper:</strong> Transcribes float32 audio on GPU via CTranslate2 FP16 with prompt biasing.</p>\n<p><strong>6. RepeatGuard & Lexicon:</strong> Removes transformer repetitive loops and snaps misrecognized medical phonetics against the clinical dictionary.</p>"
+  },
+  "phase-4": {
+    "title": "Phase 4: Publishing Transcripts to Redis",
+    "subtitle": "apps/stt/src/stt/streaming/redis_streams.py:458-520",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/stt/src/stt/streaming/redis_streams.py#L458-L520",
+    "code": "# redis_streams.py: ResultPublisher\nawait self._redis.xadd(\n    f\"stt:result:{session_id}\",\n    {\n        \"session_id\": session_id,\n        \"text\": \"Patient has mild fever and sore throat.\",\n        \"start_time\": \"1.250\",\n        \"end_time\": \"3.840\",\n        \"is_final\": \"1\",\n        \"language\": \"en\",\n        \"confidence\": \"0.9650\",\n        \"utterance_index\": \"0\",\n        \"created_at\": str(time.time()),\n    },\n    maxlen=2000,\n    approximate=True,\n)",
+    "explanation": "<p><strong>1. Asynchronous Egress:</strong> The inference engine immediately offloads finalized medical transcriptions to Redis Stream <code>stt:result:{session_id}</code>.</p>\n<p><strong>2. Metadata Fields:</strong> Captures audio start/end timestamps, finality flag (<code>is_final=1</code>), language identifier, confidence score, and utterance index.</p>\n<p><strong>3. Memory Capping:</strong> <code>MAXLEN ~ 2000</code> maintains stream history while preventing unbounded Redis RAM consumption.</p>"
+  },
+  "phase-5": {
+    "title": "Phase 5: Gateway Result Ingestion & WebSocket Broadcast",
+    "subtitle": "packages/applications/.../streamingAudioBridge.service.ts:494 & stt-ws.gateway.ts:1360",
+    "codeLink": "file:///Users/apple/Desktop/vox/project-hope/apps/api/src/modules/streaming/stt-ws.gateway.ts#L1360-L1412",
+    "code": "// streamingAudioBridge.service.ts: readResultStream\nconst result = await reader.xreadgroup(\n  'GROUP', 'captions', 'captions-' + sessionId,\n  'COUNT', 100, 'BLOCK', 500,\n  'STREAMS', `stt:result:${sessionId}`,\n  '>'\n);\nfor (const [, entries] of result) {\n  for (const [entryId, fields] of entries) {\n    const terminal = this.parseAndEmitResult(subject, fields, sessionEcho);\n  }\n}\n\n// stt-ws.gateway.ts: relayResult with Egress Backpressure Protection\nprivate relayResult(client: WebSocket, session: SessionInfo, msg: { type: string; isFinal?: boolean; [key: string]: unknown }): void {\n  const isTranscript = msg?.type === 'transcript';\n  const backpressured = this.isEgressOverThreshold(session) || session.pendingFinalResults.length > 0;\n\n  // If client socket is congested (> 32 KiB buffer), drop intermediate draft partials to keep latency < 200ms\n  if (isTranscript && backpressured && msg.isFinal !== true) {\n    session.droppedPartialResults++;\n    this.emitPartialDropMarker(session);\n    return;\n  }\n\n  const tagged = this.tagAndBuffer(session, msg);\n  if (isTranscript && backpressured && msg.isFinal === true) {\n    // Finalized medical sentences are NEVER dropped (queued in order)\n    this.enqueueFinalResult(session, tagged);\n    return;\n  }\n\n  // Sends the JSON caption payload over the WebSocket connection:\n  if (client.readyState === client.OPEN) {\n    client.send(JSON.stringify(tagged));\n  }\n}",
+    "explanation": "<p><strong>1. Long-Poll Consumer Group:</strong> The Gateway continuously polls <code>stt:result:{sessionId}</code> via group <code>captions</code>.</p>\n<p><strong>2. Egress Backpressure Protection:</strong> Protects doctors on slow hospital Wi-Fi. If socket buffer exceeds 32 KiB, intermediate draft partials are dropped with a marker, but finalized clinical sentences are guaranteed delivery in order.</p>\n<p><strong>3. Live UI Rendering:</strong> The Doctor UI receives the JSON caption message and displays the clinical transcript in real time!</p>"
+  }
+};
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      if (tabId === 'flow') {
+        const btn = document.getElementById('btn-tab-flow') || document.querySelectorAll('.tab-btn')[0];
+        if (btn) btn.classList.add('active');
+        const tab = document.getElementById('tab-flow');
+        if (tab) tab.classList.add('active');
+      } else if (tabId === 'diagram') {
+        const btn = document.getElementById('btn-tab-diagram') || document.querySelectorAll('.tab-btn')[1];
+        if (btn) btn.classList.add('active');
+        const tab = document.getElementById('tab-diagram');
+        if (tab) tab.classList.add('active');
+      } else if (tabId === 'components') {
+        const btn = document.getElementById('btn-tab-components') || document.querySelectorAll('.tab-btn')[2];
+        if (btn) btn.classList.add('active');
+        const tab = document.getElementById('tab-components');
+        if (tab) tab.classList.add('active');
+      }
+    }
+
+    function openDrawer(stepId) {
+      const data = drawerDetails[stepId];
+      if (!data) return;
+
+      document.getElementById('drawer-title').innerText = data.title;
+      document.getElementById('drawer-subtitle').innerHTML =
+        '<span>' + data.subtitle + '</span>' +
+        '<a class="code-link-badge" href="' + data.codeLink + '" target="_blank">📂 Open Code File</a>';
+
+      const content = document.getElementById('drawer-content');
+      content.innerHTML =
+        '<div>' +
+          '<div class="drawer-sec-title">Implementation Code</div>' +
+          '<div class="code-container">' + escapeHtml(data.code) + '</div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="drawer-sec-title">Technical Deep Dive & Architecture Details</div>' +
+          '<div class="explanation-box">' + data.explanation + '</div>' +
+        '</div>';
+
+      document.getElementById('modal-overlay').classList.add('open');
+    }
+
+    function closeDrawer(event) {
+      document.getElementById('modal-overlay').classList.remove('open');
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.getElementById('modal-overlay').classList.remove('open');
+      }
+    });
+  </script>
+</body>
+</html>

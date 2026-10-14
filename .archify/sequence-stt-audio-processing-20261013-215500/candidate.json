@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STT Streaming Audio Processing & Inference Execution Lifecycle",
+    "subtitle": "Microphone Ingress \u2192 Redis Audio Stream \u2192 IngestionConsumer \u2192 DSP & Silero VAD \u2192 Whisper ASR Decoder \u2192 RepeatGuard & Lexicon \u2192 Result Egress",
+    "output": ".archify/sequence-stt-audio-processing-20261013-215500/stt-audio-processing.html",
+    "viewBox": [
+      1280,
+      720
+    ],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d",
+      "provider": "github",
+      "link_mode": "web"
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Doctor UI",
+      "sublabel": "Browser Mic",
+      "sources": [
+        {
+          "path": "apps/admin-console/src/app/page.tsx",
+          "line": 1,
+          "end_line": 17,
+          "label": "Doctor Browser Client"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "frontend",
+      "label": "API Gateway",
+      "sublabel": "WebSocket Relay",
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/stt-ws.gateway.ts",
+          "line": 190,
+          "end_line": 240,
+          "label": "Gateway WS Audio Bridge"
+        }
+      ]
+    },
+    {
+      "id": "redis_audio",
+      "type": "messagebus",
+      "label": "Redis Stream",
+      "sublabel": "stt:audio:{id}",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/redis_streams.py",
+          "line": 103,
+          "end_line": 165,
+          "label": "Inbound Audio Stream"
+        }
+      ]
+    },
+    {
+      "id": "consumer",
+      "type": "backend",
+      "label": "IngestionConsumer",
+      "sublabel": "session_manager.py",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/session_manager.py",
+          "line": 1770,
+          "end_line": 1860,
+          "label": "Frame Handler & Seq Guard"
+        }
+      ]
+    },
+    {
+      "id": "preprocessor",
+      "type": "backend",
+      "label": "Preprocessor & VAD",
+      "sublabel": "preprocessor.py",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/preprocessor.py",
+          "line": 440,
+          "end_line": 620,
+          "label": "DSP Resampling & Silero VAD"
+        }
+      ]
+    },
+    {
+      "id": "inference",
+      "type": "cloud",
+      "label": "Inference Worker",
+      "sublabel": "Whisper / CT2",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/inference.py",
+          "line": 400,
+          "end_line": 650,
+          "label": "ASR Decoding & RepeatGuard"
+        }
+      ]
+    },
+    {
+      "id": "redis_result",
+      "type": "messagebus",
+      "label": "Redis Stream",
+      "sublabel": "stt:result:{id}",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/redis_streams.py",
+          "line": 458,
+          "end_line": 520,
+          "label": "Outbound Results Stream"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 140,
+      "to": 290,
+      "label": "Phase 1: Real-Time Audio Capture & Redis Ingestion"
+    },
+    {
+      "from": 295,
+      "to": 450,
+      "label": "Phase 2: Polyphase DSP, Silero VAD & Utterance Segmentation"
+    },
+    {
+      "from": 455,
+      "to": 680,
+      "label": "Phase 3: GPU ASR Decoding, Guard Post-Processing & Result Egress"
+    }
+  ],
+  "messages": [
+    {
+      "id": "mic-capture",
+      "from": "client",
+      "to": "gateway",
+      "y": 165,
+      "label": "1. Stream 100ms PCM chunks (WebSocket binary)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "xadd-audio",
+      "from": "gateway",
+      "to": "redis_audio",
+      "y": 190,
+      "label": "2. XADD stt:audio:{session_id} (seq, pcm_bytes)",
+      "variant": "default"
+    },
+    {
+      "id": "xreadgroup-audio",
+      "from": "redis_audio",
+      "to": "consumer",
+      "y": 225,
+      "label": "3. XREADGROUP group:stt:audio:group (worker_id)",
+      "variant": "default"
+    },
+    {
+      "id": "seq-check-accumulate",
+      "from": "consumer",
+      "to": "consumer",
+      "y": 260,
+      "label": "4. Verify seq guard & append to audio_buffer",
+      "variant": "dashed"
+    },
+    {
+      "id": "feed-preprocessor",
+      "from": "consumer",
+      "to": "preprocessor",
+      "y": 305,
+      "label": "5. feed(AudioFrame) & DSP polyphase resample (16kHz)",
+      "variant": "default"
+    },
+    {
+      "id": "vad-state-eval",
+      "from": "preprocessor",
+      "to": "preprocessor",
+      "y": 345,
+      "label": "6. Silero VAD LSTM inference (speech probability > 0.6)",
+      "variant": "dashed"
+    },
+    {
+      "id": "cut-utterance",
+      "from": "preprocessor",
+      "to": "preprocessor",
+      "y": 385,
+      "label": "7. Endpoint silence gate (700ms) -> cut AudioUtterance",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dispatch-utterance",
+      "from": "preprocessor",
+      "to": "inference",
+      "y": 420,
+      "label": "8. Dispatch AudioUtterance(samples, is_final=True)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gpu-whisper-transcribe",
+      "from": "inference",
+      "to": "inference",
+      "y": 470,
+      "label": "9. ASR decode (_asr_pipeline with initial_prompt)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "apply-guards",
+      "from": "inference",
+      "to": "inference",
+      "y": 510,
+      "label": "10. RepeatGuard + RMS gate + Lexicon phonetic correction",
+      "variant": "dashed"
+    },
+    {
+      "id": "xadd-result",
+      "from": "inference",
+      "to": "redis_result",
+      "y": 550,
+      "label": "11. XADD stt:result:{session_id} MAXLEN ~ 2000",
+      "variant": "emphasis"
+    },
+    {
+      "id": "xread-gateway",
+      "from": "redis_result",
+      "to": "gateway",
+      "y": 590,
+      "label": "12. XREAD stt:result:{session_id} (SegmentResult)",
+      "variant": "default"
+    },
+    {
+      "id": "ws-push-captions",
+      "from": "gateway",
+      "to": "client",
+      "y": 630,
+      "label": "13. Push real-time captions (WebSocket JSON)",
+      "variant": "return"
+    }
+  ]
+}

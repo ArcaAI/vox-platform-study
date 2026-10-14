@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "eee8a6f7-8c07-4c4e-93c6-3dc60afe83b1",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/Desktop/vox/.archify/sequence-stt-session-creation-20261013-185100/candidate.json",
+  "output": "/Users/apple/Desktop/vox/.archify/sequence-stt-session-creation-20261013-185100/stt-session-creation.html",
+  "specification": {
+    "sha256": "853dc2c1805c80220df89e80578af9a31ad342c355d74b04392fc17e2e1a966c",
+    "bytes": 8407
+  },
+  "artifact": {
+    "sha256": "f27ea4485f1eb2e853ae6c0211716f7539c3d56cd82e81ce1e1f07b4e9875fb3",
+    "bytes": 767011
+  }
+}

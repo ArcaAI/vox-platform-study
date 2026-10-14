@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STT Streaming Session Creation: Input, Processing & Response",
+    "subtitle": "Client Ingress → Gateway ResolvedAsrSpec → CapacityGuard & Spec Compiler → SessionManager State & Stream Allocation → 201 Created",
+    "output": ".archify/sequence-stt-session-creation-20261013-185100/stt-session-creation.html",
+    "viewBox": [
+      1080,
+      580
+    ],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d",
+      "provider": "github",
+      "link_mode": "web"
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Doctor UI",
+      "sublabel": "Browser Client",
+      "sources": [
+        {
+          "path": "apps/admin-console/src/app/page.tsx",
+          "line": 1,
+          "end_line": 17,
+          "label": "Client Ingress"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "frontend",
+      "label": "API Gateway",
+      "sublabel": "NestJS Auth",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/api/routes.py",
+          "line": 3,
+          "end_line": 8,
+          "label": "Gateway Client"
+        }
+      ]
+    },
+    {
+      "id": "stt_router",
+      "type": "backend",
+      "label": "STT Router",
+      "sublabel": "FastAPI routes.py",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/api/routes.py",
+          "line": 99,
+          "end_line": 146,
+          "label": "create_streaming_session"
+        }
+      ]
+    },
+    {
+      "id": "session_mgr",
+      "type": "backend",
+      "label": "SessionManager",
+      "sublabel": "session_manager.py",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/session_manager.py",
+          "line": 1,
+          "end_line": 15,
+          "label": "SessionManager"
+        }
+      ]
+    },
+    {
+      "id": "spec_compiler",
+      "type": "backend",
+      "label": "Spec Compiler",
+      "sublabel": "stt.pipeline.spec",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/pipeline/spec.py",
+          "line": 913,
+          "end_line": 951,
+          "label": "resolve_agent_spec"
+        }
+      ]
+    },
+    {
+      "id": "speaker_tracker",
+      "type": "backend",
+      "label": "SpeakerTracker",
+      "sublabel": "Voice Profiles",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/session_manager.py",
+          "line": 51,
+          "end_line": 56,
+          "label": "SpeakerTracker"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "messagebus",
+      "label": "Redis",
+      "sublabel": "Stream Allocation",
+      "sources": [
+        {
+          "path": "apps/stt/src/stt/streaming/session_manager.py",
+          "line": 59,
+          "end_line": 60,
+          "label": "Redis Streams"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 210,
+      "label": "Phase 1: Ingress Request & Contract Resolution"
+    },
+    {
+      "from": 215,
+      "to": 300,
+      "label": "Phase 2: Capacity Check & Spec Compilation"
+    },
+    {
+      "from": 305,
+      "to": 420,
+      "label": "Phase 3: Runtime State & Stream Allocation"
+    },
+    {
+      "from": 425,
+      "to": 480,
+      "label": "Phase 4: Session Response & Handshake Ready"
+    }
+  ],
+  "messages": [
+    {
+      "id": "initiate-stream",
+      "from": "client",
+      "to": "gateway",
+      "y": 165,
+      "label": "1. POST /consultations/{id}/stream/init (mode: 'en')",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-session-req",
+      "from": "gateway",
+      "to": "stt_router",
+      "y": 195,
+      "label": "2. POST /internal/streaming/sessions (resolved_spec)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "invoke-mgr-create",
+      "from": "stt_router",
+      "to": "session_mgr",
+      "y": 225,
+      "label": "3. CapacityGuard check & mgr.create_session()",
+      "variant": "default"
+    },
+    {
+      "id": "compile-spec-req",
+      "from": "session_mgr",
+      "to": "spec_compiler",
+      "y": 255,
+      "label": "4. resolve_agent_spec_to_session_config()",
+      "variant": "default"
+    },
+    {
+      "id": "compile-spec-res",
+      "from": "spec_compiler",
+      "to": "session_mgr",
+      "y": 285,
+      "label": "5. Return InferenceConfig, VAD & DiarizationConfig",
+      "variant": "return"
+    },
+    {
+      "id": "seed-voice-profiles",
+      "from": "session_mgr",
+      "to": "speaker_tracker",
+      "y": 315,
+      "label": "6. Seed voice_profiles ({profile_id, embedding})",
+      "variant": "default"
+    },
+    {
+      "id": "voice-profiles-seeded",
+      "from": "speaker_tracker",
+      "to": "session_mgr",
+      "y": 345,
+      "label": "7. Biometric profiles enrolled (seeded: true)",
+      "variant": "return"
+    },
+    {
+      "id": "provision-streams",
+      "from": "session_mgr",
+      "to": "redis",
+      "y": 375,
+      "label": "8. Provision stt:audio, stt:result, stt:control",
+      "variant": "dashed"
+    },
+    {
+      "id": "session-instantiated",
+      "from": "session_mgr",
+      "to": "stt_router",
+      "y": 405,
+      "label": "9. Session object instantiated & active",
+      "variant": "return"
+    },
+    {
+      "id": "session-created-res",
+      "from": "stt_router",
+      "to": "gateway",
+      "y": 435,
+      "label": "10. 201 Created (StreamingSessionResponse: active)",
+      "variant": "return"
+    },
+    {
+      "id": "gateway-ready-res",
+      "from": "gateway",
+      "to": "client",
+      "y": 465,
+      "label": "11. 200 Ready (sessionId, wss:// WebSocket URL)",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "gateway",
+      "from": 165,
+      "to": 200,
+      "type": "frontend"
+    },
+    {
+      "participant": "gateway",
+      "from": 435,
+      "to": 470,
+      "type": "frontend"
+    },
+    {
+      "participant": "stt_router",
+      "from": 195,
+      "to": 230,
+      "type": "backend"
+    },
+    {
+      "participant": "stt_router",
+      "from": 405,
+      "to": 440,
+      "type": "backend"
+    },
+    {
+      "participant": "session_mgr",
+      "from": 225,
+      "to": 410,
+      "type": "backend"
+    },
+    {
+      "participant": "spec_compiler",
+      "from": 255,
+      "to": 290,
+      "type": "backend"
+    },
+    {
+      "participant": "speaker_tracker",
+      "from": 315,
+      "to": 350,
+      "type": "backend"
+    },
+    {
+      "participant": "redis",
+      "from": 375,
+      "to": 385,
+      "type": "messagebus"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "1. Input: Request Payloads & Ingress",
+      "items": [
+        "Doctor UI requests stream initialization with consultation ID and languageMode ('en', 'ml', 'ml-en', 'auto').",
+        "API Gateway verifies tenant auth and compiles the complete ResolvedAsrSpec runtime contract from database.",
+        "Gateway sends POST /internal/streaming/sessions with session_id, tenant_id, pipeline_id, resolved_spec, and voice_profiles."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "2. Processing: Capacity, Compilation & State Allocation",
+      "items": [
+        "CapacityGuard verifies active worker sessions are under max_streams limit (rejects with 503 Retry-After if full).",
+        "spec.py compiles resolved_spec into typed InferenceConfig (Whisper prompt/hotwords), AudioFrontEndConfig (Silero VAD), and DiarizationConfig.",
+        "SessionManager binds EngineSwitchController (primary/fallback) and seeds doctor/patient voice profiles onto SpeakerTracker.",
+        "Redis stream keys (stt:audio:{id}, stt:result:{id}, stt:control:{id}) are initialized for audio transport."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "3. Response: Created Payload & WebSocket Readiness",
+      "items": [
+        "STT returns HTTP 201 Created with StreamingSessionResponse (status: active, max_concurrent, active_engine: 'primary').",
+        "voice_profile_seeded indicates if biometric speaker vectors were successfully enrolled.",
+        "Gateway returns sessionId and dedicated wss:// WebSocket URL to the frontend.",
+        "Frontend receives the ready signal and opens the live audio uplink stream."
+      ]
+    }
+  ]
+}
