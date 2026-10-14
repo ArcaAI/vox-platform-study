@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "ok": false,
+  "ok": true,
   "command": "finalize",
-  "status": "fail",
+  "status": "pass",
   "type": "architecture",
   "quality": "showcase",
-  "startedAt": "2026-10-07T05:16:28.698Z",
+  "startedAt": "2026-10-13T05:48:32.113Z",
   "specification": {
     "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
-    "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
-    "bytes": 12304
+    "sha256": "9106db5541d3ec36ec16cf9faec298a6553f8da983b306d43f425ff94d00e413",
+    "bytes": 21017
   },
   "artifact": {
     "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
-    "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
-    "bytes": 815350
+    "sha256": "085eadf6c82e2c9647c7c100b9bba8d83dbdf893ca9d3f558ca9656eadc59b3a",
+    "bytes": 820902
   },
   "stages": {
     "validate": {
@@ -24,13 +24,15 @@
       "execution": "embedded-in-deliver",
       "command": [
         "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
-        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "/Users/apple/.gemini/config/skills/archify/bin/archify.mjs",
         "deliver",
         "architecture",
         "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
         "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
         "--quality",
         "showcase",
+        "--repo-root",
+        "/Users/apple/Desktop/vox/project-hope",
         "--json"
       ],
       "receipt": {
@@ -38,8 +40,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
-          "bytes": 12304
+          "sha256": "9106db5541d3ec36ec16cf9faec298a6553f8da983b306d43f425ff94d00e413",
+          "bytes": 21017
         },
         "validation": {
           "checksPassed": 9,
@@ -54,33 +56,35 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 755,
+      "durationMs": 649,
       "command": [
         "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
-        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "/Users/apple/.gemini/config/skills/archify/bin/archify.mjs",
         "deliver",
         "architecture",
         "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
         "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
         "--quality",
         "showcase",
+        "--repo-root",
+        "/Users/apple/Desktop/vox/project-hope",
         "--json"
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "dafec2cd-9e35-4e8f-b570-f21b2bc448e3",
+        "receiptId": "a88cab85-cf91-43c7-854a-cc56dc2d761d",
         "ok": true,
         "command": "deliver",
         "type": "architecture",
         "input": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
         "output": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
         "specification": {
-          "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
-          "bytes": 12304
+          "sha256": "9106db5541d3ec36ec16cf9faec298a6553f8da983b306d43f425ff94d00e413",
+          "bytes": 21017
         },
         "artifact": {
-          "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
-          "bytes": 815350
+          "sha256": "085eadf6c82e2c9647c7c100b9bba8d83dbdf893ca9d3f558ca9656eadc59b3a",
+          "bytes": 820902
         },
         "validation": {
           "checksPassed": 9,
@@ -89,6 +93,12 @@
           "compositionStatus": "pass",
           "errors": 0,
           "warnings": 0
+        },
+        "evidence": {
+          "verified": true,
+          "repository": "https://github.com/ArcaAI/project-hope",
+          "revision": "dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d",
+          "references": 33
         },
         "update": {
           "status": "unavailable",
@@ -106,10 +116,10 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 235,
+      "durationMs": 229,
       "command": [
         "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
-        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "/Users/apple/.gemini/config/skills/archify/bin/archify.mjs",
         "check",
         "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
         "--require-provenance"
@@ -118,8 +128,8 @@
         "ok": true,
         "file": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
         "artifact": {
-          "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
-          "bytes": 815350
+          "sha256": "085eadf6c82e2c9647c7c100b9bba8d83dbdf893ca9d3f558ca9656eadc59b3a",
+          "bytes": 820902
         },
         "checks": [
           {
@@ -180,22 +190,22 @@
           },
           "metrics": {
             "properCrossings": 0,
-            "resolvedCrossovers": 38,
+            "resolvedCrossovers": 2,
             "ambiguousCorridors": 0,
             "arrowheadCollisions": 0,
             "containerBorderRuns": 0,
             "labelRouteClearanceIssues": 0,
             "labelCanvasOverflowIssues": 0,
-            "minLabelRouteClearance": 4,
+            "minLabelRouteClearance": 4.5,
             "desktopReadabilityIssues": 0,
             "viewportHeightIssues": 0,
-            "minProjectedNodeTextPx": 6.447904191616766,
+            "minProjectedNodeTextPx": 6.860258064516129,
             "maxBends": 4,
-            "routesOverSuggestedBends": 9,
-            "maxStretch": 1.727,
-            "routesOverSuggestedStretch": 3,
-            "minSegmentPx": 21,
-            "minInteriorSegmentPx": 21,
+            "routesOverSuggestedBends": 4,
+            "maxStretch": 1.559,
+            "routesOverSuggestedStretch": 1,
+            "minSegmentPx": 16.1,
+            "minInteriorSegmentPx": 16.1,
             "shortSegmentCount": 0,
             "shortEndpointSegmentCount": 0,
             "shortInteriorSegmentCount": 0,
@@ -211,973 +221,105 @@
             "crossings": [
               {
                 "left": {
-                  "id": "fastapi-controlplane",
-                  "from": "fastapi",
-                  "to": "control_plane",
-                  "label": "Sync Config",
-                  "collectionIndex": 4,
-                  "artifactIndex": 5
+                  "id": "gateway-ticket",
+                  "from": "gateway",
+                  "to": "ticket_service",
+                  "label": "2. Mint Auth Ticket",
+                  "collectionIndex": 1,
+                  "artifactIndex": 2
                 },
                 "right": {
                   "id": "gateway-livedoc",
                   "from": "gateway",
                   "to": "live_doc",
-                  "label": "LiveDoc sync",
-                  "collectionIndex": 25,
-                  "artifactIndex": 26
-                },
-                "point": [
-                  673,
-                  256
-                ]
-              },
-              {
-                "left": {
-                  "id": "fastapi-sessionmgr",
-                  "from": "fastapi",
-                  "to": "session_mgr",
-                  "label": "create_session()",
-                  "collectionIndex": 5,
-                  "artifactIndex": 6
-                },
-                "right": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
+                  "label": "19. Clinical EHR Sync",
                   "collectionIndex": 23,
                   "artifactIndex": 24
                 },
                 "point": [
-                  784,
-                  436
-                ]
-              },
-              {
-                "left": {
-                  "id": "fastapi-sessionmgr",
-                  "from": "fastapi",
-                  "to": "session_mgr",
-                  "label": "create_session()",
-                  "collectionIndex": 5,
-                  "artifactIndex": 6
-                },
-                "right": {
-                  "id": "gateway-livedoc",
-                  "from": "gateway",
-                  "to": "live_doc",
-                  "label": "LiveDoc sync",
-                  "collectionIndex": 25,
-                  "artifactIndex": 26
-                },
-                "point": [
-                  784,
-                  256
-                ]
-              },
-              {
-                "left": {
-                  "id": "fastapi-sessionmgr",
-                  "from": "fastapi",
-                  "to": "session_mgr",
-                  "label": "create_session()",
-                  "collectionIndex": 5,
-                  "artifactIndex": 6
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  784,
-                  343
-                ],
-                "sharedNode": "session_mgr"
-              },
-              {
-                "left": {
-                  "id": "gateway-bridge",
-                  "from": "gateway",
-                  "to": "audio_bridge",
-                  "label": "4. PCM Audio Chunks",
-                  "collectionIndex": 6,
-                  "artifactIndex": 7
-                },
-                "right": {
-                  "id": "redis-gateway",
-                  "from": "redis_streams",
-                  "to": "gateway",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 24,
-                  "artifactIndex": 25
-                },
-                "point": [
-                  400,
-                  252.93333333333334
+                  280,
+                  164
                 ],
                 "sharedNode": "gateway"
               },
               {
                 "left": {
-                  "id": "gateway-bridge",
-                  "from": "gateway",
-                  "to": "audio_bridge",
-                  "label": "4. PCM Audio Chunks",
-                  "collectionIndex": 6,
-                  "artifactIndex": 7
-                },
-                "right": {
-                  "id": "gateway-dramatiq",
-                  "from": "gateway",
-                  "to": "dramatiq",
-                  "label": "Enqueue Batch",
-                  "collectionIndex": 28,
-                  "artifactIndex": 29
-                },
-                "point": [
-                  393,
-                  220.06666666666666
-                ],
-                "sharedNode": "gateway"
-              },
-              {
-                "left": {
-                  "id": "bridge-redis",
-                  "from": "audio_bridge",
-                  "to": "redis_streams",
-                  "label": "XADD stt:audio",
-                  "collectionIndex": 7,
-                  "artifactIndex": 8
-                },
-                "right": {
-                  "id": "redis-gateway",
-                  "from": "redis_streams",
-                  "to": "gateway",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 24,
-                  "artifactIndex": 25
-                },
-                "point": [
-                  393,
-                  363
-                ],
-                "sharedNode": "redis_streams"
-              },
-              {
-                "left": {
-                  "id": "redis-ingestion",
-                  "from": "redis_streams",
-                  "to": "ingestion_consumer",
-                  "label": "XREADGROUP stt:audio",
-                  "collectionIndex": 8,
-                  "artifactIndex": 9
-                },
-                "right": {
-                  "id": "sessionmgr-ingestion",
-                  "from": "session_mgr",
-                  "to": "ingestion_consumer",
-                  "label": "Consume Job",
-                  "collectionIndex": 10,
-                  "artifactIndex": 11
-                },
-                "point": [
-                  576,
-                  836
-                ],
-                "sharedNode": "ingestion_consumer"
-              },
-              {
-                "left": {
-                  "id": "redis-ingestion",
-                  "from": "redis_streams",
-                  "to": "ingestion_consumer",
-                  "label": "XREADGROUP stt:audio",
-                  "collectionIndex": 8,
-                  "artifactIndex": 9
-                },
-                "right": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
-                "point": [
-                  504,
-                  476
-                ],
-                "sharedNode": "redis_streams"
-              },
-              {
-                "left": {
-                  "id": "redis-ingestion",
-                  "from": "redis_streams",
-                  "to": "ingestion_consumer",
-                  "label": "XREADGROUP stt:audio",
-                  "collectionIndex": 8,
-                  "artifactIndex": 9
-                },
-                "right": {
-                  "id": "dramatiq-batchworker",
-                  "from": "dramatiq",
-                  "to": "batch_worker",
-                  "label": "Worker pickup",
-                  "collectionIndex": 29,
-                  "artifactIndex": 30
-                },
-                "point": [
-                  540,
-                  817
-                ]
-              },
-              {
-                "left": {
-                  "id": "sessionmgr-ingestion",
-                  "from": "session_mgr",
-                  "to": "ingestion_consumer",
-                  "label": "Consume Job",
-                  "collectionIndex": 10,
-                  "artifactIndex": 11
-                },
-                "right": {
-                  "id": "dramatiq-batchworker",
-                  "from": "dramatiq",
-                  "to": "batch_worker",
-                  "label": "Worker pickup",
-                  "collectionIndex": 29,
-                  "artifactIndex": 30
-                },
-                "point": [
-                  576,
-                  817
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-denoiser",
-                  "from": "ingestion_consumer",
-                  "to": "denoiser",
-                  "label": "IF Denoise ON",
-                  "collectionIndex": 11,
-                  "artifactIndex": 12
-                },
-                "right": {
-                  "id": "ingestion-silerovad",
-                  "from": "ingestion_consumer",
-                  "to": "silero_vad",
-                  "label": "Direct Pass",
-                  "collectionIndex": 12,
-                  "artifactIndex": 13
-                },
-                "point": [
-                  820,
-                  796
-                ],
-                "sharedNode": "ingestion_consumer"
-              },
-              {
-                "left": {
-                  "id": "ingestion-denoiser",
-                  "from": "ingestion_consumer",
-                  "to": "denoiser",
-                  "label": "IF Denoise ON",
-                  "collectionIndex": 11,
-                  "artifactIndex": 12
-                },
-                "right": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
-                "point": [
-                  820,
-                  436
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-denoiser",
-                  "from": "ingestion_consumer",
-                  "to": "denoiser",
-                  "label": "IF Denoise ON",
-                  "collectionIndex": 11,
-                  "artifactIndex": 12
-                },
-                "right": {
-                  "id": "gateway-livedoc",
-                  "from": "gateway",
-                  "to": "live_doc",
-                  "label": "LiveDoc sync",
-                  "collectionIndex": 25,
-                  "artifactIndex": 26
-                },
-                "point": [
-                  820,
-                  256
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-denoiser",
-                  "from": "ingestion_consumer",
-                  "to": "denoiser",
-                  "label": "IF Denoise ON",
-                  "collectionIndex": 11,
-                  "artifactIndex": 12
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  820,
-                  343
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-denoiser",
-                  "from": "ingestion_consumer",
-                  "to": "denoiser",
-                  "label": "IF Denoise ON",
-                  "collectionIndex": 11,
-                  "artifactIndex": 12
-                },
-                "right": {
-                  "id": "sessionmgr-s3",
-                  "from": "session_mgr",
-                  "to": "minio_s3",
-                  "label": "Archival S3 Upload",
-                  "collectionIndex": 27,
-                  "artifactIndex": 28
-                },
-                "point": [
-                  820,
-                  637
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-denoiser",
-                  "from": "ingestion_consumer",
-                  "to": "denoiser",
-                  "label": "IF Denoise ON",
-                  "collectionIndex": 11,
-                  "artifactIndex": 12
-                },
-                "right": {
-                  "id": "dramatiq-batchworker",
-                  "from": "dramatiq",
-                  "to": "batch_worker",
-                  "label": "Worker pickup",
-                  "collectionIndex": 29,
-                  "artifactIndex": 30
-                },
-                "point": [
-                  820,
-                  817
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-silerovad",
-                  "from": "ingestion_consumer",
-                  "to": "silero_vad",
-                  "label": "Direct Pass",
-                  "collectionIndex": 12,
-                  "artifactIndex": 13
-                },
-                "right": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
-                "point": [
-                  856,
-                  436
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-silerovad",
-                  "from": "ingestion_consumer",
-                  "to": "silero_vad",
-                  "label": "Direct Pass",
-                  "collectionIndex": 12,
-                  "artifactIndex": 13
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  856,
-                  343
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-silerovad",
-                  "from": "ingestion_consumer",
-                  "to": "silero_vad",
-                  "label": "Direct Pass",
-                  "collectionIndex": 12,
-                  "artifactIndex": 13
-                },
-                "right": {
-                  "id": "sessionmgr-s3",
-                  "from": "session_mgr",
-                  "to": "minio_s3",
-                  "label": "Archival S3 Upload",
-                  "collectionIndex": 27,
-                  "artifactIndex": 28
-                },
-                "point": [
-                  856,
-                  637
-                ]
-              },
-              {
-                "left": {
-                  "id": "ingestion-silerovad",
-                  "from": "ingestion_consumer",
-                  "to": "silero_vad",
-                  "label": "Direct Pass",
-                  "collectionIndex": 12,
-                  "artifactIndex": 13
-                },
-                "right": {
-                  "id": "dramatiq-batchworker",
-                  "from": "dramatiq",
-                  "to": "batch_worker",
-                  "label": "Worker pickup",
-                  "collectionIndex": 29,
-                  "artifactIndex": 30
-                },
-                "point": [
-                  701,
-                  817
-                ]
-              },
-              {
-                "left": {
-                  "id": "denoiser-silero",
-                  "from": "denoiser",
-                  "to": "silero_vad",
-                  "label": "Denoised PCM",
-                  "collectionIndex": 13,
-                  "artifactIndex": 14
-                },
-                "right": {
-                  "id": "gateway-livedoc",
-                  "from": "gateway",
-                  "to": "live_doc",
-                  "label": "LiveDoc sync",
-                  "collectionIndex": 25,
-                  "artifactIndex": 26
-                },
-                "point": [
-                  967,
-                  256
-                ]
-              },
-              {
-                "left": {
-                  "id": "silero-semantic",
-                  "from": "silero_vad",
-                  "to": "semantic_endpointer",
-                  "label": "IF Semantic ON",
-                  "collectionIndex": 14,
-                  "artifactIndex": 15
-                },
-                "right": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
-                "point": [
-                  974,
-                  436
-                ]
-              },
-              {
-                "left": {
-                  "id": "silero-semantic",
-                  "from": "silero_vad",
-                  "to": "semantic_endpointer",
-                  "label": "IF Semantic ON",
-                  "collectionIndex": 14,
-                  "artifactIndex": 15
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  974,
-                  343
-                ]
-              },
-              {
-                "left": {
-                  "id": "silero-diarization",
-                  "from": "silero_vad",
-                  "to": "diarization",
-                  "label": "Utterances",
-                  "collectionIndex": 15,
-                  "artifactIndex": 16
-                },
-                "right": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
-                "point": [
-                  877,
-                  436
-                ]
-              },
-              {
-                "left": {
-                  "id": "silero-diarization",
-                  "from": "silero_vad",
-                  "to": "diarization",
-                  "label": "Utterances",
-                  "collectionIndex": 15,
-                  "artifactIndex": 16
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  960,
-                  343
-                ]
-              },
-              {
-                "left": {
-                  "id": "silero-diarization",
-                  "from": "silero_vad",
-                  "to": "diarization",
-                  "label": "Utterances",
-                  "collectionIndex": 15,
-                  "artifactIndex": 16
-                },
-                "right": {
-                  "id": "sessionmgr-s3",
-                  "from": "session_mgr",
-                  "to": "minio_s3",
-                  "label": "Archival S3 Upload",
-                  "collectionIndex": 27,
-                  "artifactIndex": 28
-                },
-                "point": [
-                  960,
-                  637
-                ]
-              },
-              {
-                "left": {
-                  "id": "silero-engineswitch",
-                  "from": "silero_vad",
-                  "to": "engine_switch",
-                  "label": "Fixed VAD",
-                  "collectionIndex": 16,
-                  "artifactIndex": 17
-                },
-                "right": {
-                  "id": "gateway-livedoc",
-                  "from": "gateway",
-                  "to": "live_doc",
-                  "label": "LiveDoc sync",
-                  "collectionIndex": 25,
-                  "artifactIndex": 26
-                },
-                "point": [
-                  1100,
-                  256
-                ]
-              },
-              {
-                "left": {
-                  "id": "engineswitch-asr",
-                  "from": "engine_switch",
-                  "to": "asr_registry",
-                  "label": "Delegate ASR",
-                  "collectionIndex": 17,
-                  "artifactIndex": 18
-                },
-                "right": {
-                  "id": "gateway-livedoc",
-                  "from": "gateway",
-                  "to": "live_doc",
-                  "label": "LiveDoc sync",
-                  "collectionIndex": 25,
-                  "artifactIndex": 26
-                },
-                "point": [
-                  1240,
-                  256
-                ]
-              },
-              {
-                "left": {
-                  "id": "asr-postprocess",
-                  "from": "asr_registry",
-                  "to": "post_process",
-                  "label": "Raw Text Pass",
+                  "id": "punctuation-normalizer",
+                  "from": "punctuation",
+                  "to": "normalizer",
+                  "label": "13. Text Normalizer",
                   "collectionIndex": 18,
                   "artifactIndex": 19
                 },
                 "right": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
-                "point": [
-                  1240,
-                  436
-                ]
-              },
-              {
-                "left": {
-                  "id": "asr-postprocess",
+                  "id": "asr-diarization",
                   "from": "asr_registry",
-                  "to": "post_process",
-                  "label": "Raw Text Pass",
-                  "collectionIndex": 18,
-                  "artifactIndex": 19
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  1240,
-                  343
-                ]
-              },
-              {
-                "left": {
-                  "id": "postprocess-punctuation",
-                  "from": "post_process",
-                  "to": "punctuation",
-                  "label": "IF PostProcess ON",
+                  "to": "diarization",
+                  "label": "15. Pyannote Embedding",
                   "collectionIndex": 19,
                   "artifactIndex": 20
                 },
-                "right": {
-                  "id": "semantic-resultpub",
-                  "from": "semantic_endpointer",
-                  "to": "result_pub",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 22,
-                  "artifactIndex": 23
-                },
                 "point": [
-                  1240,
-                  543
-                ]
-              },
-              {
-                "left": {
-                  "id": "postprocess-punctuation",
-                  "from": "post_process",
-                  "to": "punctuation",
-                  "label": "IF PostProcess ON",
-                  "collectionIndex": 19,
-                  "artifactIndex": 20
-                },
-                "right": {
-                  "id": "sessionmgr-s3",
-                  "from": "session_mgr",
-                  "to": "minio_s3",
-                  "label": "Archival S3 Upload",
-                  "collectionIndex": 27,
-                  "artifactIndex": 28
-                },
-                "point": [
-                  1240,
-                  637
-                ]
-              },
-              {
-                "left": {
-                  "id": "punctuation-resultpub",
-                  "from": "punctuation",
-                  "to": "result_pub",
-                  "label": "SegmentResult",
-                  "collectionIndex": 21,
-                  "artifactIndex": 22
-                },
-                "right": {
-                  "id": "semantic-resultpub",
-                  "from": "semantic_endpointer",
-                  "to": "result_pub",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 22,
-                  "artifactIndex": 23
-                },
-                "point": [
-                  1380,
-                  542.9999999999999
-                ],
-                "sharedNode": "result_pub"
-              },
-              {
-                "left": {
-                  "id": "punctuation-resultpub",
-                  "from": "punctuation",
-                  "to": "result_pub",
-                  "label": "SegmentResult",
-                  "collectionIndex": 21,
-                  "artifactIndex": 22
-                },
-                "right": {
-                  "id": "sessionmgr-s3",
-                  "from": "session_mgr",
-                  "to": "minio_s3",
-                  "label": "Archival S3 Upload",
-                  "collectionIndex": 27,
-                  "artifactIndex": 28
-                },
-                "point": [
-                  1380,
-                  637
-                ]
-              },
-              {
-                "left": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  687,
-                  436
-                ]
-              },
-              {
-                "left": {
-                  "id": "redis-gateway",
-                  "from": "redis_streams",
-                  "to": "gateway",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 24,
-                  "artifactIndex": 25
-                },
-                "right": {
-                  "id": "gateway-dramatiq",
-                  "from": "gateway",
-                  "to": "dramatiq",
-                  "label": "Enqueue Batch",
-                  "collectionIndex": 28,
-                  "artifactIndex": 29
-                },
-                "point": [
-                  298,
-                  277
-                ],
-                "sharedNode": "gateway"
-              },
-              {
-                "left": {
-                  "id": "gateway-livedoc",
-                  "from": "gateway",
-                  "to": "live_doc",
-                  "label": "LiveDoc sync",
-                  "collectionIndex": 25,
-                  "artifactIndex": 26
-                },
-                "right": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "point": [
-                  1402,
-                  256
+                  864,
+                  710
                 ]
               }
             ],
             "detours": [
               {
                 "relationship": {
-                  "id": "ingestion-silerovad",
-                  "from": "ingestion_consumer",
-                  "to": "silero_vad",
-                  "label": "Direct Pass",
-                  "collectionIndex": 12,
-                  "artifactIndex": 13
-                },
-                "bends": 3,
-                "stretch": 1
-              },
-              {
-                "relationship": {
-                  "id": "silero-diarization",
-                  "from": "silero_vad",
-                  "to": "diarization",
-                  "label": "Utterances",
+                  "id": "asr-engineswitch",
+                  "from": "asr_registry",
+                  "to": "engine_switch",
+                  "label": "Health Supervisor",
                   "collectionIndex": 15,
                   "artifactIndex": 16
                 },
-                "bends": 4,
-                "stretch": 1.553,
-                "directCorridorBlockers": [
-                  {
-                    "id": "semantic_endpointer",
-                    "label": "Semantic Endpointer",
-                    "box": [
-                      880,
-                      460,
-                      160,
-                      60
-                    ]
-                  }
-                ]
-              },
-              {
-                "relationship": {
-                  "id": "semantic-resultpub",
-                  "from": "semantic_endpointer",
-                  "to": "result_pub",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 22,
-                  "artifactIndex": 23
-                },
-                "bends": 4,
-                "stretch": 1.265,
-                "directCorridorBlockers": [
-                  {
-                    "id": "post_process",
-                    "label": "Post-Processing",
-                    "box": [
-                      1160,
-                      460,
-                      160,
-                      60
-                    ]
-                  }
-                ]
-              },
-              {
-                "relationship": {
-                  "id": "resultpub-redis",
-                  "from": "result_pub",
-                  "to": "redis_streams",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 23,
-                  "artifactIndex": 24
-                },
                 "bends": 3,
-                "stretch": 1.045,
+                "stretch": 1.234,
                 "directCorridorBlockers": [
                   {
-                    "id": "session_mgr",
-                    "label": "SessionManager",
-                    "box": [
-                      600,
-                      460,
-                      160,
-                      60
-                    ]
-                  },
-                  {
-                    "id": "semantic_endpointer",
-                    "label": "Semantic Endpointer",
-                    "box": [
-                      880,
-                      460,
-                      160,
-                      60
-                    ]
-                  },
-                  {
                     "id": "post_process",
-                    "label": "Post-Processing",
+                    "label": "RepeatGuard &amp; Filter",
                     "box": [
-                      1160,
-                      460,
+                      1320,
+                      680,
                       160,
                       60
                     ]
                   }
                 ]
+              },
+              {
+                "relationship": {
+                  "id": "asr-diarization",
+                  "from": "asr_registry",
+                  "to": "diarization",
+                  "label": "15. Pyannote Embedding",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "bends": 4,
+                "stretch": 1
               },
               {
                 "relationship": {
                   "id": "redis-gateway",
                   "from": "redis_streams",
                   "to": "gateway",
-                  "label": "XADD stt:result",
-                  "collectionIndex": 24,
-                  "artifactIndex": 25
+                  "label": "17. Transcript Egress",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
                 },
                 "bends": 4,
-                "stretch": 1.727,
+                "stretch": 1.559,
                 "directCorridorBlockers": [
                   {
                     "id": "audio_bridge",
                     "label": "StreamingAudioBridge",
                     "box": [
-                      320,
-                      280,
+                      360,
+                      230,
                       160,
                       60
                     ]
@@ -1186,83 +328,25 @@
               },
               {
                 "relationship": {
-                  "id": "sessionmgr-postgres",
-                  "from": "session_mgr",
-                  "to": "postgres",
-                  "label": "Voice Profiles DB",
-                  "collectionIndex": 26,
-                  "artifactIndex": 27
-                },
-                "bends": 4,
-                "stretch": 1
-              },
-              {
-                "relationship": {
-                  "id": "sessionmgr-s3",
-                  "from": "session_mgr",
-                  "to": "minio_s3",
-                  "label": "Archival S3 Upload",
-                  "collectionIndex": 27,
-                  "artifactIndex": 28
-                },
-                "bends": 3,
-                "stretch": 1
-              },
-              {
-                "relationship": {
-                  "id": "gateway-dramatiq",
+                  "id": "gateway-livedoc",
                   "from": "gateway",
-                  "to": "dramatiq",
-                  "label": "Enqueue Batch",
-                  "collectionIndex": 28,
-                  "artifactIndex": 29
-                },
-                "bends": 4,
-                "stretch": 1.579,
-                "directCorridorBlockers": [
-                  {
-                    "id": "audio_bridge",
-                    "label": "StreamingAudioBridge",
-                    "box": [
-                      320,
-                      280,
-                      160,
-                      60
-                    ]
-                  },
-                  {
-                    "id": "redis_streams",
-                    "label": "Redis Streams Broker",
-                    "box": [
-                      320,
-                      460,
-                      160,
-                      60
-                    ]
-                  }
-                ]
-              },
-              {
-                "relationship": {
-                  "id": "dramatiq-batchworker",
-                  "from": "dramatiq",
-                  "to": "batch_worker",
-                  "label": "Worker pickup",
-                  "collectionIndex": 29,
-                  "artifactIndex": 30
+                  "to": "live_doc",
+                  "label": "19. Clinical EHR Sync",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
                 },
                 "bends": 3,
-                "stretch": 1
+                "stretch": 1.06
               }
             ]
           },
           "leadingSpace": {
             "measured": true,
-            "emptyTopPx": 70,
-            "emptyTopRatio": 0.072,
-            "occupiedTop": 70,
+            "emptyTopPx": 50,
+            "emptyTopRatio": 0.051,
+            "occupiedTop": 50,
             "viewBoxTop": 0,
-            "canvasHeight": 968,
+            "canvasHeight": 978,
             "typicalNodeHeight": 60,
             "reviewSuggested": false
           },
@@ -1272,7 +356,7 @@
             "availableDiagramWidth": 1346,
             "actualBudgetPx": 1346,
             "actualReaderWidth": 1376,
-            "desiredReaderWidth": 1595.625,
+            "desiredReaderWidth": 1501.5189873417721,
             "viewportCap": 1376,
             "limit": "viewport-cap",
             "requestedTargetPx": 7.5,
@@ -1280,28 +364,26 @@
             "hardFloorPx": 6,
             "hardFloorMet": true,
             "minimumOwner": {
-              "kind": "edge",
-              "id": "client-ticket",
-              "from": "client",
-              "to": "ticket_service"
+              "kind": "node",
+              "id": "post_process"
             },
-            "minimumSourceTextPx": 8,
-            "minimumProjectedTextPx": 6.447904191616766,
-            "semanticTextCount": 84
+            "minimumSourceTextPx": 7.9,
+            "minimumProjectedTextPx": 6.860258064516129,
+            "semanticTextCount": 78
           },
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "dafec2cd-9e35-4e8f-b570-f21b2bc448e3"
+        "deliveryReceiptId": "a88cab85-cf91-43c7-854a-cc56dc2d761d"
       }
     },
     "browser-check": {
-      "status": "fail",
-      "exitCode": 1,
-      "durationMs": 15,
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 1316,
       "command": [
         "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
-        "/Users/apple/Desktop/vox/archify/bin/archify.mjs",
+        "/Users/apple/.gemini/config/skills/archify/bin/archify.mjs",
         "browser-check",
         "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
         "--json",
@@ -1310,62 +392,690 @@
       "execution": "in-process",
       "receipt": {
         "schemaVersion": 1,
-        "ok": false,
+        "ok": true,
         "command": "browser-check",
         "evidenceKind": "automated-browser",
-        "status": "fail",
+        "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "dafec2cd-9e35-4e8f-b570-f21b2bc448e3",
+        "deliveryReceiptId": "a88cab85-cf91-43c7-854a-cc56dc2d761d",
         "artifact": {
           "path": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
-          "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
-          "bytes": 815350
+          "sha256": "085eadf6c82e2c9647c7c100b9bba8d83dbdf893ca9d3f558ca9656eadc59b3a",
+          "bytes": 820902
         },
         "state": {
           "detail": "read",
           "motion": "still"
         },
         "chrome": {
-          "status": "not-checked",
-          "executable": null
+          "status": "available",
+          "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         },
-        "diagnostics": [
-          {
-            "code": "viewer/evidence-path-conflict",
-            "severity": "error",
-            "message": "browser-check will not replace the existing unowned evidence path \"/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json\".",
-            "subject": {
-              "artifact": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
-              "evidencePath": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
-            },
-            "evidence": {
-              "reason": {
-                "code": "ownership-artifact-mismatch"
-              }
-            },
-            "supportedFixes": [
-              "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
-            ]
-          }
-        ],
+        "diagnostics": [],
         "containment": {
-          "status": "fail",
+          "status": "pass",
           "policy": "fit-or-reader-declared-readable-vertical-scroll",
-          "viewports": []
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 1039,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 99,
+                "diagramChromePx": 78,
+                "svgPx": 849,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 6.860258064516129,
+              "minimumProjectedNonEdgeTextPx": 6.860258064516129,
+              "minimumProjectedEdgeTextPx": 6.9470967741935485,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1185,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1502,
+              "diagramWidth": 1472,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 107,
+                "diagramChromePx": 84,
+                "svgPx": 929,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.502451612903227,
+              "minimumProjectedNonEdgeTextPx": 7.502451612903227,
+              "minimumProjectedEdgeTextPx": 7.59741935483871,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1185,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1502,
+              "diagramWidth": 1472,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 107,
+                "diagramChromePx": 84,
+                "svgPx": 929,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.502451612903227,
+              "minimumProjectedNonEdgeTextPx": 7.502451612903227,
+              "minimumProjectedEdgeTextPx": 7.59741935483871,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1690,
+              "diagramWidth": 1640,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 115,
+                "diagramChromePx": 94,
+                "svgPx": 1035,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.9,
+              "minimumProjectedNonEdgeTextPx": 7.9,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
         },
         "themeStates": {
-          "status": "fail",
-          "viewports": []
+          "status": "pass",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1440,
+              "height": 900,
+              "requestedTheme": "dark",
+              "resolvedTheme": "dark",
+              "ok": true
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "requestedTheme": "dark",
+              "resolvedTheme": "dark",
+              "ok": true
+            }
+          ]
         },
         "readability": {
-          "status": "fail",
+          "status": "pass",
           "minimumProjectedNodeTextPx": 6,
-          "viewports": []
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 1039,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 99,
+                "diagramChromePx": 78,
+                "svgPx": 849,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 6.860258064516129,
+              "minimumProjectedNonEdgeTextPx": 6.860258064516129,
+              "minimumProjectedEdgeTextPx": 6.9470967741935485,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1185,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1502,
+              "diagramWidth": 1472,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 107,
+                "diagramChromePx": 84,
+                "svgPx": 929,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.502451612903227,
+              "minimumProjectedNonEdgeTextPx": 7.502451612903227,
+              "minimumProjectedEdgeTextPx": 7.59741935483871,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1185,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1502,
+              "diagramWidth": 1472,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 107,
+                "diagramChromePx": 84,
+                "svgPx": 929,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.502451612903227,
+              "minimumProjectedNonEdgeTextPx": 7.502451612903227,
+              "minimumProjectedEdgeTextPx": 7.59741935483871,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1690,
+              "diagramWidth": 1640,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 115,
+                "diagramChromePx": 94,
+                "svgPx": 1035,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.9,
+              "minimumProjectedNonEdgeTextPx": 7.9,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
         },
         "viewerChrome": {
-          "status": "fail",
-          "viewports": []
+          "status": "pass",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 1039,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 99,
+                "diagramChromePx": 78,
+                "svgPx": 849,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 6.860258064516129,
+              "minimumProjectedNonEdgeTextPx": 6.860258064516129,
+              "minimumProjectedEdgeTextPx": 6.9470967741935485,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1185,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1502,
+              "diagramWidth": 1472,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 107,
+                "diagramChromePx": 84,
+                "svgPx": 929,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.502451612903227,
+              "minimumProjectedNonEdgeTextPx": 7.502451612903227,
+              "minimumProjectedEdgeTextPx": 7.59741935483871,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1185,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1502,
+              "diagramWidth": 1472,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 107,
+                "diagramChromePx": 84,
+                "svgPx": 929,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.502451612903227,
+              "minimumProjectedNonEdgeTextPx": 7.502451612903227,
+              "minimumProjectedEdgeTextPx": 7.59741935483871,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1690,
+              "diagramWidth": 1640,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 115,
+                "diagramChromePx": 94,
+                "svgPx": 1035,
+                "cardsPx": 0,
+                "viewBoxHeight": 978
+              },
+              "viewBoxWidth": 1550,
+              "minimumProjectedNodeTextPx": 7.9,
+              "minimumProjectedNonEdgeTextPx": 7.9,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "collapse_repeats / Hallucination",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "post_process"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
         },
         "captures": {
           "status": "not-requested",
@@ -1375,45 +1085,25 @@
         "sidecars": {
           "receipt": "stt-audio-pipeline.browser-check.json",
           "files": []
-        },
-        "error": "browser-check will not replace the existing unowned evidence path \"/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json\"."
+        }
       }
     }
   },
-  "diagnostics": [
-    {
-      "code": "viewer/evidence-path-conflict",
-      "severity": "error",
-      "message": "browser-check will not replace the existing unowned evidence path \"/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json\".",
-      "subject": {
-        "artifact": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
-        "evidencePath": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
-      },
-      "evidence": {
-        "reason": {
-          "code": "ownership-artifact-mismatch"
-        }
-      },
-      "supportedFixes": [
-        "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
-      ]
-    }
-  ],
+  "diagnostics": [],
   "evidence": {
     "receipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.finalize.json",
     "summaryReceipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.finalize-summary.json",
     "browserCheckReceipt": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.browser-check.json"
   },
   "visualReview": "not-requested",
-  "failedStage": "browser-check",
-  "finishedAt": "2026-10-07T05:16:29.929Z",
-  "durationMs": 1230,
+  "finishedAt": "2026-10-13T05:48:34.508Z",
+  "durationMs": 2394,
   "update": {
     "status": "current",
     "installedVersion": "3.0.1",
     "availableVersion": "3.0.1",
     "releaseNotes": null,
-    "checkedAt": "2026-10-07T04:28:01.636Z",
+    "checkedAt": "2026-10-12T16:57:11.442Z",
     "source": "cache",
     "noticeRequired": false,
     "noticeText": null

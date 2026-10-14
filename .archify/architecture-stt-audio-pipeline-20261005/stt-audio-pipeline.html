@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 3.0.1">
   <meta name="archify-reader-contract" content="declared-wide-v1">
-  <title>STT Microservice Architecture &amp; Model Registry Breakdown Diagram</title>
+  <title>STT Streaming Audio Pipeline: End-to-End Execution Architecture Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -4978,19 +4978,19 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="BLUEPRINT / REV 01"
            data-preset-badge-editorial="EDITORIAL / FIELD NOTE">
         <div class="pulse-dot"></div>
-        <h1>STT Microservice Architecture &amp; Model Registry Breakdown</h1>
+        <h1>STT Streaming Audio Pipeline: End-to-End Execution Architecture</h1>
       </div>
-      <p class="subtitle">Services, Explicit Model Names (DeepFilterNet3, Silero VAD v5, whisper-large-v3, ecapa-voxceleb, Cadence-Fast), &amp; Gating Flags</p>
+      <p class="subtitle">Gateway Ingress → Redis Streams → IngestionConsumer → Preprocessing (Denoise/VAD/Endpointer) → GPU ASR Decoder → Post-Processing (RepeatGuard/Cadence/Diarization) → Result Egress</p>
     </div>
 
-
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/ArcaAI/project-hope","revision":"dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d","shortRevision":"dacdc31","label":"ArcaAI/project-hope","href":"https://github.com/ArcaAI/project-hope/tree/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d"},"referenceCount":33,"nodes":{"client":[{"path":"apps/admin-console/src/app/page.tsx","line":1,"endLine":17,"label":"Client App Entry","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/admin-console/src/app/page.tsx#L1-L17"}],"ticket_service":[{"path":"apps/api/src/modules/auth/stream-ticket.service.ts","line":20,"endLine":123,"label":"StreamTicketService Auth","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/api/src/modules/auth/stream-ticket.service.ts#L20-L123"}],"gateway":[{"path":"apps/api/src/modules/streaming/transcription-job.controller.ts","line":955,"endLine":1175,"label":"POST /stream/session Controller","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/api/src/modules/streaming/transcription-job.controller.ts#L955-L1175"},{"path":"apps/api/src/modules/streaming/stt-ws.gateway.ts","line":450,"endLine":500,"label":"SttWsGateway WebSockets","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/api/src/modules/streaming/stt-ws.gateway.ts#L450-L500"}],"audio_bridge":[{"path":"packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts","line":133,"endLine":180,"label":"StreamingAudioBridge","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts#L133-L180"}],"fastapi":[{"path":"apps/stt/src/stt/main.py","line":425,"endLine":444,"label":"create_app() Router Mount","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/main.py#L425-L444"},{"path":"apps/stt/src/stt/streaming/api/routes.py","line":99,"endLine":146,"label":"POST /internal/streaming/sessions","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/api/routes.py#L99-L146"}],"session_mgr":[{"path":"apps/stt/src/stt/streaming/session_manager.py","line":1348,"endLine":1440,"label":"create_session() Entrypoint","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/session_manager.py#L1348-L1440"},{"path":"apps/stt/src/stt/streaming/session_manager.py","line":801,"endLine":824,"label":"Denoise \u0026 Engine Setup","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/session_manager.py#L801-L824"}],"control_plane":[{"path":"apps/stt/src/stt/core/effective_config.py","line":244,"endLine":272,"label":"run_invalidation_listener","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/core/effective_config.py#L244-L272"}],"model_cache":[{"path":"apps/stt/src/stt/models/cache.py","line":253,"endLine":285,"label":"ModelCache Class","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/models/cache.py#L253-L285"}],"redis_streams":[{"path":"apps/stt/src/stt/streaming/redis_streams.py","line":1,"endLine":100,"label":"Redis Streams Broker","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/redis_streams.py#L1-L100"}],"ingestion_consumer":[{"path":"apps/stt/src/stt/streaming/redis_streams.py","line":365,"endLine":435,"label":"IngestionConsumer._run","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/redis_streams.py#L365-L435"},{"path":"apps/stt/src/stt/streaming/session_manager.py","line":4018,"endLine":4051,"label":"_on_frame() Dispatch","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/session_manager.py#L4018-L4051"}],"denoiser":[{"path":"apps/stt/src/stt/streaming/preprocessor.py","line":599,"endLine":609,"label":"Stage 2 Denoise Pass","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/preprocessor.py#L599-L609"},{"path":"apps/stt/src/stt/streaming/deepfilternet_denoiser.py","line":38,"endLine":120,"label":"DeepFilterNet3StreamingDenoiser","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/deepfilternet_denoiser.py#L38-L120"}],"silero_vad":[{"path":"apps/stt/src/stt/streaming/preprocessor.py","line":614,"endLine":635,"label":"feed() VAD State Machine","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/preprocessor.py#L614-L635"}],"semantic_endpointer":[{"path":"apps/stt/src/stt/streaming/semantic_endpointer.py","line":25,"endLine":80,"label":"SemanticEndpointer Class","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/semantic_endpointer.py#L25-L80"},{"path":"apps/stt/src/stt/streaming/preprocessor.py","line":759,"endLine":765,"label":"should_semantic_endpoint","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/preprocessor.py#L759-L765"}],"asr_registry":[{"path":"apps/stt/src/stt/streaming/session_manager.py","line":3528,"endLine":3540,"label":"_start_inference_loop","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/session_manager.py#L3528-L3540"},{"path":"apps/stt/src/stt/streaming/inference.py","line":740,"endLine":750,"label":"process_utterance","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/inference.py#L740-L750"}],"engine_switch":[{"path":"apps/stt/src/stt/streaming/engine_switch.py","line":45,"endLine":120,"label":"EngineSwitchController.note_failure()","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/engine_switch.py#L45-L120"}],"post_process":[{"path":"apps/stt/src/stt/streaming/inference.py","line":752,"endLine":765,"label":"_apply_repeat_guard \u0026 _is_hallucination","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/inference.py#L752-L765"},{"path":"apps/stt/src/stt/postprocessing/repeat_guard.py","line":20,"endLine":80,"label":"collapse_repeats","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/postprocessing/repeat_guard.py#L20-L80"}],"punctuation":[{"path":"apps/stt/src/stt/streaming/inference.py","line":816,"endLine":827,"label":"_apply_punctuation","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/inference.py#L816-L827"},{"path":"apps/stt/src/stt/punctuation/cadence_fast.py","line":25,"endLine":85,"label":"CadenceFastPunctuation","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/punctuation/cadence_fast.py#L25-L85"}],"diarization":[{"path":"apps/stt/src/stt/streaming/inference.py","line":883,"endLine":905,"label":"Speaker Diarization Step","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/inference.py#L883-L905"},{"path":"apps/stt/src/stt/diarization/pyannote_embedding.py","line":1,"endLine":59,"label":"PyAnnote Embedding","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/diarization/pyannote_embedding.py#L1-L59"}],"normalizer":[{"path":"apps/stt/src/stt/streaming/inference.py","line":1931,"endLine":1948,"label":"_normalize_punctuation_output","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/inference.py#L1931-L1948"}],"result_pub":[{"path":"apps/stt/src/stt/streaming/redis_streams.py","line":510,"endLine":531,"label":"ResultPublisher.publish()","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/redis_streams.py#L510-L531"}],"live_doc":[{"path":"apps/api/src/modules/streaming/transcription-job.controller.ts","line":1,"endLine":100,"label":"LiveDoc NLP Integration","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/api/src/modules/streaming/transcription-job.controller.ts#L1-L100"}],"minio_s3":[{"path":"apps/stt/src/stt/streaming/session_manager.py","line":5901,"endLine":5953,"label":"_upload_snapshot Incremental","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/session_manager.py#L5901-L5953"}],"postgres":[{"path":"apps/stt/src/stt/streaming/session_manager.py","line":4788,"endLine":4820,"label":"_drain_transcript_outbox","href":"https://github.com/ArcaAI/project-hope/blob/dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d/apps/stt/src/stt/streaming/session_manager.py#L4788-L4820"}]}}</script>
     <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"to cycle","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.svg.auto":"SVG · Auto","viewer.export.svg.auto.hint":"Matches host theme","viewer.export.svg.light":"SVG · Light","viewer.export.svg.light.hint":"Always light","viewer.export.svg.dark":"SVG · Dark","viewer.export.svg.dark.hint":"Always dark","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Path: {source} → {target} · {count} step","viewer.export.card.routeSummary.other":"Path: {source} → {target} · {count} steps","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guide.title":"Explore this system","viewer.focus.selectedNodes":"{count} selected nodes","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.facts":"{nodes} · {relationships}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.open":"Open diagram guide","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.verificationScope":"Verified against local Git at the pinned revision. Remote access has not been checked.","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.move":"Move semantic passport. Drag, use arrow keys, or press Home to reset.","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.sourceMarker":"SRC","viewer.passport.beacon.one":"{count} verified source; focus this node to inspect","viewer.passport.beacon.other":"{count} verified sources; focus this node to inspect","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Path","viewer.route.start":"Click where the path starts","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Path","viewer.route.pickTwo":"Click two nodes on the diagram","viewer.route.pickOne":"Click a node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Click a start, then an end. Paths follow the arrows.","viewer.route.destination":"Where does the path from {label} end?","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"Pick two different nodes.","viewer.route.unreachable":"Cannot reach {label} from here","viewer.route.unreachable.detail":"{target} cannot be reached from {source} along the arrows. Pick a highlighted node.","viewer.route.start.instructions":"Next, pick the end. Only nodes you can reach will light up.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest path","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} step","viewer.route.overview.hop.other":"{count} steps","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} reachable node is highlighted. Click it.","viewer.route.destination.count.other":"{count} reachable nodes are highlighted. Click one.","viewer.route.noOutgoing":"No arrows lead out of this node. Clear it and pick another start.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"PATH","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.outline.title":"Node index","viewer.rail.show":"Notes \u0026 index","viewer.rail.controls":"Side panel","viewer.rail.collapse":"Collapse side panel","viewer.rail.bottom":"Move panel below the diagram","viewer.rail.right":"Move panel beside the diagram","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / PLATE 04">
-      <svg viewBox="0 0 1670 968" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
-        <title id="archify-diagram-title">STT Microservice Architecture &amp; Model Registry Breakdown</title>
-        <desc id="archify-diagram-description">Services, Explicit Model Names (DeepFilterNet3, Silero VAD v5, whisper-large-v3, ecapa-voxceleb, Cadence-Fast), &amp; Gating Flags</desc>
+      <svg viewBox="0 0 1550 978" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
+        <title id="archify-diagram-title">STT Streaming Audio Pipeline: End-to-End Execution Architecture</title>
+        <desc id="archify-diagram-description">Gateway Ingress → Redis Streams → IngestionConsumer → Preprocessing (Denoise/VAD/Endpointer) → GPU ASR Decoder → Post-Processing (RepeatGuard/Cadence/Diarization) → Result Egress</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -5014,630 +5014,582 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="NestJS API Gateway Layer (apps/api)" x="10" y="70" width="1620" height="380" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Ingress &amp; Client Applications" x="10" y="50" width="220" height="560" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" data-composition-frame-label="Redis Message Transport &amp; Task Broker" x="290" y="430" width="1340" height="470" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="API Gateway &amp; Audio Bridge" x="330" y="50" width="220" height="260" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="2" data-composition-frame-label="FastAPI STT Control Plane (apps/stt)" x="554.6386988774193" y="70" width="250.72260224516128" height="650" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="2" data-composition-frame-label="FastAPI Control Plane &amp; Durability" x="650" y="50" width="860" height="260" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="3" data-composition-frame-label="Streaming Speech Intelligence &amp; ASR Core" x="850" y="70" width="500" height="830" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="3" data-composition-frame-label="Redis Transport &amp; Audio Front-End" x="330" y="350" width="1180" height="260" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="4" data-composition-frame-label="Persistence &amp; Storage Plane" x="1410" y="70" width="220" height="650" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="4" data-composition-frame-label="Neural ASR Core &amp; Resilience" x="1290" y="500" width="220" height="410" rx="12" class="c-region" stroke-width="1"/>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="5" data-composition-frame-label="Post-Processing Pipeline &amp; Egress" x="330" y="650" width="1180" height="260" rx="8" class="c-security-group" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
-          <path data-graph-role="automatic-crossover-underlay" d="M 120 250 L 120 370" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="client" data-edge-to="ticket_service" data-edge-label="1. Mint Ticket" data-edge-key="0" data-edge-id="client-ticket" data-composition-points="120,250;120,370" data-composition-crossover="halo" data-composition-independent="true" d="M 120 250 L 120 370" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 200 110 L 360 110" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="client" data-edge-to="gateway" data-edge-label="1. POST /stream/session" data-edge-key="0" data-edge-id="client-gateway-init" data-composition-points="200,110;360,110" data-composition-crossover="halo" d="M 200 110 L 360 110" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:1">
-          <path data-graph-role="automatic-crossover-underlay" d="M 120 190 L 120 131 Q 120 123 128 123 L 320 123" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="client" data-edge-to="gateway" data-edge-label="2. WS Handshake" data-edge-key="1" data-edge-id="client-gateway" data-composition-points="120,190;120,123;320,123" data-composition-crossover="halo" data-composition-independent="true" d="M 120 190 L 120 131 Q 120 123 128 123 L 320 123" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 360 117 L 288 117 Q 280 117 280 125 L 280 252 Q 280 260 272 260 L 200 260" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="ticket_service" data-edge-label="2. Mint Auth Ticket" data-edge-key="1" data-edge-id="gateway-ticket" data-composition-points="360,117;280,117;280,260;200,260" data-composition-crossover="halo" data-composition-independent="true" d="M 360 117 L 288 117 Q 280 117 280 125 L 280 252 Q 280 260 272 260 L 200 260" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:2">
-          <path data-graph-role="automatic-crossover-underlay" d="M 320 137 L 232 137 Q 224 137 224 145 L 224 392 Q 224 400 216 400 L 200 400" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="gateway" data-edge-to="ticket_service" data-edge-label="Auth Ticket Minting" data-edge-key="2" data-edge-id="gateway-ticket" data-composition-points="320,137;224,137;224,400;200,400" data-composition-crossover="halo" data-composition-independent="true" d="M 320 137 L 232 137 Q 224 137 224 145 L 224 392 Q 224 400 216 400 L 200 400" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 520 110 L 680 110" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="fastapi" data-edge-label="3. POST /sessions" data-edge-key="2" data-edge-id="gateway-fastapi" data-composition-points="520,110;680,110" data-composition-crossover="halo" data-composition-independent="true" d="M 520 110 L 680 110" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
-          <path data-graph-role="automatic-crossover-underlay" d="M 480 130 L 600 130" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="gateway" data-edge-to="fastapi" data-edge-label="3. POST /sessions" data-edge-key="3" data-edge-id="gateway-fastapi" data-composition-points="480,130;600,130" data-composition-crossover="halo" data-composition-independent="true" d="M 480 130 L 600 130" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 840 103 L 1000 103" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="fastapi" data-edge-to="session_mgr" data-edge-label="create_session()" data-edge-key="3" data-edge-id="fastapi-sessionmgr" data-composition-points="840,103;1000,103" data-composition-crossover="halo" data-composition-independent="true" d="M 840 103 L 1000 103" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
-          <path data-graph-role="automatic-crossover-underlay" d="M 673 160 L 673 280" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="fastapi" data-edge-to="control_plane" data-edge-label="Sync Config" data-edge-key="4" data-edge-id="fastapi-controlplane" data-composition-points="673,160;673,280" data-composition-crossover="halo" data-composition-independent="true" d="M 673 160 L 673 280" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1160 103 L 1320 103" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="session_mgr" data-edge-to="model_cache" data-edge-label="Preload ASR Weights" data-edge-key="4" data-edge-id="sessionmgr-modelcache" data-composition-points="1160,103;1320,103" data-composition-crossover="halo" data-composition-independent="true" d="M 1160 103 L 1320 103" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 760 130 L 776 130 Q 784 130 784 138 L 784 482 Q 784 490 776 490 L 760 490" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="fastapi" data-edge-to="session_mgr" data-edge-label="create_session()" data-edge-key="5" data-edge-id="fastapi-sessionmgr" data-composition-points="760,130;784,130;784,490;760,490" data-composition-crossover="halo" data-composition-independent="true" d="M 760 130 L 776 130 Q 784 130 784 138 L 784 482 Q 784 490 776 490 L 760 490" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 840 260 L 912 260 Q 920 260 920 252 L 920 125 Q 920 117 928 117 L 1000 117" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="control_plane" data-edge-to="session_mgr" data-edge-label="arca:config:invalidate" data-edge-key="5" data-edge-id="controlplane-sessionmgr" data-composition-points="840,260;920,260;920,117;1000,117" data-composition-crossover="halo" data-composition-independent="true" d="M 840 260 L 912 260 Q 920 260 920 252 L 920 125 Q 920 117 928 117 L 1000 117" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
-          <path data-graph-role="automatic-crossover-underlay" d="M 379 160 L 379 212 Q 379 220 387 220 L 392 220 Q 400 220 400 228 L 400 280" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="gateway" data-edge-to="audio_bridge" data-edge-label="4. PCM Audio Chunks" data-edge-key="6" data-edge-id="gateway-bridge" data-composition-points="379,160;379,220;400,220;400,280" data-composition-crossover="halo" data-composition-independent="true" d="M 379 160 L 379 212 Q 379 220 387 220 L 392 220 Q 400 220 400 228 L 400 280" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1080 140 L 1080 230" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="session_mgr" data-edge-to="minio_s3" data-edge-label="Incremental Snapshots" data-edge-key="6" data-edge-id="sessionmgr-s3" data-composition-points="1080,140;1080,230" data-composition-crossover="halo" data-composition-independent="true" d="M 1080 140 L 1080 230" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
-          <path data-graph-role="automatic-crossover-underlay" d="M 393 340 L 393 460" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="audio_bridge" data-edge-to="redis_streams" data-edge-label="XADD stt:audio" data-edge-key="7" data-edge-id="bridge-redis" data-composition-points="393,340;393,460" data-composition-crossover="halo" data-composition-independent="true" d="M 393 340 L 393 460" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1160 117 L 1232 117 Q 1240 117 1240 125 L 1240 252 Q 1240 260 1248 260 L 1320 260" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="session_mgr" data-edge-to="postgres" data-edge-label="Durable Outbox Drain" data-edge-key="7" data-edge-id="sessionmgr-postgres" data-composition-points="1160,117;1240,117;1240,260;1320,260" data-composition-crossover="halo" data-composition-independent="true" d="M 1160 117 L 1232 117 Q 1240 117 1240 125 L 1240 252 Q 1240 260 1248 260 L 1320 260" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:8">
-          <path data-graph-role="automatic-crossover-underlay" d="M 480 476 L 532 476 Q 540 476 540 484 L 540 828 Q 540 836 548 836 L 600 836" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="redis_streams" data-edge-to="ingestion_consumer" data-edge-label="XREADGROUP stt:audio" data-edge-key="8" data-edge-id="redis-ingestion" data-composition-points="480,476;540,476;540,836;600,836" data-composition-crossover="halo" data-composition-independent="true" d="M 480 476 L 532 476 Q 540 476 540 484 L 540 828 Q 540 836 548 836 L 600 836" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 440 140 L 440 230" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="audio_bridge" data-edge-label="4. PCM WebSocket Frames" data-edge-key="8" data-edge-id="gateway-bridge" data-composition-points="440,140;440,230" data-composition-crossover="halo" data-composition-independent="true" d="M 440 140 L 440 230" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:9">
-          <path data-graph-role="automatic-crossover-underlay" d="M 680 520 L 680 640" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="session_mgr" data-edge-to="model_cache" data-edge-label="Load BYOK Keys" data-edge-key="9" data-edge-id="sessionmgr-modelcache" data-composition-points="680,520;680,640" data-composition-crossover="halo" data-composition-independent="true" d="M 680 520 L 680 640" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 433 290 L 433 380" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="audio_bridge" data-edge-to="redis_streams" data-edge-label="5. XADD stt:audio:{id}" data-edge-key="9" data-edge-id="bridge-redis" data-composition-points="433,290;433,380" data-composition-crossover="halo" data-composition-independent="true" d="M 433 290 L 433 380" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:10">
-          <path data-graph-role="automatic-crossover-underlay" d="M 600 490 L 584 490 Q 576 490 576 498 L 576 842 Q 576 850 584 850 L 600 850" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="session_mgr" data-edge-to="ingestion_consumer" data-edge-label="Consume Job" data-edge-key="10" data-edge-id="sessionmgr-ingestion" data-composition-points="600,490;576,490;576,850;600,850" data-composition-crossover="halo" data-composition-independent="true" d="M 600 490 L 584 490 Q 576 490 576 498 L 576 842 Q 576 850 584 850 L 600 850" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 520 410 L 680 410" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="redis_streams" data-edge-to="ingestion_consumer" data-edge-label="6. XREADGROUP Ingest" data-edge-key="10" data-edge-id="redis-ingestion" data-composition-points="520,410;680,410" data-composition-crossover="halo" data-composition-independent="true" d="M 520 410 L 680 410" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:11">
-          <path data-graph-role="automatic-crossover-underlay" d="M 760 850 L 812 850 Q 820 850 820 842 L 820 138 Q 820 130 828 130 L 880 130" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="ingestion_consumer" data-edge-to="denoiser" data-edge-label="IF Denoise ON" data-edge-key="11" data-edge-id="ingestion-denoiser" data-composition-points="760,850;820,850;820,130;880,130" data-composition-crossover="halo" data-composition-independent="true" d="M 760 850 L 812 850 Q 820 850 820 842 L 820 138 Q 820 130 828 130 L 880 130" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 840 410 L 1000 410" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="ingestion_consumer" data-edge-to="denoiser" data-edge-label="7. DeepFilterNet Denoise" data-edge-key="11" data-edge-id="ingestion-denoiser" data-composition-points="840,410;1000,410" data-composition-crossover="halo" data-composition-independent="true" d="M 840 410 L 1000 410" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:12">
-          <path data-graph-role="automatic-crossover-underlay" d="M 701 820 L 701 804 Q 701 796 709 796 L 848 796 Q 856 796 856 788 L 856 318 Q 856 310 864 310 L 880 310" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="ingestion_consumer" data-edge-to="silero_vad" data-edge-label="Direct Pass" data-edge-key="12" data-edge-id="ingestion-silerovad" data-composition-points="701,820;701,796;856,796;856,310;880,310" data-composition-crossover="halo" data-composition-independent="true" d="M 701 820 L 701 804 Q 701 796 709 796 L 848 796 Q 856 796 856 788 L 856 318 Q 856 310 864 310 L 880 310" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1160 403 L 1320 403" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="denoiser" data-edge-to="silero_vad" data-edge-label="8. Silero VAD v5 ONNX" data-edge-key="12" data-edge-id="denoiser-silero" data-composition-points="1160,403;1320,403" data-composition-crossover="halo" data-composition-independent="true" d="M 1160 403 L 1320 403" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:13">
-          <path data-graph-role="automatic-crossover-underlay" d="M 967 160 L 967 280" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="denoiser" data-edge-to="silero_vad" data-edge-label="Denoised PCM" data-edge-key="13" data-edge-id="denoiser-silero" data-composition-points="967,160;967,280" data-composition-crossover="halo" data-composition-independent="true" d="M 967 160 L 967 280" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1320 417 L 1192 417 Q 1184 417 1184 425 L 1184 545 Q 1184 553 1176 553 L 1160 553" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="silero_vad" data-edge-to="semantic_endpointer" data-edge-label="9. MiniLM Turn Cut" data-edge-key="13" data-edge-id="silero-semantic" data-composition-points="1320,417;1184,417;1184,553;1160,553" data-composition-crossover="halo" data-composition-independent="true" d="M 1320 417 L 1192 417 Q 1184 417 1184 425 L 1184 545 Q 1184 553 1176 553 L 1160 553" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:14">
-          <path data-graph-role="automatic-crossover-underlay" d="M 974 340 L 974 460" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="silero_vad" data-edge-to="semantic_endpointer" data-edge-label="IF Semantic ON" data-edge-key="14" data-edge-id="silero-semantic" data-composition-points="974,340;974,460" data-composition-crossover="halo" data-composition-independent="true" d="M 974 340 L 974 460" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1160 568.05 L 1176 568.05 Q 1184 568.05 1184 560.05 L 1184 559.95 Q 1184 551.95 1192 551.95 L 1320 551.95" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="semantic_endpointer" data-edge-to="asr_registry" data-edge-label="10. Queue Utterance" data-edge-key="14" data-edge-id="semantic-asr" data-composition-points="1160,568.05;1184,568.05;1184,551.95;1320,551.95" data-composition-crossover="halo" data-composition-independent="true" d="M 1160 568.05 L 1176 568.05 Q 1184 568.05 1184 560.05 L 1184 559.95 Q 1184 551.95 1192 551.95 L 1320 551.95" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:15">
-          <path data-graph-role="automatic-crossover-underlay" d="M 960 340 L 960 380 Q 960 388 952 388 L 885 388 Q 877 388 877 396 L 877 608 Q 877 616 885 616 L 952 616 Q 960 616 960 624 L 960 640" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="silero_vad" data-edge-to="diarization" data-edge-label="Utterances" data-edge-key="15" data-edge-id="silero-diarization" data-composition-points="960,340;960,388;877,388;877,616;960,616;960,640" data-composition-crossover="halo" data-composition-independent="true" d="M 960 340 L 960 380 Q 960 388 952 388 L 885 388 Q 877 388 877 396 L 877 608 Q 877 616 885 616 L 952 616 Q 960 616 960 624 L 960 640" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1400 530 L 1400 514 Q 1400 506 1408 506 L 1496 506 Q 1504 506 1504 514 L 1504 852 Q 1504 860 1496 860 L 1480 860" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="asr_registry" data-edge-to="engine_switch" data-edge-label="Health Supervisor" data-edge-key="15" data-edge-id="asr-engineswitch" data-composition-points="1400,530;1400,506;1504,506;1504,860;1480,860" data-composition-crossover="halo" data-composition-independent="true" d="M 1400 530 L 1400 514 Q 1400 506 1408 506 L 1496 506 Q 1504 506 1504 514 L 1504 852 Q 1504 860 1496 860 L 1480 860" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:16">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1040 310 L 1092 310 Q 1100 310 1100 302 L 1100 138 Q 1100 130 1108 130 L 1160 130" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="silero_vad" data-edge-to="engine_switch" data-edge-label="Fixed VAD" data-edge-key="16" data-edge-id="silero-engineswitch" data-composition-points="1040,310;1100,310;1100,130;1160,130" data-composition-crossover="halo" data-composition-independent="true" d="M 1040 310 L 1092 310 Q 1100 310 1100 302 L 1100 138 Q 1100 130 1108 130 L 1160 130" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1407 590 L 1407 680" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="asr_registry" data-edge-to="post_process" data-edge-label="11. RepeatGuard Filter" data-edge-key="16" data-edge-id="asr-postprocess" data-composition-points="1407,590;1407,680" data-composition-crossover="halo" data-composition-independent="true" d="M 1407 590 L 1407 680" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:17">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1240 160 L 1240 280" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="engine_switch" data-edge-to="asr_registry" data-edge-label="Delegate ASR" data-edge-key="17" data-edge-id="engineswitch-asr" data-composition-points="1240,160;1240,280" data-composition-crossover="halo" data-composition-independent="true" d="M 1240 160 L 1240 280" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1320 710 L 1160 710" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="post_process" data-edge-to="punctuation" data-edge-label="12. Cadence Punctuation" data-edge-key="17" data-edge-id="postprocess-punctuation" data-composition-points="1320,710;1160,710" data-composition-crossover="halo" data-composition-independent="true" d="M 1320 710 L 1160 710" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:18">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1240 340 L 1240 460" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="asr_registry" data-edge-to="post_process" data-edge-label="Raw Text Pass" data-edge-key="18" data-edge-id="asr-postprocess" data-composition-points="1240,340;1240,460" data-composition-crossover="halo" data-composition-independent="true" d="M 1240 340 L 1240 460" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1000 710 L 840 710" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="punctuation" data-edge-to="normalizer" data-edge-label="13. Text Normalizer" data-edge-key="18" data-edge-id="punctuation-normalizer" data-composition-points="1000,710;840,710" data-composition-crossover="halo" data-composition-independent="true" d="M 1000 710 L 840 710" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:19">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1240 520 L 1240 640" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="post_process" data-edge-to="punctuation" data-edge-label="IF PostProcess ON" data-edge-key="19" data-edge-id="postprocess-punctuation" data-composition-points="1240,520;1240,640" data-composition-crossover="halo" data-composition-independent="true" d="M 1240 520 L 1240 640" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1320 567 L 1240 567 Q 1232 567 1232 575 L 1232 669 Q 1232 677 1224 677 L 872 677 Q 864 677 864 685 L 864 852 Q 864 860 856 860 L 840 860" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="asr_registry" data-edge-to="diarization" data-edge-label="15. Pyannote Embedding" data-edge-key="19" data-edge-id="asr-diarization" data-composition-points="1320,567;1232,567;1232,677;864,677;864,860;840,860" data-composition-crossover="halo" data-composition-independent="true" d="M 1320 567 L 1240 567 Q 1232 567 1232 575 L 1232 669 Q 1232 677 1224 677 L 872 677 Q 864 677 864 685 L 864 852 Q 864 860 856 860 L 840 860" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:20">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1040 670 L 1160 670" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="diarization" data-edge-to="punctuation" data-edge-label="Speaker Trace" data-edge-key="20" data-edge-id="diarization-punctuation" data-composition-points="1040,670;1160,670" data-composition-crossover="halo" data-composition-independent="true" d="M 1040 670 L 1160 670" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 440 830 L 440 440" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="result_pub" data-edge-to="redis_streams" data-edge-label="16. XADD stt:result:{id}" data-edge-key="20" data-edge-id="resultpub-redis" data-composition-points="440,830;440,440" data-composition-crossover="halo" data-composition-independent="true" d="M 440 830 L 440 440" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:21">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1320 670 L 1372 670 Q 1380 670 1380 662 L 1380 512 Q 1380 504 1388 504 L 1440 504" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="punctuation" data-edge-to="result_pub" data-edge-label="SegmentResult" data-edge-key="21" data-edge-id="punctuation-resultpub" data-composition-points="1320,670;1380,670;1380,504;1440,504" data-composition-crossover="halo" data-composition-independent="true" d="M 1320 670 L 1372 670 Q 1380 670 1380 662 L 1380 512 Q 1380 504 1388 504 L 1440 504" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 447 380 L 447 326 Q 447 318 455 318 L 515 318 Q 523 318 523 310 L 523 172 Q 523 164 515 164 L 462 164 Q 454 164 454 156 L 454 140" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="redis_streams" data-edge-to="gateway" data-edge-label="17. Transcript Egress" data-edge-key="21" data-edge-id="redis-gateway" data-composition-points="447,380;447,318;523,318;523,164;454,164;454,140" data-composition-crossover="halo" data-composition-independent="true" d="M 447 380 L 447 326 Q 447 318 455 318 L 515 318 Q 523 318 523 310 L 523 172 Q 523 164 515 164 L 462 164 Q 454 164 454 156 L 454 140" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:22">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1040 490 L 1129.4 490 Q 1137.4 490 1137.4 498 L 1137.4 535 Q 1137.4 543 1145.4 543 L 1408 543 Q 1416 543 1416 535 L 1416 498 Q 1416 490 1424 490 L 1440 490" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="semantic_endpointer" data-edge-to="result_pub" data-edge-label="XADD stt:result" data-edge-key="22" data-edge-id="semantic-resultpub" data-composition-points="1040,490;1137.4,490;1137.4,543;1416,543;1416,490;1440,490" data-composition-crossover="halo" data-composition-independent="true" d="M 1040 490 L 1129.4 490 Q 1137.4 490 1137.4 498 L 1137.4 535 Q 1137.4 543 1145.4 543 L 1408 543 Q 1416 543 1416 535 L 1416 498 Q 1416 490 1424 490 L 1440 490" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 360 103 L 200 103" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="client" data-edge-label="18. Real-Time Captions WS" data-edge-key="22" data-edge-id="gateway-client-egress" data-composition-points="360,103;200,103" data-composition-crossover="halo" data-composition-independent="true" d="M 360 103 L 200 103" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:23">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1520 460 L 1520 444 Q 1520 436 1512 436 L 512 436 Q 504 436 504 444 L 504 482 Q 504 490 496 490 L 480 490" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="result_pub" data-edge-to="redis_streams" data-edge-label="XADD stt:result" data-edge-key="23" data-edge-id="resultpub-redis" data-composition-points="1520,460;1520,436;504,436;504,490;480,490" data-composition-crossover="halo" data-composition-independent="true" d="M 1520 460 L 1520 444 Q 1520 436 1512 436 L 512 436 Q 504 436 504 444 L 504 482 Q 504 490 496 490 L 480 490" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 426 140 L 426 156 Q 426 164 418 164 L 24 164 Q 16 164 16 172 L 16 552 Q 16 560 24 560 L 40 560" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="live_doc" data-edge-label="19. Clinical EHR Sync" data-edge-key="23" data-edge-id="gateway-livedoc" data-composition-points="426,140;426,164;16,164;16,560;40,560" data-composition-crossover="halo" data-composition-independent="true" d="M 426 140 L 426 156 Q 426 164 418 164 L 24 164 Q 16 164 16 172 L 16 552 Q 16 560 24 560 L 40 560" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:24">
-          <path data-graph-role="automatic-crossover-underlay" d="M 407 460 L 407 371 Q 407 363 399 363 L 306 363 Q 298 363 298 355 L 298 261 Q 298 253 306 253 L 399 253 Q 407 253 407 245 L 407 160" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="redis_streams" data-edge-to="gateway" data-edge-label="XADD stt:result" data-edge-key="24" data-edge-id="redis-gateway" data-composition-points="407,460;407,363;298,363;298,253;407,253;407,160" data-composition-crossover="halo" data-composition-independent="true" d="M 407 460 L 407 371 Q 407 363 399 363 L 306 363 Q 298 363 298 355 L 298 261 Q 298 253 306 253 L 399 253 Q 407 253 407 245 L 407 160" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 760 740 L 760 830" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="normalizer" data-edge-to="diarization" data-edge-label="14. Filtered Text to Diarization" data-edge-key="24" data-edge-id="normalizer-diarization" data-composition-points="760,740;760,830" data-composition-crossover="halo" data-composition-independent="true" d="M 760 740 L 760 830" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:25">
-          <path data-graph-role="automatic-crossover-underlay" d="M 421 160 L 421 248 Q 421 256 429 256 L 1512 256 Q 1520 256 1520 264 L 1520 280" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="gateway" data-edge-to="live_doc" data-edge-label="LiveDoc sync" data-edge-key="25" data-edge-id="gateway-livedoc" data-composition-points="421,160;421,256;1520,256;1520,280" data-composition-crossover="halo" data-composition-independent="true" d="M 421 160 L 421 248 Q 421 256 429 256 L 1512 256 Q 1520 256 1520 264 L 1520 280" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        </g>
-        <g data-graph-role="automatic-crossover" style="--step:26">
-          <path data-graph-role="automatic-crossover-underlay" d="M 687 460 L 687 351 Q 687 343 695 343 L 1394 343 Q 1402 343 1402 335 L 1402 192 Q 1402 184 1410 184 L 1512 184 Q 1520 184 1520 176 L 1520 160" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="session_mgr" data-edge-to="postgres" data-edge-label="Voice Profiles DB" data-edge-key="26" data-edge-id="sessionmgr-postgres" data-composition-points="687,460;687,343;1402,343;1402,184;1520,184;1520,160" data-composition-crossover="halo" data-composition-independent="true" d="M 687 460 L 687 351 Q 687 343 695 343 L 1394 343 Q 1402 343 1402 335 L 1402 192 Q 1402 184 1410 184 L 1512 184 Q 1520 184 1520 176 L 1520 160" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        </g>
-        <g data-graph-role="automatic-crossover" style="--step:27">
-          <path data-graph-role="automatic-crossover-underlay" d="M 694 520 L 694 629 Q 694 637 702 637 L 1408 637 Q 1416 637 1416 645 L 1416 662 Q 1416 670 1424 670 L 1440 670" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="session_mgr" data-edge-to="minio_s3" data-edge-label="Archival S3 Upload" data-edge-key="27" data-edge-id="sessionmgr-s3" data-composition-points="694,520;694,637;1416,637;1416,670;1440,670" data-composition-crossover="halo" data-composition-independent="true" d="M 694 520 L 694 629 Q 694 637 702 637 L 1408 637 Q 1416 637 1416 645 L 1416 662 Q 1416 670 1424 670 L 1440 670" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        </g>
-        <g data-graph-role="automatic-crossover" style="--step:28">
-          <path data-graph-role="automatic-crossover-underlay" d="M 393 160 L 393 269 Q 393 277 385 277 L 260 277 Q 252 277 252 285 L 252 608 Q 252 616 260 616 L 392 616 Q 400 616 400 624 L 400 640" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="gateway" data-edge-to="dramatiq" data-edge-label="Enqueue Batch" data-edge-key="28" data-edge-id="gateway-dramatiq" data-composition-points="393,160;393,277;252,277;252,616;400,616;400,640" data-composition-crossover="halo" data-composition-independent="true" d="M 393 160 L 393 269 Q 393 277 385 277 L 260 277 Q 252 277 252 285 L 252 608 Q 252 616 260 616 L 392 616 Q 400 616 400 624 L 400 640" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        </g>
-        <g data-graph-role="automatic-crossover" style="--step:29">
-          <path data-graph-role="automatic-crossover-underlay" d="M 400 700 L 400 809 Q 400 817 408 817 L 1128 817 Q 1136 817 1136 825 L 1136 842 Q 1136 850 1144 850 L 1160 850" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="dramatiq" data-edge-to="batch_worker" data-edge-label="Worker pickup" data-edge-key="29" data-edge-id="dramatiq-batchworker" data-composition-points="400,700;400,817;1136,817;1136,850;1160,850" data-composition-crossover="halo" data-composition-independent="true" d="M 400 700 L 400 809 Q 400 817 408 817 L 1128 817 Q 1136 817 1136 825 L 1136 842 Q 1136 850 1144 850 L 1160 850" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        </g>
-        <g data-graph-role="automatic-crossover" style="--step:30">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1247 820 L 1247 700" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="batch_worker" data-edge-to="punctuation" data-edge-label="Batch ASR" data-edge-key="30" data-edge-id="batchworker-punctuation" data-composition-points="1247,820;1247,700" data-composition-crossover="halo" data-composition-independent="true" d="M 1247 820 L 1247 700" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 680 860 L 520 860" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="diarization" data-edge-to="result_pub" data-edge-label="15. Final Tagged SegmentResult" data-edge-key="25" data-edge-id="diarization-resultpub" data-composition-points="680,860;520,860" data-composition-crossover="halo" data-composition-independent="true" d="M 680 860 L 520 860" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
 
         <!-- Components -->
-        <g id="node-client" data-node-id="client" data-node-label="Doctor / Client App" tabindex="0" role="button" aria-label="Focus Doctor / Client App, Browser Mic (PCM), Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Browser Mic (PCM)" data-node-tag="Audio Stream" data-node-context="Architecture component">
-          <title>Doctor / Client App · Browser Mic (PCM) · Architecture component · Audio Stream</title>
-          <rect x="40" y="190" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="40" y="190" width="160" height="60" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 196) scale(0.6875)">
+        <g id="node-client" data-node-id="client" data-node-label="Doctor / Client App" tabindex="0" role="button" aria-label="Focus Doctor / Client App, Browser Mic (PCM WebSocket), Ingress &amp; Client Applications" aria-pressed="false" data-node-kind="external" data-node-sublabel="Browser Mic (PCM WebSocket)" data-node-tag="Audio Stream" data-node-context="Ingress &amp; Client Applications">
+          <title>Doctor / Client App · Browser Mic (PCM WebSocket) · Ingress &amp; Client Applications · Audio Stream</title>
+          <rect x="40" y="80" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="40" y="80" width="160" height="60" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 86) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="120" y="218" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Doctor / Client App</text>
-        <text data-detail="context" x="120" y="234" class="t-muted" font-size="9" text-anchor="middle">Browser Mic (PCM)</text>
-        <text data-detail="fine" x="120" y="242" class="t-external" font-size="7" text-anchor="middle">Audio Stream</text>
+          <text data-node-label="" data-detail-anchor="" x="120" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Doctor / Client App</text>
+        <text data-detail="context" x="120" y="124" class="t-muted" font-size="9" text-anchor="middle">Browser Mic (PCM WebSocket)</text>
+        <text data-detail="fine" x="120" y="132" class="t-external" font-size="7" text-anchor="middle">Audio Stream</text>
         </g>
 
-        <g id="node-ticket_service" data-node-id="ticket_service" data-node-label="StreamTicketService" tabindex="0" role="button" aria-label="Focus StreamTicketService, Auth Ticket Minting, NestJS API Gateway Layer (apps/api)" aria-pressed="false" data-node-kind="security" data-node-sublabel="Auth Ticket Minting" data-node-tag="Ticket Auth" data-node-context="NestJS API Gateway Layer (apps/api)">
-          <title>StreamTicketService · Auth Ticket Minting · NestJS API Gateway Layer (apps/api) · Ticket Auth</title>
-          <rect x="40" y="370" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="40" y="370" width="160" height="60" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(46 376) scale(0.6875)">
+        <g id="node-ticket_service" data-node-id="ticket_service" data-node-label="StreamTicketService" tabindex="0" role="button" aria-label="Focus StreamTicketService, stream-ticket.service.ts, Ingress &amp; Client Applications" aria-pressed="false" data-node-kind="security" data-node-sublabel="stream-ticket.service.ts" data-node-tag="Auth Ticket Minting" data-node-context="Ingress &amp; Client Applications">
+          <title>StreamTicketService · stream-ticket.service.ts · Ingress &amp; Client Applications · Auth Ticket Minting</title>
+          <rect x="40" y="230" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="40" y="230" width="160" height="60" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(46 236) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="120" y="398" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">StreamTicketService</text>
-        <text data-detail="context" x="120" y="414" class="t-muted" font-size="9" text-anchor="middle">Auth Ticket Minting</text>
-        <text data-detail="fine" x="120" y="422" class="t-security" font-size="7" text-anchor="middle">Ticket Auth</text>
+          <text data-node-label="" data-detail-anchor="" x="120" y="258" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">StreamTicketService</text>
+        <text data-detail="context" x="120" y="274" class="t-muted" font-size="9" text-anchor="middle">stream-ticket.service.ts</text>
+        <text data-detail="fine" x="120" y="282" class="t-security" font-size="7" text-anchor="middle">Auth Ticket Minting</text>
         </g>
 
-        <g id="node-gateway" data-node-id="gateway" data-node-label="SttWsGateway" tabindex="0" role="button" aria-label="Focus SttWsGateway, NestJS WS Gateway, NestJS API Gateway Layer (apps/api)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="NestJS WS Gateway" data-node-tag="Resume Buffer :200" data-node-context="NestJS API Gateway Layer (apps/api)">
-          <title>SttWsGateway · NestJS WS Gateway · NestJS API Gateway Layer (apps/api) · Resume Buffer :200</title>
-          <rect x="320" y="100" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="320" y="100" width="160" height="60" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(326 106) scale(0.6875)">
+        <g id="node-gateway" data-node-id="gateway" data-node-label="NestJS API Gateway" tabindex="0" role="button" aria-label="Focus NestJS API Gateway, transcription-job.controller, API Gateway &amp; Audio Bridge" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="transcription-job.controller" data-node-tag="REST :3000 &amp; WS Gateway" data-node-context="API Gateway &amp; Audio Bridge">
+          <title>NestJS API Gateway · transcription-job.controller · API Gateway &amp; Audio Bridge · REST :3000 &amp; WS Gateway</title>
+          <rect x="360" y="80" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="360" y="80" width="160" height="60" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(366 86) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="400" y="128" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SttWsGateway</text>
-        <text data-detail="context" x="400" y="144" class="t-muted" font-size="9" text-anchor="middle">NestJS WS Gateway</text>
-        <text data-detail="fine" x="400" y="152" class="t-frontend" font-size="7" text-anchor="middle">Resume Buffer :200</text>
+          <text data-node-label="" data-detail-anchor="" x="440" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">NestJS API Gateway</text>
+        <text data-detail="context" x="440" y="124" class="t-muted" font-size="9" text-anchor="middle">transcription-job.controller</text>
+        <text data-detail="fine" x="440" y="132" class="t-frontend" font-size="7" text-anchor="middle">REST :3000 &amp; WS Gateway</text>
         </g>
 
-        <g id="node-audio_bridge" data-node-id="audio_bridge" data-node-label="StreamingAudioBridge" tabindex="0" role="button" aria-label="Focus StreamingAudioBridge, BridgeService, NestJS API Gateway Layer (apps/api)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="BridgeService" data-node-tag="XADD Audio Bridge" data-node-context="NestJS API Gateway Layer (apps/api)">
-          <title>StreamingAudioBridge · BridgeService · NestJS API Gateway Layer (apps/api) · XADD Audio Bridge</title>
-          <rect x="320" y="280" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="320" y="280" width="160" height="60" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(326 286) scale(0.6875)">
+        <g id="node-audio_bridge" data-node-id="audio_bridge" data-node-label="StreamingAudioBridge" tabindex="0" role="button" aria-label="Focus StreamingAudioBridge, streamingAudioBridge.service.ts, API Gateway &amp; Audio Bridge" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="streamingAudioBridge.service.ts" data-node-tag="PCM -&gt; Redis Streams" data-node-context="API Gateway &amp; Audio Bridge">
+          <title>StreamingAudioBridge · streamingAudioBridge.service.ts · API Gateway &amp; Audio Bridge · PCM -&gt; Redis Streams</title>
+          <rect x="360" y="230" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="360" y="230" width="160" height="60" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(366 236) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="400" y="308" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">StreamingAudioBridge</text>
-        <text data-detail="context" x="400" y="324" class="t-muted" font-size="9" text-anchor="middle">BridgeService</text>
-        <text data-detail="fine" x="400" y="332" class="t-frontend" font-size="7" text-anchor="middle">XADD Audio Bridge</text>
+          <text data-node-label="" data-detail-anchor="" x="440" y="258" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">StreamingAudioBridge</text>
+        <text data-detail="context" x="440" y="274" class="t-muted" font-size="8.1" text-anchor="middle">streamingAudioBridge.service.ts</text>
+        <text data-detail="fine" x="440" y="282" class="t-frontend" font-size="7" text-anchor="middle">PCM -&gt; Redis Streams</text>
         </g>
 
-        <g id="node-redis_streams" data-node-id="redis_streams" data-node-label="Redis Streams Broker" tabindex="0" role="button" aria-label="Focus Redis Streams Broker, stt:audio, control, result, Redis Message Transport &amp; Task Broker" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="stt:audio, control, result" data-node-tag="Stream Transport" data-node-context="Redis Message Transport &amp; Task Broker">
-          <title>Redis Streams Broker · stt:audio, control, result · Redis Message Transport &amp; Task Broker · Stream Transport</title>
-          <rect x="320" y="460" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="320" y="460" width="160" height="60" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(326 466) scale(0.6875)">
+        <g id="node-fastapi" data-node-id="fastapi" data-node-label="STT FastAPI App" tabindex="0" role="button" aria-label="Focus STT FastAPI App, main.py (:8861), FastAPI Control Plane &amp; Durability" aria-pressed="false" data-node-kind="backend" data-node-sublabel="main.py (:8861)" data-node-tag="routes.py: POST /sessions" data-node-context="FastAPI Control Plane &amp; Durability">
+          <title>STT FastAPI App · main.py (:8861) · FastAPI Control Plane &amp; Durability · routes.py: POST /sessions</title>
+          <rect x="680" y="80" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="680" y="80" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(686 86) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="760" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">STT FastAPI App</text>
+        <text data-detail="context" x="760" y="124" class="t-muted" font-size="9" text-anchor="middle">main.py (:8861)</text>
+        <text data-detail="fine" x="760" y="132" class="t-backend" font-size="7" text-anchor="middle">routes.py: POST /sessions</text>
+        </g>
+
+        <g id="node-session_mgr" data-node-id="session_mgr" data-node-label="SessionManager" tabindex="0" role="button" aria-label="Focus SessionManager, session_manager.py, FastAPI Control Plane &amp; Durability" aria-pressed="false" data-node-kind="backend" data-node-sublabel="session_manager.py" data-node-tag="CapacityGuard &amp; Runtime" data-node-context="FastAPI Control Plane &amp; Durability">
+          <title>SessionManager · session_manager.py · FastAPI Control Plane &amp; Durability · CapacityGuard &amp; Runtime</title>
+          <rect x="1000" y="80" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1000" y="80" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1006 86) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1080" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SessionManager</text>
+        <text data-detail="context" x="1080" y="124" class="t-muted" font-size="9" text-anchor="middle">session_manager.py</text>
+        <text data-detail="fine" x="1080" y="132" class="t-backend" font-size="7" text-anchor="middle">CapacityGuard &amp; Runtime</text>
+        </g>
+
+        <g id="node-control_plane" data-node-id="control_plane" data-node-label="ControlPlane Sync" tabindex="0" role="button" aria-label="Focus ControlPlane Sync, effective_config.py, FastAPI Control Plane &amp; Durability" aria-pressed="false" data-node-kind="backend" data-node-sublabel="effective_config.py" data-node-tag="arca:config:invalidate" data-node-context="FastAPI Control Plane &amp; Durability">
+          <title>ControlPlane Sync · effective_config.py · FastAPI Control Plane &amp; Durability · arca:config:invalidate</title>
+          <rect x="680" y="230" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="680" y="230" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(686 236) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="760" y="258" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ControlPlane Sync</text>
+        <text data-detail="context" x="760" y="274" class="t-muted" font-size="9" text-anchor="middle">effective_config.py</text>
+        <text data-detail="fine" x="760" y="282" class="t-backend" font-size="7" text-anchor="middle">arca:config:invalidate</text>
+        </g>
+
+        <g id="node-model_cache" data-node-id="model_cache" data-node-label="ModelCache Loader" tabindex="0" role="button" aria-label="Focus ModelCache Loader, models/cache.py, FastAPI Control Plane &amp; Durability" aria-pressed="false" data-node-kind="backend" data-node-sublabel="models/cache.py" data-node-tag="LRU &amp; BYOK Retention" data-node-context="FastAPI Control Plane &amp; Durability">
+          <title>ModelCache Loader · models/cache.py · FastAPI Control Plane &amp; Durability · LRU &amp; BYOK Retention</title>
+          <rect x="1320" y="80" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1320" y="80" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1326 86) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1400" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ModelCache Loader</text>
+        <text data-detail="context" x="1400" y="124" class="t-muted" font-size="9" text-anchor="middle">models/cache.py</text>
+        <text data-detail="fine" x="1400" y="132" class="t-backend" font-size="7" text-anchor="middle">LRU &amp; BYOK Retention</text>
+        </g>
+
+        <g id="node-redis_streams" data-node-id="redis_streams" data-node-label="Redis Streams Broker" tabindex="0" role="button" aria-label="Focus Redis Streams Broker, stt:audio:{id}, Redis Transport &amp; Audio Front-End" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="stt:audio:{id}" data-node-tag="Stream Transport" data-node-context="Redis Transport &amp; Audio Front-End">
+          <title>Redis Streams Broker · stt:audio:{id} · Redis Transport &amp; Audio Front-End · Stream Transport</title>
+          <rect x="360" y="380" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="360" y="380" width="160" height="60" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(366 386) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="400" y="488" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Redis Streams Broker</text>
-        <text data-detail="context" x="400" y="504" class="t-muted" font-size="9" text-anchor="middle">stt:audio, control, result</text>
-        <text data-detail="fine" x="400" y="512" class="t-messagebus" font-size="7" text-anchor="middle">Stream Transport</text>
+          <text data-node-label="" data-detail-anchor="" x="440" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Redis Streams Broker</text>
+        <text data-detail="context" x="440" y="424" class="t-muted" font-size="9" text-anchor="middle">stt:audio:{id}</text>
+        <text data-detail="fine" x="440" y="432" class="t-messagebus" font-size="7" text-anchor="middle">Stream Transport</text>
         </g>
 
-        <g id="node-dramatiq" data-node-id="dramatiq" data-node-label="Dramatiq Broker" tabindex="0" role="button" aria-label="Focus Dramatiq Broker, Redis Task Queue, Redis Message Transport &amp; Task Broker" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="Redis Task Queue" data-node-tag="Batch Queue" data-node-context="Redis Message Transport &amp; Task Broker">
-          <title>Dramatiq Broker · Redis Task Queue · Redis Message Transport &amp; Task Broker · Batch Queue</title>
-          <rect x="320" y="640" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="320" y="640" width="160" height="60" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(326 646) scale(0.6875)">
-            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
-            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
-            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
-            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="400" y="668" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Dramatiq Broker</text>
-        <text data-detail="context" x="400" y="684" class="t-muted" font-size="9" text-anchor="middle">Redis Task Queue</text>
-        <text data-detail="fine" x="400" y="692" class="t-messagebus" font-size="7" text-anchor="middle">Batch Queue</text>
-        </g>
-
-        <g id="node-fastapi" data-node-id="fastapi" data-node-label="STT FastAPI Server" tabindex="0" role="button" aria-label="Focus STT FastAPI Server, routes.py (:8861), FastAPI STT Control Plane (apps/stt)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="routes.py (:8861)" data-node-tag="Control Plane" data-node-context="FastAPI STT Control Plane (apps/stt)">
-          <title>STT FastAPI Server · routes.py (:8861) · FastAPI STT Control Plane (apps/stt) · Control Plane</title>
-          <rect x="600" y="100" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="600" y="100" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(606 106) scale(0.6875)">
+        <g id="node-ingestion_consumer" data-node-id="ingestion_consumer" data-node-label="IngestionConsumer" tabindex="0" role="button" aria-label="Focus IngestionConsumer, redis_streams.py, Redis Transport &amp; Audio Front-End" aria-pressed="false" data-node-kind="backend" data-node-sublabel="redis_streams.py" data-node-tag="XREADGROUP Audio Ingest" data-node-context="Redis Transport &amp; Audio Front-End">
+          <title>IngestionConsumer · redis_streams.py · Redis Transport &amp; Audio Front-End · XREADGROUP Audio Ingest</title>
+          <rect x="680" y="380" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="680" y="380" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(686 386) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="680" y="128" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">STT FastAPI Server</text>
-        <text data-detail="context" x="680" y="144" class="t-muted" font-size="9" text-anchor="middle">routes.py (:8861)</text>
-        <text data-detail="fine" x="680" y="152" class="t-backend" font-size="7" text-anchor="middle">Control Plane</text>
+          <text data-node-label="" data-detail-anchor="" x="760" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IngestionConsumer</text>
+        <text data-detail="context" x="760" y="424" class="t-muted" font-size="9" text-anchor="middle">redis_streams.py</text>
+        <text data-detail="fine" x="760" y="432" class="t-backend" font-size="7" text-anchor="middle">XREADGROUP Audio Ingest</text>
         </g>
 
-        <g id="node-control_plane" data-node-id="control_plane" data-node-label="ControlPlane Sync" tabindex="0" role="button" aria-label="Focus ControlPlane Sync, arca:config.invalidate, FastAPI STT Control Plane (apps/stt)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="arca:config.invalidate" data-node-tag="Control Plane" data-node-context="FastAPI STT Control Plane (apps/stt)">
-          <title>ControlPlane Sync · arca:config.invalidate · FastAPI STT Control Plane (apps/stt) · Control Plane</title>
-          <rect x="600" y="280" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="600" y="280" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(606 286) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="680" y="308" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ControlPlane Sync</text>
-        <text data-detail="context" x="680" y="324" class="t-muted" font-size="9" text-anchor="middle">arca:config.invalidate</text>
-        <text data-detail="fine" x="680" y="332" class="t-backend" font-size="7" text-anchor="middle">Control Plane</text>
-        </g>
-
-        <g id="node-session_mgr" data-node-id="session_mgr" data-node-label="SessionManager" tabindex="0" role="button" aria-label="Focus SessionManager, session_manager.py, FastAPI STT Control Plane (apps/stt)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="session_manager.py" data-node-tag="Session Registry" data-node-context="FastAPI STT Control Plane (apps/stt)">
-          <title>SessionManager · session_manager.py · FastAPI STT Control Plane (apps/stt) · Session Registry</title>
-          <rect x="600" y="460" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="600" y="460" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(606 466) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="680" y="488" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SessionManager</text>
-        <text data-detail="context" x="680" y="504" class="t-muted" font-size="9" text-anchor="middle">session_manager.py</text>
-        <text data-detail="fine" x="680" y="512" class="t-backend" font-size="7" text-anchor="middle">Session Registry</text>
-        </g>
-
-        <g id="node-model_cache" data-node-id="model_cache" data-node-label="ModelCache &amp; BYOK" tabindex="0" role="button" aria-label="Focus ModelCache &amp; BYOK, esdk/L_credentials.py, FastAPI STT Control Plane (apps/stt)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="esdk/L_credentials.py" data-node-tag="BYOK Credential Cache" data-node-context="FastAPI STT Control Plane (apps/stt)">
-          <title>ModelCache &amp; BYOK · esdk/L_credentials.py · FastAPI STT Control Plane (apps/stt) · BYOK Credential Cache</title>
-          <rect x="600" y="640" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="600" y="640" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(606 646) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="680" y="668" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ModelCache &amp; BYOK</text>
-        <text data-detail="context" x="680" y="684" class="t-muted" font-size="9" text-anchor="middle">esdk/L_credentials.py</text>
-        <text data-detail="fine" x="680" y="692" class="t-backend" font-size="7" text-anchor="middle">BYOK Credential Cache</text>
-        </g>
-
-        <g id="node-ingestion_consumer" data-node-id="ingestion_consumer" data-node-label="IngestionConsumer" tabindex="0" role="button" aria-label="Focus IngestionConsumer, redis_streams.py, Redis Message Transport &amp; Task Broker" aria-pressed="false" data-node-kind="backend" data-node-sublabel="redis_streams.py" data-node-tag="XREAD stt:audio" data-node-context="Redis Message Transport &amp; Task Broker">
-          <title>IngestionConsumer · redis_streams.py · Redis Message Transport &amp; Task Broker · XREAD stt:audio</title>
-          <rect x="600" y="820" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="600" y="820" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(606 826) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="680" y="848" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IngestionConsumer</text>
-        <text data-detail="context" x="680" y="864" class="t-muted" font-size="9" text-anchor="middle">redis_streams.py</text>
-        <text data-detail="fine" x="680" y="872" class="t-backend" font-size="7" text-anchor="middle">XREAD stt:audio</text>
-        </g>
-
-        <g id="node-denoiser" data-node-id="denoiser" data-node-label="DeepFilterNet Denoiser" tabindex="0" role="button" aria-label="Focus DeepFilterNet Denoiser, Model: DeepFilterNet3, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="security" data-node-sublabel="Model: DeepFilterNet3" data-node-tag="OPTIONAL: denoise" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>DeepFilterNet Denoiser · Model: DeepFilterNet3 · Streaming Speech Intelligence &amp; ASR Core · OPTIONAL: denoise</title>
-          <rect x="880" y="100" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="880" y="100" width="160" height="60" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(886 106) scale(0.6875)">
+        <g id="node-denoiser" data-node-id="denoiser" data-node-label="DeepFilterNet Denoiser" tabindex="0" role="button" aria-label="Focus DeepFilterNet Denoiser, DeepFilterNet3 / RNNoise, Redis Transport &amp; Audio Front-End" aria-pressed="false" data-node-kind="security" data-node-sublabel="DeepFilterNet3 / RNNoise" data-node-tag="Audio Denoise Filter" data-node-context="Redis Transport &amp; Audio Front-End">
+          <title>DeepFilterNet Denoiser · DeepFilterNet3 / RNNoise · Redis Transport &amp; Audio Front-End · Audio Denoise Filter</title>
+          <rect x="1000" y="380" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1000" y="380" width="160" height="60" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1006 386) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="960" y="128" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">DeepFilterNet Denoiser</text>
-        <text data-detail="context" x="960" y="144" class="t-muted" font-size="9" text-anchor="middle">Model: DeepFilterNet3</text>
-        <text data-detail="fine" x="960" y="152" class="t-security" font-size="7" text-anchor="middle">OPTIONAL: denoise</text>
+          <text data-node-label="" data-detail-anchor="" x="1080" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">DeepFilterNet Denoiser</text>
+        <text data-detail="context" x="1080" y="424" class="t-muted" font-size="9" text-anchor="middle">DeepFilterNet3 / RNNoise</text>
+        <text data-detail="fine" x="1080" y="432" class="t-security" font-size="7" text-anchor="middle">Audio Denoise Filter</text>
         </g>
 
-        <g id="node-silero_vad" data-node-id="silero_vad" data-node-label="Silero VAD v5 ONNX" tabindex="0" role="button" aria-label="Focus Silero VAD v5 ONNX, Model: silero_vad.onnx, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="security" data-node-sublabel="Model: silero_vad.onnx" data-node-tag="FIXED VAD STAGE" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>Silero VAD v5 ONNX · Model: silero_vad.onnx · Streaming Speech Intelligence &amp; ASR Core · FIXED VAD STAGE</title>
-          <rect x="880" y="280" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="880" y="280" width="160" height="60" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(886 286) scale(0.6875)">
+        <g id="node-silero_vad" data-node-id="silero_vad" data-node-label="Silero VAD v5 ONNX" tabindex="0" role="button" aria-label="Focus Silero VAD v5 ONNX, Voice Activity Detector, Redis Transport &amp; Audio Front-End" aria-pressed="false" data-node-kind="security" data-node-sublabel="Voice Activity Detector" data-node-tag="Stage 3 Speech Detection" data-node-context="Redis Transport &amp; Audio Front-End">
+          <title>Silero VAD v5 ONNX · Voice Activity Detector · Redis Transport &amp; Audio Front-End · Stage 3 Speech Detection</title>
+          <rect x="1320" y="380" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1320" y="380" width="160" height="60" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1326 386) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="960" y="308" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Silero VAD v5 ONNX</text>
-        <text data-detail="context" x="960" y="324" class="t-muted" font-size="9" text-anchor="middle">Model: silero_vad.onnx</text>
-        <text data-detail="fine" x="960" y="332" class="t-security" font-size="7" text-anchor="middle">FIXED VAD STAGE</text>
+          <text data-node-label="" data-detail-anchor="" x="1400" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Silero VAD v5 ONNX</text>
+        <text data-detail="context" x="1400" y="424" class="t-muted" font-size="9" text-anchor="middle">Voice Activity Detector</text>
+        <text data-detail="fine" x="1400" y="432" class="t-security" font-size="7" text-anchor="middle">Stage 3 Speech Detection</text>
         </g>
 
-        <g id="node-semantic_endpointer" data-node-id="semantic_endpointer" data-node-label="Semantic Endpointer" tabindex="0" role="button" aria-label="Focus Semantic Endpointer, Model: MiniLM Evaluator, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Model: MiniLM Evaluator" data-node-tag="OPTIONAL: semantic" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>Semantic Endpointer · Model: MiniLM Evaluator · Streaming Speech Intelligence &amp; ASR Core · OPTIONAL: semantic</title>
-          <rect x="880" y="460" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="880" y="460" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(886 466) scale(0.6875)">
+        <g id="node-semantic_endpointer" data-node-id="semantic_endpointer" data-node-label="Semantic Endpointer" tabindex="0" role="button" aria-label="Focus Semantic Endpointer, MiniLM Turn/EOU Model, Redis Transport &amp; Audio Front-End" aria-pressed="false" data-node-kind="backend" data-node-sublabel="MiniLM Turn/EOU Model" data-node-tag="Linguistic Early Cut" data-node-context="Redis Transport &amp; Audio Front-End">
+          <title>Semantic Endpointer · MiniLM Turn/EOU Model · Redis Transport &amp; Audio Front-End · Linguistic Early Cut</title>
+          <rect x="1000" y="530" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1000" y="530" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1006 536) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="960" y="488" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Semantic Endpointer</text>
-        <text data-detail="context" x="960" y="504" class="t-muted" font-size="9" text-anchor="middle">Model: MiniLM Evaluator</text>
-        <text data-detail="fine" x="960" y="512" class="t-backend" font-size="7" text-anchor="middle">OPTIONAL: semantic</text>
+          <text data-node-label="" data-detail-anchor="" x="1080" y="558" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Semantic Endpointer</text>
+        <text data-detail="context" x="1080" y="574" class="t-muted" font-size="9" text-anchor="middle">MiniLM Turn/EOU Model</text>
+        <text data-detail="fine" x="1080" y="582" class="t-backend" font-size="7" text-anchor="middle">Linguistic Early Cut</text>
         </g>
 
-        <g id="node-diarization" data-node-id="diarization" data-node-label="PyAnnote Diarization" tabindex="0" role="button" aria-label="Focus PyAnnote Diarization, Model: ecapa-voxceleb, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Model: ecapa-voxceleb" data-node-tag="OPTIONAL: diarization" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>PyAnnote Diarization · Model: ecapa-voxceleb · Streaming Speech Intelligence &amp; ASR Core · OPTIONAL: diarization</title>
-          <rect x="880" y="640" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="880" y="640" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(886 646) scale(0.6875)">
+        <g id="node-asr_registry" data-node-id="asr_registry" data-node-label="Neural ASR Decoder" tabindex="0" role="button" aria-label="Focus Neural ASR Decoder, Parakeet / Whisper (GPU), Neural ASR Core &amp; Resilience" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Parakeet / Whisper (GPU)" data-node-tag="Inference Worker Loop" data-node-context="Neural ASR Core &amp; Resilience">
+          <title>Neural ASR Decoder · Parakeet / Whisper (GPU) · Neural ASR Core &amp; Resilience · Inference Worker Loop</title>
+          <rect x="1320" y="530" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1320" y="530" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1326 536) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="960" y="668" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PyAnnote Diarization</text>
-        <text data-detail="context" x="960" y="684" class="t-muted" font-size="9" text-anchor="middle">Model: ecapa-voxceleb</text>
-        <text data-detail="fine" x="960" y="692" class="t-backend" font-size="7" text-anchor="middle">OPTIONAL: diarization</text>
+          <text data-node-label="" data-detail-anchor="" x="1400" y="558" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Neural ASR Decoder</text>
+        <text data-detail="context" x="1400" y="574" class="t-muted" font-size="9" text-anchor="middle">Parakeet / Whisper (GPU)</text>
+        <text data-detail="fine" x="1400" y="582" class="t-backend" font-size="7" text-anchor="middle">Inference Worker Loop</text>
         </g>
 
-        <g id="node-engine_switch" data-node-id="engine_switch" data-node-label="EngineSwitchController" tabindex="0" role="button" aria-label="Focus EngineSwitchController, Failover Router, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Failover Router" data-node-tag="OPTIONAL: autoSwitch" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>EngineSwitchController · Failover Router · Streaming Speech Intelligence &amp; ASR Core · OPTIONAL: autoSwitch</title>
-          <rect x="1160" y="100" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1160" y="100" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1166 106) scale(0.6875)">
+        <g id="node-engine_switch" data-node-id="engine_switch" data-node-label="EngineSwitchController" tabindex="0" role="button" aria-label="Focus EngineSwitchController, Failover Health Supervisor, Neural ASR Core &amp; Resilience" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Failover Health Supervisor" data-node-tag="Failover to Backup Engine" data-node-context="Neural ASR Core &amp; Resilience">
+          <title>EngineSwitchController · Failover Health Supervisor · Neural ASR Core &amp; Resilience · Failover to Backup Engine</title>
+          <rect x="1320" y="830" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1320" y="830" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1326 836) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1240" y="128" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">EngineSwitchController</text>
-        <text data-detail="context" x="1240" y="144" class="t-muted" font-size="9" text-anchor="middle">Failover Router</text>
-        <text data-detail="fine" x="1240" y="152" class="t-backend" font-size="7" text-anchor="middle">OPTIONAL: autoSwitch</text>
+          <text data-node-label="" data-detail-anchor="" x="1400" y="858" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">EngineSwitchController</text>
+        <text data-detail="context" x="1400" y="874" class="t-muted" font-size="9" text-anchor="middle">Failover Health Supervisor</text>
+        <text data-detail="fine" x="1400" y="882" class="t-backend" font-size="7" text-anchor="middle">Failover to Backup Engine</text>
         </g>
 
-        <g id="node-asr_registry" data-node-id="asr_registry" data-node-label="ASR Engine Registry" tabindex="0" role="button" aria-label="Focus ASR Engine Registry, Model: whisper-large-v3, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Model: whisper-large-v3" data-node-tag="FIXED ASR DECODER" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>ASR Engine Registry · Model: whisper-large-v3 · Streaming Speech Intelligence &amp; ASR Core · FIXED ASR DECODER</title>
-          <rect x="1160" y="280" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1160" y="280" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1166 286) scale(0.6875)">
+        <g id="node-post_process" data-node-id="post_process" data-node-label="RepeatGuard &amp; Filter" tabindex="0" role="button" aria-label="Focus RepeatGuard &amp; Filter, collapse_repeats / Hallucination, Post-Processing Pipeline &amp; Egress" aria-pressed="false" data-node-kind="backend" data-node-sublabel="collapse_repeats / Hallucination" data-node-tag="Loop &amp; Filler Suppression" data-node-context="Post-Processing Pipeline &amp; Egress">
+          <title>RepeatGuard &amp; Filter · collapse_repeats / Hallucination · Post-Processing Pipeline &amp; Egress · Loop &amp; Filler Suppression</title>
+          <rect x="1320" y="680" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1320" y="680" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1326 686) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1240" y="308" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ASR Engine Registry</text>
-        <text data-detail="context" x="1240" y="324" class="t-muted" font-size="9" text-anchor="middle">Model: whisper-large-v3</text>
-        <text data-detail="fine" x="1240" y="332" class="t-backend" font-size="7" text-anchor="middle">FIXED ASR DECODER</text>
+          <text data-node-label="" data-detail-anchor="" x="1400" y="708" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">RepeatGuard &amp; Filter</text>
+        <text data-detail="context" x="1400" y="724" class="t-muted" font-size="7.9" text-anchor="middle">collapse_repeats / Hallucination</text>
+        <text data-detail="fine" x="1400" y="732" class="t-backend" font-size="7" text-anchor="middle">Loop &amp; Filler Suppression</text>
         </g>
 
-        <g id="node-post_process" data-node-id="post_process" data-node-label="Post-Processing" tabindex="0" role="button" aria-label="Focus Post-Processing, RepeatGuard &amp; Lexicon, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="backend" data-node-sublabel="RepeatGuard &amp; Lexicon" data-node-tag="OPTIONAL: stabilizer" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>Post-Processing · RepeatGuard &amp; Lexicon · Streaming Speech Intelligence &amp; ASR Core · OPTIONAL: stabilizer</title>
-          <rect x="1160" y="460" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1160" y="460" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1166 466) scale(0.6875)">
+        <g id="node-punctuation" data-node-id="punctuation" data-node-label="Cadence Punctuation" tabindex="0" role="button" aria-label="Focus Cadence Punctuation, Cadence-Fast BERT Truecaser, Post-Processing Pipeline &amp; Egress" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Cadence-Fast BERT Truecaser" data-node-tag="Punctuation Restoration" data-node-context="Post-Processing Pipeline &amp; Egress">
+          <title>Cadence Punctuation · Cadence-Fast BERT Truecaser · Post-Processing Pipeline &amp; Egress · Punctuation Restoration</title>
+          <rect x="1000" y="680" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1000" y="680" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1006 686) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1240" y="488" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Post-Processing</text>
-        <text data-detail="context" x="1240" y="504" class="t-muted" font-size="9" text-anchor="middle">RepeatGuard &amp; Lexicon</text>
-        <text data-detail="fine" x="1240" y="512" class="t-backend" font-size="7" text-anchor="middle">OPTIONAL: stabilizer</text>
+          <text data-node-label="" data-detail-anchor="" x="1080" y="708" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cadence Punctuation</text>
+        <text data-detail="context" x="1080" y="724" class="t-muted" font-size="9" text-anchor="middle">Cadence-Fast BERT Truecaser</text>
+        <text data-detail="fine" x="1080" y="732" class="t-backend" font-size="7" text-anchor="middle">Punctuation Restoration</text>
         </g>
 
-        <g id="node-punctuation" data-node-id="punctuation" data-node-label="Cadence Punctuation" tabindex="0" role="button" aria-label="Focus Cadence Punctuation, Model: Cadence-Fast, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Model: Cadence-Fast" data-node-tag="OPTIONAL: punctuation" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>Cadence Punctuation · Model: Cadence-Fast · Streaming Speech Intelligence &amp; ASR Core · OPTIONAL: punctuation</title>
-          <rect x="1160" y="640" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1160" y="640" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1166 646) scale(0.6875)">
+        <g id="node-diarization" data-node-id="diarization" data-node-label="Speaker Diarization" tabindex="0" role="button" aria-label="Focus Speaker Diarization, Pyannote Voiceprint Embedder, Post-Processing Pipeline &amp; Egress" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Pyannote Voiceprint Embedder" data-node-tag="Speaker ID Assignment" data-node-context="Post-Processing Pipeline &amp; Egress">
+          <title>Speaker Diarization · Pyannote Voiceprint Embedder · Post-Processing Pipeline &amp; Egress · Speaker ID Assignment</title>
+          <rect x="680" y="830" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="680" y="830" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(686 836) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1240" y="668" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cadence Punctuation</text>
-        <text data-detail="context" x="1240" y="684" class="t-muted" font-size="9" text-anchor="middle">Model: Cadence-Fast</text>
-        <text data-detail="fine" x="1240" y="692" class="t-backend" font-size="7" text-anchor="middle">OPTIONAL: punctuation</text>
+          <text data-node-label="" data-detail-anchor="" x="760" y="858" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Speaker Diarization</text>
+        <text data-detail="context" x="760" y="874" class="t-muted" font-size="9" text-anchor="middle">Pyannote Voiceprint Embedder</text>
+        <text data-detail="fine" x="760" y="882" class="t-backend" font-size="7" text-anchor="middle">Speaker ID Assignment</text>
         </g>
 
-        <g id="node-batch_worker" data-node-id="batch_worker" data-node-label="Dramatiq Worker" tabindex="0" role="button" aria-label="Focus Dramatiq Worker, Batch Pipeline, Streaming Speech Intelligence &amp; ASR Core" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Batch Pipeline" data-node-tag="Batch Processing" data-node-context="Streaming Speech Intelligence &amp; ASR Core">
-          <title>Dramatiq Worker · Batch Pipeline · Streaming Speech Intelligence &amp; ASR Core · Batch Processing</title>
-          <rect x="1160" y="820" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1160" y="820" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1166 826) scale(0.6875)">
+        <g id="node-normalizer" data-node-id="normalizer" data-node-label="Text Normalizer" tabindex="0" role="button" aria-label="Focus Text Normalizer, Symbol &amp; ITN Normalizer, Post-Processing Pipeline &amp; Egress" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Symbol &amp; ITN Normalizer" data-node-tag="Artifact &amp; Whitespace Clean" data-node-context="Post-Processing Pipeline &amp; Egress">
+          <title>Text Normalizer · Symbol &amp; ITN Normalizer · Post-Processing Pipeline &amp; Egress · Artifact &amp; Whitespace Clean</title>
+          <rect x="680" y="680" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="680" y="680" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(686 686) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1240" y="848" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Dramatiq Worker</text>
-        <text data-detail="context" x="1240" y="864" class="t-muted" font-size="9" text-anchor="middle">Batch Pipeline</text>
-        <text data-detail="fine" x="1240" y="872" class="t-backend" font-size="7" text-anchor="middle">Batch Processing</text>
+          <text data-node-label="" data-detail-anchor="" x="760" y="708" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Text Normalizer</text>
+        <text data-detail="context" x="760" y="724" class="t-muted" font-size="9" text-anchor="middle">Symbol &amp; ITN Normalizer</text>
+        <text data-detail="fine" x="760" y="732" class="t-backend" font-size="7" text-anchor="middle">Artifact &amp; Whitespace Clean</text>
         </g>
 
-        <g id="node-postgres" data-node-id="postgres" data-node-label="PostgreSQL DB" tabindex="0" role="button" aria-label="Focus PostgreSQL DB, Voice Profiles DB, Persistence &amp; Storage Plane" aria-pressed="false" data-node-kind="database" data-node-sublabel="Voice Profiles DB" data-node-tag="Database" data-node-context="Persistence &amp; Storage Plane">
-          <title>PostgreSQL DB · Voice Profiles DB · Persistence &amp; Storage Plane · Database</title>
-          <rect x="1440" y="100" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1440" y="100" width="160" height="60" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1446 106) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1520" y="128" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PostgreSQL DB</text>
-        <text data-detail="context" x="1520" y="144" class="t-muted" font-size="9" text-anchor="middle">Voice Profiles DB</text>
-        <text data-detail="fine" x="1520" y="152" class="t-database" font-size="7" text-anchor="middle">Database</text>
-        </g>
-
-        <g id="node-live_doc" data-node-id="live_doc" data-node-label="LiveDocService" tabindex="0" role="button" aria-label="Focus LiveDocService, NLP / SOAP Notes, NestJS API Gateway Layer (apps/api)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="NLP / SOAP Notes" data-node-tag="Downstream NLP" data-node-context="NestJS API Gateway Layer (apps/api)">
-          <title>LiveDocService · NLP / SOAP Notes · NestJS API Gateway Layer (apps/api) · Downstream NLP</title>
-          <rect x="1440" y="280" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1440" y="280" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1446 286) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1520" y="308" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LiveDocService</text>
-        <text data-detail="context" x="1520" y="324" class="t-muted" font-size="9" text-anchor="middle">NLP / SOAP Notes</text>
-        <text data-detail="fine" x="1520" y="332" class="t-backend" font-size="7" text-anchor="middle">Downstream NLP</text>
-        </g>
-
-        <g id="node-result_pub" data-node-id="result_pub" data-node-label="ResultPublisher" tabindex="0" role="button" aria-label="Focus ResultPublisher, redis_streams.py, Redis Message Transport &amp; Task Broker" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="redis_streams.py" data-node-tag="XADD stt:result" data-node-context="Redis Message Transport &amp; Task Broker">
-          <title>ResultPublisher · redis_streams.py · Redis Message Transport &amp; Task Broker · XADD stt:result</title>
-          <rect x="1440" y="460" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1440" y="460" width="160" height="60" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(1446 466) scale(0.6875)">
+        <g id="node-result_pub" data-node-id="result_pub" data-node-label="ResultPublisher" tabindex="0" role="button" aria-label="Focus ResultPublisher, redis_streams.py, Post-Processing Pipeline &amp; Egress" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="redis_streams.py" data-node-tag="XADD stt:result:{id}" data-node-context="Post-Processing Pipeline &amp; Egress">
+          <title>ResultPublisher · redis_streams.py · Post-Processing Pipeline &amp; Egress · XADD stt:result:{id}</title>
+          <rect x="360" y="830" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="360" y="830" width="160" height="60" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(366 836) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1520" y="488" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ResultPublisher</text>
-        <text data-detail="context" x="1520" y="504" class="t-muted" font-size="9" text-anchor="middle">redis_streams.py</text>
-        <text data-detail="fine" x="1520" y="512" class="t-messagebus" font-size="7" text-anchor="middle">XADD stt:result</text>
+          <text data-node-label="" data-detail-anchor="" x="440" y="858" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ResultPublisher</text>
+        <text data-detail="context" x="440" y="874" class="t-muted" font-size="9" text-anchor="middle">redis_streams.py</text>
+        <text data-detail="fine" x="440" y="882" class="t-messagebus" font-size="7" text-anchor="middle">XADD stt:result:{id}</text>
         </g>
 
-        <g id="node-minio_s3" data-node-id="minio_s3" data-node-label="MinIO S3 Storage" tabindex="0" role="button" aria-label="Focus MinIO S3 Storage, s3://hope-audio/, Persistence &amp; Storage Plane" aria-pressed="false" data-node-kind="database" data-node-sublabel="s3://hope-audio/" data-node-tag="Archival Storage" data-node-context="Persistence &amp; Storage Plane">
-          <title>MinIO S3 Storage · s3://hope-audio/ · Persistence &amp; Storage Plane · Archival Storage</title>
-          <rect x="1440" y="640" width="160" height="60" rx="6" class="c-mask"/>
-          <rect x="1440" y="640" width="160" height="60" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1446 646) scale(0.6875)">
+        <g id="node-live_doc" data-node-id="live_doc" data-node-label="LiveDocService" tabindex="0" role="button" aria-label="Focus LiveDocService, Downstream Clinical NLP, Ingress &amp; Client Applications" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Downstream Clinical NLP" data-node-tag="Real-Time NLP Clinical Sync" data-node-context="Ingress &amp; Client Applications">
+          <title>LiveDocService · Downstream Clinical NLP · Ingress &amp; Client Applications · Real-Time NLP Clinical Sync</title>
+          <rect x="40" y="530" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="40" y="530" width="160" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 536) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="120" y="558" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LiveDocService</text>
+        <text data-detail="context" x="120" y="574" class="t-muted" font-size="9" text-anchor="middle">Downstream Clinical NLP</text>
+        <text data-detail="fine" x="120" y="582" class="t-backend" font-size="7" text-anchor="middle">Real-Time NLP Clinical Sync</text>
+        </g>
+
+        <g id="node-minio_s3" data-node-id="minio_s3" data-node-label="MinIO S3 Storage" tabindex="0" role="button" aria-label="Focus MinIO S3 Storage, audio-snapshot &amp; Complete, FastAPI Control Plane &amp; Durability" aria-pressed="false" data-node-kind="database" data-node-sublabel="audio-snapshot &amp; Complete" data-node-tag="Audio Durability Backup" data-node-context="FastAPI Control Plane &amp; Durability">
+          <title>MinIO S3 Storage · audio-snapshot &amp; Complete · FastAPI Control Plane &amp; Durability · Audio Durability Backup</title>
+          <rect x="1000" y="230" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1000" y="230" width="160" height="60" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1006 236) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1520" y="668" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MinIO S3 Storage</text>
-        <text data-detail="context" x="1520" y="684" class="t-muted" font-size="9" text-anchor="middle">s3://hope-audio/</text>
-        <text data-detail="fine" x="1520" y="692" class="t-database" font-size="7" text-anchor="middle">Archival Storage</text>
+          <text data-node-label="" data-detail-anchor="" x="1080" y="258" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MinIO S3 Storage</text>
+        <text data-detail="context" x="1080" y="274" class="t-muted" font-size="9" text-anchor="middle">audio-snapshot &amp; Complete</text>
+        <text data-detail="fine" x="1080" y="282" class="t-database" font-size="7" text-anchor="middle">Audio Durability Backup</text>
+        </g>
+
+        <g id="node-postgres" data-node-id="postgres" data-node-label="PostgreSQL DB" tabindex="0" role="button" aria-label="Focus PostgreSQL DB, Transcripts &amp; Voice Profiles, FastAPI Control Plane &amp; Durability" aria-pressed="false" data-node-kind="database" data-node-sublabel="Transcripts &amp; Voice Profiles" data-node-tag="Durable Outbox Persistence" data-node-context="FastAPI Control Plane &amp; Durability">
+          <title>PostgreSQL DB · Transcripts &amp; Voice Profiles · FastAPI Control Plane &amp; Durability · Durable Outbox Persistence</title>
+          <rect x="1320" y="230" width="160" height="60" rx="6" class="c-mask"/>
+          <rect x="1320" y="230" width="160" height="60" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1326 236) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1400" y="258" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PostgreSQL DB</text>
+        <text data-detail="context" x="1400" y="274" class="t-muted" font-size="9" text-anchor="middle">Transcripts &amp; Voice Profiles</text>
+        <text data-detail="fine" x="1400" y="282" class="t-database" font-size="7" text-anchor="middle">Durable Outbox Persistence</text>
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="client" data-edge-to="ticket_service" data-edge-label="1. Mint Ticket" data-edge-key="0" data-edge-id="client-ticket">
-          <rect x="36.800000000000004" y="303" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="75.4" y="313" class="t-edge-default" font-size="8" text-anchor="middle">1. Mint Ticket</text>
+        <g data-detail="context" data-edge-from="client" data-edge-to="gateway" data-edge-label="1. POST /stream/session" data-edge-key="0" data-edge-id="client-gateway-init">
+          <rect x="199.8" y="60" width="120.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="260" y="70" class="t-edge-default" font-size="8" text-anchor="middle">1. POST /stream/session</text>
         </g>
-        <g data-detail="context" data-edge-from="client" data-edge-to="gateway" data-edge-label="2. WS Handshake" data-edge-key="1" data-edge-id="client-gateway">
-          <rect x="179" y="103" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="220" y="113" class="t-edge-default" font-size="8" text-anchor="middle">2. WS Handshake</text>
+        <g data-detail="context" data-edge-from="gateway" data-edge-to="ticket_service" data-edge-label="2. Mint Auth Ticket" data-edge-key="1" data-edge-id="gateway-ticket">
+          <rect x="229.4" y="168.5" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="280" y="178.5" class="t-edge-default" font-size="8" text-anchor="middle">2. Mint Auth Ticket</text>
         </g>
-        <g data-detail="context" data-edge-from="gateway" data-edge-to="ticket_service" data-edge-label="Auth Ticket Minting" data-edge-key="2" data-edge-id="gateway-ticket">
-          <rect x="173.4" y="248.5" width="101.2" height="14" rx="3" class="c-mask"/>
-          <text x="224" y="258.5" class="t-edge-default" font-size="8" text-anchor="middle">Auth Ticket Minting</text>
+        <g data-detail="context" data-edge-from="gateway" data-edge-to="fastapi" data-edge-label="3. POST /sessions" data-edge-key="2" data-edge-id="gateway-fastapi">
+          <rect x="554.2" y="90" width="91.6" height="14" rx="3" class="c-mask"/>
+          <text x="600" y="100" class="t-edge-emphasis" font-size="8" text-anchor="middle">3. POST /sessions</text>
         </g>
-        <g data-detail="context" data-edge-from="gateway" data-edge-to="fastapi" data-edge-label="3. POST /sessions" data-edge-key="3" data-edge-id="gateway-fastapi">
-          <rect x="494.2" y="110" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="540" y="120" class="t-edge-default" font-size="8" text-anchor="middle">3. POST /sessions</text>
+        <g data-detail="context" data-edge-from="fastapi" data-edge-to="session_mgr" data-edge-label="create_session()" data-edge-key="3" data-edge-id="fastapi-sessionmgr">
+          <rect x="876.6" y="83" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="920" y="93" class="t-edge-default" font-size="8" text-anchor="middle">create_session()</text>
         </g>
-        <g data-detail="context" data-edge-from="fastapi" data-edge-to="control_plane" data-edge-label="Sync Config" data-edge-key="4" data-edge-id="fastapi-controlplane">
-          <rect x="604.2" y="213" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="635.6" y="223" class="t-edge-default" font-size="8" text-anchor="middle">Sync Config</text>
+        <g data-detail="context" data-edge-from="session_mgr" data-edge-to="model_cache" data-edge-label="Preload ASR Weights" data-edge-key="4" data-edge-id="sessionmgr-modelcache">
+          <rect x="1189.4" y="83" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="1240" y="93" class="t-edge-default" font-size="8" text-anchor="middle">Preload ASR Weights</text>
         </g>
-        <g data-detail="context" data-edge-from="fastapi" data-edge-to="session_mgr" data-edge-label="create_session()" data-edge-key="5" data-edge-id="fastapi-sessionmgr">
-          <rect x="691.2" y="213" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="734.6" y="223" class="t-edge-default" font-size="8" text-anchor="middle">create_session()</text>
+        <g data-detail="context" data-edge-from="control_plane" data-edge-to="session_mgr" data-edge-label="arca:config:invalidate" data-edge-key="5" data-edge-id="controlplane-sessionmgr">
+          <rect x="862.2" y="168.5" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="920" y="178.5" class="t-edge-default" font-size="8" text-anchor="middle">arca:config:invalidate</text>
         </g>
-        <g data-detail="context" data-edge-from="gateway" data-edge-to="audio_bridge" data-edge-label="4. PCM Audio Chunks" data-edge-key="6" data-edge-id="gateway-bridge">
-          <rect x="271.79999999999995" y="183" width="101.2" height="14" rx="3" class="c-mask"/>
-          <text x="322.4" y="193" class="t-edge-default" font-size="8" text-anchor="middle">4. PCM Audio Chunks</text>
+        <g data-detail="context" data-edge-from="session_mgr" data-edge-to="minio_s3" data-edge-label="Incremental Snapshots" data-edge-key="6" data-edge-id="sessionmgr-s3">
+          <rect x="963.1999999999999" y="200.5" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="1018.5999999999999" y="210.5" class="t-edge-default" font-size="8" text-anchor="middle">Incremental Snapshots</text>
         </g>
-        <g data-detail="context" data-edge-from="audio_bridge" data-edge-to="redis_streams" data-edge-label="XADD stt:audio" data-edge-key="7" data-edge-id="bridge-redis">
-          <rect x="309.79999999999995" y="393" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="348.4" y="403" class="t-edge-default" font-size="8" text-anchor="middle">XADD stt:audio</text>
+        <g data-detail="context" data-edge-from="session_mgr" data-edge-to="postgres" data-edge-label="Durable Outbox Drain" data-edge-key="7" data-edge-id="sessionmgr-postgres">
+          <rect x="1187" y="168.5" width="106" height="14" rx="3" class="c-mask"/>
+          <text x="1240" y="178.5" class="t-edge-default" font-size="8" text-anchor="middle">Durable Outbox Drain</text>
         </g>
-        <g data-detail="context" data-edge-from="redis_streams" data-edge-to="ingestion_consumer" data-edge-label="XREADGROUP stt:audio" data-edge-key="8" data-edge-id="redis-ingestion">
-          <rect x="428" y="559" width="106" height="14" rx="3" class="c-mask"/>
-          <text x="481" y="569" class="t-edge-default" font-size="8" text-anchor="middle">XREADGROUP stt:audio</text>
+        <g data-detail="context" data-edge-from="gateway" data-edge-to="audio_bridge" data-edge-label="4. PCM WebSocket Frames" data-edge-key="8" data-edge-id="gateway-bridge">
+          <rect x="313.6" y="200.5" width="120.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="373.8" y="210.5" class="t-edge-default" font-size="8" text-anchor="middle">4. PCM WebSocket Frames</text>
         </g>
-        <g data-detail="context" data-edge-from="session_mgr" data-edge-to="model_cache" data-edge-label="Load BYOK Keys" data-edge-key="9" data-edge-id="sessionmgr-modelcache">
-          <rect x="596.8" y="573" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="635.4" y="583" class="t-edge-default" font-size="8" text-anchor="middle">Load BYOK Keys</text>
+        <g data-detail="context" data-edge-from="audio_bridge" data-edge-to="redis_streams" data-edge-label="5. XADD stt:audio:{id}" data-edge-key="9" data-edge-id="bridge-redis">
+          <rect x="311.4" y="328" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="369.2" y="338" class="t-edge-default" font-size="8" text-anchor="middle">5. XADD stt:audio:{id}</text>
         </g>
-        <g data-detail="context" data-edge-from="session_mgr" data-edge-to="ingestion_consumer" data-edge-label="Consume Job" data-edge-key="10" data-edge-id="sessionmgr-ingestion">
-          <rect x="582" y="753" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="613.4" y="763" class="t-edge-default" font-size="8" text-anchor="middle">Consume Job</text>
+        <g data-detail="context" data-edge-from="redis_streams" data-edge-to="ingestion_consumer" data-edge-label="6. XREADGROUP Ingest" data-edge-key="10" data-edge-id="redis-ingestion">
+          <rect x="547" y="390" width="106" height="14" rx="3" class="c-mask"/>
+          <text x="600" y="400" class="t-edge-default" font-size="8" text-anchor="middle">6. XREADGROUP Ingest</text>
         </g>
-        <g data-detail="context" data-edge-from="ingestion_consumer" data-edge-to="denoiser" data-edge-label="IF Denoise ON" data-edge-key="11" data-edge-id="ingestion-denoiser">
-          <rect x="741.5999999999999" y="753" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="777.8" y="763" class="t-edge-default" font-size="8" text-anchor="middle">IF Denoise ON</text>
+        <g data-detail="context" data-edge-from="ingestion_consumer" data-edge-to="denoiser" data-edge-label="7. DeepFilterNet Denoise" data-edge-key="11" data-edge-id="ingestion-denoiser">
+          <rect x="857.4" y="390" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="920" y="400" class="t-edge-default" font-size="8" text-anchor="middle">7. DeepFilterNet Denoise</text>
         </g>
-        <g data-detail="context" data-edge-from="ingestion_consumer" data-edge-to="silero_vad" data-edge-label="Direct Pass" data-edge-key="12" data-edge-id="ingestion-silerovad">
-          <rect x="747.1" y="776" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="778.5" y="786" class="t-edge-default" font-size="8" text-anchor="middle">Direct Pass</text>
+        <g data-detail="context" data-edge-from="denoiser" data-edge-to="silero_vad" data-edge-label="8. Silero VAD v5 ONNX" data-edge-key="12" data-edge-id="denoiser-silero">
+          <rect x="1184.6" y="383" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="1240" y="393" class="t-edge-default" font-size="8" text-anchor="middle">8. Silero VAD v5 ONNX</text>
         </g>
-        <g data-detail="context" data-edge-from="denoiser" data-edge-to="silero_vad" data-edge-label="Denoised PCM" data-edge-key="13" data-edge-id="denoiser-silero">
-          <rect x="893.4000000000001" y="213" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="927.2" y="223" class="t-edge-default" font-size="8" text-anchor="middle">Denoised PCM</text>
+        <g data-detail="context" data-edge-from="silero_vad" data-edge-to="semantic_endpointer" data-edge-label="9. MiniLM Turn Cut" data-edge-key="13" data-edge-id="silero-semantic">
+          <rect x="1135.8" y="465" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="1184" y="475" class="t-edge-default" font-size="8" text-anchor="middle">9. MiniLM Turn Cut</text>
         </g>
-        <g data-detail="context" data-edge-from="silero_vad" data-edge-to="semantic_endpointer" data-edge-label="IF Semantic ON" data-edge-key="14" data-edge-id="silero-semantic">
-          <rect x="890.8" y="393" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="929.4" y="403" class="t-edge-default" font-size="8" text-anchor="middle">IF Semantic ON</text>
+        <g data-detail="context" data-edge-from="semantic_endpointer" data-edge-to="asr_registry" data-edge-label="10. Queue Utterance" data-edge-key="14" data-edge-id="semantic-asr">
+          <rect x="1201.4" y="531.95" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="1252" y="541.95" class="t-edge-emphasis" font-size="8" text-anchor="middle">10. Queue Utterance</text>
         </g>
-        <g data-detail="context" data-edge-from="silero_vad" data-edge-to="diarization" data-edge-label="Utterances" data-edge-key="15" data-edge-id="silero-diarization">
-          <rect x="889.5" y="368" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="918.5" y="378" class="t-edge-default" font-size="8" text-anchor="middle">Utterances</text>
+        <g data-detail="context" data-edge-from="asr_registry" data-edge-to="engine_switch" data-edge-label="Health Supervisor" data-edge-key="15" data-edge-id="asr-engineswitch">
+          <rect x="1406.2" y="486" width="91.6" height="14" rx="3" class="c-mask"/>
+          <text x="1452" y="496" class="t-edge-default" font-size="8" text-anchor="middle">Health Supervisor</text>
         </g>
-        <g data-detail="context" data-edge-from="silero_vad" data-edge-to="engine_switch" data-edge-label="Fixed VAD" data-edge-key="16" data-edge-id="silero-engineswitch">
-          <rect x="1073.4" y="200" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="1100" y="210" class="t-edge-default" font-size="8" text-anchor="middle">Fixed VAD</text>
+        <g data-detail="context" data-edge-from="asr_registry" data-edge-to="post_process" data-edge-label="11. RepeatGuard Filter" data-edge-key="16" data-edge-id="asr-postprocess">
+          <rect x="1285.4" y="628" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="1343.2" y="638" class="t-edge-default" font-size="8" text-anchor="middle">11. RepeatGuard Filter</text>
         </g>
-        <g data-detail="context" data-edge-from="engine_switch" data-edge-to="asr_registry" data-edge-label="Delegate ASR" data-edge-key="17" data-edge-id="engineswitch-asr">
-          <rect x="1166.4" y="213" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="1200.2" y="223" class="t-edge-default" font-size="8" text-anchor="middle">Delegate ASR</text>
+        <g data-detail="context" data-edge-from="post_process" data-edge-to="punctuation" data-edge-label="12. Cadence Punctuation" data-edge-key="17" data-edge-id="postprocess-punctuation">
+          <rect x="1179.8" y="690" width="120.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="1240" y="700" class="t-edge-default" font-size="8" text-anchor="middle">12. Cadence Punctuation</text>
         </g>
-        <g data-detail="context" data-edge-from="asr_registry" data-edge-to="post_process" data-edge-label="Raw Text Pass" data-edge-key="18" data-edge-id="asr-postprocess">
-          <rect x="1161.6" y="393" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="1197.8" y="403" class="t-edge-default" font-size="8" text-anchor="middle">Raw Text Pass</text>
+        <g data-detail="context" data-edge-from="punctuation" data-edge-to="normalizer" data-edge-label="13. Text Normalizer" data-edge-key="18" data-edge-id="punctuation-normalizer">
+          <rect x="869.4" y="690" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="920" y="700" class="t-edge-default" font-size="8" text-anchor="middle">13. Text Normalizer</text>
         </g>
-        <g data-detail="context" data-edge-from="post_process" data-edge-to="punctuation" data-edge-label="IF PostProcess ON" data-edge-key="19" data-edge-id="postprocess-punctuation">
-          <rect x="1142.4" y="573" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="1188.2" y="583" class="t-edge-default" font-size="8" text-anchor="middle">IF PostProcess ON</text>
+        <g data-detail="context" data-edge-from="asr_registry" data-edge-to="diarization" data-edge-label="15. Pyannote Embedding" data-edge-key="19" data-edge-id="asr-diarization">
+          <rect x="1174.2" y="602" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="1232" y="612" class="t-edge-default" font-size="8" text-anchor="middle">15. Pyannote Embedding</text>
         </g>
-        <g data-detail="context" data-edge-from="diarization" data-edge-to="punctuation" data-edge-label="Speaker Trace" data-edge-key="20" data-edge-id="diarization-punctuation">
-          <rect x="1063.8" y="650" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="1100" y="660" class="t-edge-default" font-size="8" text-anchor="middle">Speaker Trace</text>
+        <g data-detail="context" data-edge-from="result_pub" data-edge-to="redis_streams" data-edge-label="16. XADD stt:result:{id}" data-edge-key="20" data-edge-id="resultpub-redis">
+          <rect x="377.4" y="810" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="440" y="820" class="t-edge-emphasis" font-size="8" text-anchor="middle">16. XADD stt:result:{id}</text>
         </g>
-        <g data-detail="context" data-edge-from="punctuation" data-edge-to="result_pub" data-edge-label="SegmentResult" data-edge-key="21" data-edge-id="punctuation-resultpub">
-          <rect x="1343.8" y="567" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="1380" y="577" class="t-edge-default" font-size="8" text-anchor="middle">SegmentResult</text>
+        <g data-detail="context" data-edge-from="redis_streams" data-edge-to="gateway" data-edge-label="17. Transcript Egress" data-edge-key="21" data-edge-id="redis-gateway">
+          <rect x="453" y="342" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="508.4" y="352" class="t-edge-default" font-size="8" text-anchor="middle">17. Transcript Egress</text>
         </g>
-        <g data-detail="context" data-edge-from="semantic_endpointer" data-edge-to="result_pub" data-edge-label="XADD stt:result" data-edge-key="22" data-edge-id="semantic-resultpub">
-          <rect x="1049.4" y="509.5" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="1090.4" y="519.5" class="t-edge-default" font-size="8" text-anchor="middle">XADD stt:result</text>
+        <g data-detail="context" data-edge-from="gateway" data-edge-to="client" data-edge-label="18. Real-Time Captions WS" data-edge-key="22" data-edge-id="gateway-client-egress">
+          <rect x="215" y="83" width="130" height="14" rx="3" class="c-mask"/>
+          <text x="280" y="93" class="t-edge-default" font-size="8" text-anchor="middle">18. Real-Time Captions WS</text>
         </g>
-        <g data-detail="context" data-edge-from="result_pub" data-edge-to="redis_streams" data-edge-label="XADD stt:result" data-edge-key="23" data-edge-id="resultpub-redis">
-          <rect x="1352" y="416" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="1393" y="426" class="t-edge-default" font-size="8" text-anchor="middle">XADD stt:result</text>
+        <g data-detail="context" data-edge-from="gateway" data-edge-to="live_doc" data-edge-label="19. Clinical EHR Sync" data-edge-key="23" data-edge-id="gateway-livedoc">
+          <rect x="63.1" y="144" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="118.5" y="154" class="t-edge-default" font-size="8" text-anchor="middle">19. Clinical EHR Sync</text>
         </g>
-        <g data-detail="context" data-edge-from="redis_streams" data-edge-to="gateway" data-edge-label="XADD stt:result" data-edge-key="24" data-edge-id="redis-gateway">
-          <rect x="413" y="404.5" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="454" y="414.5" class="t-edge-default" font-size="8" text-anchor="middle">XADD stt:result</text>
+        <g data-detail="context" data-edge-from="normalizer" data-edge-to="diarization" data-edge-label="14. Filtered Text to Diarization" data-edge-key="24" data-edge-id="normalizer-diarization">
+          <rect x="590.4000000000001" y="778" width="163.6" height="14" rx="3" class="c-mask"/>
+          <text x="672.2" y="788" class="t-edge-default" font-size="8" text-anchor="middle">14. Filtered Text to Diarization</text>
         </g>
-        <g data-detail="context" data-edge-from="gateway" data-edge-to="live_doc" data-edge-label="LiveDoc sync" data-edge-key="25" data-edge-id="gateway-livedoc">
-          <rect x="427" y="201" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="460.8" y="211" class="t-edge-default" font-size="8" text-anchor="middle">LiveDoc sync</text>
-        </g>
-        <g data-detail="context" data-edge-from="session_mgr" data-edge-to="postgres" data-edge-label="Voice Profiles DB" data-edge-key="26" data-edge-id="sessionmgr-postgres">
-          <rect x="589.4000000000001" y="394.5" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="635.2" y="404.5" class="t-edge-default" font-size="8" text-anchor="middle">Voice Profiles DB</text>
-        </g>
-        <g data-detail="context" data-edge-from="session_mgr" data-edge-to="minio_s3" data-edge-label="Archival S3 Upload" data-edge-key="27" data-edge-id="sessionmgr-s3">
-          <rect x="1006.8" y="617" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
-          <text x="1055" y="627" class="t-edge-default" font-size="8" text-anchor="middle">Archival S3 Upload</text>
-        </g>
-        <g data-detail="context" data-edge-from="gateway" data-edge-to="dramatiq" data-edge-label="Enqueue Batch" data-edge-key="28" data-edge-id="gateway-dramatiq">
-          <rect x="321.55" y="257" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="357.75" y="267" class="t-edge-default" font-size="8" text-anchor="middle">Enqueue Batch</text>
-        </g>
-        <g data-detail="context" data-edge-from="dramatiq" data-edge-to="batch_worker" data-edge-label="Worker pickup" data-edge-key="29" data-edge-id="dramatiq-batchworker">
-          <rect x="321.6" y="751.5" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="357.8" y="761.5" class="t-edge-default" font-size="8" text-anchor="middle">Worker pickup</text>
-        </g>
-        <g data-detail="context" data-edge-from="batch_worker" data-edge-to="punctuation" data-edge-label="Batch ASR" data-edge-key="30" data-edge-id="batchworker-punctuation">
-          <rect x="1220.4" y="800" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="1247" y="810" class="t-edge-default" font-size="8" text-anchor="middle">Batch ASR</text>
+        <g data-detail="context" data-edge-from="diarization" data-edge-to="result_pub" data-edge-label="15. Final Tagged SegmentResult" data-edge-key="25" data-edge-id="diarization-resultpub">
+          <rect x="523" y="840" width="154" height="14" rx="3" class="c-mask"/>
+          <text x="600" y="850" class="t-edge-default" font-size="8" text-anchor="middle">15. Final Tagged SegmentResult</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="NestJS API Gateway Layer (apps/api)">
-          <rect data-graph-role="structural-frame-label-mask" x="14" y="78" width="236.25808551612903" height="18" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="18" y="92.7741945483871" class="t-cloud" font-size="10.774194548387097" font-weight="600">NestJS API Gateway Layer (apps/api)</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Ingress &amp; Client Applications">
+          <rect data-graph-role="structural-frame-label-mask" x="14" y="58" width="184.0000174" height="18" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="18" y="72.000001" class="t-cloud" font-size="10.000001" font-weight="600">Ingress &amp; Client Applications</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="security-group" data-composition-frame-label="Redis Message Transport &amp; Task Broker">
-          <rect data-graph-role="structural-frame-label-mask" x="294" y="438" width="249.18711897419354" height="18" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="298" y="452.7741945483871" class="t-security" font-size="10.774194548387097" font-weight="600">Redis Message Transport &amp; Task Broker</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="API Gateway &amp; Audio Bridge">
+          <rect data-graph-role="structural-frame-label-mask" x="334" y="58" width="166.00001559999998" height="18" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="338" y="72.000001" class="t-cloud" font-size="10.000001" font-weight="600">API Gateway &amp; Audio Bridge</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="region" data-composition-frame-label="FastAPI STT Control Plane (apps/stt)">
-          <rect data-graph-role="structural-frame-label-mask" x="558.6386988774193" y="78" width="242.72260224516128" height="18" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="562.6386988774193" y="92.7741945483871" class="t-cloud" font-size="10.774194548387097" font-weight="600">FastAPI STT Control Plane (apps/stt)</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="region" data-composition-frame-label="FastAPI Control Plane &amp; Durability">
+          <rect data-graph-role="structural-frame-label-mask" x="654" y="58" width="214.00002039999998" height="18" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="658" y="72.000001" class="t-cloud" font-size="10.000001" font-weight="600">FastAPI Control Plane &amp; Durability</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="3" data-composition-frame-kind="security-group" data-composition-frame-label="Streaming Speech Intelligence &amp; ASR Core">
-          <rect data-graph-role="structural-frame-label-mask" x="854" y="78" width="268.58066916129036" height="18" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="858" y="92.7741945483871" class="t-security" font-size="10.774194548387097" font-weight="600">Streaming Speech Intelligence &amp; ASR Core</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="3" data-composition-frame-kind="security-group" data-composition-frame-label="Redis Transport &amp; Audio Front-End">
+          <rect data-graph-role="structural-frame-label-mask" x="334" y="358" width="208.0000198" height="18" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="338" y="372.000001" class="t-security" font-size="10.000001" font-weight="600">Redis Transport &amp; Audio Front-End</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="4" data-composition-frame-kind="region" data-composition-frame-label="Persistence &amp; Storage Plane">
-          <rect data-graph-role="structural-frame-label-mask" x="1414" y="78" width="184.54195168387096" height="18" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="1418" y="92.7741945483871" class="t-cloud" font-size="10.774194548387097" font-weight="600">Persistence &amp; Storage Plane</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="4" data-composition-frame-kind="region" data-composition-frame-label="Neural ASR Core &amp; Resilience">
+          <rect data-graph-role="structural-frame-label-mask" x="1294" y="508" width="178.0000168" height="18" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="1298" y="522.000001" class="t-cloud" font-size="10.000001" font-weight="600">Neural ASR Core &amp; Resilience</text>
+        </g>
+
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="5" data-composition-frame-kind="security-group" data-composition-frame-label="Post-Processing Pipeline &amp; Egress">
+          <rect data-graph-role="structural-frame-label-mask" x="334" y="658" width="208.0000198" height="18" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="338" y="672.000001" class="t-security" font-size="10.000001" font-weight="600">Post-Processing Pipeline &amp; Egress</text>
         </g>
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="40" y="932" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="952" data-legend-width="83">
-            <rect x="40" y="943" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="952" class="t-muted" font-size="10" font-weight="500">Frontend</text>
+          <text x="40" y="942" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="962" data-legend-width="83">
+            <rect x="40" y="953" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
+            <text x="62" y="962" class="t-muted" font-size="10" font-weight="500">Frontend</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="145" data-legend-baseline="952" data-legend-width="78">
-            <rect x="145" y="943" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="167" y="952" class="t-muted" font-size="10" font-weight="500">Backend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="145" data-legend-baseline="962" data-legend-width="78">
+            <rect x="145" y="953" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="167" y="962" class="t-muted" font-size="10" font-weight="500">Backend</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="245" data-legend-baseline="952" data-legend-width="83">
-            <rect x="245" y="943" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="267" y="952" class="t-muted" font-size="10" font-weight="500">Database</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="245" data-legend-baseline="962" data-legend-width="83">
+            <rect x="245" y="953" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="267" y="962" class="t-muted" font-size="10" font-weight="500">Database</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="350" data-legend-baseline="952" data-legend-width="83">
-            <rect x="350" y="943" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
-            <text x="372" y="952" class="t-muted" font-size="10" font-weight="500">Security</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="350" data-legend-baseline="962" data-legend-width="83">
+            <rect x="350" y="953" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="372" y="962" class="t-muted" font-size="10" font-weight="500">Security</text>
           </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="Message bus" data-legend-x="455" data-legend-baseline="952" data-legend-width="98">
-            <rect x="455" y="943" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
-            <text x="477" y="952" class="t-muted" font-size="10" font-weight="500">Message bus</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="Message bus" data-legend-x="455" data-legend-baseline="962" data-legend-width="98">
+            <rect x="455" y="953" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
+            <text x="477" y="962" class="t-muted" font-size="10" font-weight="500">Message bus</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="575" data-legend-baseline="952" data-legend-width="83">
-            <rect x="575" y="943" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="597" y="952" class="t-muted" font-size="10" font-weight="500">External</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="575" data-legend-baseline="962" data-legend-width="83">
+            <rect x="575" y="953" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="597" y="962" class="t-muted" font-size="10" font-weight="500">External</text>
           </g>
         </g>
       </svg>
@@ -5816,7 +5768,46 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     </div>
     <!-- Info Cards -->
     <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Ingress &amp; Session Handshake (routes.py → session_manager.py)</h3>
+        </div>
+        <ul>
+          <li>routes.py:108: create_streaming_session() receives POST /sessions from NestJS Gateway before WebSocket connection.</li>
+          <li>session_manager.py:1435: Draining guard rejects requests with 503 if node is scaling down.</li>
+          <li>session_manager.py:1441: CapacityGuard.try_acquire() checks GPU concurrency slots; shielded by _creating set during model cold load.</li>
+          <li>session_manager.py:1677: Spawns IngestionConsumer on stt:audio:{id} and ControlListener on stt:control:{id}.</li>
+        </ul>
+      </div>
 
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>Audio Front-End Preprocessing (preprocessor.py: feed &amp; VAD)</h3>
+        </div>
+        <ul>
+          <li>preprocessor.py:591: Converts int16 PCM to float32 [-1, 1] and resamples to 16 kHz mono.</li>
+          <li>preprocessor.py:603: Stage 2 Denoise applies DeepFilterNet3 or RNNoise (dual scope: &#39;vad_only&#39; or &#39;full&#39;).</li>
+          <li>preprocessor.py:614: Stage 3 Silero VAD evaluates speech probability against hysteresis thresholds.</li>
+          <li>preprocessor.py:759: SemanticEndpointer checks End-of-Utterance (EOU) model to cut complete sentences early.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>GPU Neural Inference &amp; Post-Processing (inference.py: process_utterance)</h3>
+        </div>
+        <ul>
+          <li>session_manager.py:3528: _start_inference_loop consumes utterances from inference_queue.</li>
+          <li>inference.py:740: Runs acoustic neural ASR (Parakeet / FastConformer / Whisper) in GPU VRAM.</li>
+          <li>inference.py:752: RepeatGuard (collapse_repeats) prevents autoregressive n-gram hallucination loops.</li>
+          <li>inference.py:816: Cadence-Fast restores truecase capitalization and punctuation marks within 400ms budget.</li>
+          <li>inference.py:883: Pyannote extracts 512-dim voice embeddings in parallel to classify speaker IDs.</li>
+          <li>redis_streams.py:510: ResultPublisher writes final SegmentResult to stt:result:{id} for real-time WebSocket egress.</li>
+        </ul>
+      </div>
     </div>
     <nav class="node-outline no-print" id="node-outline" hidden aria-labelledby="node-outline-title">
       <div class="node-outline-head">

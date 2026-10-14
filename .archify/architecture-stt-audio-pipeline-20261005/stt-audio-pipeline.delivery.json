@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "dafec2cd-9e35-4e8f-b570-f21b2bc448e3",
+  "receiptId": "a88cab85-cf91-43c7-854a-cc56dc2d761d",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
   "input": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/candidate.json",
   "output": "/Users/apple/Desktop/vox/.archify/architecture-stt-audio-pipeline-20261005/stt-audio-pipeline.html",
   "specification": {
-    "sha256": "0b3cc61a8aeb33457a44d40266dc5570c4eb6879b57c9e2bd2ad91be074e987d",
-    "bytes": 12304
+    "sha256": "9106db5541d3ec36ec16cf9faec298a6553f8da983b306d43f425ff94d00e413",
+    "bytes": 21017
   },
   "artifact": {
-    "sha256": "080d0b12f222fc2778ec30b381207bcde7ee95232a6c75b48f6159e8bf2d9554",
-    "bytes": 815350
+    "sha256": "085eadf6c82e2c9647c7c100b9bba8d83dbdf893ca9d3f558ca9656eadc59b3a",
+    "bytes": 820902
   }
 }
