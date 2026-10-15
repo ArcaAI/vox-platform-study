@@ -1,0 +1,4 @@
+{
+  "text": "Patient is a 45 year old man with chest pain and shortness of breath. He denies fever. BP 150/95, HR 102. Started on aspirin 75 mg.",
+  "model_name": "blaze999/Medical-NER"
+}

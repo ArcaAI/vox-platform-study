@@ -1,0 +1,19 @@
+# NLP service study
+
+Study notes for `apps/nlp` in `ArcaAI/project-hope`, branch `dev-2.2` (commit `dacdc311`).
+
+| File | What it is |
+| --- | --- |
+| [docs/nlp-project-walkthrough.md](docs/nlp-project-walkthrough.md) | Architecture, folder map, endpoints, models, running locally, deployment, 16 known issues |
+| [docs/nlp-hardcoded-domain-values.md](docs/nlp-hardcoded-domain-values.md) | Hardcoded diagnosis labels and spelling dictionaries, with measured quality impact |
+| [diagrams/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html](diagrams/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html) | Archify sequence diagram: topic/intent LLM flow, today vs designed path |
+| [nlp-context.md](nlp-context.md) | Handoff context for starting a new AI session on this work |
+| [demo/](demo/) | Request bodies for the Medical-NER demo, with and without the clinical taxonomy |
+
+Live, editable versions of the docs (with diagrams):
+
+- Project walkthrough: https://claude.ai/code/artifact/3b76b2e8-a9e0-47f2-8826-8348778ca423
+- Hardcoded domain values: https://claude.ai/code/artifact/80319b0e-86ba-4917-8973-9f6f17e7621b
+- Code walkthrough guide (presenter script): https://claude.ai/code/artifact/a212c8d8-548b-4c7e-aefe-aa97ae3e0583
+
+Service tokens are not stored here; ask the team.

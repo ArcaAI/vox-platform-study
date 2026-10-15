@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d1b224ba-afb0-457b-a39a-19063dbd7440",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/candidate.json",
+  "output": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
+  "specification": {
+    "sha256": "8e6273e53634f5081a3d68dc062a1d428940191dc46a857434e40ccc96b513d9",
+    "bytes": 8112
+  },
+  "artifact": {
+    "sha256": "95947d5e672fe8b686a310d4d26b4c5b9e6d712dd008b117b38e456ff7568888",
+    "bytes": 821711
+  }
+}
