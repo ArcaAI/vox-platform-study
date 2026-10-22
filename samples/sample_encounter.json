@@ -1,0 +1,12 @@
+{
+  "department": "Cardiology",
+  "visit_type": "Follow-up",
+  "patient": {
+    "age": "62",
+    "gender": "Female"
+  },
+  "vitals": "BP: 132/82 mmHg, HR: 74 bpm, SpO2: 98%",
+  "test_results": "Lipid panel improved: LDL down to 110 mg/dL. ECG: Normal sinus rhythm.",
+  "previous_visits": "Diagnosed with hypertension and hyperlipidemia. On Telmisartan 40mg and Rosuvastatin 10mg.",
+  "transcript": "Doctor: Good afternoon Mrs. Sharma. How have you been feeling since we adjusted your medications?\nPatient: Good afternoon Doctor. Much better! I don't feel the lightheadedness anymore, and I've been walking 30 minutes daily.\nDoctor: That's wonderful. Your blood pressure today is 132/82, which is a great improvement from 142/86 last time.\nPatient: Should I continue the same tablets?\nDoctor: Yes, continue Telmisartan 40mg in the morning and Rosuvastatin 10mg at bedtime. Keep up the daily walks and low-salt diet. We will see you back in 6 months."
+}

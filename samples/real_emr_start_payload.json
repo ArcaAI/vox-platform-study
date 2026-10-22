@@ -1,0 +1,107 @@
+{
+  "type": "start",
+  "clinician": {
+    "username": "Dr. ANEESH  SUGUNAN",
+    "userId": "234"
+  },
+  "departmentId": "234",
+  "departmentCode": "BREN",
+  "visitType": "new",
+  "languageMode": "ml-en",
+  "patient": {
+    "regNo": "5432",
+    "name": "Rak",
+    "dob": "1990-11-30",
+    "gender": "Male"
+  },
+  "priorCaseNotes": [
+    "2026-03-03 · 20 · PATIENT CASE SHEET\nChief Complaints\n\nPatient reports occasional dizziness. Neurological exam is within normal limits. Advised MRI Brain.",
+    "2026-03-03 · 10 · PATIENT CASE SHEET\nChief Complaints\n\nFollow-up for hypertension and mild chest discomfort. ECG shows normal sinus rhythm.",
+    "2026-03-03 · 30 · PATIENT CASE SHEET\nChief Complaints\n\nRoutine check for chronic kidney disease Stage 2. Creatinine levels are stable."
+  ],
+  "priorVisits": [
+    {
+      "date": "2026-03-03",
+      "department": "NEPHROLOGY",
+      "doctor": "Dr. STEPHEN STRANGE",
+      "title": "PATIENT CASE SHEET",
+      "text": "Chief Complaints\n\nRoutine check for chronic kidney disease Stage 2. Creatinine levels are stable."
+    },
+    {
+      "date": "2026-03-03",
+      "department": "NEUROLOGY",
+      "doctor": "Dr. JAMES HOWLETT",
+      "title": "PATIENT CASE SHEET",
+      "text": "Chief Complaints\n\nPatient reports occasional dizziness. Neurological exam is within normal limits. Advised MRI Brain."
+    },
+    {
+      "date": "2026-03-03",
+      "department": "CARDIOLOGY",
+      "doctor": "Dr. SARAH CONNOR",
+      "title": "PATIENT CASE SHEET",
+      "text": "Chief Complaints\n\nFollow-up for hypertension and mild chest discomfort. ECG shows normal sinus rhythm."
+    },
+    {
+      "date": "2025-07-17",
+      "department": "UROLOGY",
+      "doctor": "Dr. KURIAN  GEORGE",
+      "title": "PATIENT CASE SHEET",
+      "text": "Chief Complaints\n\nPatient reports occasional flank pain. Ultrasound shows normal kidneys and bladder. No active treatment needed."
+    },
+    {
+      "date": "2025-07-17",
+      "department": "BREAST AND ENDOCRINE SURGERY",
+      "doctor": "Dr. ANEESH  SUGUNAN",
+      "title": "PATIENT CASE SHEET",
+      "text": "Presenting Complaints\n\nReview post total thyroidectomy. Suture line healthy, mild seroma noted. TSH levels are stable."
+    },
+    {
+      "date": "2025-07-08",
+      "department": "BREAST AND ENDOCRINE SURGERY",
+      "doctor": "Dr. ANEESH  SUGUNAN",
+      "title": "PATIENT CASE SHEET",
+      "text": "Presenting Complaints\n\nReview post total thyroidectomy. Suture line healthy, mild seroma noted. TSH levels are stable."
+    },
+    {
+      "date": "2025-06-20",
+      "department": "ANAESTHESIA",
+      "doctor": "Dr. BLESITA T JOSE",
+      "title": "PATIENT CASE SHEET",
+      "text": "DIAGNOSIS\n\nSWELLING OF NECK\n\nPROPOSED SURGERY\n\nTOTAL THYROIDECTOMY\n\nGeneral Comments\n\nPatient assessed for fitness. Stable vitals, fit for surgery under GA."
+    },
+    {
+      "date": "2025-06-18",
+      "department": "PULMONOLOGY",
+      "doctor": "Dr. SNEHA SUSAN JACOB",
+      "title": "PATIENT CASE SHEET",
+      "text": "History\n\nClear chest, no dyspnea. CT chest shows no lung injury. Advised PFT."
+    },
+    {
+      "date": "2025-06-18",
+      "department": "ENT HEAD AND NECK SURGERY",
+      "doctor": "Dr. SHARON ELSA JOHN",
+      "title": "PATIENT CASE SHEET",
+      "text": "Presenting Complaints\n\nPre-op vocal cord assessment. Bilateral vocal cords are equal and mobile. Adequate glottic airway."
+    },
+    {
+      "date": "2025-06-18",
+      "department": "BREAST AND ENDOCRINE SURGERY",
+      "doctor": "Dr. ANEESH  SUGUNAN",
+      "title": "PATIENT CASE SHEET",
+      "text": "Presenting Complaints\n\nReview post total thyroidectomy. Suture line healthy, mild seroma noted. TSH levels are stable."
+    }
+  ],
+  "vitals": {
+    "painScore": 10,
+    "temperature": 97.8,
+    "oxygenSaturation": 98,
+    "bloodPressure": "60",
+    "respiratoryRate": 18,
+    "heartRate": 74,
+    "weightKg": 77.5,
+    "heightCm": 163,
+    "recordedAt": "2025-06-20"
+  },
+  "sessionId": "1000000125",
+  "eventId": "9"
+}

@@ -1,0 +1,10 @@
+{
+  "current_department": "Cardiology",
+  "visit_type": "Follow-up",
+  "age": "62",
+  "gender": "Female",
+  "dob": "1964-04-12",
+  "formatted_vitals": "BP: 142/86 mmHg, HR: 80 bpm, Temp: 98.6 F, SpO2: 97%",
+  "formatted_test_results": "Echocardiogram (2026-06-10): Mild LV hypertrophy, EF 55%. Lipid Profile: Total Chol 230, LDL 150, HDL 45.",
+  "formatted_previous_visits": "2026-06-10: Follow-up for essential hypertension and hyperlipidemia. Rx: Telmisartan 40mg daily, Rosuvastatin 10mg."
+}
