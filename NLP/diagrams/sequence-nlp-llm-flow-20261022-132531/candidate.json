@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "NLP topic/intent LLM flow (latest dev-2.2)",
+    "output": ".archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0"
+    }
+  },
+  "participants": [
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API gateway",
+      "sublabel": "apps/api",
+      "sources": [
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.controller.ts",
+          "line": 418,
+          "end_line": 430,
+          "label": "classifyTopic"
+        },
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.controller.ts",
+          "line": 509,
+          "end_line": 531,
+          "label": "resolveTextSelection"
+        },
+        {
+          "path": "packages/database/src/prisma/db_main/seed/16-ai-routing-policy.ts",
+          "line": 119,
+          "end_line": 120,
+          "label": "nlp.topic / nlp.intent model"
+        }
+      ]
+    },
+    {
+      "id": "nlpRoute",
+      "type": "backend",
+      "label": "NLP route",
+      "sublabel": "/classify/topic, /intent",
+      "sources": [
+        {
+          "path": "apps/nlp/src/nlp/api/v1/rest/classify.py",
+          "line": 70,
+          "end_line": 95,
+          "label": "require provider + model"
+        },
+        {
+          "path": "apps/nlp/src/nlp/api/v1/rest/classify.py",
+          "line": 290,
+          "end_line": 305,
+          "label": "prompt builders"
+        },
+        {
+          "path": "apps/nlp/src/nlp/api/v1/rest/classify.py",
+          "line": 312,
+          "end_line": 383,
+          "label": "topic route"
+        }
+      ]
+    },
+    {
+      "id": "nlpClient",
+      "type": "backend",
+      "label": "NLP text client",
+      "sublabel": "ExternalTextClient",
+      "sources": [
+        {
+          "path": "apps/nlp/src/nlp/services/external_text_client.py",
+          "line": 148,
+          "end_line": 260,
+          "label": "POST /api/v1/generate"
+        }
+      ]
+    },
+    {
+      "id": "text",
+      "type": "backend",
+      "label": "Text service",
+      "sublabel": "apps/text :8862",
+      "sources": [
+        {
+          "path": "apps/text/src/text/api/endpoints/generate.py",
+          "line": 349,
+          "end_line": 500,
+          "label": "/api/v1/generate"
+        },
+        {
+          "path": "apps/text/src/text/services/egress.py",
+          "line": 489,
+          "end_line": 590,
+          "label": "inbound guardrail gate"
+        },
+        {
+          "path": "apps/text/src/text/core/connection.py",
+          "line": 38,
+          "end_line": 72,
+          "label": "injected connection"
+        }
+      ]
+    },
+    {
+      "id": "guardrail",
+      "type": "security",
+      "label": "Guardrail",
+      "sublabel": "apps/guardrail",
+      "sources": [
+        {
+          "path": "apps/guardrail/src/guardrail/api/endpoints/screen.py",
+          "line": 444,
+          "end_line": 520,
+          "label": "/guardrail/screen/inbound"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM provider",
+      "sublabel": "LM Studio default",
+      "sources": [
+        {
+          "path": "apps/text/src/text/providers/lmstudio.py",
+          "line": 114,
+          "end_line": 357,
+          "label": "LMStudioProvider"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 418,
+      "label": "Request: gateway picks model, NLP builds prompt"
+    },
+    {
+      "from": 428,
+      "to": 800,
+      "label": "Text service screens, calls the LLM, returns"
+    }
+  ],
+  "messages": [
+    {
+      "id": "topic-request",
+      "from": "gateway",
+      "to": "nlpRoute",
+      "y": 170,
+      "label": "POST /classify/topic",
+      "variant": "emphasis",
+      "note": "text, instructions[], tenant_id, text_provider, text_model, text_provider_overrides"
+    },
+    {
+      "id": "build-prompt",
+      "from": "nlpRoute",
+      "to": "nlpClient",
+      "y": 255,
+      "label": "generate_label_with_usage",
+      "variant": "default",
+      "note": "no list 503, no tenant 428, no model or connection 503; prompt = topic list + patient text"
+    },
+    {
+      "id": "generate",
+      "from": "nlpClient",
+      "to": "text",
+      "y": 340,
+      "label": "POST /api/v1/generate",
+      "variant": "emphasis",
+      "note": "prompt, provider, model, provider_overrides; X-Tenant-Id"
+    },
+    {
+      "id": "screen-in",
+      "from": "text",
+      "to": "guardrail",
+      "y": 445,
+      "label": "POST /screen/inbound",
+      "variant": "security",
+      "note": "screens the untrusted text; a block returns 422"
+    },
+    {
+      "id": "screen-verdict",
+      "from": "guardrail",
+      "to": "text",
+      "y": 525,
+      "label": "verdict + usage",
+      "variant": "return"
+    },
+    {
+      "id": "llm-call",
+      "from": "text",
+      "to": "llm",
+      "y": 555,
+      "label": "chat completion",
+      "variant": "emphasis",
+      "note": "uses the injected connection; rate limit, queue, circuit breaker"
+    },
+    {
+      "id": "llm-content",
+      "from": "llm",
+      "to": "text",
+      "y": 635,
+      "label": "content",
+      "variant": "return"
+    },
+    {
+      "id": "generate-result",
+      "from": "text",
+      "to": "nlpClient",
+      "y": 663,
+      "label": "content + usage",
+      "variant": "return",
+      "note": "a 4xx refusal is not retried: 422 stays 422, others 502"
+    },
+    {
+      "id": "topic-result",
+      "from": "nlpRoute",
+      "to": "gateway",
+      "y": 742,
+      "label": "predicted_topic",
+      "variant": "return",
+      "note": "raw LLM text, not checked against the topic list"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "gateway",
+      "from": 165,
+      "to": 748,
+      "type": "backend"
+    },
+    {
+      "participant": "nlpRoute",
+      "from": 170,
+      "to": 748,
+      "type": "backend"
+    },
+    {
+      "participant": "nlpClient",
+      "from": 255,
+      "to": 669,
+      "type": "backend"
+    },
+    {
+      "participant": "text",
+      "from": 340,
+      "to": 669,
+      "type": "backend"
+    },
+    {
+      "participant": "guardrail",
+      "from": 445,
+      "to": 531,
+      "type": "security"
+    },
+    {
+      "participant": "llm",
+      "from": 555,
+      "to": 641,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Fixed since dacdc311 (TASK-1016)",
+      "items": [
+        "NLP now calls /api/v1/generate (was /generate, a 404 on every call)",
+        "The gateway resolves the nlp.topic / nlp.intent model and the tenant's provider connection and sends them through NLP",
+        "Text refusals (4xx) are no longer retried"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Still open",
+      "items": [
+        "predicted_topic is the raw LLM text, not matched to the topic list",
+        "Patient text sits inside the prompt with no system prompt (prompt injection)"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Evidence",
+      "items": [
+        "Read from dev-2.2 at commit 8cb2e5e8; not run end to end (needs the database, a provider connection and LM Studio)"
+      ]
+    }
+  ]
+}

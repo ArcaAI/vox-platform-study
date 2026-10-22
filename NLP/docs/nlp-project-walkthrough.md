@@ -6,6 +6,8 @@ Oct 12, 2026 · @josekutty
 
 The NLP service is a Python 3.11 FastAPI app that reads medical text: it finds medical terms, suggests diagnoses, fixes spelling, reads PDFs and runs safety checks. It lives at `apps/nlp/` in the `project-hope` monorepo, listens on port 8864, and this walkthrough reflects branch `dev-2.2`.
 
+**Updated 2026-10-22:** re-checked against `dev-2.2` at commit `8cb2e5e8` (7,410 commits after the first study at `dacdc311`). Topic/intent is now fixed; most other issues remain. See "Re-check on latest dev-2.2" under Known issues.
+
 | Item | Value |
 | --- | --- |
 | Repo | `ArcaAI/project-hope` (clone over SSH with the `github-arcaai` alias) |
@@ -14,7 +16,7 @@ The NLP service is a Python 3.11 FastAPI app that reads medical text: it finds m
 | Language / framework | Python 3.11, FastAPI + Uvicorn |
 | Port | 8864 |
 | Python env | conda env `arcaenv` |
-| Test suite | \~60 files in `apps/nlp/tests/`, 707 tests |
+| Test suite | \~60 files in `apps/nlp/tests/`, 1,233 tests at `8cb2e5e8` |
 
 It does eight jobs: classify notes, find medical terms (NER), read vitals, suggest diagnoses, fix spelling (English and Malayalam), read PDFs and images, run safety checks (PII, moderation, groundedness), and pick a topic or intent by asking the text service's LLM.
 
@@ -101,7 +103,7 @@ The NLP code holds no model names: the database picks a model per task and the g
 | `guardrail.groundedness` | `/guard/entailment` | `nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF` |
 | `nlp.classification` | `/classify/text` | `nlp-doc-type-classifier`, retired, so always 503 |
 | `nlp.sentiment`, `nlp.toxicity` | `/classify/text`, `/multi-label` | None: open owner decision |
-| `nlp.topic`, `nlp.intent` | `/classify/topic`, `/intent` | Text service LLM (`gemma-4-e2b-it-qat` on LM Studio) |
+| `nlp.topic`, `nlp.intent` | `/classify/topic`, `/intent` | `lms-gemma-4-e2b-it-qat` on LM Studio, elected in the routing seed; the gateway sends provider, model and connection through NLP to the text service (fixed in TASK-1016) |
 
 ### Clinical taxonomy
 
@@ -134,7 +136,7 @@ NLP runs alone on a Mac with only conda and the repo; no Docker, Postgres, Vault
 
 ### Test and quality commands
 
-- `pnpm nlp:test` — full suite (705 pass, 2 metrics tests already fail on `dev-2.2`)
+- `pnpm nlp:test` — full suite (1,214 pass and 6 skipped on `dev-2.2`)
 - `pnpm nlp:lint`, `pnpm nlp:typecheck`, `pnpm nlp:format:check` — all clean
 - `pnpm nlp:test:cov` — 88% coverage overall
 
@@ -211,3 +213,25 @@ The audit of `dev-2.2` found 16 issues; the most serious is that one large reque
 | 16 | `/metrics` 404 by default; 2 metrics tests fail | `test_metrics_endpoint_task636.py` | Low | Open |
 
 Model quality notes: Medical-NER splits "chest pain" into two low-confidence words (0.12 and 0.14), so it gets no code and a 0.5 confidence filter would drop it.
+
+### Re-check on latest dev-2.2
+
+On 2026-10-22 every issue was re-checked at `8cb2e5e8`, by reading the code and running the service locally on port 8874. Only topic/intent is fully fixed; NER blocking got worse because NER now accepts much longer text.
+
+| Issue | Result at `8cb2e5e8` |
+| --- | --- |
+| Topic/intent LLM path | **Fixed** (TASK-1016): `/api/v1/generate`, gateway sends provider, model and connection; text refusals not retried. Still open: LLM answer not checked against the list, patient text inside the prompt |
+| 1 Spelling always 503 | Still 503; the local fix is not merged |
+| 2, 14, 15 Spelling limits and fields | Code unchanged; unreachable while 1 is broken |
+| 3 `/extract` size and blocking | Code unchanged |
+| 4 Inference on the event loop | Still open and worse for NER: inputs up to 200,000 chars are now windowed, and a 49,280-char request blocked `/health/live` for 25 s |
+| 6 Dictionaries missing from Docker image | Dockerfile changed, still copies only `apps/nlp/src` |
+| 7 Multi-label top label only | Still 1 label at threshold 0 |
+| 8 Long text returns "other" | Partly fixed: over 8,192 chars now 413 `INPUT_EXCEEDS_WINDOW`; shorter text over the model limit still returns 200 "other", confidence 0 |
+| 9, 10 Bigrams and dictionary | Files and code unchanged |
+| 12 Service name `api-gateway` | Unchanged (local env) |
+| 13 `.env.prod` token name | Unchanged |
+| 16 `/metrics` | The 2 failing tests now pass; the endpoint is still off by default |
+| Diagnosis empty | Still `{"suggestions":[],"symptoms_analyzed":[]}` with the seeded models |
+
+Test suite: 1,214 pass and 6 skipped. `test_task1049_bench_memory.py` can stop the whole run on a laptop low on memory; run it separately.

@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NLP service: who calls it, what it calls, and what each call carries (latest dev-2.2)",
+    "output": ".archify/architecture-nlp-service-connections-20261022-132531/nlp-service-connections.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0"
+    }
+  },
+  "components": [
+    {
+      "id": "db",
+      "type": "database",
+      "label": "Postgres (db_main)",
+      "sublabel": "AiRoutingPolicy, AiModel",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        200,
+        72
+      ],
+      "sources": [
+        {
+          "path": "packages/database/src/prisma/db_main/seed/16-ai-routing-policy.ts",
+          "line": 95,
+          "end_line": 120,
+          "label": "task -> default model"
+        },
+        {
+          "path": "packages/database/src/prisma/db_main/seed/ai-models/nlp.ts",
+          "line": 109,
+          "end_line": 150,
+          "label": "Medical-NER + clinicalTaxonomy"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API gateway",
+      "sublabel": "apps/api :8868 + app services",
+      "tag": "injects model + taxonomy",
+      "pos": [
+        40,
+        200
+      ],
+      "size": [
+        200,
+        80
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.client.ts",
+          "line": 81,
+          "end_line": 98,
+          "label": "calls to NLP"
+        },
+        {
+          "path": "packages/applications/src/services/consultation/shared/resolveNerModelSelection.ts",
+          "line": 115,
+          "end_line": 125,
+          "label": "model_name + clinical_taxonomy"
+        },
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.controller.ts",
+          "line": 509,
+          "end_line": 531,
+          "label": "topic/intent provider + model"
+        }
+      ]
+    },
+    {
+      "id": "guardrail",
+      "type": "security",
+      "label": "Guardrail",
+      "sublabel": "apps/guardrail",
+      "tag": "policy owner",
+      "pos": [
+        40,
+        360
+      ],
+      "size": [
+        200,
+        80
+      ],
+      "sources": [
+        {
+          "path": "apps/guardrail/src/guardrail/services/external_nlp_client.py",
+          "line": 246,
+          "end_line": 460,
+          "label": "guard calls to NLP"
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "backend",
+      "label": "Harness",
+      "sublabel": "apps/harness workflows",
+      "pos": [
+        40,
+        520
+      ],
+      "size": [
+        200,
+        72
+      ],
+      "sources": [
+        {
+          "path": "apps/harness/src/harness/services/nlp_client.py",
+          "line": 52,
+          "end_line": 170,
+          "label": "NER + classify calls"
+        }
+      ]
+    },
+    {
+      "id": "nlp",
+      "type": "backend",
+      "label": "NLP service",
+      "sublabel": "apps/nlp :8864",
+      "tag": "runs models, never picks them",
+      "pos": [
+        580,
+        200
+      ],
+      "size": [
+        220,
+        392
+      ],
+      "sources": [
+        {
+          "path": "apps/nlp/src/nlp/api/v1/__init__.py",
+          "line": 1,
+          "end_line": 28,
+          "label": "routes"
+        },
+        {
+          "path": "apps/nlp/src/nlp/lifespan.py",
+          "line": 100,
+          "end_line": 205,
+          "label": "startup clients"
+        },
+        {
+          "path": "apps/nlp/src/nlp/dependencies.py",
+          "line": 121,
+          "end_line": 260,
+          "label": "per-request model load"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM provider",
+      "sublabel": "LM Studio default",
+      "pos": [
+        1060,
+        40
+      ],
+      "size": [
+        200,
+        72
+      ],
+      "sources": [
+        {
+          "path": "apps/text/src/text/providers/lmstudio.py",
+          "line": 114,
+          "end_line": 357,
+          "label": "LMStudioProvider"
+        }
+      ]
+    },
+    {
+      "id": "text",
+      "type": "backend",
+      "label": "Text service",
+      "sublabel": "apps/text :8862",
+      "tag": "LLM gateway",
+      "pos": [
+        1060,
+        200
+      ],
+      "size": [
+        200,
+        80
+      ],
+      "sources": [
+        {
+          "path": "apps/nlp/src/nlp/services/external_text_client.py",
+          "line": 148,
+          "end_line": 260,
+          "label": "NLP -> text call"
+        },
+        {
+          "path": "apps/text/src/text/api/endpoints/generate.py",
+          "line": 349,
+          "end_line": 500,
+          "label": "/api/v1/generate"
+        }
+      ]
+    },
+    {
+      "id": "weights",
+      "type": "cloud",
+      "label": "HuggingFace / S3",
+      "sublabel": "model weights, HF_HOME cache",
+      "pos": [
+        1060,
+        360
+      ],
+      "size": [
+        200,
+        80
+      ],
+      "sources": [
+        {
+          "path": "apps/nlp/src/nlp/models/source_resolver.py",
+          "line": 274,
+          "end_line": 350,
+          "label": "resolve_model_dir"
+        },
+        {
+          "path": "apps/nlp/src/nlp/core/model_credentials.py",
+          "line": 101,
+          "end_line": 300,
+          "label": "S3 keys from gateway"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "messagebus",
+      "label": "Redis (optional)",
+      "sublabel": "arca:config:invalidate",
+      "pos": [
+        1060,
+        520
+      ],
+      "size": [
+        200,
+        72
+      ],
+      "sources": [
+        {
+          "path": "apps/nlp/src/nlp/core/effective_config.py",
+          "line": 285,
+          "end_line": 300,
+          "label": "subscribe"
+        },
+        {
+          "path": "apps/nlp/src/nlp/lifespan.py",
+          "line": 135,
+          "end_line": 145,
+          "label": "listener started"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "db-to-gateway",
+      "from": "db",
+      "to": "gateway",
+      "label": "model per task",
+      "variant": "default"
+    },
+    {
+      "id": "gateway-to-nlp",
+      "from": "gateway",
+      "to": "nlp",
+      "label": "tokens, diagnosis, topic, extract",
+      "variant": "emphasis"
+    },
+    {
+      "id": "nlp-to-gateway",
+      "from": "nlp",
+      "to": "gateway",
+      "label": "/internal/* config, S3 keys",
+      "variant": "dashed"
+    },
+    {
+      "id": "guardrail-to-nlp",
+      "from": "guardrail",
+      "to": "nlp",
+      "label": "guard/pii, classify, entailment",
+      "variant": "security"
+    },
+    {
+      "id": "harness-to-nlp",
+      "from": "harness",
+      "to": "nlp",
+      "label": "classify/tokens, classify/text",
+      "variant": "default"
+    },
+    {
+      "id": "nlp-to-text",
+      "from": "nlp",
+      "to": "text",
+      "label": "POST /api/v1/generate",
+      "variant": "default"
+    },
+    {
+      "id": "text-to-llm",
+      "from": "text",
+      "to": "llm",
+      "label": "chat completion",
+      "variant": "default"
+    },
+    {
+      "id": "nlp-to-weights",
+      "from": "nlp",
+      "to": "weights",
+      "label": "download weights",
+      "variant": "default"
+    },
+    {
+      "id": "redis-to-nlp",
+      "from": "redis",
+      "to": "nlp",
+      "label": "config changed",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Gateway -> NLP (X-Service-Token, X-Tenant-Id)",
+      "items": [
+        "/classify/tokens: text, model_name, clinical_taxonomy, language, labels?, threshold?",
+        "/diagnosis/suggestions: text, model_name, ner_model_name, min_confidence?, tenant_id",
+        "/classify/topic, /intent: text, instructions[], tenant_id, text_provider, text_model, text_provider_overrides",
+        "/extract: multipart file (OCR of uploads); /internal/models/resolvable: model list"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Guardrail and Harness -> NLP",
+      "items": [
+        "/guard/pii: text, labels[], threshold, model_name, model_path?, tenant_id",
+        "/guard/classify: text, tasks{name: labels}, model_name, tenant_id",
+        "/guard/entailment: pairs[{document, claim}], model_name, tenant_id",
+        "Harness /classify/tokens and /classify/text: text, language, model_name, model_path?, X-Tenant-Id"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "NLP -> outside",
+      "items": [
+        "Gateway GET /internal/effective-config?service=nlp: live limits, cached 60 s",
+        "Gateway GET /internal/model-registry-credential?provider&tenantId: S3 keys (X-Internal-Service-Key)",
+        "Text POST /api/v1/generate: prompt, provider, model, provider_overrides (fixed in TASK-1016)",
+        "Redis pub/sub clears the config cache instantly; HuggingFace or S3 supplies weights on first use"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "How to read it",
+      "items": [
+        "The database picks the model; the gateway sends model_name and clinical_taxonomy; NLP only runs it",
+        "Missing model, tenant or token fails closed: 503, 428 or 401",
+        "Dashed lines are optional: NLP still runs without the gateway config or Redis"
+      ]
+    }
+  ]
+}

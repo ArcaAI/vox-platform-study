@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "68105fac-e581-4fb4-8f36-9859a7851ff2",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/silverfang/arcaai/.archify/architecture-nlp-service-connections-20261022-132531/candidate.json",
+  "output": "/Users/silverfang/arcaai/.archify/architecture-nlp-service-connections-20261022-132531/nlp-service-connections.html",
+  "specification": {
+    "sha256": "7b06b40f157868db22033ae71b1a7c007a379ece29fb68cdde9a7945cc6f0e54",
+    "bytes": 9369
+  },
+  "artifact": {
+    "sha256": "cfbefc3d0837237f54896bb8bb57e2cea82eb2407ffc82ad946e414d8dd254c5",
+    "bytes": 832587
+  }
+}

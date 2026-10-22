@@ -5,16 +5,16 @@
   "status": "pass",
   "type": "sequence",
   "quality": "showcase",
-  "startedAt": "2026-10-14T10:18:23.221Z",
+  "startedAt": "2026-10-22T07:56:40.940Z",
   "specification": {
-    "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/candidate.json",
-    "sha256": "8e6273e53634f5081a3d68dc062a1d428940191dc46a857434e40ccc96b513d9",
-    "bytes": 8112
+    "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/candidate.json",
+    "sha256": "6def21de0c6f3c7e5d329c241b372145fbd089dac1439e4d2b5624462e4cbf46",
+    "bytes": 7430
   },
   "artifact": {
-    "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
-    "sha256": "95947d5e672fe8b686a310d4d26b4c5b9e6d712dd008b117b38e456ff7568888",
-    "bytes": 821711
+    "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
+    "sha256": "6d2f3b4cd52161f98ee348398d464f5f53e787b524b44f6e90974c81b72db8a9",
+    "bytes": 821986
   },
   "stages": {
     "validate": {
@@ -27,12 +27,12 @@
         "/Users/silverfang/.agents/skills/archify/bin/archify.mjs",
         "deliver",
         "sequence",
-        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/candidate.json",
-        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
+        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/candidate.json",
+        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
         "--quality",
         "showcase",
         "--repo-root",
-        "/Users/silverfang/arcaai/project-hope",
+        "/private/tmp/claude-501/-Users-silverfang-arcaai/ae6e2ecd-2ea8-4437-bc09-e827b4e6b8df/scratchpad/project-hope-evidence",
         "--json"
       ],
       "receipt": {
@@ -40,8 +40,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "8e6273e53634f5081a3d68dc062a1d428940191dc46a857434e40ccc96b513d9",
-          "bytes": 8112
+          "sha256": "6def21de0c6f3c7e5d329c241b372145fbd089dac1439e4d2b5624462e4cbf46",
+          "bytes": 7430
         },
         "validation": {
           "checksPassed": 9,
@@ -56,35 +56,35 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 375,
+      "durationMs": 470,
       "command": [
         "/Users/silverfang/.nvm/versions/node/v24.8.0/bin/node",
         "/Users/silverfang/.agents/skills/archify/bin/archify.mjs",
         "deliver",
         "sequence",
-        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/candidate.json",
-        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
+        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/candidate.json",
+        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
         "--quality",
         "showcase",
         "--repo-root",
-        "/Users/silverfang/arcaai/project-hope",
+        "/private/tmp/claude-501/-Users-silverfang-arcaai/ae6e2ecd-2ea8-4437-bc09-e827b4e6b8df/scratchpad/project-hope-evidence",
         "--json"
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "d1b224ba-afb0-457b-a39a-19063dbd7440",
+        "receiptId": "3b8b61c7-6d0f-469a-85eb-e0a2cae96a13",
         "ok": true,
         "command": "deliver",
         "type": "sequence",
-        "input": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/candidate.json",
-        "output": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
+        "input": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/candidate.json",
+        "output": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
         "specification": {
-          "sha256": "8e6273e53634f5081a3d68dc062a1d428940191dc46a857434e40ccc96b513d9",
-          "bytes": 8112
+          "sha256": "6def21de0c6f3c7e5d329c241b372145fbd089dac1439e4d2b5624462e4cbf46",
+          "bytes": 7430
         },
         "artifact": {
-          "sha256": "95947d5e672fe8b686a310d4d26b4c5b9e6d712dd008b117b38e456ff7568888",
-          "bytes": 821711
+          "sha256": "6d2f3b4cd52161f98ee348398d464f5f53e787b524b44f6e90974c81b72db8a9",
+          "bytes": 821986
         },
         "validation": {
           "checksPassed": 9,
@@ -96,10 +96,9 @@
         },
         "evidence": {
           "verified": true,
-          "repository": "git@github-arcaai:ArcaAI/project-hope.git",
-          "revision": "dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d",
-          "references": 9,
-          "linkMode": "local-only"
+          "repository": "https://github.com/ArcaAI/project-hope",
+          "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0",
+          "references": 12
         },
         "update": {
           "status": "unavailable",
@@ -117,20 +116,20 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 117,
+      "durationMs": 139,
       "command": [
         "/Users/silverfang/.nvm/versions/node/v24.8.0/bin/node",
         "/Users/silverfang/.agents/skills/archify/bin/archify.mjs",
         "check",
-        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
+        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
         "--require-provenance"
       ],
       "receipt": {
         "ok": true,
-        "file": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
+        "file": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
         "artifact": {
-          "sha256": "95947d5e672fe8b686a310d4d26b4c5b9e6d712dd008b117b38e456ff7568888",
-          "bytes": 821711
+          "sha256": "6d2f3b4cd52161f98ee348398d464f5f53e787b524b44f6e90974c81b72db8a9",
+          "bytes": 821986
         },
         "checks": [
           {
@@ -197,7 +196,7 @@
             "containerBorderRuns": 0,
             "labelRouteClearanceIssues": 0,
             "labelCanvasOverflowIssues": 0,
-            "minLabelRouteClearance": 8,
+            "minLabelRouteClearance": 10,
             "desktopReadabilityIssues": 0,
             "viewportHeightIssues": 0,
             "minProjectedNodeTextPx": 7,
@@ -256,23 +255,23 @@
             },
             "minimumSourceTextPx": 7,
             "minimumProjectedTextPx": 7,
-            "semanticTextCount": 32
+            "semanticTextCount": 28
           },
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "d1b224ba-afb0-457b-a39a-19063dbd7440"
+        "deliveryReceiptId": "3b8b61c7-6d0f-469a-85eb-e0a2cae96a13"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 15920,
+      "durationMs": 4372,
       "command": [
         "/Users/silverfang/.nvm/versions/node/v24.8.0/bin/node",
         "/Users/silverfang/.agents/skills/archify/bin/archify.mjs",
         "browser-check",
-        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
+        "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
         "--json",
         "--require-provenance"
       ],
@@ -285,11 +284,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "d1b224ba-afb0-457b-a39a-19063dbd7440",
+        "deliveryReceiptId": "3b8b61c7-6d0f-469a-85eb-e0a2cae96a13",
         "artifact": {
-          "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.html",
-          "sha256": "95947d5e672fe8b686a310d4d26b4c5b9e6d712dd008b117b38e456ff7568888",
-          "bytes": 821711
+          "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
+          "sha256": "6d2f3b4cd52161f98ee348398d464f5f53e787b524b44f6e90974c81b72db8a9",
+          "bytes": 821986
         },
         "state": {
           "detail": "read",
@@ -311,7 +310,7 @@
               "innerWidth": 1440,
               "innerHeight": 900,
               "scrollWidth": 1440,
-              "scrollHeight": 1646,
+              "scrollHeight": 1456,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -326,15 +325,15 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 1504,
+                "svgPx": 1314,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -363,7 +362,7 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1750,
+              "scrollHeight": 1555,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -378,15 +377,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 1542,
+                "svgPx": 1347,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -415,7 +414,7 @@
               "innerWidth": 1920,
               "innerHeight": 1080,
               "scrollWidth": 1920,
-              "scrollHeight": 1750,
+              "scrollHeight": 1107,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -424,21 +423,21 @@
               "readerOverflow": "authored",
               "readerFit": "width-first",
               "ok": true,
-              "readerWidth": 1856,
-              "diagramWidth": 1380,
+              "readerWidth": 960,
+              "diagramWidth": 920,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 1542,
+                "svgPx": 898,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -476,21 +475,21 @@
               "readerOverflow": null,
               "readerFit": "width-first",
               "ok": true,
-              "readerWidth": 1018,
-              "diagramWidth": 968,
+              "readerWidth": 1159,
+              "diagramWidth": 1109,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
                 "svgPx": 1082,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -572,7 +571,7 @@
               "innerWidth": 1440,
               "innerHeight": 900,
               "scrollWidth": 1440,
-              "scrollHeight": 1646,
+              "scrollHeight": 1456,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -587,15 +586,15 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 1504,
+                "svgPx": 1314,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -624,7 +623,7 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1750,
+              "scrollHeight": 1555,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -639,15 +638,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 1542,
+                "svgPx": 1347,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -676,7 +675,7 @@
               "innerWidth": 1920,
               "innerHeight": 1080,
               "scrollWidth": 1920,
-              "scrollHeight": 1750,
+              "scrollHeight": 1107,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -685,21 +684,21 @@
               "readerOverflow": "authored",
               "readerFit": "width-first",
               "ok": true,
-              "readerWidth": 1856,
-              "diagramWidth": 1380,
+              "readerWidth": 960,
+              "diagramWidth": 920,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 1542,
+                "svgPx": 898,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -737,21 +736,21 @@
               "readerOverflow": null,
               "readerFit": "width-first",
               "ok": true,
-              "readerWidth": 1018,
-              "diagramWidth": 968,
+              "readerWidth": 1159,
+              "diagramWidth": 1109,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
                 "svgPx": 1082,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -785,7 +784,7 @@
               "innerWidth": 1440,
               "innerHeight": 900,
               "scrollWidth": 1440,
-              "scrollHeight": 1646,
+              "scrollHeight": 1456,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -800,15 +799,15 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 1504,
+                "svgPx": 1314,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -837,7 +836,7 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1750,
+              "scrollHeight": 1555,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -852,15 +851,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 1542,
+                "svgPx": 1347,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -889,7 +888,7 @@
               "innerWidth": 1920,
               "innerHeight": 1080,
               "scrollWidth": 1920,
-              "scrollHeight": 1750,
+              "scrollHeight": 1107,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -898,21 +897,21 @@
               "readerOverflow": "authored",
               "readerFit": "width-first",
               "ok": true,
-              "readerWidth": 1856,
-              "diagramWidth": 1380,
+              "readerWidth": 960,
+              "diagramWidth": 920,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 1542,
+                "svgPx": 898,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -950,21 +949,21 @@
               "readerOverflow": null,
               "readerFit": "width-first",
               "ok": true,
-              "readerWidth": 1018,
-              "diagramWidth": 968,
+              "readerWidth": 1159,
+              "diagramWidth": 1109,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
                 "svgPx": 1082,
                 "cardsPx": 0,
-                "viewBoxHeight": 1028
+                "viewBoxHeight": 898
               },
               "viewBoxWidth": 920,
               "minimumProjectedNodeTextPx": 7,
               "minimumProjectedNonEdgeTextPx": 7,
               "minimumProjectedEdgeTextPx": 7,
-              "minimumProjectedNodeText": "text, instructions list,tenant_id; the schema hasno model field",
+              "minimumProjectedNodeText": "text, instructions[],tenant_id, text_provider,text_model,text_provider_overrides",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
                 "kind": "edge",
@@ -1000,15 +999,19 @@
       }
     }
   },
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
   "diagnostics": [],
   "evidence": {
-    "receipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.finalize.json",
-    "summaryReceipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.finalize-summary.json",
-    "browserCheckReceipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261014-154734/nlp-llm-flow.browser-check.json"
+    "receipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.finalize.json",
+    "summaryReceipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.finalize-summary.json",
+    "browserCheckReceipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-10-14T10:18:39.791Z",
-  "durationMs": 16571,
+  "finishedAt": "2026-10-22T07:56:46.106Z",
+  "durationMs": 5169,
   "update": {
     "status": "unavailable",
     "installedVersion": null,

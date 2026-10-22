@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="generator" content="archify 3.1.0">
+  <meta name="generator" content="archify 3.2.0">
   <meta name="archify-reader-contract" content="declared-wide-v1">
-  <title>NLP topic/intent LLM flow (dev-2.2) Diagram</title>
+  <title>NLP service: who calls it, what it calls, and what each call carries (latest dev-2.2) Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -2736,19 +2736,31 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     }
     html[data-reader-rail="bottom"] .node-outline-head { padding: 1rem 2.5rem 0.375rem 0.25rem; }
     html[data-reader-rail="bottom"] .node-outline-list {
-      columns: 15rem;
-      column-gap: 1.75rem;
+      display: grid;
+      gap: 0.5rem;
       padding: 0;
       overflow: visible;
       -webkit-mask-image: none;
       mask-image: none;
     }
-    /* Named groups stay whole; a single unnamed group may split across columns,
-       where a continuous spine would read as a broken line. */
     html[data-reader-rail="bottom"] .node-outline-group + .node-outline-group { margin-top: 0; }
-    html[data-reader-rail="bottom"] .node-outline-group:has(> .node-outline-heading) { break-inside: avoid; padding-bottom: 0.25rem; }
-    html[data-reader-rail="bottom"] .node-outline-group:not(:has(> .node-outline-heading)) > ul::before { display: none; }
-    html[data-reader-rail="bottom"] .node-outline-group li { break-inside: avoid; }
+    html[data-reader-rail="bottom"] .node-outline-group:has(> .node-outline-heading) { padding-bottom: 0.25rem; }
+    html[data-reader-rail="bottom"] .node-outline-group > ul {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem 0.5rem;
+    }
+    html[data-reader-rail="bottom"] .node-outline-group > ul::before { display: none; }
+    html[data-reader-rail="bottom"] .node-outline-group li {
+      flex: 0 1 auto;
+      min-width: min(100%, 12rem);
+      max-width: min(100%, 32rem);
+    }
+    html[data-reader-rail="bottom"] .node-outline-heading {
+      justify-content: flex-start;
+      gap: 0.5rem;
+    }
+    html[data-reader-rail="bottom"] .node-outline-heading > span { overflow-wrap: anywhere; }
     .rail-controls { display: none; }
     html:is([data-reader-rail="true"], [data-reader-rail="overlay"], [data-reader-rail="bottom"]) .rail-controls {
       display: flex;
@@ -2964,6 +2976,37 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     .node-outline-item:hover small,
     .node-outline-item[data-previewing] small,
     .node-outline-item[aria-current="true"] small { color: var(--text-muted); }
+
+    /* The desktop bottom rail is an index: compact rows keep related nodes
+       together while allowing full names and descriptions to wrap naturally. */
+    html[data-reader-rail="bottom"] .node-outline-item {
+      grid-template-columns: 0.625rem minmax(0, 1fr) 0.75rem;
+      align-items: first baseline;
+      column-gap: 0.375rem;
+      min-height: 0;
+      padding-block: 0.375rem;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item strong,
+    html[data-reader-rail="bottom"] .node-outline-item small {
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item strong {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item small {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: left;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item::after {
+      grid-column: 3;
+      grid-row: 1;
+      align-self: center;
+    }
 
     .card-header {
       display: flex;
@@ -5150,18 +5193,18 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="BLUEPRINT / REV 01"
            data-preset-badge-editorial="EDITORIAL / FIELD NOTE">
         <div class="pulse-dot"></div>
-        <h1>NLP topic/intent LLM flow (dev-2.2)</h1>
+        <h1>NLP service: who calls it, what it calls, and what each call carries (latest dev-2.2)</h1>
       </div>
     </div>
 
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"git@github-arcaai:ArcaAI/project-hope.git","revision":"dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d","shortRevision":"dacdc31","label":"github-arcaai:ArcaAI/project-hope.git","linkMode":"local-only"},"referenceCount":9,"nodes":{"gateway":[{"path":"apps/api/src/modules/ai-inference/ai-inference.client.ts","line":91,"endLine":98,"label":"classifyTopic / classifyIntent"}],"nlpRoute":[{"path":"apps/nlp/src/nlp/api/v1/rest/classify.py","line":201,"endLine":208,"label":"prompt builder"},{"path":"apps/nlp/src/nlp/api/v1/rest/classify.py","line":223,"endLine":280,"label":"topic route"}],"nlpClient":[{"path":"apps/nlp/src/nlp/services/external_text_client.py","line":101,"endLine":185,"label":"POST /generate + retries"}],"text":[{"path":"apps/text/src/text/api/endpoints/generate.py","line":417,"endLine":510,"label":"/api/v1/generate"},{"path":"apps/text/src/text/api/endpoints/generate.py","line":171,"endLine":230,"label":"input guardrail gate"},{"path":"apps/text/src/text/core/connection.py","line":38,"endLine":72,"label":"injected provider connection"}],"guardrail":[{"path":"apps/guardrail/src/guardrail/api/endpoints/medical.py","line":120,"endLine":174,"label":"/medical/validate"}],"llm":[{"path":"apps/text/src/text/providers/lmstudio.py","line":75,"endLine":187,"label":"LMStudioProvider"}]}}</script>
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/ArcaAI/project-hope","revision":"8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0","shortRevision":"8cb2e5e","label":"ArcaAI/project-hope","href":"https://github.com/ArcaAI/project-hope/tree/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0"},"referenceCount":17,"nodes":{"db":[{"path":"packages/database/src/prisma/db_main/seed/16-ai-routing-policy.ts","line":95,"endLine":120,"label":"task -\u003e default model","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/packages/database/src/prisma/db_main/seed/16-ai-routing-policy.ts#L95-L120"},{"path":"packages/database/src/prisma/db_main/seed/ai-models/nlp.ts","line":109,"endLine":150,"label":"Medical-NER + clinicalTaxonomy","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/packages/database/src/prisma/db_main/seed/ai-models/nlp.ts#L109-L150"}],"gateway":[{"path":"apps/api/src/modules/ai-inference/ai-inference.client.ts","line":81,"endLine":98,"label":"calls to NLP","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/api/src/modules/ai-inference/ai-inference.client.ts#L81-L98"},{"path":"packages/applications/src/services/consultation/shared/resolveNerModelSelection.ts","line":115,"endLine":125,"label":"model_name + clinical_taxonomy","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/packages/applications/src/services/consultation/shared/resolveNerModelSelection.ts#L115-L125"},{"path":"apps/api/src/modules/ai-inference/ai-inference.controller.ts","line":509,"endLine":531,"label":"topic/intent provider + model","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/api/src/modules/ai-inference/ai-inference.controller.ts#L509-L531"}],"guardrail":[{"path":"apps/guardrail/src/guardrail/services/external_nlp_client.py","line":246,"endLine":460,"label":"guard calls to NLP","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/guardrail/src/guardrail/services/external_nlp_client.py#L246-L460"}],"harness":[{"path":"apps/harness/src/harness/services/nlp_client.py","line":52,"endLine":170,"label":"NER + classify calls","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/harness/src/harness/services/nlp_client.py#L52-L170"}],"nlp":[{"path":"apps/nlp/src/nlp/api/v1/__init__.py","line":1,"endLine":28,"label":"routes","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/api/v1/__init__.py#L1-L28"},{"path":"apps/nlp/src/nlp/lifespan.py","line":100,"endLine":205,"label":"startup clients","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/lifespan.py#L100-L205"},{"path":"apps/nlp/src/nlp/dependencies.py","line":121,"endLine":260,"label":"per-request model load","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/dependencies.py#L121-L260"}],"llm":[{"path":"apps/text/src/text/providers/lmstudio.py","line":114,"endLine":357,"label":"LMStudioProvider","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/text/src/text/providers/lmstudio.py#L114-L357"}],"text":[{"path":"apps/nlp/src/nlp/services/external_text_client.py","line":148,"endLine":260,"label":"NLP -\u003e text call","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/services/external_text_client.py#L148-L260"},{"path":"apps/text/src/text/api/endpoints/generate.py","line":349,"endLine":500,"label":"/api/v1/generate","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/text/src/text/api/endpoints/generate.py#L349-L500"}],"weights":[{"path":"apps/nlp/src/nlp/models/source_resolver.py","line":274,"endLine":350,"label":"resolve_model_dir","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/models/source_resolver.py#L274-L350"},{"path":"apps/nlp/src/nlp/core/model_credentials.py","line":101,"endLine":300,"label":"S3 keys from gateway","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/core/model_credentials.py#L101-L300"}],"redis":[{"path":"apps/nlp/src/nlp/core/effective_config.py","line":285,"endLine":300,"label":"subscribe","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/core/effective_config.py#L285-L300"},{"path":"apps/nlp/src/nlp/lifespan.py","line":135,"endLine":145,"label":"listener started","href":"https://github.com/ArcaAI/project-hope/blob/8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0/apps/nlp/src/nlp/lifespan.py#L135-L145"}]}}</script>
     <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"to cycle","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.svg.auto":"SVG · Auto","viewer.export.svg.auto.hint":"Matches host theme","viewer.export.svg.light":"SVG · Light","viewer.export.svg.light.hint":"Always light","viewer.export.svg.dark":"SVG · Dark","viewer.export.svg.dark.hint":"Always dark","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Path: {source} → {target} · {count} step","viewer.export.card.routeSummary.other":"Path: {source} → {target} · {count} steps","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guide.title":"Explore this system","viewer.focus.selectedNodes":"{count} selected nodes","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.credit":"Find Archify useful? A star on GitHub helps","viewer.guide.star":"Star","viewer.guide.facts":"{nodes} · {relationships}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.open":"Open diagram guide","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.verificationScope":"Verified against local Git at the pinned revision. Remote access has not been checked.","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.move":"Move semantic passport. Drag, use arrow keys, or press Home to reset.","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Path","viewer.route.start":"Click where the path starts","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Path","viewer.route.pickTwo":"Click two nodes on the diagram","viewer.route.pickOne":"Click a node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Click a start, then an end. Paths follow the arrows.","viewer.route.destination":"Where does the path from {label} end?","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"Pick two different nodes.","viewer.route.unreachable":"Cannot reach {label} from here","viewer.route.unreachable.detail":"{target} cannot be reached from {source} along the arrows. Pick a highlighted node.","viewer.route.start.instructions":"Next, pick the end. Only nodes you can reach will light up.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest path","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} step","viewer.route.overview.hop.other":"{count} steps","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} reachable node is highlighted. Click it.","viewer.route.destination.count.other":"{count} reachable nodes are highlighted. Click one.","viewer.route.noOutgoing":"No arrows lead out of this node. Clear it and pick another start.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"ROUTE","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.outline.title":"Node index","viewer.rail.show":"Notes \u0026 index","viewer.rail.controls":"Side panel","viewer.rail.collapse":"Collapse side panel","viewer.rail.bottom":"Move panel below the diagram","viewer.rail.right":"Move panel beside the diagram","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / PLATE 04">
-      <svg viewBox="0 0 920 1028" data-sequence-column-fit="spread" data-reader-fit="width-first" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-motion-choreography="sequence">
-        <title id="archify-diagram-title">NLP topic/intent LLM flow (dev-2.2)</title>
-        <desc id="archify-diagram-description">A sequence diagram generated by Archify.</desc>
+      <svg viewBox="0 0 1300 660" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
+        <title id="archify-diagram-title">NLP service: who calls it, what it calls, and what each call carries (latest dev-2.2)</title>
+        <desc id="archify-diagram-description">An architecture diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -5180,254 +5223,249 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M 40 0 L 0 0 0 40" class="c-grid" stroke-width="0.5"/>
           </pattern>
         </defs>
+        <style>
+          svg[data-node-ui] [data-node-id] > rect:not(.c-mask) { stroke-width: 1.25px; }
+          :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] > rect:not(.c-mask).c-frontend { fill: color-mix(in srgb, var(--frontend-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--frontend-stroke) 72%, var(--mask)); }
+          :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] > rect:not(.c-mask).c-backend { fill: color-mix(in srgb, var(--backend-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--backend-stroke) 72%, var(--mask)); }
+          :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] > rect:not(.c-mask).c-database { fill: color-mix(in srgb, var(--database-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--database-stroke) 72%, var(--mask)); }
+          :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] > rect:not(.c-mask).c-cloud { fill: color-mix(in srgb, var(--cloud-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--cloud-stroke) 72%, var(--mask)); }
+          :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] > rect:not(.c-mask).c-security { fill: color-mix(in srgb, var(--security-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--security-stroke) 72%, var(--mask)); }
+          :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] > rect:not(.c-mask).c-messagebus { fill: color-mix(in srgb, var(--messagebus-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--messagebus-stroke) 72%, var(--mask)); }
+          :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] > rect:not(.c-mask).c-external { fill: color-mix(in srgb, var(--external-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--external-stroke) 72%, var(--mask)); }
+          svg[data-node-ui]:is([data-preset="classic"], [data-preset="signal-flow"], [data-preset="editorial"]) .c-region { fill: color-mix(in srgb, var(--cloud-stroke) 3%, transparent); stroke: color-mix(in srgb, var(--cloud-stroke) 42%, var(--lane-stroke)); stroke-dasharray: none; }
+          svg[data-node-ui] .c-security-group { stroke: color-mix(in srgb, var(--security-stroke) 58%, var(--lane-stroke)); }
+          svg[data-node-ui]:is([data-preset="classic"], [data-preset="signal-flow"], [data-preset="editorial"]) .c-security-group { stroke-dasharray: 4 3; }
+          svg[data-node-ui]:is([data-preset="classic"], [data-preset="signal-flow"], [data-preset="editorial"]) .c-lane { stroke: var(--lane-stroke); stroke-dasharray: none; }
+          svg[data-node-ui] [data-graph-role="structural-frame-label-mask"] { rx: 5px; fill: color-mix(in srgb, var(--cloud-stroke) 10%, var(--mask)); stroke: color-mix(in srgb, var(--cloud-stroke) 38%, var(--mask)); stroke-width: .8px; }
+          svg[data-node-ui] [data-composition-frame-kind="security-group"] > [data-graph-role="structural-frame-label-mask"] { fill: color-mix(in srgb, var(--security-stroke) 9%, var(--mask)); stroke: color-mix(in srgb, var(--security-stroke) 36%, var(--mask)); }
+          svg[data-node-ui] .phase-rule { opacity: .5; stroke-dasharray: none; }
+          svg[data-node-ui] .phase-chip { stroke: var(--lane-stroke); stroke-width: .75px; }
+          svg[data-node-ui] g[data-edge-from] > rect.c-mask { rx: 7px; stroke: var(--lane-stroke); stroke-width: .75px; }
+          svg[data-node-ui][data-preset="blueprint"] :is([data-graph-role="structural-frame-label-mask"], g[data-edge-from] > rect.c-mask, .phase-chip) { rx: 2px; }
+          svg[data-node-ui][data-preset="editorial"] :is([data-graph-role="structural-frame-label-mask"], g[data-edge-from] > rect.c-mask, .phase-chip) { rx: 3px; }
+        </style>
 
         <!-- Background Grid -->
         <rect width="100%" height="100%" fill="url(#grid)" />
 
-        <!-- Time Segments -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="0" x="48" y="150" width="824" height="400" rx="10" class="c-lane" stroke-width="1"/>
+        <!-- Boundaries (behind everything) -->
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="1" x="48" y="562" width="824" height="368" rx="10" class="c-lane" stroke-width="1"/>
 
-        <!-- Lifelines -->
-        <path d="M 116.5 142 L 116.5 932" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 258.3 142 L 258.3 932" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 400.1 142 L 400.1 932" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 541.9000000000001 142 L 541.9000000000001 932" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 683.7 142 L 683.7 932" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 825.5 142 L 825.5 932" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-
-        <!-- Activations -->
-        <rect x="111.5" y="165" width="10" height="369" rx="3" class="c-mask"/>
-        <rect x="111.5" y="165" width="10" height="369" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="253.3" y="170" width="10" height="364" rx="3" class="c-mask"/>
-        <rect x="253.3" y="170" width="10" height="364" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="395.1" y="250" width="10" height="256" rx="3" class="c-mask"/>
-        <rect x="395.1" y="250" width="10" height="256" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="536.9000000000001" y="330" width="10" height="91" rx="3" class="c-mask"/>
-        <rect x="536.9000000000001" y="330" width="10" height="91" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="111.5" y="580" width="10" height="293" rx="3" class="c-mask"/>
-        <rect x="111.5" y="580" width="10" height="293" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="253.3" y="580" width="10" height="293" rx="3" class="c-mask"/>
-        <rect x="253.3" y="580" width="10" height="293" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="395.1" y="585" width="10" height="260" rx="3" class="c-mask"/>
-        <rect x="395.1" y="585" width="10" height="260" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="536.9000000000001" y="585" width="10" height="260" rx="3" class="c-mask"/>
-        <rect x="536.9000000000001" y="585" width="10" height="260" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="678.7" y="675" width="10" height="86" rx="3" class="c-mask"/>
-        <rect x="678.7" y="675" width="10" height="86" rx="3" class="c-security" stroke-width="1"/>
-        <rect x="820.5" y="783" width="10" height="34" rx="3" class="c-mask"/>
-        <rect x="820.5" y="783" width="10" height="34" rx="3" class="c-external" stroke-width="1"/>
-
-        <!-- Messages -->
-        <g data-edge-from="gateway" data-edge-to="nlpRoute" data-edge-label="POST /classify/topic" data-edge-key="0" data-edge-id="topic-request">
-          <path data-composition-edge-from="gateway" data-composition-edge-to="nlpRoute" data-composition-edge-id="topic-request" data-composition-points="123.5,170;251.3,170" d="M 123.5 170 L 251.3 170" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <g data-detail="context">
-          <rect x="115.4" y="150" width="144" height="18" rx="3" class="c-mask"/>
-          <text x="187.4" y="160" class="t-edge-emphasis" font-size="11" text-anchor="middle">POST /classify/topic</text>
+        <!-- Connection paths (before components for correct z-order) -->
+        <g data-graph-role="automatic-crossover" style="--step:0">
+          <path data-graph-role="automatic-crossover-underlay" d="M 140 112 L 140 200" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="db" data-edge-to="gateway" data-edge-label="model per task" data-edge-key="0" data-edge-id="db-to-gateway" data-composition-points="140,112;140,200" data-composition-crossover="halo" data-composition-independent="true" d="M 140 112 L 140 200" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
-        <text data-detail="context" x="135.5" y="188" class="t-muted" font-size="7"><tspan x="135.5" dy="0">text, instructions list,</tspan><tspan x="135.5" dy="11">tenant_id; the schema has</tspan><tspan x="135.5" dy="11">no model field</tspan></text>
+        <g data-graph-role="automatic-crossover" style="--step:1">
+          <path data-graph-role="automatic-crossover-underlay" d="M 240 231.95 L 580 231.95" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="nlp" data-edge-label="tokens, diagnosis, topic, extract" data-edge-key="1" data-edge-id="gateway-to-nlp" data-composition-points="240,231.95;580,231.95" data-composition-crossover="halo" data-composition-independent="true" d="M 240 231.95 L 580 231.95" class="a-emphasis" data-animate="edge" style="--step:1" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:2">
+          <path data-graph-role="automatic-crossover-underlay" d="M 580 247 L 240 247" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="nlp" data-edge-to="gateway" data-edge-label="/internal/* config, S3 keys" data-edge-key="2" data-edge-id="nlp-to-gateway" data-composition-points="580,247;240,247" data-composition-crossover="halo" data-composition-independent="true" d="M 580 247 L 240 247" class="a-dashed" data-animate="edge" style="--step:2" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:3">
+          <path data-graph-role="automatic-crossover-underlay" d="M 240 403 L 580 403" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="guardrail" data-edge-to="nlp" data-edge-label="guard/pii, classify, entailment" data-edge-key="3" data-edge-id="guardrail-to-nlp" data-composition-points="240,403;580,403" data-composition-crossover="halo" data-composition-independent="true" d="M 240 403 L 580 403" class="a-security" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:4">
+          <path data-graph-role="automatic-crossover-underlay" d="M 240 556 L 580 556" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="harness" data-edge-to="nlp" data-edge-label="classify/tokens, classify/text" data-edge-key="4" data-edge-id="harness-to-nlp" data-composition-points="240,556;580,556" data-composition-crossover="halo" data-composition-independent="true" d="M 240 556 L 580 556" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:5">
+          <path data-graph-role="automatic-crossover-underlay" d="M 800 264 L 1060 264" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="nlp" data-edge-to="text" data-edge-label="POST /api/v1/generate" data-edge-key="5" data-edge-id="nlp-to-text" data-composition-points="800,264;1060,264" data-composition-crossover="halo" data-composition-independent="true" d="M 800 264 L 1060 264" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:6">
+          <path data-graph-role="automatic-crossover-underlay" d="M 1160 200 L 1160 112" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="text" data-edge-to="llm" data-edge-label="chat completion" data-edge-key="6" data-edge-id="text-to-llm" data-composition-points="1160,200;1160,112" data-composition-crossover="halo" data-composition-independent="true" d="M 1160 200 L 1160 112" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:7">
+          <path data-graph-role="automatic-crossover-underlay" d="M 800 396 L 1060 396" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="nlp" data-edge-to="weights" data-edge-label="download weights" data-edge-key="7" data-edge-id="nlp-to-weights" data-composition-points="800,396;1060,396" data-composition-crossover="halo" data-composition-independent="true" d="M 800 396 L 1060 396" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:8">
+          <path data-graph-role="automatic-crossover-underlay" d="M 1060 556 L 800 556" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="redis" data-edge-to="nlp" data-edge-label="config changed" data-edge-key="8" data-edge-id="redis-to-nlp" data-composition-points="1060,556;800,556" data-composition-crossover="halo" data-composition-independent="true" d="M 1060 556 L 800 556" class="a-dashed" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
 
-        <g data-edge-from="nlpRoute" data-edge-to="nlpClient" data-edge-label="generate_label_with_usage" data-edge-key="1" data-edge-id="build-prompt">
-          <path data-composition-edge-from="nlpRoute" data-composition-edge-to="nlpClient" data-composition-edge-id="build-prompt" data-composition-points="265.3,250;393.1,250" d="M 265.3 250 L 393.1 250" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="240.70000000000005" y="230" width="177" height="18" rx="3" class="c-mask"/>
-          <text x="329.20000000000005" y="240" class="t-muted" font-size="11" text-anchor="middle">generate_label_with_usage</text>
-        </g>
-        <text data-detail="context" x="277.3" y="268" class="t-muted" font-size="7"><tspan x="277.3" dy="0">prompt = topic list + raw</tspan><tspan x="277.3" dy="11">patient text, no system</tspan><tspan x="277.3" dy="11">prompt</tspan></text>
-        </g>
-
-        <g data-edge-from="nlpClient" data-edge-to="text" data-edge-label="POST {TEXT_URL}/generate" data-edge-key="2" data-edge-id="generate-today">
-          <path data-composition-edge-from="nlpClient" data-composition-edge-to="text" data-composition-edge-id="generate-today" data-composition-points="407.1,330;534.9000000000001,330" d="M 407.1 330 L 534.9000000000001 330" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="385.80000000000007" y="310" width="170.39999999999998" height="18" rx="3" class="c-mask"/>
-          <text x="471.00000000000006" y="320" class="t-muted" font-size="11" text-anchor="middle">POST {TEXT_URL}/generate</text>
-        </g>
-        <text data-detail="context" x="419.1" y="348" class="t-muted" font-size="7"><tspan x="419.1" dy="0">body is prompt + stream</tspan><tspan x="419.1" dy="11">only: no model, no</tspan><tspan x="419.1" dy="11">provider_overrides</tspan></text>
+        <!-- Components -->
+        <g id="node-db" data-node-id="db" data-node-label="Postgres (db_main)" tabindex="0" role="button" aria-label="Focus Postgres (db_main), AiRoutingPolicy, AiModel, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="AiRoutingPolicy, AiModel" data-node-context="Architecture component">
+          <title>Postgres (db_main) · AiRoutingPolicy, AiModel · Architecture component</title>
+          <rect x="40" y="40" width="200" height="72" rx="8" class="c-mask"/>
+          <rect x="40" y="40" width="200" height="72" rx="8" class="c-database" data-animate="node" style="--step:0" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(46 46) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="140" y="74" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Postgres (db_main)</text>
+        <text data-detail="context" x="140" y="90" class="t-muted" font-size="9" text-anchor="middle">AiRoutingPolicy, AiModel</text>
         </g>
 
-        <g data-edge-from="text" data-edge-to="nlpClient" data-edge-label="404: route is /api/v1/generate" data-edge-key="3" data-edge-id="not-found">
-          <path data-composition-edge-from="text" data-composition-edge-to="nlpClient" data-composition-edge-id="not-found" data-composition-points="534.9000000000001,415;407.1,415" d="M 534.9000000000001 415 L 407.1 415" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="366.00000000000006" y="395" width="210" height="18" rx="3" class="c-mask"/>
-          <text x="471.00000000000006" y="405" class="t-muted" font-size="11" text-anchor="middle">404: route is /api/v1/generate</text>
-        </g>
-        <text data-detail="context" x="419.1" y="433" class="t-muted" font-size="7"><tspan x="419.1" dy="0">with the URL fixed it</tspan><tspan x="419.1" dy="11">becomes 422 &#39;model is</tspan><tspan x="419.1" dy="11">required&#39;</tspan></text>
-        </g>
-
-        <g data-edge-from="nlpClient" data-edge-to="nlpRoute" data-edge-label="unavailable after 3 attempts" data-edge-key="4" data-edge-id="exhausted">
-          <path data-composition-edge-from="nlpClient" data-composition-edge-to="nlpRoute" data-composition-edge-id="exhausted" data-composition-points="393.1,500;265.3,500" d="M 393.1 500 L 265.3 500" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="230.80000000000007" y="480" width="196.79999999999998" height="18" rx="3" class="c-mask"/>
-          <text x="329.20000000000005" y="490" class="t-muted" font-size="11" text-anchor="middle">unavailable after 3 attempts</text>
-        </g>
-        </g>
-
-        <g data-edge-from="nlpRoute" data-edge-to="gateway" data-edge-label="503 not available" data-edge-key="5" data-edge-id="topic-503">
-          <path data-composition-edge-from="nlpRoute" data-composition-edge-to="gateway" data-composition-edge-id="topic-503" data-composition-points="251.3,528;123.5,528" d="M 251.3 528 L 123.5 528" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="125.30000000000001" y="508" width="124.19999999999999" height="18" rx="3" class="c-mask"/>
-          <text x="187.4" y="518" class="t-muted" font-size="11" text-anchor="middle">503 not available</text>
-        </g>
-        </g>
-
-        <g data-edge-from="nlpClient" data-edge-to="text" data-edge-label="POST /api/v1/generate" data-edge-key="6" data-edge-id="generate-fixed">
-          <path data-composition-edge-from="nlpClient" data-composition-edge-to="text" data-composition-edge-id="generate-fixed" data-composition-points="407.1,585;534.9000000000001,585" d="M 407.1 585 L 534.9000000000001 585" class="a-emphasis" data-animate="edge" style="--step:6" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <g data-detail="context">
-          <rect x="395.70000000000005" y="565" width="150.6" height="18" rx="3" class="c-mask"/>
-          <text x="471.00000000000006" y="575" class="t-edge-emphasis" font-size="11" text-anchor="middle">POST /api/v1/generate</text>
-        </g>
-        <text data-detail="context" x="419.1" y="603" class="t-muted" font-size="7"><tspan x="419.1" dy="0">needs model +</tspan><tspan x="419.1" dy="11">provider_overrides, which</tspan><tspan x="419.1" dy="11">only the gateway can</tspan><tspan x="419.1" dy="11">resolve</tspan></text>
-        </g>
-
-        <g data-edge-from="text" data-edge-to="guardrail" data-edge-label="POST /api/medical/validate" data-edge-key="7" data-edge-id="guard-input">
-          <path data-composition-edge-from="text" data-composition-edge-to="guardrail" data-composition-edge-id="guard-input" data-composition-points="548.9000000000001,675;676.7,675" d="M 548.9000000000001 675 L 676.7 675" class="a-security" data-animate="edge" style="--step:7" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="521.0000000000001" y="655" width="183.6" height="18" rx="3" class="c-mask"/>
-          <text x="612.8000000000001" y="665" class="t-edge-security" font-size="11" text-anchor="middle">POST /api/medical/validate</text>
-        </g>
-        <text data-detail="context" x="560.9000000000001" y="693" class="t-muted" font-size="7"><tspan x="560.9000000000001" dy="0">input gate when the client</tspan><tspan x="560.9000000000001" dy="11">is wired; a block returns</tspan><tspan x="560.9000000000001" dy="11">422</tspan></text>
-        </g>
-
-        <g data-edge-from="guardrail" data-edge-to="text" data-edge-label="allowed + usage" data-edge-key="8" data-edge-id="guard-verdict">
-          <path data-composition-edge-from="guardrail" data-composition-edge-to="text" data-composition-edge-id="guard-verdict" data-composition-points="676.7,755;548.9000000000001,755" d="M 676.7 755 L 548.9000000000001 755" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="557.3000000000001" y="735" width="111" height="18" rx="3" class="c-mask"/>
-          <text x="612.8000000000001" y="745" class="t-muted" font-size="11" text-anchor="middle">allowed + usage</text>
-        </g>
-        </g>
-
-        <g data-edge-from="text" data-edge-to="llm" data-edge-label="chat completion" data-edge-key="9" data-edge-id="llm-call">
-          <path data-composition-edge-from="text" data-composition-edge-to="llm" data-composition-edge-id="llm-call" data-composition-points="548.9000000000001,783;818.5,783" d="M 548.9000000000001 783 L 818.5 783" class="a-emphasis" data-animate="edge" style="--step:9" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <g data-detail="context">
-          <rect x="628.2" y="763" width="111" height="18" rx="3" class="c-mask"/>
-          <text x="683.7" y="773" class="t-edge-emphasis" font-size="11" text-anchor="middle">chat completion</text>
-        </g>
-        </g>
-
-        <g data-edge-from="llm" data-edge-to="text" data-edge-label="content" data-edge-key="10" data-edge-id="llm-content">
-          <path data-composition-edge-from="llm" data-composition-edge-to="text" data-composition-edge-id="llm-content" data-composition-points="818.5,811;548.9000000000001,811" d="M 818.5 811 L 548.9000000000001 811" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="654.6" y="791" width="58.199999999999996" height="18" rx="3" class="c-mask"/>
-          <text x="683.7" y="801" class="t-muted" font-size="11" text-anchor="middle">content</text>
-        </g>
-        </g>
-
-        <g data-edge-from="text" data-edge-to="nlpClient" data-edge-label="content + usage" data-edge-key="11" data-edge-id="generate-result">
-          <path data-composition-edge-from="text" data-composition-edge-to="nlpClient" data-composition-edge-id="generate-result" data-composition-points="534.9000000000001,839;407.1,839" d="M 534.9000000000001 839 L 407.1 839" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="415.50000000000006" y="819" width="111" height="18" rx="3" class="c-mask"/>
-          <text x="471.00000000000006" y="829" class="t-muted" font-size="11" text-anchor="middle">content + usage</text>
-        </g>
-        </g>
-
-        <g data-edge-from="nlpRoute" data-edge-to="gateway" data-edge-label="predicted_topic" data-edge-key="12" data-edge-id="topic-result">
-          <path data-composition-edge-from="nlpRoute" data-composition-edge-to="gateway" data-composition-edge-id="topic-result" data-composition-points="251.3,867;123.5,867" d="M 251.3 867 L 123.5 867" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="131.9" y="847" width="111" height="18" rx="3" class="c-mask"/>
-          <text x="187.4" y="857" class="t-muted" font-size="11" text-anchor="middle">predicted_topic</text>
-        </g>
-        <text data-detail="context" x="135.5" y="885" class="t-muted" font-size="7"><tspan x="135.5" dy="0">raw LLM text, not checked</tspan><tspan x="135.5" dy="11">against the topic list</tspan></text>
-        </g>
-
-        <!-- Segment Labels -->
-        <g data-graph-role="segment-label" data-segment-id="0">
-          <rect x="261.4" y="134" width="201.20000000000002" height="18" rx="3" class="c-mask"/>
-          <text x="267.4" y="147" class="t-muted" font-size="9" font-weight="600">Today: the call never reaches an LLM</text>
-        </g>
-        <g data-graph-role="segment-label" data-segment-id="1">
-          <rect x="56" y="540" width="211.6" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="553" class="t-muted" font-size="9" font-weight="600">Designed path, once the gaps are fixed</text>
-        </g>
-
-        <!-- Participants -->
-        <g id="node-gateway" data-node-id="gateway" data-node-label="API gateway" tabindex="0" role="button" aria-label="Focus API gateway, apps/api, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="apps/api" data-node-context="Sequence participant">
-          <title>API gateway · apps/api · Sequence participant</title>
-          <rect x="62" y="72" width="109" height="60" rx="6" class="c-mask"/>
-          <rect x="62" y="72" width="109" height="60" rx="6" class="c-backend" data-animate="node" style="--step:0" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(68 78) scale(0.6875)">
+        <g id="node-gateway" data-node-id="gateway" data-node-label="API gateway" tabindex="0" role="button" aria-label="Focus API gateway, apps/api :8868 + app services, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="apps/api :8868 + app services" data-node-tag="injects model + taxonomy" data-node-context="Architecture component">
+          <title>API gateway · apps/api :8868 + app services · Architecture component · injects model + taxonomy</title>
+          <rect x="40" y="200" width="200" height="80" rx="8" class="c-mask"/>
+          <rect x="40" y="200" width="200" height="80" rx="8" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 206) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="116.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API gateway</text>
-          <text data-detail="context" x="116.5" y="122" class="t-muted" font-size="7" text-anchor="middle">apps/api</text>
+          <text data-node-label="" data-detail-anchor="" x="140" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API gateway</text>
+        <text data-detail="context" x="140" y="254" class="t-muted" font-size="9" text-anchor="middle">apps/api :8868 + app services</text>
+        <text data-detail="fine" x="140" y="272" class="t-backend" font-size="7" text-anchor="middle">injects model + taxonomy</text>
         </g>
 
-        <g id="node-nlpRoute" data-node-id="nlpRoute" data-node-label="NLP route" tabindex="0" role="button" aria-label="Focus NLP route, /classify/topic, /intent, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="/classify/topic, /intent" data-node-context="Sequence participant">
-          <title>NLP route · /classify/topic, /intent · Sequence participant</title>
-          <rect x="203.8" y="72" width="109" height="60" rx="6" class="c-mask"/>
-          <rect x="203.8" y="72" width="109" height="60" rx="6" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(209.8 78) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="258.3" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">NLP route</text>
-          <text data-detail="context" x="258.3" y="122" class="t-muted" font-size="7" text-anchor="middle">/classify/topic, /intent</text>
-        </g>
-
-        <g id="node-nlpClient" data-node-id="nlpClient" data-node-label="NLP text client" tabindex="0" role="button" aria-label="Focus NLP text client, ExternalTextClient, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="ExternalTextClient" data-node-context="Sequence participant">
-          <title>NLP text client · ExternalTextClient · Sequence participant</title>
-          <rect x="345.6" y="72" width="109" height="60" rx="6" class="c-mask"/>
-          <rect x="345.6" y="72" width="109" height="60" rx="6" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(351.6 78) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="400.1" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">NLP text client</text>
-          <text data-detail="context" x="400.1" y="122" class="t-muted" font-size="7" text-anchor="middle">ExternalTextClient</text>
-        </g>
-
-        <g id="node-text" data-node-id="text" data-node-label="Text service" tabindex="0" role="button" aria-label="Focus Text service, apps/text :8862, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="apps/text :8862" data-node-context="Sequence participant">
-          <title>Text service · apps/text :8862 · Sequence participant</title>
-          <rect x="487.4000000000001" y="72" width="109" height="60" rx="6" class="c-mask"/>
-          <rect x="487.4000000000001" y="72" width="109" height="60" rx="6" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(493.4000000000001 78) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="541.9000000000001" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Text service</text>
-          <text data-detail="context" x="541.9000000000001" y="122" class="t-muted" font-size="7" text-anchor="middle">apps/text :8862</text>
-        </g>
-
-        <g id="node-guardrail" data-node-id="guardrail" data-node-label="Guardrail" tabindex="0" role="button" aria-label="Focus Guardrail, apps/guardrail, Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="apps/guardrail" data-node-context="Sequence participant">
-          <title>Guardrail · apps/guardrail · Sequence participant</title>
-          <rect x="629.2" y="72" width="109" height="60" rx="6" class="c-mask"/>
-          <rect x="629.2" y="72" width="109" height="60" rx="6" class="c-security" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(635.2 78) scale(0.6875)">
+        <g id="node-guardrail" data-node-id="guardrail" data-node-label="Guardrail" tabindex="0" role="button" aria-label="Focus Guardrail, apps/guardrail, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="apps/guardrail" data-node-tag="policy owner" data-node-context="Architecture component">
+          <title>Guardrail · apps/guardrail · Architecture component · policy owner</title>
+          <rect x="40" y="360" width="200" height="80" rx="8" class="c-mask"/>
+          <rect x="40" y="360" width="200" height="80" rx="8" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(46 366) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="683.7" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Guardrail</text>
-          <text data-detail="context" x="683.7" y="122" class="t-muted" font-size="7" text-anchor="middle">apps/guardrail</text>
+          <text data-node-label="" data-detail-anchor="" x="140" y="398" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Guardrail</text>
+        <text data-detail="context" x="140" y="414" class="t-muted" font-size="9" text-anchor="middle">apps/guardrail</text>
+        <text data-detail="fine" x="140" y="432" class="t-security" font-size="7" text-anchor="middle">policy owner</text>
         </g>
 
-        <g id="node-llm" data-node-id="llm" data-node-label="LLM provider" tabindex="0" role="button" aria-label="Focus LLM provider, LM Studio default, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="LM Studio default" data-node-context="Sequence participant">
-          <title>LLM provider · LM Studio default · Sequence participant</title>
-          <rect x="771" y="72" width="109" height="60" rx="6" class="c-mask"/>
-          <rect x="771" y="72" width="109" height="60" rx="6" class="c-external" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(777 78) scale(0.6875)">
+        <g id="node-harness" data-node-id="harness" data-node-label="Harness" tabindex="0" role="button" aria-label="Focus Harness, apps/harness workflows, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="apps/harness workflows" data-node-context="Architecture component">
+          <title>Harness · apps/harness workflows · Architecture component</title>
+          <rect x="40" y="520" width="200" height="72" rx="8" class="c-mask"/>
+          <rect x="40" y="520" width="200" height="72" rx="8" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 526) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="140" y="554" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Harness</text>
+        <text data-detail="context" x="140" y="570" class="t-muted" font-size="9" text-anchor="middle">apps/harness workflows</text>
+        </g>
+
+        <g id="node-nlp" data-node-id="nlp" data-node-label="NLP service" tabindex="0" role="button" aria-label="Focus NLP service, apps/nlp :8864, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="apps/nlp :8864" data-node-tag="runs models, never picks them" data-node-context="Architecture component">
+          <title>NLP service · apps/nlp :8864 · Architecture component · runs models, never picks them</title>
+          <rect x="580" y="200" width="220" height="392" rx="8" class="c-mask"/>
+          <rect x="580" y="200" width="220" height="392" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(586 206) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="690" y="394" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">NLP service</text>
+        <text data-detail="context" x="690" y="410" class="t-muted" font-size="9" text-anchor="middle">apps/nlp :8864</text>
+        <text data-detail="fine" x="690" y="584" class="t-backend" font-size="7" text-anchor="middle">runs models, never picks them</text>
+        </g>
+
+        <g id="node-llm" data-node-id="llm" data-node-label="LLM provider" tabindex="0" role="button" aria-label="Focus LLM provider, LM Studio default, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="LM Studio default" data-node-context="Architecture component">
+          <title>LLM provider · LM Studio default · Architecture component</title>
+          <rect x="1060" y="40" width="200" height="72" rx="8" class="c-mask"/>
+          <rect x="1060" y="40" width="200" height="72" rx="8" class="c-external" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1066 46) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="825.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LLM provider</text>
-          <text data-detail="context" x="825.5" y="122" class="t-muted" font-size="7" text-anchor="middle">LM Studio default</text>
+          <text data-node-label="" data-detail-anchor="" x="1160" y="74" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LLM provider</text>
+        <text data-detail="context" x="1160" y="90" class="t-muted" font-size="9" text-anchor="middle">LM Studio default</text>
         </g>
 
+        <g id="node-text" data-node-id="text" data-node-label="Text service" tabindex="0" role="button" aria-label="Focus Text service, apps/text :8862, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="apps/text :8862" data-node-tag="LLM gateway" data-node-context="Architecture component">
+          <title>Text service · apps/text :8862 · Architecture component · LLM gateway</title>
+          <rect x="1060" y="200" width="200" height="80" rx="8" class="c-mask"/>
+          <rect x="1060" y="200" width="200" height="80" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1066 206) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1160" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Text service</text>
+        <text data-detail="context" x="1160" y="254" class="t-muted" font-size="9" text-anchor="middle">apps/text :8862</text>
+        <text data-detail="fine" x="1160" y="272" class="t-backend" font-size="7" text-anchor="middle">LLM gateway</text>
+        </g>
+
+        <g id="node-weights" data-node-id="weights" data-node-label="HuggingFace / S3" tabindex="0" role="button" aria-label="Focus HuggingFace / S3, model weights, HF_HOME cache, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="model weights, HF_HOME cache" data-node-context="Architecture component">
+          <title>HuggingFace / S3 · model weights, HF_HOME cache · Architecture component</title>
+          <rect x="1060" y="360" width="200" height="80" rx="8" class="c-mask"/>
+          <rect x="1060" y="360" width="200" height="80" rx="8" class="c-cloud" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1066 366) scale(0.6875)">
+            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1160" y="398" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">HuggingFace / S3</text>
+        <text data-detail="context" x="1160" y="414" class="t-muted" font-size="9" text-anchor="middle">model weights, HF_HOME cache</text>
+        </g>
+
+        <g id="node-redis" data-node-id="redis" data-node-label="Redis (optional)" tabindex="0" role="button" aria-label="Focus Redis (optional), arca:config:invalidate, Architecture component" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="arca:config:invalidate" data-node-context="Architecture component">
+          <title>Redis (optional) · arca:config:invalidate · Architecture component</title>
+          <rect x="1060" y="520" width="200" height="72" rx="8" class="c-mask"/>
+          <rect x="1060" y="520" width="200" height="72" rx="8" class="c-messagebus" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(1066 526) scale(0.6875)">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
+            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
+            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1160" y="554" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Redis (optional)</text>
+        <text data-detail="context" x="1160" y="570" class="t-muted" font-size="9" text-anchor="middle">arca:config:invalidate</text>
+        </g>
+
+        <!-- Connection labels -->
+        <g data-detail="context" data-edge-from="db" data-edge-to="gateway" data-edge-label="model per task" data-edge-key="0" data-edge-id="db-to-gateway">
+          <rect x="56.800000000000004" y="149" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="95.4" y="159" class="t-edge-default" font-size="8" text-anchor="middle">model per task</text>
+        </g>
+        <g data-detail="context" data-edge-from="gateway" data-edge-to="nlp" data-edge-label="tokens, diagnosis, topic, extract" data-edge-key="1" data-edge-id="gateway-to-nlp">
+          <rect x="325.8" y="211.95" width="168.4" height="14" rx="3" class="c-mask"/>
+          <text x="410" y="221.95" class="t-edge-emphasis" font-size="8" text-anchor="middle">tokens, diagnosis, topic, extract</text>
+        </g>
+        <g data-detail="context" data-edge-from="nlp" data-edge-to="gateway" data-edge-label="/internal/* config, S3 keys" data-edge-key="2" data-edge-id="nlp-to-gateway">
+          <rect x="340.2" y="257" width="139.6" height="14" rx="3" class="c-mask"/>
+          <text x="410" y="267" class="t-edge-dashed" font-size="8" text-anchor="middle">/internal/* config, S3 keys</text>
+        </g>
+        <g data-detail="context" data-edge-from="guardrail" data-edge-to="nlp" data-edge-label="guard/pii, classify, entailment" data-edge-key="3" data-edge-id="guardrail-to-nlp">
+          <rect x="330.6" y="383" width="158.79999999999998" height="14" rx="3" class="c-mask"/>
+          <text x="410" y="393" class="t-edge-security" font-size="8" text-anchor="middle">guard/pii, classify, entailment</text>
+        </g>
+        <g data-detail="context" data-edge-from="harness" data-edge-to="nlp" data-edge-label="classify/tokens, classify/text" data-edge-key="4" data-edge-id="harness-to-nlp">
+          <rect x="333" y="536" width="154" height="14" rx="3" class="c-mask"/>
+          <text x="410" y="546" class="t-edge-default" font-size="8" text-anchor="middle">classify/tokens, classify/text</text>
+        </g>
+        <g data-detail="context" data-edge-from="nlp" data-edge-to="text" data-edge-label="POST /api/v1/generate" data-edge-key="5" data-edge-id="nlp-to-text">
+          <rect x="874.6" y="244" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="930" y="254" class="t-edge-default" font-size="8" text-anchor="middle">POST /api/v1/generate</text>
+        </g>
+        <g data-detail="context" data-edge-from="text" data-edge-to="llm" data-edge-label="chat completion" data-edge-key="6" data-edge-id="text-to-llm">
+          <rect x="1119" y="180" width="82" height="14" rx="3" class="c-mask"/>
+          <text x="1160" y="190" class="t-edge-default" font-size="8" text-anchor="middle">chat completion</text>
+        </g>
+        <g data-detail="context" data-edge-from="nlp" data-edge-to="weights" data-edge-label="download weights" data-edge-key="7" data-edge-id="nlp-to-weights">
+          <rect x="886.6" y="376" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="930" y="386" class="t-edge-default" font-size="8" text-anchor="middle">download weights</text>
+        </g>
+        <g data-detail="context" data-edge-from="redis" data-edge-to="nlp" data-edge-label="config changed" data-edge-key="8" data-edge-id="redis-to-nlp">
+          <rect x="891.4" y="536" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="930" y="546" class="t-edge-dashed" font-size="8" text-anchor="middle">config changed</text>
+        </g>
+
+        <!-- Boundary labels (foreground masks keep routes out of titles) -->
+
+
         <!-- Legend -->
-        <g data-legend="">
-          <text x="40" y="954" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="emphasis" data-legend-x="40" data-legend-baseline="974" data-legend-width="118">
-            <path d="M 40 971 L 74 971" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-            <text x="83" y="974" class="t-muted" font-size="10" font-weight="500">main request</text>
+        <g data-legend="" data-legend-bridge="">
+          <text x="40" y="624" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="40" data-legend-baseline="644" data-legend-width="87">
+            <rect x="40" y="635" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="62" y="644" class="t-muted" font-size="10" font-weight="500">Backend</text>
           </g>
-          <g data-legend-semantic-kind="return" data-legend-x="180" data-legend-baseline="974" data-legend-width="81">
-            <path d="M 180 971 L 214 971" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-            <text x="223" y="974" class="t-muted" font-size="10" font-weight="500">return</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="149" data-legend-baseline="644" data-legend-width="93">
+            <rect x="149" y="635" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="171" y="644" class="t-muted" font-size="10" font-weight="500">Database</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-x="283" data-legend-baseline="974" data-legend-width="93">
-            <path d="M 283 971 L 317 971" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-            <text x="326" y="974" class="t-muted" font-size="10" font-weight="500">security</text>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="264" data-legend-baseline="644" data-legend-width="74">
+            <rect x="264" y="635" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
+            <text x="286" y="644" class="t-muted" font-size="10" font-weight="500">Cloud</text>
           </g>
-          <g data-legend-semantic-kind="default" data-legend-x="398" data-legend-baseline="974" data-legend-width="87">
-            <path d="M 398 971 L 432 971" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-            <text x="441" y="974" class="t-muted" font-size="10" font-weight="500">message</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="360" data-legend-baseline="644" data-legend-width="93">
+            <rect x="360" y="635" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="382" y="644" class="t-muted" font-size="10" font-weight="500">Security</text>
+          </g>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="Message bus" data-legend-x="475" data-legend-baseline="644" data-legend-width="112">
+            <rect x="475" y="635" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
+            <text x="497" y="644" class="t-muted" font-size="10" font-weight="500">Message bus</text>
+          </g>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="609" data-legend-baseline="644" data-legend-width="93">
+            <rect x="609" y="635" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="631" y="644" class="t-muted" font-size="10" font-weight="500">External</text>
           </g>
         </g>
       </svg>
@@ -5609,37 +5647,52 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <div class="cards">
       <div class="card">
         <div class="card-header">
-          <div class="card-dot rose"></div>
-          <h3>Three gaps block every call</h3>
+          <div class="card-dot cyan"></div>
+          <h3>Gateway -&gt; NLP (X-Service-Token, X-Tenant-Id)</h3>
         </div>
         <ul>
-          <li>Wrong path: NLP posts to /generate; text serves /api/v1/generate (harness adds /api/v1 itself)</li>
-          <li>No model: text has no default model and NLP&#39;s topic/intent schema has no model field</li>
-          <li>No provider_overrides: text holds no LLM endpoint or key; the gateway must inject them</li>
+          <li>/classify/tokens: text, model_name, clinical_taxonomy, language, labels?, threshold?</li>
+          <li>/diagnosis/suggestions: text, model_name, ner_model_name, min_confidence?, tenant_id</li>
+          <li>/classify/topic, /intent: text, instructions[], tenant_id, text_provider, text_model, text_provider_overrides</li>
+          <li>/extract: multipart file (OCR of uploads); /internal/models/resolvable: model list</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>Guardrail and Harness -&gt; NLP</h3>
+        </div>
+        <ul>
+          <li>/guard/pii: text, labels[], threshold, model_name, model_path?, tenant_id</li>
+          <li>/guard/classify: text, tasks{name: labels}, model_name, tenant_id</li>
+          <li>/guard/entailment: pairs[{document, claim}], model_name, tenant_id</li>
+          <li>Harness /classify/tokens and /classify/text: text, language, model_name, model_path?, X-Tenant-Id</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>NLP -&gt; outside</h3>
+        </div>
+        <ul>
+          <li>Gateway GET /internal/effective-config?service=nlp: live limits, cached 60 s</li>
+          <li>Gateway GET /internal/model-registry-credential?provider&amp;tenantId: S3 keys (X-Internal-Service-Key)</li>
+          <li>Text POST /api/v1/generate: prompt, provider, model, provider_overrides (fixed in TASK-1016)</li>
+          <li>Redis pub/sub clears the config cache instantly; HuggingFace or S3 supplies weights on first use</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot amber"></div>
-          <h3>Smaller risks once fixed</h3>
+          <h3>How to read it</h3>
         </div>
         <ul>
-          <li>LLM output is returned verbatim, not matched to the topic list</li>
-          <li>Patient text sits inside the prompt with no system prompt (prompt injection)</li>
-          <li>NLP retries 404 and 422, which can never succeed</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot slate"></div>
-          <h3>Evidence</h3>
-        </div>
-        <ul>
-          <li>Reproduced locally: NLP log shows 3 attempts, each 404 on /generate</li>
-          <li>Direct call to /api/v1/generate without model returned 422</li>
-          <li>NLP tests mock the text client, so these gaps were not caught</li>
+          <li>The database picks the model; the gateway sends model_name and clinical_taxonomy; NLP only runs it</li>
+          <li>Missing model, tenant or token fails closed: 503, 428 or 401</li>
+          <li>Dashed lines are optional: NLP still runs without the gateway config or Redis</li>
         </ul>
       </div>
     </div>
@@ -5820,6 +5873,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         else open(false);
       });
       btn.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
           if (!isOpen()) open(e.key === 'ArrowUp');
@@ -5836,6 +5890,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       menu.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') { e.preventDefault(); close(true); return; }
         if (e.key === 'Tab') { close(false); return; }
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
         var available = options();
         var active = available.indexOf(document.activeElement);
         switch (e.key) {
@@ -7259,6 +7314,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       });
       // APG menu-button pattern: ArrowDown/ArrowUp on the trigger opens the menu.
       btn.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
           if (!isOpen()) open(e.key === 'ArrowUp');
@@ -7274,6 +7330,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       menu.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') { e.preventDefault(); close(true); return; }
         if (e.key === 'Tab')    { close(false); return; }
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
 
         var available = items().filter(function (i) { return !i.hidden && !i.disabled; });
         var current = available.indexOf(document.activeElement);
@@ -9901,6 +9958,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         syncRelationshipPreview();
       });
       relationshipList.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
         var buttons = Array.prototype.slice.call(relationshipList.querySelectorAll('[data-relationship-target]'));
         if (!buttons.length) return;
@@ -12689,6 +12747,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       closeBtn.addEventListener('click', function () { close(); });
       input.addEventListener('input', function () { render(input.value); });
       input.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var buttons = resultButtons();
         if (event.key === 'ArrowDown' && buttons.length) {
           event.preventDefault();
@@ -12699,6 +12758,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         }
       });
       results.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var buttons = resultButtons();
         var index = buttons.indexOf(document.activeElement);
         if (index < 0 || !buttons.length) return;
@@ -12733,6 +12793,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         count: items.length
       };
     })();
+
 
     /* ============================================================
        Node Outline — a rail index of the semantic nodes, grouped by their
@@ -13838,6 +13899,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         if (journeyPlaying && event.target.closest('[data-route-journey-index]')) pauseJourney({ preserveElapsed: true });
       });
       path.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var button = event.target.closest('[data-route-journey-index]');
         if (!button) return;
         var index = Number(button.getAttribute('data-route-journey-index'));
@@ -14513,6 +14575,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         select(button.getAttribute('data-kind'));
       });
       kindsRoot.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var buttons = Array.prototype.slice.call(kindsRoot.querySelectorAll('button:not(:disabled)'));
         var index = buttons.indexOf(document.activeElement);
         var next = null;
@@ -14750,6 +14813,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
        ============================================================ */
     document.addEventListener('keydown', function (e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End')) return;
       if (e.defaultPrevented) return;
       var t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;

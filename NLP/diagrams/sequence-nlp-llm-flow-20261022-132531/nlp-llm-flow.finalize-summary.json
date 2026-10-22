@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/candidate.json",
+    "sha256": "6def21de0c6f3c7e5d329c241b372145fbd089dac1439e4d2b5624462e4cbf46",
+    "bytes": 7430
+  },
+  "artifact": {
+    "path": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.html",
+    "sha256": "6d2f3b4cd52161f98ee348398d464f5f53e787b524b44f6e90974c81b72db8a9",
+    "bytes": 821986
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.finalize.json",
+    "summaryReceipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.finalize-summary.json",
+    "browserCheckReceipt": "/Users/silverfang/arcaai/.archify/sequence-nlp-llm-flow-20261022-132531/nlp-llm-flow.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 5169,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}
