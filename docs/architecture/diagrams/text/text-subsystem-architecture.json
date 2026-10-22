@@ -184,14 +184,20 @@
   ],
   "connections": [
     { "from": "gateway", "to": "text_engine", "label": "generate POST", "variant": "emphasis" },
+    { "from": "text_engine", "to": "gateway", "label": "token SSE / JSON result", "variant": "dashed" },
     { "from": "harness", "to": "text_engine", "label": "doc prompts", "variant": "emphasis" },
+    { "from": "text_engine", "to": "harness", "label": "draft SOAP note", "variant": "dashed" },
     { "from": "text_engine", "to": "redis", "label": "task state", "fromSide": "top", "toSide": "bottom", "labelAt": [330, 185] },
+    { "from": "redis", "to": "text_engine", "label": "cached tasks / replays", "fromSide": "bottom", "toSide": "top" },
     { "from": "text_engine", "to": "circuit_breaker", "label": "health probe", "fromSide": "top", "toSide": "left" },
     { "from": "text_engine", "to": "guardrail_client", "label": "safety check", "variant": "security", "fromSide": "right", "toSide": "left" },
     { "from": "text_engine", "to": "judge_guard", "label": "eval scores", "fromSide": "right", "toSide": "left" },
     { "from": "circuit_breaker", "to": "local_llm", "label": "primary route" },
+    { "from": "local_llm", "to": "circuit_breaker", "label": "raw token deltas", "variant": "dashed" },
     { "from": "circuit_breaker", "to": "cloud_llm", "label": "failover route", "variant": "dashed" },
+    { "from": "cloud_llm", "to": "circuit_breaker", "label": "raw token deltas", "variant": "dashed" },
     { "from": "guardrail_client", "to": "guardrail_svc", "label": "screen & redact", "variant": "security" },
+    { "from": "guardrail_svc", "to": "guardrail_client", "label": "pass / redact verdict", "variant": "security" },
     { "from": "judge_guard", "to": "tei_embeddings", "label": "vector check" }
   ],
   "cards": [

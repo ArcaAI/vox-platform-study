@@ -318,3 +318,91 @@ Domain exceptions in `apps/text/src/text/core/exceptions.py` are mapped in `text
 | `GuardrailUnavailableError` | `503 Service Unavailable` | — | Guardrail service unreachable |
 | `ProviderTimeoutError` | `502 Bad Gateway` | — | Provider failed to answer within configured timeout |
 | `ProviderError` | `502 Bad Gateway` | — | Upstream LLM provider threw an internal 5xx error |
+
+---
+
+## 7. Deployment Models & Database Topology: Standalone `apps/text` vs. Full Platform
+
+### 7.1 Proof from `apps/text` Dockerfile & Configuration
+
+If you inspect the actual files used to build and run the LLM inference engine:
+
+1. **`apps/text/Dockerfile`**:
+   * **Base image**: Python (`hope-python-base:latest`, Stage 1 & Stage 2).
+   * **Package manager**: `uv sync --package text`.
+   * **Runtime**: Python 3.11 / FastAPI. There is no `npm`, no `pnpm`, and no Prisma engine installed anywhere in this image.
+
+2. **`apps/text/docker-compose.yml`**:
+   * Only runs two containers: `text` (FastAPI) and `redis` (`redis:8-alpine`).
+   * **Environment variable**: `TEXT_REDIS_URL=redis://redis:6379/0`. There is no `DATABASE_URL` configured.
+
+3. **`infrastructure/SECURITY_DEPLOYMENT_GUIDE.md` (Lines 43–45)** explicitly states:
+   > *"apps/text/** and apps/harness/** env files carry no Postgres/MinIO connection strings (TEXT's DB URL is unset in its env; harness talks HTTP + Temporal gRPC and never connects to Postgres directly)"*
+
+When deployed standalone, `apps/text` is a purely stateless Python inference service that talks only to Redis.
+
+---
+
+### 7.2 Where Does Prisma Actually Live?
+
+Prisma lives in `apps/api` (the NestJS Gateway) and `packages/database`:
+
+In **`apps/api/Dockerfile` (Lines 66–71)**:
+```dockerfile
+# apps/api Dockerfile
+FROM node:24-bookworm-slim AS builder
+...
+RUN pnpm exec prisma generate --schema=packages/database/src/prisma/db_main/schema.prisma
+```
+
+---
+
+### 7.3 How the Architecture Differs: Standalone vs. Full Platform
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 FULL PLATFORM DEPLOYMENT                               │
+│                                                                                        │
+│   Client                                                                               │
+│     │                                                                                  │
+│     ▼ (Port 3000)                                                                      │
+│ ┌───────────────────────────────────────────────────────────────┐                      │
+│ │ apps/api (Node.js / NestJS)                                   │                      │
+│ │   • HAS PRISMA & PostgreSQL (Port 5432)                       │                      │
+│ │   • Reads: Tenants, Auth, BYOK Keys, RAG Prompts              │                      │
+│ │   • Writes: AiUsageOutbox, AiUsageRollupDaily, AuditLog       │                      │
+│ └──────────────────────────────┬────────────────────────────────┘                      │
+│                                │ Internal HTTP (Token + Tenant ID)                     │
+│                                ▼                                                       │
+└────────────────────────────────┼───────────────────────────────────────────────────────┘
+                                 │
+                                 │
+┌────────────────────────────────▼───────────────────────────────────────────────────────┐
+│                          STANDALONE `apps/text` DEPLOYMENT                             │
+│                          (What your Dockerfile & compose deployed)                     │
+│                                                                                        │
+│ ┌───────────────────────────────────────────────────────────────┐                      │
+│ │ apps/text (Python 3.11 / FastAPI — Port 8862)                 │                      │
+│ │   • NO PRISMA                                                 │                      │
+│ │   • NO POSTGRESQL CONNECTION                                  │                      │
+│ │   • ONLY CONNECTS TO REDIS (Port 6379)                        │                      │
+│ │   • Writes:                                                   │                      │
+│ │       - Redis Task states (`text:task:{taskId}`)              │                      │
+│ │       - Redis Streams (`text:stream:{taskId}`)                │                      │
+│ │       - Redis Idempotency locks (`text:idem:{key}`)           │                      │
+│ └───────────────────────────────────────────────────────────────┘                      │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 7.4 Summary Matrix of Database Operations
+
+| Component | Database Engine | ORM / Driver | What Tables / Keys It Modifies |
+| :--- | :--- | :--- | :--- |
+| **`apps/text` container (Standalone)** | Redis 7 / 8 | `redis-py` (async) | • `text:task:{id}` (Task state updates)<br/>• `text:stream:{id}` (Append streaming tokens)<br/>• `text:idem:{key}` (Idempotency cache) |
+| **`apps/api` container (Gateway)** | PostgreSQL 18 | Prisma ORM (`@arcaai/database`) | • `AiUsageOutbox` (INSERT token usage record)<br/>• `AiUsageRollupDaily` (UPSERT daily tenant metrics)<br/>• `AuditLog` (INSERT quota breach audit records) |
+
+**Key Takeaway**:
+If `apps/text` is deployed using its Dockerfile and compose file, it is completely expected that there is no Prisma or Postgres. It only requires Redis. Prisma only enters the picture when deploying `apps/api`, which sits in front of `apps/text` to handle billing, user accounts, and usage ledgers.
+
