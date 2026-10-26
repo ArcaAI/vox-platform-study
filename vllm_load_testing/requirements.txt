@@ -1,0 +1,7 @@
+# vLLM STT Streaming Load Test Dependencies
+httpx>=0.28.0
+websockets>=13.0
+numpy>=1.26.0
+redis>=5.0.0
+requests>=2.31.0
+PyYAML>=6.0

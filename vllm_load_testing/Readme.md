@@ -1,45 +1,156 @@
-- Ensure that the nvida HPC toolkit and runtime is installed and where vLLM can find them.
-  In my local machine it is at /opt/nvidia/hpc_sdk/Linux_x86_64
-- Set the following paths (bashrc) 
-  - export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/24.9/cuda
-  - export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.9/compilers/bin:$PATH
-  - export PATH=$CUDA_HOME/bin:$PATH
+# vLLM STT Streaming Load Test & Concurrency Benchmark
 
-- Export the LD library path (bashrc):
-export LD_LIBRARY_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.9/cuda/12.6/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
+High-concurrency, real-time audio streaming load tester and diagnostic benchmark for **vLLM Whisper ASR** deployed behind the **API Gateway** and **Hope STT streaming engine**.
 
+It simulates concurrent clients streaming raw 16 kHz mono PCM frames via WebSockets, parses real-time transcript responses, measures the 10-stage end-to-end latency pipeline, records remote GPU telemetry, and audits container health.
 
-- In a dedicated python environment, install vllm and openai packages:
-  pip install -U "vllm[audio]" openai
+---
 
- - To run a vLLM server in a separate terminal instance and log its output, use: 
-vllm serve openai/whisper-small --port 8000 2>&1 | tee logs/vllm_audio.log 
+## 1. Prerequisites & Installation
 
-- [Verify] In a separate terminal, check if the model is served:
-  curl http://localhost:8000/v1/models
-  The result of this command should look like:
+### Python Environment
+Requires **Python 3.10+**.
 
-    {"object":"list","data":[{"id":"openai/whisper-small","object":"model","created":1789883169,"owned_by":"vllm","root":"openai/whisper-small","parent":null,"max_model_len":448,"permission":[{"id":"modelperm-aea3cc28b81ec4a6","object":"model_permission","created":1789883169,"allow_create_engine":false,"allow_sampling":true,"allow_logprobs":true,"allow_search_indices":false,"allow_view":true,"allow_fine_tuning":false,"organization":"*","group":null,"is_blocking":false}]}]}
+```bash
+# Optional: create or activate your virtual environment
+conda activate vox
+# or
+python3 -m venv .venv && source .venv/bin/activate
 
-- Git clone the repo into a folder named vLLM_test
+# Install required packages
+pip install -r requirements.txt
+```
 
-- Place all the test audio files in test_files/  and create a logs/ folder to store the output logs. 
+### Remote GPU Server Access & Passwordless SSH
+The benchmark automatically launches remote `nvidia-smi` sampling and retrieves container execution logs from the GPU host (`192.168.112.2`).
 
-- In a separate terminal instance Start Nvidia Gpu monitoring service using:
-nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory,memory.used,memory.total,power.draw --format=csv -lms 200 > logs/gpu.csv
+#### Why is Passwordless SSH Required?
+Because `vllm.py` runs non-interactively in the background, it cannot pause to prompt for a password. Passwordless SSH (public-key authentication) allows the benchmark to start background telemetry and fetch diagnostic logs without hanging.
 
-  - [Note]: the -lms must be adjusted based on the load so that the sampling does not miss the gpu work load.
-  - [Note]: this command should produce a gpu.csv file with entries depicting the gpu activity
+#### How to Set Up (One-Time Setup):
+1. **Generate an SSH key pair on your machine** (if you don't already have one):
+   ```bash
+   ssh-keygen -t ed25519 -C "vllm-benchmark-client"
+   ```
+2. **Copy your public key to the remote GPU server**:
+   ```bash
+   ssh-copy-id nitik@192.168.112.2
+   ```
+   *(Enter the server password **once**. This copies your public key into `/home/nitik/.ssh/authorized_keys`)*
+3. **Verify passwordless access**:
+   ```bash
+   ssh -o BatchMode=yes nitik@192.168.112.2 "nvidia-smi"
+   ```
+   If this prints the GPU status table without asking for a password, your machine is configured!
 
-- In a separate terminal instance, execute the python process  
-python3 main.py 
+> For full technical details and troubleshooting, see [docs/REMOTE_GPU_DIAGNOSTICS_SETUP.md](docs/REMOTE_GPU_DIAGNOSTICS_SETUP.md).
 
-  - [Note]: this must produce a sample output:
- 
-   Concurrency=1,Avg Latency=0.56s
-   Concurrency=2,Avg Latency=0.70s
+---
 
-- Three key outputs expected:
-  - logs/vllm_audio.log showing the vllm server instantiation logs
-  - logs/gpu.csv showing the gpu usage
-  - The Concurrency, Avg Latency std out
+## 2. Configuration (`benchmark_config.yaml`)
+
+All benchmark parameters (endpoints, credentials, audio settings, concurrency sweeps, and diagnostics) are configured in `benchmark_config.yaml`:
+
+```yaml
+# Concurrency sweep levels to execute sequentially in an automated loop:
+concurrencies:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+
+# Cooldown delay in seconds between consecutive concurrency runs
+cooldown: 15
+
+# Audio input configuration
+audio_dir: "testfiles"
+chunk_ms: 250
+stagger_ms: 50.0
+pace: 1.0
+
+# API Gateway & Network Configuration
+gateway_http: "http://192.168.112.6:32458/api/v1"
+gateway_ws: "ws://192.168.112.6:32458/ws/stt/stream"
+agent: "whisper-v3-turbo"
+tenant: "ARCAAI"
+user: "arcaai_admin"
+password: "password123"
+
+# Remote GPU Server Monitoring & Diagnostics (192.168.112.2)
+remote_diagnostics: true
+gpu_host: "192.168.112.2"
+gpu_user: "nitik"
+gpu_sample_ms: 50
+
+# Redis Queue & Stream Management
+clear_redis: true
+redis_url: "redis://:5GX3kEti7iZHt69ZOUnUavkfEjsWGwgfD%2BGAcBK74Xc%3D@192.168.112.6:32522/0"
+```
+
+---
+
+## 3. How to Run
+
+### Option A: Automated Concurrency Loop (Sweep: 1 → 2 → 4 → 8 → 16 → 32)
+Runs all concurrency tiers sequentially from `benchmark_config.yaml` with a 15-second cooldown between stages:
+
+```bash
+python vllm.py --config benchmark_config.yaml
+```
+
+### Option B: Run a Single Concurrency Level
+Override the config file to run a single concurrency tier (e.g. concurrency 1 or 32):
+
+```bash
+# Run single stream (concurrency 1)
+python vllm.py --config benchmark_config.yaml --concurrency 1
+
+# Run 32 concurrent streams
+python vllm.py --config benchmark_config.yaml --concurrency 32
+```
+
+### Option C: Custom Concurrency Sweep via CLI
+Override the sweep list directly from the command line:
+
+```bash
+python vllm.py --config benchmark_config.yaml --concurrencies 1,2,4,8,16,32 --cooldown 10
+```
+
+---
+
+## 4. Generated Output Artifacts
+
+### A. Root Logs (`logs/`) — Full Benchmark Session
+Captures cumulative, continuous data from when the command started to when it finished:
+
+| File | Description |
+| :--- | :--- |
+| `logs/gpu.csv` | **Full continuous GPU telemetry** (50 ms intervals) spanning the entire benchmark run (all concurrencies + cooldowns). |
+| `logs/vllm_audio.log` | **Full Docker container log** (untruncated container startup history + all runtime activity). |
+| `logs/nvidia_smi.txt` | **Suite GPU snapshots** taken at command start and benchmark completion. |
+| `logs/sweep_summary.txt` | Formatted ASCII comparison table comparing RTF, P50, and P95 latency across all concurrency levels. |
+| `logs/sweep_summary.csv` | Machine-readable CSV comparing throughput and latency across all concurrency levels. |
+
+### B. Isolated Concurrency Folders (`logs/concurrency_<N>/`)
+Each concurrency tier $N$ saves exactly 6 artifacts isolated strictly to that run:
+
+| File | Description |
+| :--- | :--- |
+| `logs/concurrency_<N>/vllm_test_output_<N>.txt` | Formatted summary table, pass/fail counts, 10-stage latency breakdown, and automated bottleneck diagnostic. |
+| `logs/concurrency_<N>/vllm_load_test_<N>.csv` | Frame-by-frame latency breakdown with the 10 pipeline steps as CSV column headers. |
+| `logs/concurrency_<N>/vllm_session_audit_<N>.csv` | Audit proof mapping every worker to its Session ID, WebSocket URL, ticket, audio file, and chunk counts. |
+| `logs/concurrency_<N>/gpu_<N>.csv` | 50 ms time-series GPU telemetry recorded **only** during concurrency $N$. |
+| `logs/concurrency_<N>/nvidia_smi_<N>.txt` | GPU snapshot recorded specifically for concurrency $N$. |
+| `logs/concurrency_<N>/vllm_whisper_<N>.log` | Runtime Docker logs recorded **only** during concurrency $N$ (no bloated startup logs). |
+
+---
+
+## 5. Documentation
+
+For detailed architecture analysis, setup guides, and latency decomposition formulas, refer to the documentation in `docs/`:
+* [REMOTE_GPU_DIAGNOSTICS_SETUP.md](docs/REMOTE_GPU_DIAGNOSTICS_SETUP.md) — Comprehensive guide on passwordless SSH, remote telemetry sampling, and security troubleshooting.
+* [VLLM_CONCURRENCY_TESTING_GUIDE.md](docs/VLLM_CONCURRENCY_TESTING_GUIDE.md) — Architecture, 10-step request lifecycle, and testing runbooks.
+* [STT_PIPELINE_LATENCY_DECOMPOSITION.md](docs/STT_PIPELINE_LATENCY_DECOMPOSITION.md) — 10-step latency mathematical formulation and bottleneck analysis.
+* [VLLM_STREAMING_OPTIMIZATION_REPORT.md](docs/VLLM_STREAMING_OPTIMIZATION_REPORT.md) — Optimization report and recommendations.
