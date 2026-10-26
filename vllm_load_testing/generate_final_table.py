@@ -74,49 +74,70 @@ def parse_output_txt(file_path: str) -> Optional[Dict[str, Any]]:
     if relayed_match:
         data["transcripts_relayed"] = int(relayed_match.group(1).replace(",", ""))
 
-    # Parse latency metric rows
-    metric_regex = re.compile(
-        r"^([0-9]\.\s*[^0-9]+?)\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms",
+    # Parse latency metric rows (matches both 3-column [avg, p50, p95] and 5-column [avg, p50, p95, min, max])
+    metric_regex_3col = re.compile(
+        r"^\s*([0-9]+\.\s*[^0-9\n]+?)\s{2,}(?:[A-Za-z0-9\s&/\-\(\)>]+?)\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms",
+        re.MULTILINE,
+    )
+    metric_regex_5col = re.compile(
+        r"^\s*([0-9]+\.\s*[^0-9\n]+?)\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms\s+([\d\.]+)\s*ms",
         re.MULTILINE,
     )
 
-    for m in metric_regex.finditer(content):
-        raw_name = m.group(1).strip()
-        avg_val = float(m.group(2))
-        p50_val = float(m.group(3))
-        p95_val = float(m.group(4))
-        min_val = float(m.group(5))
-        max_val = float(m.group(6))
-
-        # Standardize metric labels
-        if "Full Latency" in raw_name or "WebSocket Return Latency" in raw_name or "Combo" in raw_name:
-            std_name = "Full End-to-End Latency"
-        elif "HTTP Session Creation" in raw_name:
-            std_name = "Session Creation (HTTP)"
-        elif "WebSocket Connection" in raw_name:
-            std_name = "WebSocket Handshake"
-        elif "Server ASR Inference" in raw_name:
-            std_name = "Server ASR / STT"
-        elif "Gateway & Transit" in raw_name:
-            std_name = "Gateway Overhead / Transit"
-        else:
-            std_name = raw_name
-
-        data["metrics"][std_name] = {
-            "avg": avg_val,
-            "p50": p50_val,
-            "p95": p95_val,
-            "min": min_val,
-            "max": max_val,
-        }
+    matches_5 = list(metric_regex_5col.finditer(content))
+    if matches_5:
+        for m in matches_5:
+            raw_name = m.group(1).strip()
+            avg_val, p50_val, p95_val = float(m.group(2)), float(m.group(3)), float(m.group(4))
+            min_val, max_val = float(m.group(5)), float(m.group(6))
+            std_name = _standardize_metric_name(raw_name)
+            data["metrics"][std_name] = {"avg": avg_val, "p50": p50_val, "p95": p95_val, "min": min_val, "max": max_val}
+    else:
+        for m in metric_regex_3col.finditer(content):
+            raw_name = m.group(1).strip()
+            avg_val, p50_val, p95_val = float(m.group(2)), float(m.group(3)), float(m.group(4))
+            std_name = _standardize_metric_name(raw_name)
+            data["metrics"][std_name] = {"avg": avg_val, "p50": p50_val, "p95": p95_val, "min": p50_val, "max": p95_val}
 
     return data
+
+
+def _standardize_metric_name(raw_name: str) -> str:
+    """Standardize raw pipeline stage strings to unified metric labels."""
+    if "HTTP Session Creation" in raw_name:
+        return "1. Session Creation (HTTP)"
+    elif "WebSocket Connection" in raw_name:
+        return "2. WebSocket Handshake"
+    elif "Audio Ingress" in raw_name:
+        return "3. Ingress & Redis Queue"
+    elif "Denoising" in raw_name:
+        return "4. RNNoise Denoising"
+    elif "VAD" in raw_name:
+        return "5. Silero VAD Evaluation"
+    elif "Queue Wait" in raw_name:
+        return "6. Server Queue Wait"
+    elif "vLLM Whisper ASR" in raw_name or "ASR Inference" in raw_name:
+        return "7. vLLM Whisper ASR Inference"
+    elif "Postprocessing" in raw_name:
+        return "8. Postprocessing & Redis Pub"
+    elif "Gateway Redis Read" in raw_name or "Gateway & Transit" in raw_name:
+        return "9. Gateway Egress to Client"
+    elif "Full Latency" in raw_name or "WebSocket Return" in raw_name or "Combo" in raw_name:
+        return "10. Full End-to-End Latency"
+    return raw_name
 
 
 def scan_log_directory(log_dir: str) -> List[Dict[str, Any]]:
     """Scan all concurrency_* directories in log_dir and parse output text files."""
     results = []
     concurrency_dirs = glob.glob(os.path.join(log_dir, "concurrency_*"))
+
+    # Also check if files are directly in log_dir
+    direct_files = glob.glob(os.path.join(log_dir, "vllm_test_output_*.txt"))
+    for f in direct_files:
+        parsed = parse_output_txt(f)
+        if parsed and parsed.get("concurrency") is not None:
+            results.append(parsed)
 
     for c_dir in concurrency_dirs:
         txt_files = glob.glob(os.path.join(c_dir, "vllm_test_output_*.txt"))
@@ -126,7 +147,11 @@ def scan_log_directory(log_dir: str) -> List[Dict[str, Any]]:
         if parsed and parsed.get("concurrency") is not None:
             results.append(parsed)
 
-    # Sort results by concurrency integer
+    # Deduplicate by concurrency
+    by_c = {}
+    for r in results:
+        by_c[r["concurrency"]] = r
+    results = list(by_c.values())
     results.sort(key=lambda x: x["concurrency"])
     return results
 
@@ -144,11 +169,16 @@ def format_matrix_table(
     concurrencies = [str(r["concurrency"]) for r in results]
 
     ordered_metrics = [
-        "Session Creation (HTTP)",
-        "WebSocket Handshake",
-        "Server ASR / STT",
-        "Gateway Overhead / Transit",
-        "Full End-to-End Latency",
+        "1. Session Creation (HTTP)",
+        "2. WebSocket Handshake",
+        "3. Ingress & Redis Queue",
+        "4. RNNoise Denoising",
+        "5. Silero VAD Evaluation",
+        "6. Server Queue Wait",
+        "7. vLLM Whisper ASR Inference",
+        "8. Postprocessing & Redis Pub",
+        "9. Gateway Egress to Client",
+        "10. Full End-to-End Latency",
     ]
 
     header_cols = ["concurrency"] + concurrencies
@@ -222,11 +252,16 @@ def export_csv(results: List[Dict[str, Any]], csv_path: str):
     header = ["concurrency"] + concurrencies
 
     ordered_metrics = [
-        "Session Creation (HTTP)",
-        "WebSocket Handshake",
-        "Server ASR / STT",
-        "Gateway Overhead / Transit",
-        "Full End-to-End Latency",
+        "1. Session Creation (HTTP)",
+        "2. WebSocket Handshake",
+        "3. Ingress & Redis Queue",
+        "4. RNNoise Denoising",
+        "5. Silero VAD Evaluation",
+        "6. Server Queue Wait",
+        "7. vLLM Whisper ASR Inference",
+        "8. Postprocessing & Redis Pub",
+        "9. Gateway Egress to Client",
+        "10. Full End-to-End Latency",
     ]
 
     stat_sections = [

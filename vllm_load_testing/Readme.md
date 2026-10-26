@@ -147,9 +147,27 @@ Each concurrency tier $N$ saves exactly 6 artifacts isolated strictly to that ru
 
 ---
 
-## 5. Documentation
+## 5. How to Generate Final Output Reports (Markdown & CSV)
+
+After running the benchmark sweep, you can generate multi-tier comparison tables and CSV matrices from the `logs/` artifacts:
+
+Parses all concurrency logs in `logs/` and outputs a cross-concurrency matrix (Average, P50, and P95 latency across all 10 stages):
+
+```bash
+# Generate Markdown matrix (saved to logs/final_table.md)
+python generate_final_table.py --log-dir logs
+
+# Generate multi-section CSV report (saved to logs/final_table.csv)
+python generate_final_table.py --log-dir logs --format csv
+```
+
+---
+
+## 6. Documentation
 
 For detailed architecture analysis, setup guides, and latency decomposition formulas, refer to the documentation in `docs/`:
+* [FINAL_REPORT_AND_TABLE_GENERATION.md](docs/FINAL_REPORT_AND_TABLE_GENERATION.md) — Guide on generating 10-step cross-concurrency latency matrices (Markdown and CSV formats).
+* [MANUAL_LOGGING_AND_DIAGNOSTICS.md](docs/MANUAL_LOGGING_AND_DIAGNOSTICS.md) — Manual terminal commands to check, stream, and save Docker logs and NVIDIA GPU metrics.
 * [REMOTE_GPU_DIAGNOSTICS_SETUP.md](docs/REMOTE_GPU_DIAGNOSTICS_SETUP.md) — Comprehensive guide on passwordless SSH, remote telemetry sampling, and security troubleshooting.
 * [VLLM_CONCURRENCY_TESTING_GUIDE.md](docs/VLLM_CONCURRENCY_TESTING_GUIDE.md) — Architecture, 10-step request lifecycle, and testing runbooks.
 * [STT_PIPELINE_LATENCY_DECOMPOSITION.md](docs/STT_PIPELINE_LATENCY_DECOMPOSITION.md) — 10-step latency mathematical formulation and bottleneck analysis.
