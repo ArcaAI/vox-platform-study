@@ -1,0 +1,47 @@
+# ==============================================================================
+# vLLM STT Streaming Load Test Configuration
+# ==============================================================================
+# Run command:
+#   python vllm.py --config benchmark_config.yaml
+#
+# Override any option from CLI if desired:
+#   python vllm.py --config benchmark_config.yaml --concurrency 32
+#   python vllm.py --config benchmark_config.yaml --concurrencies 1,2,4,8,16,32
+# ==============================================================================
+
+# Concurrency sweep levels to execute sequentially in a loop:
+concurrencies:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+
+# Cooldown delay in seconds between consecutive concurrency runs
+# Allows Redis streams, WebSockets, and GPU VRAM cache to cleanly settle
+cooldown: 15
+
+# Audio input configuration
+audio_dir: "testfiles"
+chunk_ms: 250
+stagger_ms: 50.0
+pace: 1.0
+
+# API Gateway & Network Configuration
+gateway_http: "http://192.168.112.6:32458/api/v1"
+gateway_ws: "ws://192.168.112.6:32458/ws/stt/stream"
+agent: "whisper-v3-turbo"
+tenant: "ARCAAI"
+user: "arcaai_admin"
+password: "password123"
+
+# Remote GPU Server Monitoring & Diagnostics (192.168.112.2)
+remote_diagnostics: true
+gpu_host: "192.168.112.2"
+gpu_user: "nitik"
+gpu_sample_ms: 50
+
+# Redis Queue & Stream Management
+clear_redis: true
+redis_url: "redis://:5GX3kEti7iZHt69ZOUnUavkfEjsWGwgfD%2BGAcBK74Xc%3D@192.168.112.6:32522/0"
