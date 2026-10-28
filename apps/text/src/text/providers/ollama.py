@@ -160,7 +160,10 @@ class OllamaProvider:
                 request.response_format.type == "json_schema"
                 and request.response_format.json_schema
             ):
-                payload["format"] = request.response_format.json_schema
+                schema = request.response_format.json_schema
+                if isinstance(schema, dict) and "schema" in schema and isinstance(schema["schema"], dict):
+                    schema = schema["schema"]
+                payload["format"] = schema
             elif request.response_format.type == "json":
                 payload["format"] = "json"
 
