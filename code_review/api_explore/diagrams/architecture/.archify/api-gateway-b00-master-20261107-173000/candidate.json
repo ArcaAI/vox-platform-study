@@ -1,0 +1,379 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B00 Master Overview",
+    "subtitle": "Domain map and batch diagram index (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b00-master-20261107-173000/api-gateway-b00-master.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0",
+      "link_mode": "web"
+    },
+    "views": [
+      {
+        "id": "overview",
+        "label": "Gateway overview",
+        "focus": [
+          "clients",
+          "gateway",
+          "pipeline",
+          "dom_auth",
+          "dom_consult",
+          "dom_agents",
+          "dom_ops"
+        ],
+        "note": "Master overview only; no exhaustive endpoint boxes. See B01-B08 batch diagrams."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      40,
+      60
+    ],
+    "cols": 4,
+    "gapX": 80,
+    "gapY": 48,
+    "cellW": 340,
+    "cellH": 124
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "API callers",
+      "sublabel": "Web/mobile/admin, internal services, webhooks/WS",
+      "tag": "entry",
+      "row": 0,
+      "col": 0,
+      "size": [
+        320,
+        112
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 1,
+          "label": "NestJS API bootstrap (main.ts)"
+        },
+        {
+          "path": "apps/api/src/cors.config.ts",
+          "line": 1,
+          "label": "CORS/global entry config"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API Gateway (NestJS app)",
+      "sublabel": "Bootstrap, module composition, HTTP/WS entrypoints",
+      "tag": "gateway",
+      "row": 0,
+      "col": 1,
+      "size": [
+        330,
+        112
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 1,
+          "label": "main.ts bootstrap"
+        },
+        {
+          "path": "apps/api/src/app.module.ts",
+          "line": 1,
+          "label": "AppModule composition"
+        },
+        {
+          "path": "apps/api/src/global-prefix.config.ts",
+          "line": 1,
+          "label": "Global prefix config"
+        }
+      ]
+    },
+    {
+      "id": "pipeline",
+      "type": "backend",
+      "label": "Global pipeline & cross-cutting",
+      "sublabel": "Guards, interceptors, filters, pipes, auth/tenant context",
+      "tag": "pipeline",
+      "row": 1,
+      "col": 1,
+      "size": [
+        330,
+        124
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/guards/origin-tenant-binding.guard.ts",
+          "line": 1,
+          "label": "origin-tenant-binding.guard.ts"
+        },
+        {
+          "path": "apps/api/src/interceptors/maintenance.interceptor.ts",
+          "line": 1,
+          "label": "maintenance.interceptor.ts"
+        },
+        {
+          "path": "apps/api/src/filters/all-exceptions.filter.ts",
+          "line": 1,
+          "label": "all-exceptions.filter.ts"
+        }
+      ]
+    },
+    {
+      "id": "dom_auth",
+      "type": "backend",
+      "label": "Identity & tenancy/admin",
+      "sublabel": "B01 auth/identity, B02 tenancy/admin",
+      "tag": "domain batch",
+      "row": 0,
+      "col": 2,
+      "size": [
+        330,
+        112
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/auth/auth.controller.ts",
+          "line": 1,
+          "label": "B01 auth.controller.ts"
+        },
+        {
+          "path": "apps/api/src/modules/tenant/tenant-reference-set.controller.ts",
+          "line": 1,
+          "label": "B02 tenant-ref controller"
+        }
+      ]
+    },
+    {
+      "id": "dom_consult",
+      "type": "backend",
+      "label": "Consultation & media",
+      "sublabel": "B03 consultation core, B04 streaming/speech/media",
+      "tag": "domain batch",
+      "row": 1,
+      "col": 2,
+      "size": [
+        330,
+        112
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/consultation/admin-consultation.controller.ts",
+          "line": 1,
+          "label": "B03 consultation controller"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/streaming.module.ts",
+          "line": 1,
+          "label": "B04 streaming.module.ts"
+        }
+      ]
+    },
+    {
+      "id": "dom_agents",
+      "type": "backend",
+      "label": "Agents, workflows & AI",
+      "sublabel": "B05 agent/workflow, B06 AI platform",
+      "tag": "domain batch",
+      "row": 2,
+      "col": 2,
+      "size": [
+        330,
+        112
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/agent/agent.controller.ts",
+          "line": 1,
+          "label": "B05 agent.controller.ts"
+        },
+        {
+          "path": "apps/api/src/modules/ai-model/ai-model.module.ts",
+          "line": 1,
+          "label": "B06 ai-model.module.ts"
+        }
+      ]
+    },
+    {
+      "id": "dom_ops",
+      "type": "backend",
+      "label": "Guardrails, ops & misc",
+      "sublabel": "B07 guardrails/ops, B08 billing/internal/misc",
+      "tag": "domain batch",
+      "row": 3,
+      "col": 2,
+      "size": [
+        330,
+        112
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/guardrail-policy/guardrail-policy.controller.ts",
+          "line": 1,
+          "label": "B07 guardrail-policy ctrl"
+        },
+        {
+          "path": "apps/api/src/modules/internal/model-registry-internal.controller.ts",
+          "line": 1,
+          "label": "B08 internal model-registry"
+        }
+      ]
+    },
+    {
+      "id": "downstream",
+      "type": "cloud",
+      "label": "Shared data & external systems",
+      "sublabel": "Postgres/Redis/queues, storage, AI/providers, internal svcs",
+      "tag": "downstream",
+      "row": 1,
+      "col": 3,
+      "size": [
+        330,
+        124
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/database/tenant-context.provider.ts",
+          "line": 1,
+          "label": "tenant-context.provider.ts"
+        },
+        {
+          "path": "apps/api/src/config/index.ts",
+          "line": 1,
+          "label": "config/index.ts"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Entry & gateway core",
+      "wraps": [
+        "clients",
+        "gateway",
+        "pipeline"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Domain batch map (B01-B08)",
+      "wraps": [
+        "dom_auth",
+        "dom_consult",
+        "dom_agents",
+        "dom_ops"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Shared dependencies",
+      "wraps": [
+        "downstream"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "m1",
+      "from": "clients",
+      "to": "gateway",
+      "label": "HTTP/WS"
+    },
+    {
+      "id": "m2",
+      "from": "gateway",
+      "to": "pipeline",
+      "label": "request"
+    },
+    {
+      "id": "m3",
+      "from": "pipeline",
+      "to": "dom_auth",
+      "label": "route"
+    },
+    {
+      "id": "m4",
+      "from": "pipeline",
+      "to": "dom_consult",
+      "label": "route"
+    },
+    {
+      "id": "m5",
+      "from": "pipeline",
+      "to": "dom_agents",
+      "label": "route"
+    },
+    {
+      "id": "m6",
+      "from": "pipeline",
+      "to": "dom_ops",
+      "label": "route"
+    },
+    {
+      "id": "m7",
+      "from": "dom_auth",
+      "to": "downstream",
+      "label": "deps"
+    },
+    {
+      "id": "m8",
+      "from": "dom_consult",
+      "to": "downstream",
+      "label": "deps"
+    },
+    {
+      "id": "m9",
+      "from": "dom_agents",
+      "to": "downstream",
+      "label": "deps"
+    },
+    {
+      "id": "m10",
+      "from": "dom_ops",
+      "to": "downstream",
+      "label": "deps"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "B00 master scope",
+      "items": [
+        "Gateway-level overview only (no exhaustive endpoint boxes). Shows callers -> NestJS API gateway/bootstrap -> global pipeline -> domain batch map -> shared dependencies.",
+        "Cross-reference existing overview diagrams (avoid duplication): api-system-context.html, api-gateway-internals-deep-dive.html.",
+        "All domain batches B01-B08 are completed and tracked in API_GATEWAY_ARCHITECTURE_TRACKER.md. Baseline: 818 routes / 148 controllers / 77 modules (inventory/summary.json)."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Domain batch index (detailed diagrams)",
+      "items": [
+        "B01 Auth/Identity: api-gateway-b01a-auth-credentials.html, b01b1-user.html, b01b2-rbac-security-idp.html.",
+        "B02 Tenancy/Admin: b02a-tenant-core-config.html, b02b-tenant-data-ops.html, b02c-settings-entitlements.html.",
+        "B03 Consultation: b03a1-consultation-lifecycle.html, b03a2-consultation-interactions-admin.html, b03a3-consultation-internal-harness.html, b03b-consultation-supporting.html.",
+        "B04 Streaming/Speech/Media: b04a-streaming-speech-media-pilot.html, b04b-streaming-speech-media-remaining.html.",
+        "B05 Agents/Workflows: b05a-agents-mcp.html, b05b-harness-admin.html, b05c-workflows.html.",
+        "B06 AI Platform: b06a-model-provider-routing.html, b06b-inference-prompts-knowledge.html.",
+        "B07 Guardrails/Ops: b07a-guardrails.html, b07b-observability-queues.html, b07c-release-comms-webhooks.html.",
+        "B08 Billing/Internal/Misc: b08a-billing-admin-misc.html, b08b-internal-misc.html."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Evidence and limitations",
+      "items": [
+        "Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Gateway sources: apps/api/src/main.ts, app.module.ts, global-prefix/cors config, guards/interceptors/filters/database/config dirs.",
+        "Domain batch diagrams contain detailed endpoint->controller->service->downstream flows with grouped endpoint nodes, receipts, and limitations. Strict 1:1 endpoint coverage and all DTO/internal contracts require reconciliation with inventory/OpenAPI/implementation.",
+        "Global pipeline details (exact guard/interceptor order, auth strategies, tenant scoping) are referenced at directory level here; see api-gateway-internals-deep-dive.html and code for implementation-specific behavior."
+      ]
+    }
+  ]
+}

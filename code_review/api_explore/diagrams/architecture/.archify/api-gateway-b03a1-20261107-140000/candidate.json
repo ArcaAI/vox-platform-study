@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B03a1 Consultation Lifecycle",
+    "subtitle": "Core consultation lifecycle, streams/SSE, jobs (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b03a1-20261107-140000/api-gateway-b03a1-consultation-lifecycle.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_life","eg_stream","eg_job","ctl_core","ctl_job","ctl_events","svc_consult","svc_job","data_consult","ext_runtime"],"note":"B03a1: consultation core lifecycle/streams/jobs. Interactions/admin/internal in B03a2/B03a3."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_life","type":"frontend","label":"Consultation lifecycle API group","sublabel":"workflows, start/pause/stop/approve, encounters/recording","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation.controller.ts","line":308,"label":"ConsultationController /consultations"},{"path":"apps/api/src/modules/consultation/consultation.controller.ts","line":793,"label":"workflows/start/pause/stop/approve"}]},
+    {"id":"eg_stream","type":"frontend","label":"Consultation stream/SSE group","sublabel":"live-summary/stream, live-assist/stream, events SSE","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation.controller.ts","line":1502,"label":"GET :id/live-summary/stream @Sse"},{"path":"apps/api/src/modules/consultation/consultation-lifecycle-events.controller.ts","line":18,"label":"GET :id/events @Sse"}]},
+    {"id":"eg_job","type":"frontend","label":"Consultation jobs API group","sublabel":"GET/PATCH jobs/:jobId, jobs/:jobId/stream","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-job.controller.ts","line":29,"label":"ConsultationJobController /jobs"}]},
+
+    {"id":"ctl_core","type":"backend","label":"ConsultationController","sublabel":"Lifecycle, workflow, context/clinical, SSE relays","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation.controller.ts","line":308,"label":"class ConsultationController"},{"path":"apps/api/src/modules/consultation/consultation.controller.ts","line":978,"label":"start/pause/stop/approve handlers"}]},
+    {"id":"ctl_events","type":"backend","label":"ConsultationLifecycleEventsController","sublabel":"Consultation lifecycle event SSE stream","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-lifecycle-events.controller.ts","line":24,"label":"GET :id/events @Sse"}]},
+    {"id":"ctl_job","type":"backend","label":"ConsultationJobController","sublabel":"Async consultation job status/cancel/stream","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-job.controller.ts","line":37,"label":"get/cancel/stream handlers"}]},
+
+    {"id":"svc_consult","type":"backend","label":"Consultation/lifecycle services","sublabel":"Consultation domain, lifecycle, summary/note, harness","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/consultation/consultation.service.ts","line":218,"label":"ConsultationService"},{"path":"packages/applications/src/services/consultation/lifecycle/consultation-lifecycle.service.ts","line":75,"label":"ConsultationLifecycleService"}]},
+    {"id":"svc_job","type":"backend","label":"ConsultationJobService","sublabel":"Consultation async job orchestration","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/jobs/consultation-job.service.ts","line":79,"label":"ConsultationJobService"}]},
+
+    {"id":"data_consult","type":"database","label":"Consultation data stores","sublabel":"Postgres/Prisma + Redis pubsub/streams (SSE)","tag":"data","row":0,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/consultation/consultation.service.ts","line":218,"label":"Consultation persistence"},{"path":"apps/api/src/modules/consultation/consultation.controller.ts","line":310,"label":"RedisSubscriberService injected (SSE)"}]},
+    {"id":"ext_runtime","type":"external","label":"Workflow/AI/harness runtime","sublabel":"Workflow runs, live doc/harness/assist, note generation","tag":"runtime","row":2,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation.controller.ts","line":320,"label":"INoteGenerationService, harness services"},{"path":"packages/applications/src/services/workflow-run/workflow-run.service.ts","line":175,"label":"WorkflowRunService (related runtime)"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_life","eg_stream","eg_job"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_core","ctl_events","ctl_job"]},
+    {"kind":"region","label":"Application services","wraps":["svc_consult","svc_job"]},
+    {"kind":"region","label":"Data stores / runtime","wraps":["data_consult","ext_runtime"]}
+  ],
+  "connections": [
+    {"id":"k1","from":"eg_life","to":"ctl_core","label":"HTTP"},
+    {"id":"k2","from":"eg_stream","to":"ctl_core","label":"SSE/HTTP"},
+    {"id":"k3","from":"eg_stream","to":"ctl_events","label":"SSE"},
+    {"id":"k4","from":"eg_job","to":"ctl_job","label":"HTTP/SSE"},
+    {"id":"k5","from":"ctl_core","to":"svc_consult","label":"delegate"},
+    {"id":"k6","from":"ctl_events","to":"svc_consult","label":"events"},
+    {"id":"k7","from":"ctl_job","to":"svc_job","label":"delegate"},
+    {"id":"k8","from":"svc_consult","to":"data_consult","label":"state"},
+    {"id":"k9","from":"svc_job","to":"data_consult","label":"jobs"},
+    {"id":"k10","from":"svc_consult","to":"ext_runtime","label":"workflow/AI"},
+    {"id":"k11","from":"svc_job","to":"ext_runtime","label":"async"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B03a1 scope (consultation lifecycle)","items":["Part of B03-consultation-core split (consultation module 108 routes/11 controllers). B03a1 groups core lifecycle controllers: ConsultationController, ConsultationLifecycleEventsController, ConsultationJobController.","Representative routes: GET workflows/:id/workflow, POST :id/start|pause|stop|approve, GET :id/encounters/:id/recording; SSE GET :id/live-summary/stream, :id/live-assist/stream, :id/events; jobs GET/PATCH /consultations/jobs/:jobId and GET :jobId/stream (SSE).","ConsultationController has many additional context/summary/highlight/entity/timeline routes (inventory 108 total for module); grouped for readability. SSE/internal surfaces captured explicitly."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Lifecycle command: POST /consultations/:id/start|pause|stop|approve -> consultation/encounter lifecycle state response (vocabulary may depend on X-Hope-Lifecycle header/interceptor).","Live streams: GET :id/live-summary/stream or :id/live-assist/stream (SSE) -> event stream frames (PHI-safe/clinical content per implementation). GET :id/events SSE -> lifecycle event stream.","Jobs: GET /consultations/jobs/:jobId -> job status/result metadata; PATCH cancel -> cancellation result; GET :jobId/stream SSE -> job progress/result events. Verify exact DTOs and SSE event schemas."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams evidenced in ConsultationController deps: consultation/lifecycle services, note generation, live documentation/harness/assist, Redis subscriber for trajectory/SSE relays, workflow/consultation job services, media service for recordings. Exact runtime topology (workers/queues/AI providers) may vary.","Limitations: grouped endpoint nodes (not 1:1 for all consultation.controller routes); ConsultationController is large and has base-pattern/custom routes not fully enumerated by simple grep; example I/O summarized; SSE payload schemas and internal auth are implementation-specific."]}
+  ]
+}

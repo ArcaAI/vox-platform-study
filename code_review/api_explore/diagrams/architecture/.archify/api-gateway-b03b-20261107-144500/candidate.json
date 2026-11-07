@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B03b Consultation Supporting",
+    "subtitle": "History, context schemas, consent, templates, DNA style (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b03b-20261107-144500/api-gateway-b03b-consultation-supporting.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_hist","eg_schema","eg_consent","eg_tpl","eg_dna","ctl_hist","ctl_schema","ctl_consent","ctl_tpl","ctl_dna","svc_hist","svc_schema","svc_consent","svc_tpl","svc_dna","data_core","ext_dna"],"note":"B03b completes B03 consultation-core supporting modules."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 44, "cellW": 340, "cellH": 120},
+  "components": [
+    {"id":"eg_hist","type":"frontend","label":"Consultation history API","sublabel":"patient/consultation history + admin history","tag":"endpoint group","row":0,"col":0,"size":[330,114],"sources":[{"path":"apps/api/src/modules/consultation-history/consultation-history.controller.ts","line":27,"label":"ConsultationHistoryController"},{"path":"apps/api/src/modules/consultation-history/admin-consultation-history.controller.ts","line":34,"label":"AdminConsultationHistoryController"}]},
+    {"id":"eg_schema","type":"frontend","label":"Consultation context schema API","sublabel":"admin schemas + /tenants/me/context-schema","tag":"endpoint group","row":1,"col":0,"size":[330,114],"sources":[{"path":"apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts","line":39,"label":"Admin context schema controller"},{"path":"apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts","line":213,"label":"MyTenantContextSchemaController"}]},
+    {"id":"eg_consent","type":"frontend","label":"Consent grants admin API","sublabel":"/admin/consent-grants management","tag":"endpoint group","row":2,"col":0,"size":[330,114],"sources":[{"path":"apps/api/src/modules/consent/consent.controller.ts","line":30,"label":"ConsentGrantController"}]},
+    {"id":"eg_tpl","type":"frontend","label":"Document template API","sublabel":"admin templates + /tenants/me/document-template","tag":"endpoint group","row":3,"col":0,"size":[330,114],"sources":[{"path":"apps/api/src/modules/document-template/document-template.controller.ts","line":41,"label":"DocumentTemplateAdminController"},{"path":"apps/api/src/modules/document-template/document-template.controller.ts","line":194,"label":"MyTenantDocumentTemplateController"}]},
+    {"id":"eg_dna","type":"frontend","label":"DNA writing style API group","sublabel":"styles CRUD, ingest/jobs, admin/memory admin","tag":"endpoint group","row":4,"col":0,"size":[330,114],"sources":[{"path":"apps/api/src/modules/dna-writing-style/dna-writing-style.controller.ts","line":53,"label":"DnaWritingStyleController"},{"path":"apps/api/src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts","line":43,"label":"DnaWritingStyleIngestController"},{"path":"apps/api/src/modules/dna-writing-style/dna-writing-style-admin.controller.ts","line":33,"label":"DNA admin controllers"}]},
+
+    {"id":"ctl_hist","type":"backend","label":"Consultation history controllers","sublabel":"User and admin consultation history endpoints","tag":"controller","row":0,"col":1,"size":[330,114],"sources":[{"path":"apps/api/src/modules/consultation-history/consultation-history.controller.ts","line":28,"label":"ConsultationHistoryController"},{"path":"apps/api/src/modules/consultation-history/admin-consultation-history.controller.ts","line":36,"label":"AdminConsultationHistoryController"}]},
+    {"id":"ctl_schema","type":"backend","label":"Context schema controllers","sublabel":"Admin and tenant self context schema management","tag":"controller","row":1,"col":1,"size":[330,114],"sources":[{"path":"apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts","line":41,"label":"AdminContextSchemaController"},{"path":"apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts","line":226,"label":"MyTenantContextSchemaController"}]},
+    {"id":"ctl_consent","type":"backend","label":"ConsentGrantController","sublabel":"Admin consent grant CRUD/management","tag":"controller","row":2,"col":1,"size":[330,114],"sources":[{"path":"apps/api/src/modules/consent/consent.controller.ts","line":54,"label":"ConsentGrantController class"}]},
+    {"id":"ctl_tpl","type":"backend","label":"Document template controllers","sublabel":"Admin and tenant self template management","tag":"controller","row":3,"col":1,"size":[330,114],"sources":[{"path":"apps/api/src/modules/document-template/document-template.controller.ts","line":43,"label":"DocumentTemplateAdminController"},{"path":"apps/api/src/modules/document-template/document-template.controller.ts","line":199,"label":"MyTenantDocumentTemplateController"}]},
+    {"id":"ctl_dna","type":"backend","label":"DNA writing style controllers","sublabel":"Style, ingest/jobs, admin, memory-admin surfaces","tag":"controller","row":4,"col":1,"size":[330,114],"sources":[{"path":"apps/api/src/modules/dna-writing-style/dna-writing-style.controller.ts","line":71,"label":"DnaWritingStyleController"},{"path":"apps/api/src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts","line":47,"label":"DnaWritingStyleIngestController"},{"path":"apps/api/src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts","line":29,"label":"DnaWritingStyleMemoryAdminController"}]},
+
+    {"id":"svc_hist","type":"backend","label":"ConsultationHistoryService","sublabel":"Consultation history reads/aggregation","tag":"service","row":0,"col":2,"size":[330,114],"sources":[{"path":"packages/applications/src/services/consultation/history/consultation-history.service.ts","line":168,"label":"ConsultationHistoryService"}]},
+    {"id":"svc_schema","type":"backend","label":"ConsultationContextSchemaService","sublabel":"Context schema CRUD/resolution","tag":"service","row":1,"col":2,"size":[330,114],"sources":[{"path":"packages/applications/src/services/consultation-context-schema/consultation-context-schema.service.ts","line":71,"label":"ConsultationContextSchemaService"}]},
+    {"id":"svc_consent","type":"backend","label":"Consent services","sublabel":"Consent grant admin + consultation consent checks","tag":"service","row":2,"col":2,"size":[330,114],"sources":[{"path":"packages/applications/src/services/consent/consent-grant.service.ts","line":63,"label":"ConsentGrantService"},{"path":"packages/applications/src/services/consent/consultation-consent.service.ts","line":33,"label":"ConsultationConsentService"}]},
+    {"id":"svc_tpl","type":"backend","label":"DocumentTemplateService","sublabel":"Document template CRUD/resolution","tag":"service","row":3,"col":2,"size":[330,114],"sources":[{"path":"packages/applications/src/services/document-template/document-template.service.ts","line":71,"label":"DocumentTemplateService"}]},
+    {"id":"svc_dna","type":"backend","label":"DNA writing style services","sublabel":"Style, ingest/capture, memory admin services","tag":"service","row":4,"col":2,"size":[330,114],"sources":[{"path":"packages/applications/src/services/dna-writing-style/dna-writing-style.service.ts","line":150,"label":"DnaWritingStyleService"},{"path":"packages/applications/src/services/dna-writing-style/dna-memory-capture.service.ts","line":19,"label":"DnaMemoryCaptureService"},{"path":"packages/applications/src/services/dna-writing-style/dna-memory-admin.service.ts","line":47,"label":"DnaMemoryAdminService"}]},
+
+    {"id":"data_core","type":"database","label":"Consultation support data","sublabel":"History, schemas, consent grants, templates, DNA state","tag":"data","row":1,"col":3,"size":[330,114],"sources":[{"path":"packages/applications/src/services/consultation-context-schema/consultation-context-schema.service.ts","line":71,"label":"Schema/template/config persistence"},{"path":"packages/applications/src/services/dna-writing-style/dna-writing-style.service.ts","line":150,"label":"DNA style persistence"}]},
+    {"id":"ext_dna","type":"external","label":"DNA ingest/AI pipeline","sublabel":"Ingest jobs and style extraction/runtime dependencies","tag":"runtime","row":4,"col":3,"size":[330,114],"sources":[{"path":"apps/api/src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts","line":136,"label":"POST ingest, GET jobs/:jobId"},{"path":"packages/applications/src/services/dna-writing-style/dna-memory-capture.service.ts","line":19,"label":"DnaMemoryCaptureService"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_hist","eg_schema","eg_consent","eg_tpl","eg_dna"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_hist","ctl_schema","ctl_consent","ctl_tpl","ctl_dna"]},
+    {"kind":"region","label":"Application services","wraps":["svc_hist","svc_schema","svc_consent","svc_tpl","svc_dna"]},
+    {"kind":"region","label":"Data stores / DNA runtime","wraps":["data_core","ext_dna"]}
+  ],
+  "connections": [
+    {"id":"p1","from":"eg_hist","to":"ctl_hist","label":"HTTP"},
+    {"id":"p2","from":"eg_schema","to":"ctl_schema","label":"HTTP"},
+    {"id":"p3","from":"eg_consent","to":"ctl_consent","label":"HTTP"},
+    {"id":"p4","from":"eg_tpl","to":"ctl_tpl","label":"HTTP"},
+    {"id":"p5","from":"eg_dna","to":"ctl_dna","label":"HTTP"},
+    {"id":"p6","from":"ctl_hist","to":"svc_hist","label":"delegate"},
+    {"id":"p7","from":"ctl_schema","to":"svc_schema","label":"delegate"},
+    {"id":"p8","from":"ctl_consent","to":"svc_consent","label":"delegate"},
+    {"id":"p9","from":"ctl_tpl","to":"svc_tpl","label":"delegate"},
+    {"id":"p10","from":"ctl_dna","to":"svc_dna","label":"delegate"},
+    {"id":"p11","from":"svc_hist","to":"data_core","label":"history"},
+    {"id":"p12","from":"svc_schema","to":"data_core","label":"schemas"},
+    {"id":"p13","from":"svc_consent","to":"data_core","label":"grants"},
+    {"id":"p14","from":"svc_tpl","to":"data_core","label":"templates"},
+    {"id":"p15","from":"svc_dna","to":"data_core","label":"styles"},
+    {"id":"p16","from":"svc_dna","to":"ext_dna","label":"ingest/AI"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B03b scope (consultation supporting)","items":["Completes B03-consultation-core. Modules: consultation-history (7/2), consultation-context-schema (9/1), consent (3/1), document-template (8/1), dna-writing-style (31/4) = 58 routes / 9 controllers (inventory).","History: user/admin consultation history endpoints. Context schema: admin + /tenants/me. Consent: /admin/consent-grants. Document template: admin + /tenants/me. DNA writing style: style CRUD, ingest/jobs, admin, memory-admin (4 controllers).","Grouped endpoint nodes used for readability; route-level details/examples summarized in cards."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Context schema/template: admin/tenant create/update DTOs -> schema/template records; tenant-self endpoints return effective/tenant-scoped config.","Consent grants: admin CRUD/management requests -> consent grant records (sensitive policy data; verify access controls and redaction).","Consultation history: query/pagination params -> history records/aggregations for user/admin scopes.","DNA ingest: POST /dna-writing-styles/ingest -> ingest job/result metadata; GET jobs/:jobId -> job status/result. Verify exact DTOs, async processing, and AI/runtime dependencies."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams: consultation-support data store (Postgres/Prisma). DNA ingest/capture may involve async jobs and AI extraction/runtime dependencies — summarized as runtime.","Limitations: grouped endpoint nodes across 5 modules/9 controllers; exact route/DTO contracts should be reconciled with inventory/OpenAPI; consent and DNA memory surfaces are policy/PHI-sensitive — verify access/redaction semantics."]}
+  ]
+}

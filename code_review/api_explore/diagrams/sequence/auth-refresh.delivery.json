@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b001fff7-8ec8-4257-9e39-ae9a2e91b518",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/updated-auth-refresh.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-refresh.html",
+  "specification": {
+    "sha256": "feb7c8604656e9c0be798760ace8e8a698601499a5e7f405771c88acefc0bac4",
+    "bytes": 4491
+  },
+  "artifact": {
+    "sha256": "57ccba08b9e209b5883793a8ad09dfe4aca412972c74bce772cf332be2f03048",
+    "bytes": 759046
+  }
+}

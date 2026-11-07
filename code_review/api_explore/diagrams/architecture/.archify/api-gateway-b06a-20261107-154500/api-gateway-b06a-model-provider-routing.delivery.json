@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d895cfed-56a2-413e-b527-7a08e62981e9",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b06a-20261107-154500/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b06a-20261107-154500/api-gateway-b06a-model-provider-routing.html",
+  "specification": {
+    "sha256": "d57cfdf64d825ee1a6e0065079f5a8c5f2112124555c5eb3e63bdf0d0e5d58fd",
+    "bytes": 10195
+  },
+  "artifact": {
+    "sha256": "9f81ed561f1c58fd474219eae4bdcdd67c46c1cdc8cdade9beae1d8c150c3119",
+    "bytes": 786747
+  }
+}

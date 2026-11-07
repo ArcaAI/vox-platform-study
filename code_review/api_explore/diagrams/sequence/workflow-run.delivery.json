@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d6a39b1e-73c8-49b1-a1bb-766c327ce2c4",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/updated-workflow-run.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/workflow-run.html",
+  "specification": {
+    "sha256": "23d40fd13445e779c198386137f174676a19ab518010a55fdf74764a7aa43b38",
+    "bytes": 4525
+  },
+  "artifact": {
+    "sha256": "a51eeed41a6b7de71196f5c7e07cd07bbbdcc5a6d2a98e08ac412523263f0c2a",
+    "bytes": 760804
+  }
+}

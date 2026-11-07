@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "147d8b55-001f-4771-93aa-e19c668cb5e7",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/workflow-node-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/workflow-node-flow.html",
+  "specification": {
+    "sha256": "c31e3804bf555a5aff99ebf2a1dc6decb24ebce7a5b73c13d286501136052060",
+    "bytes": 3502
+  },
+  "artifact": {
+    "sha256": "69bdf2b08ad65a16b310e4736798ed09c14f2b9db4dca6eb26c4f980687a66e2",
+    "bytes": 754717
+  }
+}

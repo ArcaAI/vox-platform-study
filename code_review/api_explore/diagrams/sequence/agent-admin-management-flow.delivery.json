@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "4a21adf0-face-4cdd-bd97-1fcada782d34",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/agent-admin-management-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/agent-admin-management-flow.html",
+  "specification": {
+    "sha256": "eb572be152d325f22257015ecd726a17c746b658db3493c2ecb436ad4835ac9e",
+    "bytes": 3539
+  },
+  "artifact": {
+    "sha256": "a2a1ed39cb38a289ee4a1152ea5250750e1b48a281a95f3ccac10cc45fa587a9",
+    "bytes": 754688
+  }
+}

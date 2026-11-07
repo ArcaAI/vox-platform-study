@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "cce60f1c-fbfd-4fe2-a5d5-1a70cb9e3736",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b04b-20261107-121500/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b04b-20261107-121500/api-gateway-b04b-streaming-speech-media-remaining.html",
+  "specification": {
+    "sha256": "05b7b448b8abd787aa980721c2994a41befa91762a856408b48f50ed86f78790",
+    "bytes": 19359
+  },
+  "artifact": {
+    "sha256": "6eea3592431bd38dcbd3223e95a41e1eda3ceca3bb27ffb3d0a6f5c1d34a467a",
+    "bytes": 802061
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B05c Workflows",
+    "subtitle": "Workflow definitions, runs/sandbox, facade/traces, hooks (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b05c-20261107-153000/api-gateway-b05c-workflows.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_def","eg_run","eg_facade","eg_hooks","ctl_def","ctl_run","ctl_facade","ctl_hooks","svc_def","svc_run","svc_facade","data_wf","ext_engine"],"note":"B05c completes B05 (agents/MCP/harness/workflows)."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_def","type":"frontend","label":"Workflow config admin API","sublabel":"definitions, assignments, nodes, rules, fixtures","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflow-definition/workflow-definition.controller.ts","line":63,"label":"WorkflowDefinitionController"},{"path":"apps/api/src/modules/workflow-assignment/workflow-assignment.controller.ts","line":24,"label":"WorkflowAssignmentController"},{"path":"apps/api/src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts","line":28,"label":"WorkflowTestFixtureController"}]},
+    {"id":"eg_run","type":"frontend","label":"Workflow runs admin API","sublabel":"workflow-runs, traces, sandbox-runs (14 routes)","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflow-run/workflow-run.controller.ts","line":47,"label":"WorkflowRunController"},{"path":"apps/api/src/modules/workflows/workflow-run-trace.controller.ts","line":41,"label":"WorkflowRunTraceController"},{"path":"apps/api/src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts","line":37,"label":"WorkflowSandboxRunController"}]},
+    {"id":"eg_facade","type":"frontend","label":"Workflow facade/runtime API","sublabel":"/workflows, consultation workflow runs","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflows/workflows.controller.ts","line":95,"label":"WorkflowsController"},{"path":"apps/api/src/modules/workflows/consultation-workflow-runs.controller.ts","line":70,"label":"ConsultationWorkflowRunsController"}]},
+    {"id":"eg_hooks","type":"frontend","label":"Workflow hooks API","sublabel":"POST/handle /hooks/workflows callbacks","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflows/workflow-hooks.controller.ts","line":24,"label":"WorkflowHooksController"}]},
+
+    {"id":"ctl_def","type":"backend","label":"Workflow config controllers","sublabel":"Definition, assignment, node, rule, test fixture","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflow-definition/workflow-definition.controller.ts","line":65,"label":"WorkflowDefinitionController"},{"path":"apps/api/src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts","line":47,"label":"WorkflowInvariantRuleController"},{"path":"apps/api/src/modules/workflow-node/workflow-node.controller.ts","line":22,"label":"WorkflowNodeController"}]},
+    {"id":"ctl_run","type":"backend","label":"Workflow run controllers","sublabel":"Admin runs, run traces, sandbox runs","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflow-run/workflow-run.controller.ts","line":49,"label":"WorkflowRunController"},{"path":"apps/api/src/modules/workflows/workflow-run-trace.controller.ts","line":42,"label":"WorkflowRunTraceController"},{"path":"apps/api/src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts","line":38,"label":"WorkflowSandboxRunController"}]},
+    {"id":"ctl_facade","type":"backend","label":"Workflow facade controllers","sublabel":"Workflow listing/facade and consultation runs","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflows/workflows.controller.ts","line":96,"label":"WorkflowsController"},{"path":"apps/api/src/modules/workflows/consultation-workflow-runs.controller.ts","line":71,"label":"ConsultationWorkflowRunsController"}]},
+    {"id":"ctl_hooks","type":"backend","label":"WorkflowHooksController","sublabel":"External/internal workflow hook callbacks","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflows/workflow-hooks.controller.ts","line":25,"label":"class WorkflowHooksController"}]},
+
+    {"id":"svc_def","type":"backend","label":"Workflow config services","sublabel":"Definitions, assignments, rules, test fixtures","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/workflow-definition/workflow-definition.service.ts","line":332,"label":"WorkflowDefinitionService"},{"path":"packages/applications/src/services/workflow-assignment/workflow-assignment.service.ts","line":57,"label":"WorkflowAssignmentService"},{"path":"packages/applications/src/services/workflow-test-fixture/workflow-test-fixture.service.ts","line":33,"label":"WorkflowTestFixtureService"}]},
+    {"id":"svc_run","type":"backend","label":"Workflow execution services","sublabel":"Runs, trace access, sandbox runs/retention","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/workflow-run/workflow-run.service.ts","line":175,"label":"WorkflowRunService"},{"path":"packages/applications/src/services/workflow-run/run-trace-access.ts","line":34,"label":"WorkflowRunTraceAccessService"},{"path":"packages/applications/src/services/workflow-sandbox-run/workflow-sandbox-run.service.ts","line":47,"label":"WorkflowSandboxRunService"}]},
+    {"id":"svc_facade","type":"backend","label":"Workflow facade services","sublabel":"Facade/consultation workflow orchestration (impl-specific)","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflows/workflows.controller.ts","line":95,"label":"WorkflowsController module"},{"path":"packages/applications/src/services/workflow-run/workflow-run.service.ts","line":175,"label":"WorkflowRunService (related)"}]},
+
+    {"id":"data_wf","type":"database","label":"Workflow config/run data","sublabel":"Definitions, assignments, rules, fixtures, runs, traces","tag":"data","row":0,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/workflow-definition/workflow-definition.service.ts","line":332,"label":"Workflow definition persistence"},{"path":"packages/applications/src/services/workflow-run/workflow-run.service.ts","line":175,"label":"Workflow run persistence"}]},
+    {"id":"ext_engine","type":"external","label":"Workflow engine/runtime","sublabel":"Temporal/harness execution, sandbox, hook callers","tag":"runtime","row":2,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/workflows/workflow-hooks.controller.ts","line":24,"label":"Workflow hook callbacks"},{"path":"packages/applications/src/services/workflow-sandbox-run/workflow-sandbox-run.service.ts","line":47,"label":"Sandbox run service"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_def","eg_run","eg_facade","eg_hooks"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_def","ctl_run","ctl_facade","ctl_hooks"]},
+    {"kind":"region","label":"Application services","wraps":["svc_def","svc_run","svc_facade"]},
+    {"kind":"region","label":"Data stores / workflow engine","wraps":["data_wf","ext_engine"]}
+  ],
+  "connections": [
+    {"id":"w1","from":"eg_def","to":"ctl_def","label":"HTTP"},
+    {"id":"w2","from":"eg_run","to":"ctl_run","label":"HTTP"},
+    {"id":"w3","from":"eg_facade","to":"ctl_facade","label":"HTTP"},
+    {"id":"w4","from":"eg_hooks","to":"ctl_hooks","label":"HTTP"},
+    {"id":"w5","from":"ctl_def","to":"svc_def","label":"delegate"},
+    {"id":"w6","from":"ctl_run","to":"svc_run","label":"delegate"},
+    {"id":"w7","from":"ctl_facade","to":"svc_facade","label":"delegate"},
+    {"id":"w8","from":"ctl_hooks","to":"ext_engine","label":"callbacks"},
+    {"id":"w9","from":"svc_def","to":"data_wf","label":"config"},
+    {"id":"w10","from":"svc_run","to":"data_wf","label":"runs"},
+    {"id":"w11","from":"svc_facade","to":"data_wf","label":"state"},
+    {"id":"w12","from":"svc_run","to":"ext_engine","label":"execute"},
+    {"id":"w13","from":"svc_facade","to":"ext_engine","label":"orchestrate"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B05c scope (workflows)","items":["Completes B05-agent-workflow. Modules: workflows (15/4), workflow-definition (22/1), workflow-assignment (5/1), workflow-invariant-rule (5/1), workflow-node (1/1), workflow-run (5/1), workflow-sandbox-run (4/1), workflow-test-fixture (5/1) = 62 routes / 11 controllers.","Config admin: definitions, assignments, nodes, invariant rules, test fixtures. Runs: admin workflow-runs, run traces, sandbox runs. Facade/runtime: /workflows and consultation workflow runs. Hooks: /hooks/workflows callbacks.","Workflow-run-trace controller shares /admin/workflow-runs base with workflow-run controller (separate controllers)."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Workflow definition/config: admin CRUD/publish/webhook-secret DTOs -> definition/assignment/rule/fixture records (verify exact routes, versioning, and secret handling).","Workflow run/sandbox: create/list/get run or sandbox-run requests -> run/trace/sandbox state; sandbox runs are scoped to definitionId in path.","Facade/consultation runs: /workflows and /consultations/:consultationId/workflows requests -> workflow discovery/run orchestration responses (verify service wiring).","Hooks: POST /hooks/workflows callback payloads -> hook handling/result (auth/signature verification is implementation-specific). Verify exact DTOs and hook security."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams: workflow config/run data store (Postgres/Prisma). Workflow execution may involve Temporal/harness/sandbox runtime and hook callers — summarized as workflow engine/runtime.","Limitations: grouped endpoint nodes (62 routes/11 controllers); WorkflowNodeService and some workflows-facade service names not separately verified; reconcile route/DTO/hook auth/versioning semantics with OpenAPI/implementation."]}
+  ]
+}

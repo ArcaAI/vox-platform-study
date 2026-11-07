@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>API Gateway Architecture Catalog</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#121a2b;--panel2:#0f1728;--text:#e8eefc;--muted:#9fb0d0;--line:#243252;--link:#7cc4ff;--tag:#18314f;--tagtext:#bfe1ff}
+    *{box-sizing:border-box}
+    body{margin:0;font:14px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;background:linear-gradient(180deg,#0b1020,#0a0f1a);color:var(--text)}
+    main{max-width:1280px;margin:0 auto;padding:28px 20px 56px}
+    h1{margin:0 0 6px;font-size:30px} h2{margin:0 0 8px;font-size:20px}
+    p{color:var(--muted);margin:0 0 14px}
+    .card{background:rgba(18,26,43,.94);border:1px solid var(--line);border-radius:14px;padding:16px 16px 10px;margin:16px 0;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+    .section-summary{margin:0 0 12px}
+    table{width:100%;border-collapse:collapse;margin:8px 0 6px}
+    th,td{padding:11px 12px;border-top:1px solid var(--line);vertical-align:top}
+    th{text-align:left;color:#cfe0ff;font-size:12px;text-transform:uppercase;letter-spacing:.04em;border-top:0;background:rgba(15,23,40,.55)}
+    code{background:#0d1526;padding:2px 6px;border-radius:6px;border:1px solid #1e2a48;color:#dce8ff}
+    a{color:var(--link);text-decoration:none} a:hover{text-decoration:underline}
+    .links{white-space:nowrap}
+    .meta{font-size:13px;color:var(--muted)}
+    .tag{display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:999px;background:var(--tag);color:var(--tagtext);border:1px solid #29527e;font-size:11px;line-height:1.45}
+    .legend{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 2px}
+  </style>
+</head>
+<body>
+<main>
+  <h1>API Gateway Architecture Catalog</h1>
+  <p>Architecture artifacts are in <code>review/api_explore/diagrams/architecture/</code>. Evidence source: <code>project-hope</code> @ <code>8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0</code>. Baseline inventory: <strong>818 routes / 148 controllers / 77 modules</strong>. Batches B01–B08 and B00 master are complete (see tracker for finalize receipts/advisories).</p>
+  <div class="card">
+    <h2>How to read this catalog</h2>
+    <p class="section-summary">Diagrams primarily use <strong>grouped endpoint nodes</strong> for readability. “API types” tags summarize the dominant surface (admin, tenant-self, public, internal/service-to-service, REST, SSE, WebSocket, callbacks/hooks, jobs/async) as evidenced in the completed batches; verify exact auth, DTOs, and 1:1 route contracts in <code>architecture/API_GATEWAY_ARCHITECTURE_TRACKER.md</code>, explainers, Archify receipts, and project-hope code/OpenAPI.</p>
+    <div class="legend">
+      <span class="tag">REST (grouped)</span><span class="tag">Admin/secured</span><span class="tag">Public/operational</span><span class="tag">Tenant self</span><span class="tag">Internal/S2S</span><span class="tag">SSE</span><span class="tag">WebSocket</span><span class="tag">Hooks/callbacks</span><span class="tag">Jobs/async</span>
+    </div>
+  </div>
+
+  <section class="card">
+    <h2>Planning &amp; Tracking</h2>
+    <table>
+      <thead><tr><th style="width:28%">Document</th><th>Description</th><th style="width:12%">Link</th></tr></thead>
+      <tbody><tr><td><code>API_GATEWAY_ARCHITECTURE_TRACKER.md</code><div style="margin-top:6px"><span class="tag">Tracking</span><span class="tag">Receipts</span><span class="tag">Reconciliation</span></div></td><td>Batch tracker: status, scopes, candidate/HTML/receipt paths, reconciliation and completion checklists.</td><td class="links"><a href="architecture/API_GATEWAY_ARCHITECTURE_TRACKER.md">Open</a></td></tr>
+<tr><td><code>API_GATEWAY_ARCHITECTURE_WORKPLAN.md</code><div style="margin-top:6px"><span class="tag">Process</span><span class="tag">Batching</span><span class="tag">Resume</span></div></td><td>Workplan, batching strategy, output locations, and resumable process.</td><td class="links"><a href="architecture/API_GATEWAY_ARCHITECTURE_WORKPLAN.md">Open</a></td></tr>
+<tr><td><code>API_GATEWAY_ARCHITECTURE_PROMPT.md</code><div style="margin-top:6px"><span class="tag">Requirements</span><span class="tag">Prompt</span><span class="tag">Archify workflow</span></div></td><td>Detailed requirements and prompt for batched API gateway architecture diagram generation.</td><td class="links"><a href="architecture/API_GATEWAY_ARCHITECTURE_PROMPT.md">Open</a></td></tr></tbody>
+    </table>
+  </section>
+
+  
+  <section class="card">
+    <h2>Overview &amp; Context</h2>
+    <p class="section-summary">Gateway-level/domain-map views and existing deep-dive references. No exhaustive endpoint boxes.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b00-master</code><div style="margin-top:6px"><span class="tag">Gateway overview</span> <span class="tag">HTTP/WS entry</span> <span class="tag">Cross-reference map</span></div></td>
+      <td>Master API gateway overview: request entry, NestJS bootstrap/module composition, global pipeline refs (guards/interceptors/filters), domain batch map (B01–B08), shared dependencies. Cross-references existing overview diagrams.</td>
+      <td class="links"><a href="architecture/api-gateway-b00-master.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b00-master.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-system-context</code><div style="margin-top:6px"><span class="tag">System context</span> <span class="tag">Architecture reference</span></div></td>
+      <td>Existing system context architecture diagram (cross-referenced by B00).</td>
+      <td class="links"><a href="architecture/api-system-context.html">HTML</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-internals-deep-dive</code><div style="margin-top:6px"><span class="tag">Gateway internals</span> <span class="tag">Pipeline/guard deep dive</span></div></td>
+      <td>Existing gateway internals deep-dive diagram (cross-referenced by B00).</td>
+      <td class="links"><a href="architecture/api-gateway-internals-deep-dive.html">HTML</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B01 — Identity &amp; Access</h2>
+    <p class="section-summary">Authentication, user/identity administration, credentials, RBAC, security policy, and tenant IdP configuration. Primarily admin/secured REST APIs; some auth flows may be public/entry-point specific (verify per endpoint).</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b01a-auth-credentials</code><div style="margin-top:6px"><span class="tag">Auth/login flows</span> <span class="tag">API keys</span> <span class="tag">Service accounts</span> <span class="tag">REST (grouped)</span> <span class="tag">Admin/secured</span></div></td>
+      <td>Auth flows plus API key and service-account management.</td>
+      <td class="links"><a href="architecture/api-gateway-b01a-auth-credentials.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b01a-auth-credentials.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b01b1-user</code><div style="margin-top:6px"><span class="tag">User admin</span> <span class="tag">REST (grouped)</span> <span class="tag">Admin/secured</span></div></td>
+      <td>User management and related identity administration flows.</td>
+      <td class="links"><a href="architecture/api-gateway-b01b1-user.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b01b1-user.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b01b2-rbac-security-idp</code><div style="margin-top:6px"><span class="tag">RBAC/permissions</span> <span class="tag">Security policy</span> <span class="tag">Tenant IdP config</span> <span class="tag">REST (grouped)</span> <span class="tag">Admin/secured</span></div></td>
+      <td>Roles/permissions/RBAC, security policy, and tenant IdP config.</td>
+      <td class="links"><a href="architecture/api-gateway-b01b2-rbac-security-idp.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b01b2-rbac-security-idp.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B02 — Tenancy &amp; Administration</h2>
+    <p class="section-summary">Tenant lifecycle/configuration, tenant data operations, departments, settings catalog/global settings, entitlements, and resource subscriptions. Primarily admin and tenant-scoped REST APIs.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b02a-tenant-core-config</code><div style="margin-top:6px"><span class="tag">Tenant admin</span> <span class="tag">Config CRUD</span> <span class="tag">Origin/frontend/storage config</span> <span class="tag">REST (grouped)</span></div></td>
+      <td>Tenant lifecycle/admin, allowed origins, frontend config, storage config.</td>
+      <td class="links"><a href="architecture/api-gateway-b02a-tenant-core-config.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b02a-tenant-core-config.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b02b-tenant-data-ops</code><div style="margin-top:6px"><span class="tag">Bucket management</span> <span class="tag">Checkpoint/restore</span> <span class="tag">Async/data ops (verify)</span> <span class="tag">REST (grouped)</span> <span class="tag">Admin/tenant ops</span></div></td>
+      <td>Tenant buckets and checkpoint/export/restore data operations.</td>
+      <td class="links"><a href="architecture/api-gateway-b02b-tenant-data-ops.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b02b-tenant-data-ops.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b02c-settings-entitlements</code><div style="margin-top:6px"><span class="tag">Settings/catalog</span> <span class="tag">Entitlements</span> <span class="tag">Subscriptions</span> <span class="tag">Departments</span> <span class="tag">REST (grouped)</span> <span class="tag">Admin/config</span></div></td>
+      <td>Departments, global settings/settings catalog, entitlements, resource subscriptions.</td>
+      <td class="links"><a href="architecture/api-gateway-b02c-settings-entitlements.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b02c-settings-entitlements.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B03 — Consultation (Clinical Core)</h2>
+    <p class="section-summary">Consultation lifecycle and supporting clinical/document/config surfaces. Includes REST, SSE streams, async jobs, admin APIs, and internal/service-to-service harness/consent/read endpoints.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b03a1-consultation-lifecycle</code><div style="margin-top:6px"><span class="tag">Consultation lifecycle</span> <span class="tag">SSE streams</span> <span class="tag">Job status/cancel/stream</span> <span class="tag">REST + SSE</span> <span class="tag">User/admin scoped (verify)</span></div></td>
+      <td>Core consultation lifecycle/workflow actions, live streams, lifecycle events, and consultation jobs.</td>
+      <td class="links"><a href="architecture/api-gateway-b03a1-consultation-lifecycle.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b03a1-consultation-lifecycle.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b03a2-consultation-interactions-admin</code><div style="margin-top:6px"><span class="tag">Attachments</span> <span class="tag">Feedback/rollups</span> <span class="tag">Admin consultation</span> <span class="tag">Telemetry</span> <span class="tag">REST (grouped)</span> <span class="tag">Admin + consultation-scoped</span></div></td>
+      <td>Attachments, feedback/reason codes/rollups, admin consultation list/aggregate/detail, telemetry.</td>
+      <td class="links"><a href="architecture/api-gateway-b03a2-consultation-interactions-admin.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b03a2-consultation-interactions-admin.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b03a3-consultation-internal-harness</code><div style="margin-top:6px"><span class="tag">Internal APIs</span> <span class="tag">Service-to-service</span> <span class="tag">X-Service-Token/tenant lock (evidenced)</span> <span class="tag">Consent decision</span> <span class="tag">Harness ops</span> <span class="tag">REST internal</span></div></td>
+      <td>Internal harness config/credentials, consultation internal ops (entities/assemble/draft/gate-decision/escalation), consultation read, consent assert.</td>
+      <td class="links"><a href="architecture/api-gateway-b03a3-consultation-internal-harness.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b03a3-consultation-internal-harness.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b03b-consultation-supporting</code><div style="margin-top:6px"><span class="tag">History/schemas</span> <span class="tag">Consent grants</span> <span class="tag">Templates</span> <span class="tag">DNA writing style</span> <span class="tag">Ingest/jobs (verify)</span> <span class="tag">REST (grouped)</span> <span class="tag">Admin + tenant self</span></div></td>
+      <td>Consultation history, context schemas, consent grants, document templates, DNA writing style (incl. ingest/jobs).</td>
+      <td class="links"><a href="architecture/api-gateway-b03b-consultation-supporting.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b03b-consultation-supporting.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B04 — Streaming, Speech &amp; Media</h2>
+    <p class="section-summary">Audio/text streaming and speech/media/storage surfaces. Includes HTTP REST, WebSocket gateways (STT/TTS where evidenced), presigned/upload flows, and downstream model/service integrations.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b04a-streaming-speech-media-pilot</code><div style="margin-top:6px"><span class="tag">HTTP REST</span> <span class="tag">WebSocket (STT/TTS)</span> <span class="tag">Streaming sessions</span> <span class="tag">Speech synthesis</span> <span class="tag">Media upload</span> <span class="tag">Representative flows</span></div></td>
+      <td>Representative streaming transcribe/session, text generate, speech synthesize/TTS WS, and media upload/reference flows.</td>
+      <td class="links"><a href="architecture/api-gateway-b04a-streaming-speech-media-pilot.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b04a-streaming-speech-media-pilot.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b04b-streaming-speech-media-remaining</code><div style="margin-top:6px"><span class="tag">HTTP REST</span> <span class="tag">SSE/stream ops (verify)</span> <span class="tag">Storage/access keys</span> <span class="tag">Voice profiles</span> <span class="tag">Transcription jobs</span> <span class="tag">Admin + runtime</span></div></td>
+      <td>Remaining storage, storage-access-key, voice-profile, transcription/text admin+job/session/stream ops, and speech voices/listing flows.</td>
+      <td class="links"><a href="architecture/api-gateway-b04b-streaming-speech-media-remaining.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b04b-streaming-speech-media-remaining.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B05 — Agents, Harness &amp; Workflows</h2>
+    <p class="section-summary">Agent runtime/admin surfaces, MCP admin, harness admin control plane, and workflow definition/execution/facade/hook APIs. Includes admin REST, runtime orchestration surfaces, and hook/callback endpoints.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b05a-agents-mcp</code><div style="margin-top:6px"><span class="tag">Agent runtime</span> <span class="tag">Agent admin</span> <span class="tag">MCP server admin</span> <span class="tag">Trajectory reads</span> <span class="tag">REST (grouped)</span></div></td>
+      <td>Agent runtime, admin/assignments/promotions, trajectory/agentic admin, MCP server admin.</td>
+      <td class="links"><a href="architecture/api-gateway-b05a-agents-mcp.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b05a-agents-mcp.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b05b-harness-admin</code><div style="margin-top:6px"><span class="tag">Harness admin</span> <span class="tag">Policy/config</span> <span class="tag">Eval/golden sets</span> <span class="tag">Workflow control</span> <span class="tag">Live sessions</span> <span class="tag">REST admin</span></div></td>
+      <td>Harness admin: policy/audit, eval runs/golden sets, gate queue/edit exemplars, workflow control, live sessions/capabilities/config.</td>
+      <td class="links"><a href="architecture/api-gateway-b05b-harness-admin.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b05b-harness-admin.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b05c-workflows</code><div style="margin-top:6px"><span class="tag">Workflow config</span> <span class="tag">Runs/sandbox/traces</span> <span class="tag">Facade/runtime</span> <span class="tag">Hooks/callbacks</span> <span class="tag">REST + callback endpoints</span></div></td>
+      <td>Workflow config admin, runs/traces/sandbox runs, workflows facade/consultation workflow runs, workflow hooks.</td>
+      <td class="links"><a href="architecture/api-gateway-b05c-workflows.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b05c-workflows.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B06 — AI Platform</h2>
+    <p class="section-summary">Model registry/residency/provider connections/routing/service admin plus inference/safety, engines, prompt management/inspection, NLP task instructions, and knowledge. Primarily admin/config/runtime REST APIs with external AI/provider dependencies.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b06a-model-provider-routing</code><div style="margin-top:6px"><span class="tag">Model registry</span> <span class="tag">Residency</span> <span class="tag">Provider connections</span> <span class="tag">Routing policies</span> <span class="tag">REST admin/config</span></div></td>
+      <td>AI model registry/catalog/discovery/jobs, model residency, provider connections, routing policies, AI service admin.</td>
+      <td class="links"><a href="architecture/api-gateway-b06a-model-provider-routing.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b06a-model-provider-routing.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b06b-inference-prompts-knowledge</code><div style="margin-top:6px"><span class="tag">Inference/safety</span> <span class="tag">Inference engines</span> <span class="tag">Prompt mgmt/preview</span> <span class="tag">NLP instructions</span> <span class="tag">Knowledge admin</span> <span class="tag">REST runtime/admin</span></div></td>
+      <td>AI inference and safety checks, inference engines (LM Studio), prompt management/inspector, NLP task instructions, knowledge documents.</td>
+      <td class="links"><a href="architecture/api-gateway-b06b-inference-prompts-knowledge.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b06b-inference-prompts-knowledge.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B07 — Guardrails &amp; Operations</h2>
+    <p class="section-summary">Guardrails, observability/health/metrics/audit, queue/scheduler/rate-limit admin, and release/comms/webhook surfaces. Includes admin REST, public/operational health endpoints, internal evaluation ingest, and outbound webhook/notification delivery integrations.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b07a-guardrails</code><div style="margin-top:6px"><span class="tag">Guardrail policy/config</span> <span class="tag">Consultation notices</span> <span class="tag">Internal evaluation ingest</span> <span class="tag">Service-to-service (internal)</span> <span class="tag">REST admin/consultation</span></div></td>
+      <td>Guardrail availability/policy/metrics/tenant policy/rule test, consultation notices, admin/internal evaluation surfaces.</td>
+      <td class="links"><a href="architecture/api-gateway-b07a-guardrails.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b07a-guardrails.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b07b-observability-queues</code><div style="margin-top:6px"><span class="tag">Health/readiness</span> <span class="tag">Metrics/monitoring</span> <span class="tag">Audit logs</span> <span class="tag">Queue/scheduler admin</span> <span class="tag">Rate-limit admin</span> <span class="tag">REST ops/admin</span></div></td>
+      <td>Health, admin health services, monitoring, platform metrics, audit logs, queue/scheduler admin, rate-limit admin.</td>
+      <td class="links"><a href="architecture/api-gateway-b07b-observability-queues.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b07b-observability-queues.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b07c-release-comms-webhooks</code><div style="margin-top:6px"><span class="tag">Releases/changelog</span> <span class="tag">Notifications</span> <span class="tag">Webhooks</span> <span class="tag">Internal release endpoint</span> <span class="tag">Outbound delivery integrations</span> <span class="tag">REST admin/public/internal</span></div></td>
+      <td>Service releases (admin + internal), changelog (public/admin), notifications admin, webhooks admin/delivery.</td>
+      <td class="links"><a href="architecture/api-gateway-b07c-release-comms-webhooks.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b07c-release-comms-webhooks.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>B08 — Billing &amp; Internal/Misc</h2>
+    <p class="section-summary">Billing and usage surfaces, internal governed-prompt verification, sensitive Prisma Studio admin tooling, and the generic internal service-to-service module. Includes admin/tenant-self REST and internal token-guarded APIs.</p>
+    <table>
+      <thead><tr><th style="width:28%">Artifact / API types</th><th>Description</th><th style="width:12%">Links</th></tr></thead>
+      <tbody><tr>
+      <td><code>api-gateway-b08a-billing-admin-misc</code><div style="margin-top:6px"><span class="tag">Billing/invoices</span> <span class="tag">Usage</span> <span class="tag">Internal governed prompt</span> <span class="tag">Prisma Studio admin (sensitive)</span> <span class="tag">REST admin/tenant-self/internal</span></div></td>
+      <td>Billing/invoices, admin/tenant usage, internal governed-prompt verification, Prisma Studio admin/status.</td>
+      <td class="links"><a href="architecture/api-gateway-b08a-billing-admin-misc.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b08a-billing-admin-misc.md">MD</a></td>
+    </tr>
+<tr>
+      <td><code>api-gateway-b08b-internal-misc</code><div style="margin-top:6px"><span class="tag">Internal module</span> <span class="tag">Service-to-service</span> <span class="tag">STT callbacks/jobs/media</span> <span class="tag">Token/tenant-lock guards (verify per controller)</span> <span class="tag">REST internal</span></div></td>
+      <td>Internal module controllers for agent/model/config, STT callbacks/ops, and STT session transcript reads.</td>
+      <td class="links"><a href="architecture/api-gateway-b08b-internal-misc.html">HTML</a> &nbsp;|&nbsp; <a href="architecture/api-gateway-b08b-internal-misc.md">MD</a></td>
+    </tr></tbody>
+    </table>
+  </section>
+
+  <p class="meta">Detailed candidates/finalize receipts are under <code>review/api_explore/diagrams/architecture/.archify/</code>. Existing references: <a href="architecture/api-system-context.html">api-system-context.html</a>, <a href="architecture/api-gateway-internals-deep-dive.html">api-gateway-internals-deep-dive.html</a>.</p>
+</main>
+</body>
+</html>

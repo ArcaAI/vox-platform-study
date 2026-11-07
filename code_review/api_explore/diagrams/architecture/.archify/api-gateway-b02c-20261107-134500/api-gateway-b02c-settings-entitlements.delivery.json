@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "dc6c8c55-e20e-4947-9cb2-e42c9a570175",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b02c-20261107-134500/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b02c-20261107-134500/api-gateway-b02c-settings-entitlements.html",
+  "specification": {
+    "sha256": "cfd6930a9e133cde58952f5f9eb0598b28353094603c1b692712274b6a45531b",
+    "bytes": 10332
+  },
+  "artifact": {
+    "sha256": "4832dc18f2e7e458987a6cf9840540a9ce5c00985e9ade029a0a43afcbc9ed88",
+    "bytes": 788637
+  }
+}

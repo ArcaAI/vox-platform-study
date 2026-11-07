@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e28e683e-313d-492e-a8f3-163914134437",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/guardrail-policy-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/guardrail-policy-flow.html",
+  "specification": {
+    "sha256": "dc49270e42234d699a9963f0dc56a8a513b1adf698971f821d5c23d0012a6fae",
+    "bytes": 3593
+  },
+  "artifact": {
+    "sha256": "dc1ba0719fc7f3ee1f7d11d4df7858bc78e8ab8138e11d7b1b677511bec6760a",
+    "bytes": 754697
+  }
+}

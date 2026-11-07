@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e1b74aaf-771c-4990-9d6c-26d6f159088c",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07b-20261107-163000/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07b-20261107-163000/api-gateway-b07b-observability-queues.html",
+  "specification": {
+    "sha256": "fdac912e6db105f5a72c441741bafd7a3e228cb0db364a1aed09091d66a9ec82",
+    "bytes": 9691
+  },
+  "artifact": {
+    "sha256": "4deb4b1d5cbf56027de4937bbea34c3fe66f4de80720096e5661996d7d7a5cec",
+    "bytes": 785751
+  }
+}

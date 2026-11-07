@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b0413146-6ab9-4e87-b0c5-f8811a7f0930",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/consultation-summary-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/consultation-summary-flow.html",
+  "specification": {
+    "sha256": "8a4d78485f36c66d865709b571dec5ebd781b60370b3368cc414544b939ce55e",
+    "bytes": 3926
+  },
+  "artifact": {
+    "sha256": "aaf5587dbbf1b89f5b460684cf8e5360f0c9859e8d772538824a1adad05944a7",
+    "bytes": 756080
+  }
+}

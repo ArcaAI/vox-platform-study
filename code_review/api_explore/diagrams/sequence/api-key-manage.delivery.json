@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ba637818-bfbd-4b61-8269-c7b05702b2e2",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/updated-api-key-manage.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/api-key-manage.html",
+  "specification": {
+    "sha256": "db02629d29552541da6a299cca1137f472fd065d0b2503d9c5e91b6b0ec317d8",
+    "bytes": 4006
+  },
+  "artifact": {
+    "sha256": "b0196d0eca6aeb59f96970e90ef27a694f5079ce81569cf9f98ca1b5bedbaa9c",
+    "bytes": 757063
+  }
+}

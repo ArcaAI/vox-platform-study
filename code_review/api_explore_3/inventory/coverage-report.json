@@ -1,0 +1,48 @@
+{
+  "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0",
+  "generatedAt": "2026-11-07T11:52:50.118344+00:00",
+  "routes": 818,
+  "withControllerLine": 818,
+  "withOpenApiContract": 761,
+  "withServiceNode": 776,
+  "withHelperNode": 547,
+  "withMicroserviceDetection": 124,
+  "withInfrastructureDetection": 677,
+  "withExternalProviderDetection": 34,
+  "withAnyVerifiedNode": 818,
+  "planes": {
+    "Platform Admin & Tenancy": 312,
+    "Clinical & Consultation": 166,
+    "Agentic & Workflows": 165,
+    "AI Models & Guardrails": 135,
+    "Speech & Audio": 40
+  },
+  "topModules": {
+    "consultation": 109,
+    "user": 33,
+    "streaming": 31,
+    "dna-writing-style": 31,
+    "harness-admin": 29,
+    "ai-model": 26,
+    "agent-admin": 25,
+    "prompt-management": 22,
+    "workflow-definition": 22,
+    "rbac": 20,
+    "tenant": 20,
+    "internal": 20,
+    "guardrail-policy": 17,
+    "queue-admin": 17,
+    "auth": 15,
+    "workflows": 15,
+    "model-residency": 14,
+    "billing": 13,
+    "admin-rate-limit": 13,
+    "tenant-bucket": 13
+  },
+  "notes": [
+    "Handler lines come from the TypeScript AST and are verified against the working tree at the pinned revision.",
+    "Microservice detection is static: URL/env/port/HTTP-path evidence is marked verified; module/flow hints are marked inferred or inferred-chain.",
+    "Service-call resolution covers direct controller calls and one further application-service hop. Transitive runtime calls through Temporal, queues, or Python services may be inferred rather than fully traced.",
+    "Request/response examples are generated from OpenAPI schemas. Endpoints without an OpenAPI operation are marked undocumented and use a minimal inferred body."
+  ]
+}

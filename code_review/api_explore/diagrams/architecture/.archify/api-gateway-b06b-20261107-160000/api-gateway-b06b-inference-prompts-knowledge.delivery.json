@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "cf8d32b2-97df-4a48-b539-097c5110738b",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b06b-20261107-160000/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b06b-20261107-160000/api-gateway-b06b-inference-prompts-knowledge.html",
+  "specification": {
+    "sha256": "996a8d661dc042442440e35b5decac10e0735cf8614c9579d869965618b6abaf",
+    "bytes": 10312
+  },
+  "artifact": {
+    "sha256": "aaa59feeeb3efac1afe123da94ef542967f15568b013c92e47e04d1d6dec7c5e",
+    "bytes": 785949
+  }
+}

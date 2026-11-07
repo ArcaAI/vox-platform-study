@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B01b2 RBAC, Security, Tenant IdP",
+    "subtitle": "RBAC, security policy, tenant IdP config flows (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b01b2-20261107-130000/api-gateway-b01b2-rbac-security-idp.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_rbac","eg_sec","eg_idp","ctl_rbac","ctl_sec","ctl_idp","svc_rbac","svc_sec","svc_idp","data_authz","ext_dir"],"note":"B01b2 completes B01 auth/identity."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_rbac","type":"frontend","label":"RBAC API group (~22 routes)","sublabel":"roles, policies, permission-check endpoints","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/rbac/roles.controller.ts","line":75,"label":"RolesController /admin/rbac/roles"},{"path":"apps/api/src/modules/rbac/policies.controller.ts","line":31,"label":"PoliciesController /admin/rbac/policies"},{"path":"apps/api/src/modules/rbac/permission-check.controller.ts","line":24,"label":"PermissionCheck controllers"}]},
+    {"id":"eg_sec","type":"frontend","label":"Security policy API (2 routes)","sublabel":"GET/PUT /admin/security/policy","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/security-policy/security-policy.controller.ts","line":30,"label":"SecurityPolicyController"}]},
+    {"id":"eg_idp","type":"frontend","label":"Tenant IdP config API (8 routes)","sublabel":"CRUD/test/directory-credentials/sync","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts","line":30,"label":"TenantIdpConfigAdminController"}]},
+
+    {"id":"ctl_rbac","type":"backend","label":"RBAC controllers","sublabel":"Roles, policies, permission checks (me/admin)","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/rbac/roles.controller.ts","line":75,"label":"RolesController"},{"path":"apps/api/src/modules/rbac/policies.controller.ts","line":31,"label":"PoliciesController"},{"path":"apps/api/src/modules/rbac/permission-check.controller.ts","line":39,"label":"PermissionCheck handlers"}]},
+    {"id":"ctl_sec","type":"backend","label":"SecurityPolicyController","sublabel":"Platform/tenant security policy read/write","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/security-policy/security-policy.controller.ts","line":34,"label":"GET/PUT security policy"}]},
+    {"id":"ctl_idp","type":"backend","label":"TenantIdpConfigAdminController","sublabel":"Tenant IdP config lifecycle, test, sync","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts","line":39,"label":"CRUD/test/sync handlers"}]},
+
+    {"id":"svc_rbac","type":"backend","label":"RBAC services","sublabel":"Role/policy management and assignment logic","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/rbac/role/role.service.ts","line":72,"label":"RbacRoleService"},{"path":"packages/applications/src/services/rbac/policy/policy.service.ts","line":59,"label":"PolicyService"}]},
+    {"id":"svc_sec","type":"backend","label":"SecurityPolicyService","sublabel":"Security policy persistence/application logic","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/security/secretPolicy/security-policy.service.ts","line":46,"label":"SecurityPolicyService"}]},
+    {"id":"svc_idp","type":"backend","label":"TenantIdpConfigService","sublabel":"IdP config, credentials, directory sync/test","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant-idp-config/tenant-idp-config.service.ts","line":49,"label":"TenantIdpConfigService"}]},
+
+    {"id":"data_authz","type":"database","label":"AuthZ/tenant config store","sublabel":"Roles, policies, security policy, IdP config","tag":"data","row":0,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/rbac/policy/policy.service.ts","line":59,"label":"Policy persistence"},{"path":"packages/applications/src/services/tenant-idp-config/tenant-idp-config.service.ts","line":49,"label":"Tenant IdP config persistence"}]},
+    {"id":"ext_dir","type":"external","label":"External IdP/directory","sublabel":"IdP test/sync targets (OIDC/SAML/directory)","tag":"external","row":2,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts","line":104,"label":"POST :id/test, POST :id/sync"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_rbac","eg_sec","eg_idp"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_rbac","ctl_sec","ctl_idp"]},
+    {"kind":"region","label":"Application services","wraps":["svc_rbac","svc_sec","svc_idp"]},
+    {"kind":"region","label":"Data stores / external directories","wraps":["data_authz","ext_dir"]}
+  ],
+  "connections": [
+    {"id":"r1","from":"eg_rbac","to":"ctl_rbac","label":"HTTP"},
+    {"id":"r2","from":"eg_sec","to":"ctl_sec","label":"HTTP"},
+    {"id":"r3","from":"eg_idp","to":"ctl_idp","label":"HTTP"},
+    {"id":"r4","from":"ctl_rbac","to":"svc_rbac","label":"delegate"},
+    {"id":"r5","from":"ctl_sec","to":"svc_sec","label":"delegate"},
+    {"id":"r6","from":"ctl_idp","to":"svc_idp","label":"delegate"},
+    {"id":"r7","from":"svc_rbac","to":"data_authz","label":"authz"},
+    {"id":"r8","from":"svc_sec","to":"data_authz","label":"policy"},
+    {"id":"r9","from":"svc_idp","to":"data_authz","label":"config"},
+    {"id":"r10","from":"svc_idp","to":"ext_dir","label":"test/sync"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B01b2 scope (RBAC, security, tenant IdP)","items":["Completes B01 auth/identity split. Modules: rbac (~22 routes est.), security-policy (2), tenant-idp-config (8).","RBAC: /admin/rbac/roles CRUD/clone/members/policy links; /admin/rbac/policies CRUD/validate; /users/me/permission-checks and /users/:id/permission-checks (single/bulk).","Security policy: GET/PUT /admin/security/policy. Tenant IdP config: CRUD + POST :id/test, PUT :id/directory-credentials, POST :id/sync under /admin/tenant-idp-config."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Role/policy create/update: role/policy DTOs (name, permissions/policy document, metadata) -> role/policy responses; clone creates derived role.","Permission check: action/subject/resource context -> allow/deny decision result (and bulk array for bulk endpoint).","Security policy: GET returns effective policy; PUT accepts policy payload and returns updated/effective policy.","Tenant IdP config: create/update IdP config DTO (provider/protocol/metadata) -> config response; test/sync return operation/test results. Directory credentials are managed via dedicated PUT endpoint. Verify exact DTO schemas."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams: authz/tenant config data store (Postgres/Prisma via services), external IdP/directory for tenant IdP test/sync (deployment/provider specific).","Limitations: grouped endpoint nodes for readability; example I/O summarized from route contracts; CASL/policy evaluation internals and exact directory sync protocols should be verified in implementation/tests for strict contracts."]}
+  ]
+}

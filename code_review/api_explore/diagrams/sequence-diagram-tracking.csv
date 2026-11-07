@@ -1,0 +1,839 @@
+Module,Path,Method,Summary,Controller,DiagramName,DiagramExists
+agent-admin,/api/v1/admin/agent-assignments,fetchAll,"List the caller tenant’s agent assignments (plus SYSTEM’s platform defaults), optionally by task",src/modules/agent-admin/agent-assignment-admin.controller.ts,admin-fetchall,Yes
+agent-admin,/api/v1/admin/agent-assignments,update,Re-assign one tier (If-Match OCC),src/modules/agent-admin/agent-assignment-admin.controller.ts,admin-update,Yes
+agent-admin,/api/v1/admin/agent-assignments,create,"Create the assignment for one (scope, scopeId, task) tier",src/modules/agent-admin/agent-assignment-admin.controller.ts,admin-create,Yes
+agent-admin,/api/v1/admin/agent-assignments/{id},remove,Remove one assignment — the tier reverts to inheriting (WORM change row appended),src/modules/agent-admin/agent-assignment-admin.controller.ts,admin-remove,Yes
+agent-admin,/api/v1/admin/agent-assignments/{id},fetchById,Get one agent assignment,src/modules/agent-admin/agent-assignment-admin.controller.ts,admin-fetchbyid,Yes
+agent-promotion,/api/v1/admin/agent-promotions,list,List promotions INTO the working tenant,src/modules/agent-promotion/agent-promotion.controller.ts,admin-list,Yes
+agent-promotion,/api/v1/admin/agent-promotions,promote,Promote a workflow definition version from one tenant to another,src/modules/agent-promotion/agent-promotion.controller.ts,admin-promote,Yes
+agent-promotion,/api/v1/admin/agent-promotions/{id},getById,Get one promotion record,src/modules/agent-promotion/agent-promotion.controller.ts,admin-getbyid,Yes
+agent-trajectory,/api/v1/admin/agent-trajectory/metrics/generation,aggregateGenerationStats,"Aggregate GenerationStats across LLM_CALL trajectory steps (TTFT median/p95, tok/s avg, stop-reason histogram). Bounded window (default last 7d) + hard row cap.",src/modules/agent-trajectory/agent-trajectory.controller.ts,admin-aggregategenerationstats,Yes
+agent-trajectory,/api/v1/admin/agent-trajectory/sessions,listSessions,List distinct agentic working sessions (grouped by kind + sessionId + runId) with step counts + first/last timestamps,src/modules/agent-trajectory/agent-trajectory.controller.ts,admin-listsessions,Yes
+agent-trajectory,/api/v1/admin/agent-trajectory/sessions/{sessionId}/steps,listSteps,"List the ordered steps for a session (seq asc), keyset-paginated. Cross-tenant / nonexistent → 404 (never 403).",src/modules/agent-trajectory/agent-trajectory.controller.ts,admin-liststeps,Yes
+agentic-admin,/api/v1/admin/agentic/instructions,getInstructions,"The effective agentic instruction set for a tenant (prompt tier, judge pin, thresholds, safety criteria)",src/modules/agentic-admin/agentic-admin.controller.ts,admin-getinstructions,Yes
+agent-admin,/api/v1/admin/agents,fetchAll,List the caller tenant’s agent versions,src/modules/agent-admin/agent-admin.controller.ts,admin-fetchall,Yes
+agent-admin,/api/v1/admin/agents,create,Create a new DRAFT agent version for the caller tenant,src/modules/agent-admin/agent-admin.controller.ts,admin-create,Yes
+agent-admin,/api/v1/admin/agents/{id},remove,Soft-delete an agent version (refused for the ACTIVE published version — deprecate it first),src/modules/agent-admin/agent-admin.controller.ts,admin-remove,Yes
+agent-admin,/api/v1/admin/agents/{id},fetchById,Get one agent version (own or SYSTEM template),src/modules/agent-admin/agent-admin.controller.ts,admin-fetchbyid,Yes
+agent-admin,/api/v1/admin/agents/{id},update,Update a DRAFT/VALIDATED agent version (If-Match OCC),src/modules/agent-admin/agent-admin.controller.ts,admin-update,Yes
+agent-admin,/api/v1/admin/agents/{id}/activate,activate,Make an already-PUBLISHED version the ACTIVE one for its slug (rollback),src/modules/agent-admin/agent-admin.controller.ts,admin-activate,Yes
+agent-admin,/api/v1/admin/agents/{id}/deprecate,deprecate,Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable,src/modules/agent-admin/agent-admin.controller.ts,admin-deprecate,Yes
+agent-admin,/api/v1/admin/agents/{id}/publish,publish,Publish an agent version (fails closed),src/modules/agent-admin/agent-admin.controller.ts,admin-publish,Yes
+agent-admin,/api/v1/admin/agents/{id}/test,test,Assemble (and optionally run) a DRAFT agent without publishing it,src/modules/agent-admin/agent-admin.controller.ts,admin-test,Yes
+agent-admin,/api/v1/admin/agents/{id}/test/finalize,finalizeTest,Read a finished draft-test generation back from TEXT and record its usage,src/modules/agent-admin/agent-admin.controller.ts,admin-finalizetest,Yes
+agent-admin,/api/v1/admin/agents/{id}/validate,validate,Run every publish-time check; stores the report and advances to VALIDATED when nothing blocks,src/modules/agent-admin/agent-admin.controller.ts,admin-validate,Yes
+agent-admin,/api/v1/admin/agents/{id}/versions,fetchVersions,"Every version of this agent’s lineage, newest first",src/modules/agent-admin/agent-admin.controller.ts,admin-fetchversions,Yes
+agent-admin,/api/v1/admin/agents/{id}/versions,newVersion,"Branch a new DRAFT version from ANY version (own lineage), or a new tenant lineage from a SYSTEM template",src/modules/agent-admin/agent-admin.controller.ts,admin-newversion,Yes
+agent-admin,/api/v1/admin/agents/{slug}/clone,clone,Clone a SYSTEM template or any visible agent into a NEW lineage,src/modules/agent-admin/agent-admin.controller.ts,admin-clone,Yes
+agent-admin,/api/v1/admin/agents/{slug}/export,exportBySlug,Export one agent version as a portable JSON bundle,src/modules/agent-admin/agent-admin.controller.ts,admin-exportbyslug,Yes
+agent-admin,/api/v1/admin/agents/{slug}/sync,sync,Push one of the caller’s own agents into other tenants the caller manages,src/modules/agent-admin/agent-admin.controller.ts,admin-sync,Yes
+agent-admin,/api/v1/admin/agents/{slug}/versions/{versionNumber}/usage,fetchVersionUsage,Published workflows that pin this agent version,src/modules/agent-admin/agent-admin.controller.ts,admin-fetchversionusage,Yes
+agent-admin,/api/v1/admin/agents/import,importBundle,Import an exported agent bundle as a DRAFT in the caller tenant,src/modules/agent-admin/agent-admin.controller.ts,admin-importbundle,Yes
+agent-admin,/api/v1/admin/agents/lineages,fetchLineages,List the caller tenant’s agent LINEAGES (one row per slug),src/modules/agent-admin/agent-admin.controller.ts,admin-fetchlineages,Yes
+agent-promotion,/api/v1/admin/agents/promote-to-system,promoteToSystem,Promote an agent from the Global build tenant into the SYSTEM reference set,src/modules/agent-promotion/agent-promote-to-system.controller.ts,admin-promotetosystem,Yes
+agent-admin,/api/v1/admin/agents/tags,listTags,Distinct agent tags with usage counts (autocomplete),src/modules/agent-admin/agent-admin.controller.ts,admin-listtags,Yes
+ai-model,/api/v1/admin/ai-models,fetchAll,Retrieving multiple ModelResponses,src/modules/ai-model/ai-model-admin.controller.ts,admin-fetchall,Yes
+ai-model,/api/v1/admin/ai-models,create,Creating a ModelResponse,src/modules/ai-model/ai-model-admin.controller.ts,admin-create,Yes
+ai-model,/api/v1/admin/ai-models/{id},delete,Deleting a ModelResponse by id,src/modules/ai-model/ai-model-admin.controller.ts,admin-delete,Yes
+ai-model,/api/v1/admin/ai-models/{id},fetchById,Retrieving a single ModelResponse by id,src/modules/ai-model/ai-model-admin.controller.ts,admin-fetchbyid,Yes
+ai-model,/api/v1/admin/ai-models/{id},update,Updating a ModelResponse by id,src/modules/ai-model/ai-model-admin.controller.ts,admin-update,Yes
+ai-model,/api/v1/admin/ai-models/{id}/download,getDownloadStatus,Poll the status of the most recent download job for this model.,src/modules/ai-model/ai-model-admin.controller.ts,admin-getdownloadstatus,Yes
+ai-model,/api/v1/admin/ai-models/{id}/download,triggerDownload,Publish this model's weights into the hope-models bucket (async).,src/modules/ai-model/ai-model-admin.controller.ts,admin-triggerdownload,Yes
+ai-model,/api/v1/admin/ai-models/{id}/download/cancel,cancelDownload,Cancel a model download,src/modules/ai-model/ai-model-jobs.controller.ts,admin-canceldownload,Yes
+ai-model,/api/v1/admin/ai-models/{id}/platform-default,setPlatformDefault,Elect this row as the platform default for one or more tasks,src/modules/ai-model/ai-model-admin.controller.ts,admin-setplatformdefault,Yes
+ai-model,/api/v1/admin/ai-models/{id}/unregister,unregister,Unregister a model and delete its weights,src/modules/ai-model/ai-model-admin.controller.ts,admin-unregister,Yes
+ai-model,/api/v1/admin/ai-models/{id}/usage,getUsage,List what still uses this model,src/modules/ai-model/ai-model-admin.controller.ts,admin-getusage,Yes
+ai-model,/api/v1/admin/ai-models/access,access,Your access to the model registry,src/modules/ai-model/ai-model-catalogue.controller.ts,admin-access,Yes
+ai-model,/api/v1/admin/ai-models/catalogue,catalogue,"The model catalogue this tenant may bind, in picker order",src/modules/ai-model/ai-model-catalogue.controller.ts,admin-catalogue,Yes
+ai-model,/api/v1/admin/ai-models/discovery,discover,Merge the AI model registry with the live engine listings,src/modules/ai-model/ai-model-discovery.controller.ts,admin-discover,Yes
+ai-model,/api/v1/admin/ai-models/discovery/register,register,"DEPRECATED (TASK-860, removed in R3) — register a discovered model",src/modules/ai-model/ai-model-discovery.controller.ts,admin-register,Yes
+ai-model,/api/v1/admin/ai-models/download-missing,downloadMissing,Download every model whose weights are missing,src/modules/ai-model/ai-model-admin.controller.ts,admin-downloadmissing,Yes
+ai-model,/api/v1/admin/ai-models/hub/preview,previewHub,Preview a Hugging Face model before registering it,src/modules/ai-model/ai-model-admin.controller.ts,admin-previewhub,Yes
+ai-model,/api/v1/admin/ai-models/inventory,lastInventory,Read the last model-bucket inventory report,src/modules/ai-model/ai-model-admin.controller.ts,admin-lastinventory,Yes
+ai-model,/api/v1/admin/ai-models/inventory,runInventory,Run the model-bucket inventory,src/modules/ai-model/ai-model-admin.controller.ts,admin-runinventory,Yes
+ai-model,/api/v1/admin/ai-models/jobs,listJobs,List recent model-publisher jobs,src/modules/ai-model/ai-model-jobs.controller.ts,admin-listjobs,Yes
+ai-model,/api/v1/admin/ai-models/list,list,"List the SYSTEM model registry as one paginated page. The whole query object
+is bound (`search`, `searchFields`, `filters`, `sort`, `page`, `limit`) so
+the grid's parameters reach the service and undeclared ones are rejected by
+the global validation pipe; named `@Query('x')` bindings would silently drop
+everything but the named keys.",src/modules/ai-model/ai-model-admin.controller.ts,admin-list,Yes
+ai-model,/api/v1/admin/ai-models/local/preview,previewLocal,Preview a model already in the models bucket,src/modules/ai-model/ai-model-registration.controller.ts,admin-previewlocal,Yes
+ai-model,/api/v1/admin/ai-models/register-from-hub,registerFromHub,Register a model from a Hugging Face repo and download it,src/modules/ai-model/ai-model-admin.controller.ts,admin-registerfromhub,Yes
+ai-model,/api/v1/admin/ai-models/register-from-path,registerFromPath,Register a model from a path in the models bucket,src/modules/ai-model/ai-model-registration.controller.ts,admin-registerfrompath,Yes
+ai-model,/api/v1/admin/ai-models/registry,registry,List the registered models (read-only),src/modules/ai-model/ai-model-catalogue.controller.ts,admin-registry,Yes
+ai-model,/api/v1/admin/ai-models/slug/{slug},fetchBySlug,Retrieving a single ModelResponse by slug,src/modules/ai-model/ai-model-admin.controller.ts,admin-fetchbyslug,Yes
+ai-service-admin,/api/v1/admin/ai-services/guardrail/config,guardrailConfig,Guardrail read-only configuration: medical-validation engine settings + supported analysis types.,src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-guardrailconfig,Yes
+ai-service-admin,/api/v1/admin/ai-services/guardrail/status,guardrailStatus,"Guardrail service health (proxied /api/health): LLM engine, GLiNER, and Redis component checks.",src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-guardrailstatus,Yes
+ai-service-admin,/api/v1/admin/ai-services/mlflow/experiments,mlflowExperiments,Search MLflow experiments,src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-mlflowexperiments,Yes
+ai-service-admin,/api/v1/admin/ai-services/mlflow/model-versions,mlflowModelVersions,Search MLflow model versions,src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-mlflowmodelversions,Yes
+ai-service-admin,/api/v1/admin/ai-services/mlflow/registered-models,mlflowRegisteredModels,Search the MLflow model registry,src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-mlflowregisteredmodels,Yes
+ai-service-admin,/api/v1/admin/ai-services/mlflow/status,mlflowStatus,"MLflow tracking-server reachability, version and framing posture",src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-mlflowstatus,Yes
+ai-service-admin,/api/v1/admin/ai-services/nlp/status,nlpStatus,NLP service health (proxied /api/v1/health): per-model component checks with load status.,src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-nlpstatus,Yes
+ai-service-admin,/api/v1/admin/ai-services/readiness,readiness,"Inference readiness — the platform’s last observation of every engine, service and model",src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-readiness,Yes
+ai-service-admin,/api/v1/admin/ai-services/readiness/refresh,refreshReadiness,Take one readiness observation now,src/modules/ai-service-admin/ai-service-admin.controller.ts,admin-refreshreadiness,Yes
+tenant-allowed-origin,/api/v1/admin/allowed-origins,getAll,List the caller tenant's allowed-origin rows,src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts,admin-getall,Yes
+tenant-allowed-origin,/api/v1/admin/allowed-origins,create,Register a new allowed origin,src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts,admin-create,Yes
+tenant-allowed-origin,/api/v1/admin/allowed-origins/{id},deleteById,Soft-delete an allowed-origin row,src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts,admin-deletebyid,Yes
+tenant-allowed-origin,/api/v1/admin/allowed-origins/{id},getById,Get one allowed-origin row by id,src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts,admin-getbyid,Yes
+tenant-allowed-origin,/api/v1/admin/allowed-origins/{id},update,Update an allowed-origin row under optimistic concurrency,src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts,admin-update,Yes
+tenant-allowed-origin,/api/v1/admin/allowed-origins/posture,getPosture,"Report whether origin enforcement is currently ON, platform-wide (FR-4).",src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts,admin-getposture,Yes
+api-key,/api/v1/admin/api-keys,fetchAll,Retrieving multiple ApiKeyResponses,src/modules/api-key/api-key.controller.ts,admin-fetchall,Yes
+api-key,/api/v1/admin/api-keys,create,"AUTH-NOTE: `@CanCreate('ApiKey')` UNDERSTATES the real gate. `ApiKeyService`
+additionally enforces a privilege CEILING on the requested `scopes`
+(`assertScopeCeiling`): every scope's implied CASL ability must be one the
+CALLING principal already holds, so a tenant admin cannot mint a key
+carrying `admin:*` or the bare `'*'`. It fails CLOSED when the caller's
+compiled ability is unavailable — notably on the API-key-authenticated
+minting path, where `UnifiedAuthGuard` deliberately never publishes the
+ability to CLS. A refusal is a 403 (privilege boundary), NOT the
+cross-tenant 404-over-403 posture this controller's by-id routes use.",src/modules/api-key/api-key.controller.ts,admin-create,Yes
+api-key,/api/v1/admin/api-keys/{id},delete,Deleting a ApiKeyResponse by id,src/modules/api-key/api-key.controller.ts,admin-delete,Yes
+api-key,/api/v1/admin/api-keys/{id},fetchById,Retrieving a single ApiKeyResponse by id,src/modules/api-key/api-key.controller.ts,admin-fetchbyid,Yes
+api-key,/api/v1/admin/api-keys/{id},update,"AUTH-NOTE: `@CanUpdate('ApiKey')` UNDERSTATES the real gate — the same
+scope ceiling as `create` above, applied to the WIDENING DELTA only. A
+PATCH is refused (403) when it ADDS a scope whose implied ability the
+caller does not hold; renames and narrowing PATCHes are not gated, and a
+PATCH that omits `scopes` is not checked at all.",src/modules/api-key/api-key.controller.ts,admin-update,Yes
+api-key,/api/v1/admin/api-keys/{id}/revoke,revoke,Creating a ApiKeyResponse by id,src/modules/api-key/api-key.controller.ts,admin-revoke,Yes
+api-key,/api/v1/admin/api-keys/{id}/rotate,rotate,Creating a ApiKeyResponse by id,src/modules/api-key/api-key.controller.ts,admin-rotate,Yes
+api-key,/api/v1/admin/api-keys/{id}/usage,getUsage,Retrieving a single ApiKeyResponse by id,src/modules/api-key/api-key.controller.ts,admin-getusage,Yes
+api-key,/api/v1/admin/api-keys/scopes,getAvailableScopes,List available API key scopes,src/modules/api-key/api-key.controller.ts,admin-getavailablescopes,Yes
+streaming,/api/v1/admin/audio/transcription-jobs,list,List ALL transcription jobs in the tenant (paginated),src/modules/streaming/admin-transcription-job.controller.ts,admin-list,Yes
+streaming,/api/v1/admin/audio/transcription-jobs/stats,getStats,Get tenant-wide transcription job status counts,src/modules/streaming/admin-transcription-job.controller.ts,admin-getstats,Yes
+streaming,/api/v1/admin/audio/transcription-jobs/status/{status},getByStatus,Get tenant-wide transcription jobs by status,src/modules/streaming/admin-transcription-job.controller.ts,admin-getbystatus,Yes
+audit-log,/api/v1/admin/audit-logs,fetchAll,Fetch all audit logs,src/modules/audit-log/audit-log.controller.ts,admin-fetchall,Yes
+audit-log,/api/v1/admin/audit-logs/{id},fetchById,Fetch audit log by ID,src/modules/audit-log/audit-log.controller.ts,admin-fetchbyid,Yes
+audit-log,/api/v1/admin/audit-logs/cursor,fetchByCursor,Fetch audit logs (cursor pagination),src/modules/audit-log/audit-log.controller.ts,admin-fetchbycursor,Yes
+audit-log,/api/v1/admin/audit-logs/export,exportCsv,Export audit logs (csv | xlsx | pdf),src/modules/audit-log/audit-log.controller.ts,admin-exportcsv,Yes
+audit-log,/api/v1/admin/audit-logs/resource/{resourceType}/{resourceId},fetchByResource,Fetch audit logs by resource,src/modules/audit-log/audit-log.controller.ts,admin-fetchbyresource,Yes
+audit-log,/api/v1/admin/audit-logs/user/{userId},fetchByUser,Fetch audit logs by user,src/modules/audit-log/audit-log.controller.ts,admin-fetchbyuser,Yes
+billing,/api/v1/admin/billing/invoices,list,"One tenant's invoices, newest period first.",src/modules/billing/billing-admin.controller.ts,admin-list,Yes
+billing,/api/v1/admin/billing/invoices/{id},get,"Invoice read model: lines, memos against it, BYOK notional spend. Cross-tenant id → 404.",src/modules/billing/billing-admin.controller.ts,admin-get,Yes
+billing,/api/v1/admin/billing/invoices/{id}/adjustments,addAdjustment,Issue a credit/debit memo against a FINALIZED invoice — the only correction path for a closed period. SUPER_ADMIN only.,src/modules/billing/billing-admin.controller.ts,admin-addadjustment,Yes
+billing,/api/v1/admin/billing/invoices/{id}/finalize,finalize,DRAFT → FINALIZED under If-Match OCC. Immutable after; only once the period has ended. SUPER_ADMIN only.,src/modules/billing/billing-admin.controller.ts,admin-finalize,Yes
+billing,/api/v1/admin/billing/invoices/{id}/void,void,DRAFT → VOID under If-Match OCC (one-way; a voided period stays void). SUPER_ADMIN only.,src/modules/billing/billing-admin.controller.ts,admin-void,Yes
+billing,/api/v1/admin/billing/invoices/compute-draft,computeDraft,Compute — or idempotently recompute — the DRAFT invoice for one tenant-month. SUPER_ADMIN only.,src/modules/billing/billing-admin.controller.ts,admin-computedraft,Yes
+billing,/api/v1/admin/billing/invoices/spend-status,spendStatus,Month-to-date SELL-rated overage spend vs the tenant's spend limit (D12).,src/modules/billing/billing-admin.controller.ts,admin-spendstatus,Yes
+billing,/api/v1/admin/billing/rate-card,list,List SELL-plane rate rows (platform card by default; ?tenantId= for a negotiated tenant card). Includes superseded history rows.,src/modules/billing/rate-card-admin.controller.ts,admin-list,Yes
+billing,/api/v1/admin/billing/rate-card,create,Create a new open-ended SELL rate row (overage rate or PLAN_FEE). SUPER_ADMIN only.,src/modules/billing/rate-card-admin.controller.ts,admin-create,Yes
+billing,/api/v1/admin/billing/rate-card/{id}/supersede,supersede,"Supersede a rate row: close it at the successor's effectiveFrom and insert the successor — atomic, If-Match OCC on the close. SUPER_ADMIN only.",src/modules/billing/rate-card-admin.controller.ts,admin-supersede,Yes
+changelog,/api/v1/admin/changelog,create,Create a release note (always DRAFT),src/modules/changelog/changelog-admin.controller.ts,admin-create,Yes
+changelog,/api/v1/admin/changelog/{id},get,Read a release note for editing (DRAFT included),src/modules/changelog/changelog-admin.controller.ts,admin-get,Yes
+changelog,/api/v1/admin/changelog/{id},update,Edit a release note (If-Match OCC),src/modules/changelog/changelog-admin.controller.ts,admin-update,Yes
+changelog,/api/v1/admin/changelog/{id}/publish,publish,Publish a release note,src/modules/changelog/changelog-admin.controller.ts,admin-publish,Yes
+prompt-inspector,/api/v1/admin/composed-prompts,list,List composed-prompt records,src/modules/prompt-inspector/composed-prompt-admin.controller.ts,admin-list,Yes
+prompt-inspector,/api/v1/admin/composed-prompts/{id},getById,"Read one composed-prompt record, decrypted",src/modules/prompt-inspector/composed-prompt-admin.controller.ts,admin-getbyid,Yes
+consent,/api/v1/admin/consent-grants,list,List consent grants for the caller tenant,src/modules/consent/consent.controller.ts,admin-list,Yes
+consent,/api/v1/admin/consent-grants,create,Record a consent grant for the caller tenant (clinician/tenant-admin recorded — Q1),src/modules/consent/consent.controller.ts,admin-create,Yes
+consent,/api/v1/admin/consent-grants/{id}/revoke,revoke,Revoke a consent grant (If-Match OCC),src/modules/consent/consent.controller.ts,admin-revoke,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas,list,List the caller tenant's consultation context schemas,src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-list,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas,create,Create a DRAFT context schema,src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-create,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas/{id},deleteById,Soft-delete a context schema,src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-deletebyid,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas/{id},getById,Get one context schema by id,src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-getbyid,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas/{id},update,Update schema metadata under optimistic concurrency,src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-update,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas/{id}/pin,pin,Move the pin to an already-published version,src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-pin,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas/{id}/publish,publish,"Validate a definition, publish it as a new immutable version, and pin it",src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-publish,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas/{id}/usages,usages,"List the workflows and agents bound to a context schema, with a verdict per consumer",src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-usages,Yes
+consultation-context-schema,/api/v1/admin/consultation-context-schemas/{id}/versions,listVersions,"List the immutable published versions of a context schema, newest first",src/modules/consultation-context-schema/consultation-context-schema.controller.ts,admin-listversions,Yes
+consultation,/api/v1/admin/consultations,list,Retrieving multiple ConsultationResponses,src/modules/consultation/admin-consultation.controller.ts,admin-list,Yes
+prompt-inspector,/api/v1/admin/consultations/{consultationId}/prompt-preview,preview,Preview the prompt a consultation would send,src/modules/prompt-inspector/prompt-preview.controller.ts,admin-preview,Yes
+consultation,/api/v1/admin/consultations/{id},getById,Retrieving a single ConsultationResponse by id,src/modules/consultation/admin-consultation.controller.ts,admin-getbyid,Yes
+consultation-history,/api/v1/admin/consultations/{id}/activity,getActivity,Read a consultation`s activity feed,src/modules/consultation-history/admin-consultation-history.controller.ts,admin-getactivity,Yes
+guardrail-notice,/api/v1/admin/consultations/{id}/guardrail-evaluations,list,List a consultation`s guardrail evaluations,src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts,admin-list,Yes
+guardrail-notice,/api/v1/admin/consultations/{id}/guardrail-evaluations/{evaluationId}/withheld,withheld,"Read the output an outbound guardrail block withheld, decrypted",src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts,admin-withheld,Yes
+guardrail-notice,/api/v1/admin/consultations/{id}/guardrail-notices,notices,List a consultation`s guardrail notices (admin),src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts,admin-notices,Yes
+consultation-history,/api/v1/admin/consultations/{id}/items/{itemId}/runs,listRuns,List the AI runs behind an item version,src/modules/consultation-history/admin-consultation-history.controller.ts,admin-listruns,Yes
+consultation-history,/api/v1/admin/consultations/{id}/items/{itemId}/versions,listVersions,List an item`s versions,src/modules/consultation-history/admin-consultation-history.controller.ts,admin-listversions,Yes
+consultation-history,/api/v1/admin/consultations/{id}/items/{itemId}/versions/{n},getVersion,"Read one version of an item, decrypted",src/modules/consultation-history/admin-consultation-history.controller.ts,admin-getversion,Yes
+consultation-history,/api/v1/admin/consultations/{id}/items/{itemId}/versions/{n}/diff,diff,Diff two versions of an item,src/modules/consultation-history/admin-consultation-history.controller.ts,admin-diff,Yes
+consultation,/api/v1/admin/consultations/{id}/telemetry,getTelemetry,Per-consultation AI telemetry,src/modules/consultation/consultation-telemetry.controller.ts,admin-gettelemetry,Yes
+consultation,/api/v1/admin/consultations/aggregate,aggregate,"Server-side, zero-filled new/revisit aggregation over a
+date range. Scope follows the same model as `list`: a SUPER_ADMIN with
+no working tenant aggregates cross-tenant; everyone else is pinned to their
+CLS tenant. Declared BEFORE the `:id` route so `GET /aggregate` is not
+captured by the `:id` param matcher.",src/modules/consultation/admin-consultation.controller.ts,admin-aggregate,Yes
+department,/api/v1/admin/departments,fetchAll,Retrieving multiple DepartmentResponses,src/modules/department/department.controller.ts,admin-fetchall,Yes
+department,/api/v1/admin/departments,create,Creating a DepartmentResponse,src/modules/department/department.controller.ts,admin-create,Yes
+department,/api/v1/admin/departments/{id},delete,Deleting a DepartmentResponse by id,src/modules/department/department.controller.ts,admin-delete,Yes
+department,/api/v1/admin/departments/{id},fetchById,Retrieving a single DepartmentResponse by id,src/modules/department/department.controller.ts,admin-fetchbyid,Yes
+department,/api/v1/admin/departments/{id},update,Updating a DepartmentResponse by id,src/modules/department/department.controller.ts,admin-update,Yes
+department,/api/v1/admin/departments/{id}/children,fetchChildren,Retrieving multiple DepartmentResponses by id,src/modules/department/department.controller.ts,admin-fetchchildren,Yes
+department,/api/v1/admin/departments/{id}/prompt-config,updatePromptConfig,Updating a DepartmentResponse by id (prompt config),src/modules/department/department.controller.ts,admin-updatepromptconfig,Yes
+department,/api/v1/admin/departments/{id}/users,fetchUsers,List a department's members (users),src/modules/department/department.controller.ts,admin-fetchusers,Yes
+department,/api/v1/admin/departments/code/{code},fetchByCode,Retrieving a single DepartmentResponse by code,src/modules/department/department.controller.ts,admin-fetchbycode,Yes
+department,/api/v1/admin/departments/roots,fetchRoots,Retrieving multiple DepartmentResponses,src/modules/department/department.controller.ts,admin-fetchroots,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles,list,Retrieving multiple DnaReportResponses,src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-list,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/{reportId},update,Updating a DnaReportResponse by reportId,src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-update,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/{reportId}/versions,getVersions,Retrieving multiple DnaVersionResponses by reportId,src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-getversions,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/dashboard,getDashboard,"DNA aggregate dashboard (users with a style, avg versions, recent usage activity)",src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-getdashboard,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/doctor/{doctorId},resetDoctorProfile,Erase a doctor's entire learned DNA writing-style profile (admin),src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-resetdoctorprofile,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/doctor/{doctorId},getReportForDoctor,"Latest DNA writing-style report for a doctor (admin cross-user, tenant-scoped PHI-gated)",src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-getreportfordoctor,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/generate/{doctorId},generateForDoctor,Creating a DnaJobResponseDto by doctorId,src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-generatefordoctor,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/jobs/{jobId},getJobStatus,Get DNA generation job status,src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-getjobstatus,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/jobs/{jobId}/stream,streamJobStatus,Stream DNA generation job status via SSE,src/modules/dna-writing-style/dna-writing-style-admin.controller.ts,admin-streamjobstatus,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/memory,listMemory,List DNA writing-style memory samples,src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts,admin-listmemory,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/memory/{id},deleteMemory,Delete a DNA writing-style memory sample,src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts,admin-deletememory,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/memory/summary,getMemorySummary,DNA writing-style memory per clinician,src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts,admin-getmemorysummary,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/schedule,getSchedule,Weekly DNA regeneration schedule,src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts,admin-getschedule,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/schedule,updateSchedule,Update the weekly DNA regeneration schedule,src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts,admin-updateschedule,Yes
+dna-writing-style,/api/v1/admin/dna-writing-styles/schedule/run,runSchedule,Run the DNA regeneration now (this tenant),src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts,admin-runschedule,Yes
+document-template,/api/v1/admin/document-templates,list,List the caller tenant's document templates,src/modules/document-template/document-template.controller.ts,admin-list,Yes
+document-template,/api/v1/admin/document-templates,create,Create a DRAFT document template,src/modules/document-template/document-template.controller.ts,admin-create,Yes
+document-template,/api/v1/admin/document-templates/{id},deleteById,Soft-delete a document template,src/modules/document-template/document-template.controller.ts,admin-deletebyid,Yes
+document-template,/api/v1/admin/document-templates/{id},getById,Get one document template by id,src/modules/document-template/document-template.controller.ts,admin-getbyid,Yes
+document-template,/api/v1/admin/document-templates/{id},update,Update template metadata under optimistic concurrency,src/modules/document-template/document-template.controller.ts,admin-update,Yes
+document-template,/api/v1/admin/document-templates/{id}/pin,pin,Move the pin to an already-published version,src/modules/document-template/document-template.controller.ts,admin-pin,Yes
+document-template,/api/v1/admin/document-templates/{id}/publish,publish,"Validate a shape, compile it, publish both as a new immutable version, and pin it",src/modules/document-template/document-template.controller.ts,admin-publish,Yes
+document-template,/api/v1/admin/document-templates/{id}/versions,listVersions,"List the immutable published versions of a template, newest first",src/modules/document-template/document-template.controller.ts,admin-listversions,Yes
+entitlements,/api/v1/admin/entitlements/enabled,getEnabled,Read the global entitlements enforcement kill-switch (Q9).,src/modules/entitlements/entitlements-admin.controller.ts,admin-getenabled,Yes
+entitlements,/api/v1/admin/entitlements/enabled,setEnabled,Flip the global entitlements enforcement kill-switch (Q9).,src/modules/entitlements/entitlements-admin.controller.ts,admin-setenabled,Yes
+entitlements,/api/v1/admin/entitlements/plans,listPlans,List the per-plan default entitlement matrix.,src/modules/entitlements/entitlements-admin.controller.ts,admin-listplans,Yes
+entitlements,/api/v1/admin/entitlements/plans/{plan},getPlan,Get a single plan default row.,src/modules/entitlements/entitlements-admin.controller.ts,admin-getplan,Yes
+entitlements,/api/v1/admin/entitlements/plans/{plan},updatePlan,Edit a plan default row.,src/modules/entitlements/entitlements-admin.controller.ts,admin-updateplan,Yes
+entitlements,/api/v1/admin/entitlements/tenants/{tenantId},getTenantSnapshot,Capability/usage snapshot for ANY tenant (super-admin view).,src/modules/entitlements/entitlements-admin.controller.ts,admin-gettenantsnapshot,Yes
+entitlements,/api/v1/admin/entitlements/tenants/{tenantId}/downgrade,triggerDowngrade,Downgrade a tenant plan (Q10). Plan change always applies; newest-first soft-disable of overflow rows runs only when enforcement is ON.,src/modules/entitlements/entitlements-admin.controller.ts,admin-triggerdowngrade,Yes
+entitlements,/api/v1/admin/entitlements/tenants/{tenantId}/override,clearOverride,Clear a tenant override back to plan inheritance (nulls the row; reversible — never deleted).,src/modules/entitlements/entitlements-admin.controller.ts,admin-clearoverride,Yes
+entitlements,/api/v1/admin/entitlements/tenants/{tenantId}/override,getOverride,Get a tenant's entitlement override (null = inherits the plan default).,src/modules/entitlements/entitlements-admin.controller.ts,admin-getoverride,Yes
+entitlements,/api/v1/admin/entitlements/tenants/{tenantId}/override,upsertOverride,"Create-or-update a tenant override (""increase on demand"", Q7).",src/modules/entitlements/entitlements-admin.controller.ts,admin-upsertoverride,Yes
+entitlements,/api/v1/admin/entitlements/trial-expiry/run,runTrialExpiry,"Manually run the trial-expiry sweep (Q4): downgrade every expired TRIAL tenant to STARTER, plan-only.",src/modules/entitlements/entitlements-admin.controller.ts,admin-runtrialexpiry,Yes
+consultation,/api/v1/admin/feedback/rollups,rollups,"Feedback rollups by day, agent version, model, prompt version, section, entity label, reason or target kind",src/modules/consultation/admin-feedback-rollup.controller.ts,admin-rollups,Yes
+guardrail-availability,/api/v1/admin/guardrail/availability,list,List every tenant guardrail-availability row — SUPER_ADMIN only,src/modules/guardrail-availability/guardrail-availability.controller.ts,admin-list,Yes
+guardrail-availability,/api/v1/admin/guardrail/availability/{tenantId},getForTenant,Read one tenant's guardrail availability — SUPER_ADMIN only,src/modules/guardrail-availability/guardrail-availability.controller.ts,admin-getfortenant,Yes
+guardrail-availability,/api/v1/admin/guardrail/availability/{tenantId},putForTenant,Replace one tenant's guardrail availability under optimistic concurrency — SUPER_ADMIN only,src/modules/guardrail-availability/guardrail-availability.controller.ts,admin-putfortenant,Yes
+guardrail-availability,/api/v1/admin/guardrail/availability/catalogue,catalogue,List the selectable guardrail policies — SUPER_ADMIN only,src/modules/guardrail-availability/guardrail-availability.controller.ts,admin-catalogue,Yes
+guardrail-policy,/api/v1/admin/guardrail/dry-run,dryRun,Dry-run draft judge configuration on samples against the live judge,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-dryrun,Yes
+guardrail-policy,/api/v1/admin/guardrail/judge-lanes,lanes,"The judge model per safety-judge lane, with the selectable candidates",src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-lanes,Yes
+guardrail-policy,/api/v1/admin/guardrail/judge-lanes,selectLanes,Select the judge model for one or more lanes,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-selectlanes,Yes
+guardrail-policy,/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta,getJudgeMeta,Read a judge model`s declaration and its default,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-getjudgemeta,Yes
+guardrail-policy,/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta,updateJudgeMeta,Change a native guard`s category map and tier mapping,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-updatejudgemeta,Yes
+guardrail-policy,/api/v1/admin/guardrail/judge-models/{modelId}/judge-meta/reset,resetJudgeMeta,Reset a native guard`s mapping to its default,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-resetjudgemeta,Yes
+guardrail-policy,/api/v1/admin/guardrail/metrics/activity,activity,Guardrail activity across tenants,src/modules/guardrail-policy/guardrail-metrics.controller.ts,admin-activity,Yes
+guardrail-policy,/api/v1/admin/guardrail/metrics/evaluations,evaluations,Guardrail evaluations (drill-down),src/modules/guardrail-policy/guardrail-metrics.controller.ts,admin-evaluations,Yes
+guardrail-policy,/api/v1/admin/guardrail/metrics/health,health,Guardrail health,src/modules/guardrail-policy/guardrail-metrics.controller.ts,admin-health,Yes
+guardrail-policy,/api/v1/admin/guardrail/metrics/performance,performance,Guardrail performance (fixed PromQL),src/modules/guardrail-policy/guardrail-metrics.controller.ts,admin-performance,Yes
+guardrail-tenant-policy,/api/v1/admin/guardrail/policy,get,Read the working tenant's guardrail rules,src/modules/guardrail-tenant-policy/guardrail-tenant-policy.controller.ts,admin-get,Yes
+guardrail-tenant-policy,/api/v1/admin/guardrail/policy,put,Turn the working tenant's guardrail checks and screening directions on or off,src/modules/guardrail-tenant-policy/guardrail-tenant-policy.controller.ts,admin-put,Yes
+guardrail-policy,/api/v1/admin/guardrail/policy-keys,list,"List every governed guardrail policy key, grouped by its model row",src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-list,Yes
+guardrail-policy,/api/v1/admin/guardrail/policy-keys/{key},get,Read one guardrail policy key,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-get,Yes
+guardrail-policy,/api/v1/admin/guardrail/policy-keys/{key},update,Change one guardrail policy key on its SYSTEM model row,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-update,Yes
+guardrail-policy,/api/v1/admin/guardrail/policy-keys/{key}/reset,reset,Reset one guardrail policy key to its default,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-reset,Yes
+guardrail-policy,/api/v1/admin/guardrail/policy-keys/{key}/revisions,revisions,A guardrail policy key`s revision history,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-revisions,Yes
+guardrail-policy,/api/v1/admin/guardrail/policy-keys/{key}/revisions/{revisionId}/restore,restore,Restore a guardrail policy key to an earlier revision,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-restore,Yes
+guardrail-policy,/api/v1/admin/guardrail/policy-keys/reset,resetLane,Reset every editable key of one lane (model row) to its default,src/modules/guardrail-policy/guardrail-policy.controller.ts,admin-resetlane,Yes
+guardrail-tenant-policy,/api/v1/admin/guardrail/screen,screen,Screen text under the working tenant's guardrail rules (Test my rules),src/modules/guardrail-tenant-policy/guardrail-rule-test.controller.ts,admin-screen,Yes
+harness-admin,/api/v1/admin/harness/audit,listAudit,List the WORM audit trail (newest-first) + the chain-integrity verdict,src/modules/harness-admin/harness-admin.controller.ts,admin-listaudit,Yes
+harness-admin,/api/v1/admin/harness/edit-burden,getEditBurden,"Derived clinician edit-burden telemetry for one consultation (edit distance, deferral rate, time-to-sign)",src/modules/harness-admin/harness-admin.controller.ts,admin-geteditburden,Yes
+harness-admin,/api/v1/admin/harness/eval-runs,listEvalRuns,List eval runs (newest-first),src/modules/harness-admin/harness-admin.controller.ts,admin-listevalruns,Yes
+harness-admin,/api/v1/admin/harness/eval-runs/{id},getEvalRun,Get one eval run with its per-case scores,src/modules/harness-admin/harness-admin.controller.ts,admin-getevalrun,Yes
+harness-admin,/api/v1/admin/harness/gate-edit-exemplars,exportGateEditExemplars,Export gate-edit exemplar candidates for eval regression-corpus review,src/modules/harness-admin/harness-admin.controller.ts,admin-exportgateeditexemplars,Yes
+harness-admin,/api/v1/admin/harness/gate-edit-exemplars/{id}/curation,curateGateEditExemplar,Record the human curation verdict on one mined gate-edit exemplar,src/modules/harness-admin/harness-admin.controller.ts,admin-curategateeditexemplar,Yes
+harness-admin,/api/v1/admin/harness/gate-edit-exemplars/{id}/promote-to-golden-set,promoteExemplarToGoldenSet,Promote a curator-APPROVED gate-edit exemplar into a golden case,src/modules/harness-admin/harness-admin.controller.ts,admin-promoteexemplartogoldenset,Yes
+harness-admin,/api/v1/admin/harness/gate-edit-exemplars/fine-tuning-export,exportGateEditFineTuningDataset,Export the curator-APPROVED gate-edit corpus as a JSONL fine-tuning dataset,src/modules/harness-admin/harness-admin.controller.ts,admin-exportgateeditfinetuningdataset,Yes
+harness-admin,/api/v1/admin/harness/gate-queue,gateQueue,List consultations awaiting clinician review with SLA/escalation from the effective policy,src/modules/harness-admin/harness-admin.controller.ts,admin-gatequeue,Yes
+harness-admin,/api/v1/admin/harness/golden-sets,listGoldenSets,List golden sets (newest-first),src/modules/harness-admin/harness-admin.controller.ts,admin-listgoldensets,Yes
+harness-admin,/api/v1/admin/harness/golden-sets,createGoldenSet,Create a golden set for the caller tenant,src/modules/harness-admin/harness-admin.controller.ts,admin-creategoldenset,Yes
+harness-admin,/api/v1/admin/harness/golden-sets/{id},getGoldenSet,Get one golden set,src/modules/harness-admin/harness-admin.controller.ts,admin-getgoldenset,Yes
+harness-admin,/api/v1/admin/harness/golden-sets/{id}/cases,listGoldenCases,List a golden set's cases — PHI-safe metadata only,src/modules/harness-admin/harness-admin.controller.ts,admin-listgoldencases,Yes
+harness-admin,/api/v1/admin/harness/golden-sets/{id}/cases,createGoldenCase,"Add a case to a golden set (PHI encrypted at rest, write-only)",src/modules/harness-admin/harness-admin.controller.ts,admin-creategoldencase,Yes
+harness-admin,/api/v1/admin/harness/golden-sets/{id}/run,runGoldenSet,Run an eval over a golden set now (synchronous),src/modules/harness-admin/harness-admin.controller.ts,admin-rungoldenset,Yes
+harness-admin,/api/v1/admin/harness/live/capabilities,getRealtimeCapabilities,"Read which realtime consultation capabilities are live for a tenant (lane source, definition, per-node state)",src/modules/harness-admin/harness-admin.controller.ts,admin-getrealtimecapabilities,Yes
+harness-admin,/api/v1/admin/harness/live/config,getLiveConfig,Read the live-documentation engine kill-switch (super-admin / global scope),src/modules/harness-admin/harness-admin.controller.ts,admin-getliveconfig,Yes
+harness-admin,/api/v1/admin/harness/live/config,updateLiveConfig,Toggle the live-documentation engine kill-switch (super-admin / global scope),src/modules/harness-admin/harness-admin.controller.ts,admin-updateliveconfig,Yes
+harness-admin,/api/v1/admin/harness/live/sessions,listLiveSessions,List the active live-documentation sessions (PHI-safe stats) for the caller tenant,src/modules/harness-admin/harness-admin.controller.ts,admin-listlivesessions,Yes
+harness-admin,/api/v1/admin/harness/live/sessions/{id},getLiveSession,Get one live-documentation session's latest PHI-safe stats,src/modules/harness-admin/harness-admin.controller.ts,admin-getlivesession,Yes
+harness-admin,/api/v1/admin/harness/policy,getPolicy,Get the caller tenant's effective harness policy (tenant row over global default over code default),src/modules/harness-admin/harness-admin.controller.ts,admin-getpolicy,Yes
+harness-admin,/api/v1/admin/harness/policy,updatePolicy,Update the caller tenant's harness policy (created on first edit),src/modules/harness-admin/harness-admin.controller.ts,admin-updatepolicy,Yes
+harness-admin,/api/v1/admin/harness/policy/global,getGlobalPolicy,Get the platform GLOBAL-DEFAULT harness policy (super-admin only),src/modules/harness-admin/harness-admin.controller.ts,admin-getglobalpolicy,Yes
+harness-admin,/api/v1/admin/harness/policy/global,updateGlobalPolicy,Update the platform GLOBAL-DEFAULT harness policy (super-admin only),src/modules/harness-admin/harness-admin.controller.ts,admin-updateglobalpolicy,Yes
+harness-admin,/api/v1/admin/harness/workflows,listWorkflows,List harness Temporal document workflows (tenant-filtered),src/modules/harness-admin/harness-admin.controller.ts,admin-listworkflows,Yes
+harness-admin,/api/v1/admin/harness/workflows/{id},describeWorkflow,Describe one harness workflow (add ?phase=true for the loop phase),src/modules/harness-admin/harness-admin.controller.ts,admin-describeworkflow,Yes
+harness-admin,/api/v1/admin/harness/workflows/{id}/cancel,cancelWorkflow,Cancel a harness workflow (graceful). Tenant admins limited to their own tenant.,src/modules/harness-admin/harness-admin.controller.ts,admin-cancelworkflow,Yes
+harness-admin,/api/v1/admin/harness/workflows/{id}/signal,signalWorkflow,Send a signal to a harness workflow. Tenant admins limited to their own tenant.,src/modules/harness-admin/harness-admin.controller.ts,admin-signalworkflow,Yes
+harness-admin,/api/v1/admin/harness/workflows/{id}/terminate,terminateWorkflow,Terminate a harness workflow (forceful). Tenant admins limited to their own tenant.,src/modules/harness-admin/harness-admin.controller.ts,admin-terminateworkflow,Yes
+health,/api/v1/admin/health/services,checkServices,Consolidated health check for all downstream microservices (admin only),src/modules/health/admin-health-services.controller.ts,admin-checkservices,Yes
+health,/api/v1/admin/health/services/{serviceKey},checkServiceByKey,Health check for a single downstream microservice (admin only),src/modules/health/admin-health-services.controller.ts,admin-checkservicebykey,Yes
+inference-engines,/api/v1/admin/inference-engines/lm-studio/models/{identifier}/unload,unload,Evict one loaded instance (ADVISORY — JIT reloads it),src/modules/inference-engines/inference-engines.controller.ts,admin-unload,Yes
+inference-engines,/api/v1/admin/inference-engines/lm-studio/models/{modelKey}/load,load,"Load one model on the LM Studio engine (REST v1), or report the instance already holding it",src/modules/inference-engines/inference-engines.controller.ts,admin-load,Yes
+inference-engines,/api/v1/admin/inference-engines/lm-studio/runtime,runtime,"Read what the LM Studio engine is currently serving, and on what VRAM",src/modules/inference-engines/inference-engines.controller.ts,admin-runtime,Yes
+knowledge,/api/v1/admin/knowledge/documents,list,Paginated list of the caller tenant's institutional-knowledge documents,src/modules/knowledge/knowledge.controller.ts,admin-list,Yes
+knowledge,/api/v1/admin/knowledge/documents/{id},deleteById,Soft-delete a document and remove its vectors from Qdrant,src/modules/knowledge/knowledge.controller.ts,admin-deletebyid,Yes
+knowledge,/api/v1/admin/knowledge/documents/{id},getById,Get one knowledge document by id,src/modules/knowledge/knowledge.controller.ts,admin-getbyid,Yes
+knowledge,/api/v1/admin/knowledge/documents/{id}/archive,archive,Archive a document (status -> ARCHIVED),src/modules/knowledge/knowledge.controller.ts,admin-archive,Yes
+knowledge,/api/v1/admin/knowledge/documents/{id}/chunks,listChunks,"Paginated, decrypted chunk content for one document, ordered by chunkIndex",src/modules/knowledge/knowledge.controller.ts,admin-listchunks,Yes
+mcp-admin,/api/v1/admin/mcp-servers,list,"List registered MCP external-tools servers (registry read — backs the console ""Tools & MCP"" screen)",src/modules/mcp-admin/mcp-admin.controller.ts,admin-list,Yes
+mcp-admin,/api/v1/admin/mcp-servers,create,Register a new MCP server (own tenant; the SYSTEM registry is GLOBAL-ADMIN only),src/modules/mcp-admin/mcp-admin.controller.ts,admin-create,Yes
+mcp-admin,/api/v1/admin/mcp-servers/{id},remove,Soft-delete a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only),src/modules/mcp-admin/mcp-admin.controller.ts,admin-remove,Yes
+mcp-admin,/api/v1/admin/mcp-servers/{id},get,Get one registered MCP server (registry read),src/modules/mcp-admin/mcp-admin.controller.ts,admin-get,Yes
+mcp-admin,/api/v1/admin/mcp-servers/{id},update,Update a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only),src/modules/mcp-admin/mcp-admin.controller.ts,admin-update,Yes
+model-residency,/api/v1/admin/model-residency,view,"Read live model residency across stt, nlp and LM Studio",src/modules/model-residency/model-residency.controller.ts,admin-view,Yes
+model-residency,/api/v1/admin/model-residency/catalogue,catalogue,"Read every loadable model per service, loaded or not, and who uses it",src/modules/model-residency/model-residency.controller.ts,admin-catalogue,Yes
+model-residency,/api/v1/admin/model-residency/links,link,Confirm which catalogue model a runtime key is,src/modules/model-residency/model-residency.controller.ts,admin-link,Yes
+model-residency,/api/v1/admin/model-residency/load,load,"Load a model on stt, nlp or LM Studio (asynchronous)",src/modules/model-residency/model-residency.controller.ts,admin-load,Yes
+model-residency,/api/v1/admin/model-residency/load/preview,previewLoad,Preview a model load without doing it (dry-run admission),src/modules/model-residency/model-residency.controller.ts,admin-previewload,Yes
+model-residency,/api/v1/admin/model-residency/operations/{operationId},operation,Read the progress of an asynchronous load,src/modules/model-residency/model-residency.controller.ts,admin-operation,Yes
+model-residency,/api/v1/admin/model-residency/pins,pin,Pin or unpin a resident model (and set its idle TTL),src/modules/model-residency/model-residency.controller.ts,admin-pin,Yes
+model-residency,/api/v1/admin/model-residency/policies,listPolicies,List the SYSTEM residency policies,src/modules/model-residency/model-residency.controller.ts,admin-listpolicies,Yes
+model-residency,/api/v1/admin/model-residency/policies,createPolicy,Create a SYSTEM residency policy,src/modules/model-residency/model-residency.controller.ts,admin-createpolicy,Yes
+model-residency,/api/v1/admin/model-residency/policies/{id},deletePolicy,Delete a SYSTEM residency policy (soft delete),src/modules/model-residency/model-residency.controller.ts,admin-deletepolicy,Yes
+model-residency,/api/v1/admin/model-residency/policies/{id},updatePolicy,Update a SYSTEM residency policy,src/modules/model-residency/model-residency.controller.ts,admin-updatepolicy,Yes
+model-residency,/api/v1/admin/model-residency/readiness,readiness,Read the enforce-readiness checklist,src/modules/model-residency/model-residency.controller.ts,admin-readiness,Yes
+model-residency,/api/v1/admin/model-residency/suggestions/{id}/dismiss,dismissSuggestion,Dismiss a standing residency recommendation,src/modules/model-residency/model-residency.controller.ts,admin-dismisssuggestion,Yes
+model-residency,/api/v1/admin/model-residency/unload,unload,"Unload a model from stt, nlp or LM Studio",src/modules/model-residency/model-residency.controller.ts,admin-unload,Yes
+monitoring,/api/v1/admin/monitoring/heartbeats/{service},getHeartbeats,Get heartbeat history for a service,src/modules/monitoring/monitoring.controller.ts,admin-getheartbeats,Yes
+monitoring,/api/v1/admin/monitoring/sessions,getSessions,Get active session counts per service,src/modules/monitoring/monitoring.controller.ts,admin-getsessions,Yes
+monitoring,/api/v1/admin/monitoring/uptime,getUptime,Get uptime data for all services,src/modules/monitoring/monitoring.controller.ts,admin-getuptime,Yes
+monitoring,/api/v1/admin/monitoring/uptime/{service},getServiceUptime,Get uptime data for a specific service,src/modules/monitoring/monitoring.controller.ts,admin-getserviceuptime,Yes
+nlp-task-instructions,/api/v1/admin/nlp-task-instructions/row,getRow,"Get the raw, editable TenantNlpTaskInstructions row for a (tenant, taskKey)",src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts,admin-getrow,Yes
+nlp-task-instructions,/api/v1/admin/nlp-task-instructions/row,upsertRow,"Create or update the (tenant, taskKey) instructions row under optimistic concurrency",src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts,admin-upsertrow,Yes
+notification,/api/v1/admin/notifications,fetchAll,"List notifications (tenant-scoped; SUPER_ADMIN sees all, or targets one via ?tenantId=)",src/modules/notification/notification.controller.ts,admin-fetchall,Yes
+notification,/api/v1/admin/notifications/{id},delete,Soft-delete a notification,src/modules/notification/notification.controller.ts,admin-delete,Yes
+notification,/api/v1/admin/notifications/{id},fetchById,Get one notification,src/modules/notification/notification.controller.ts,admin-fetchbyid,Yes
+notification,/api/v1/admin/notifications/{id},update,"Update a notification (sparse patch, e.g. mark read)",src/modules/notification/notification.controller.ts,admin-update,Yes
+platform-metrics,/api/v1/admin/platform/consumption,getConsumption,"Consumption / usage roll-up (transcription minutes, summaries-24h, storage, consultations)",src/modules/platform-metrics/platform-metrics.controller.ts,admin-getconsumption,Yes
+platform-metrics,/api/v1/admin/platform/metrics,getMetrics,"Platform runtime metrics (requests/min, error rate, P95, sockets, models, series)",src/modules/platform-metrics/platform-metrics.controller.ts,admin-getmetrics,Yes
+platform-metrics,/api/v1/admin/platform/sockets,getSockets,"Open WebSocket count (live, multi-instance aggregate)",src/modules/platform-metrics/platform-metrics.controller.ts,admin-getsockets,Yes
+prompt-management,/api/v1/admin/prompt-templates,list,Retrieving multiple PromptTemplateResponses,src/modules/prompt-management/prompt-management.controller.ts,admin-list,Yes
+prompt-management,/api/v1/admin/prompt-templates,create,Creating a PromptTemplateResponse,src/modules/prompt-management/prompt-management.controller.ts,admin-create,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id},remove,Deleting a PromptTemplateResponse by id,src/modules/prompt-management/prompt-management.controller.ts,admin-remove,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id},getById,Retrieving a single PromptTemplateResponse by id,src/modules/prompt-management/prompt-management.controller.ts,admin-getbyid,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id},update,Updating a PromptTemplateResponse by id,src/modules/prompt-management/prompt-management.controller.ts,admin-update,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/approve,approve,Approve a prompt template for clinical use,src/modules/prompt-management/prompt-management.controller.ts,admin-approve,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/test,testTemplate,Creating a PromptTestAckResponse by id,src/modules/prompt-management/prompt-management.controller.ts,admin-testtemplate,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/test/finalize,finalizeTestTemplate,Creating a PromptTestResultResponse by id,src/modules/prompt-management/prompt-management.controller.ts,admin-finalizetesttemplate,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/usage,getUsageStats,Get usage statistics for a prompt template,src/modules/prompt-management/prompt-management.controller.ts,admin-getusagestats,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/versions,getVersions,Retrieving multiple PromptVersionResponses by id,src/modules/prompt-management/prompt-management.controller.ts,admin-getversions,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/versions/{from}/diff/{to},diffVersions,Diff two versions of a prompt template (server-side),src/modules/prompt-management/prompt-management.controller.ts,admin-diffversions,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/versions/{versionNumber},getVersion,Retrieving a single PromptVersionResponse by id and versionNumber,src/modules/prompt-management/prompt-management.controller.ts,admin-getversion,Yes
+prompt-management,/api/v1/admin/prompt-templates/{id}/versions/{versionNumber}/activate,activateVersion,Creating a PromptTemplateResponse by id and versionNumber,src/modules/prompt-management/prompt-management.controller.ts,admin-activateversion,Yes
+prompt-management,/api/v1/admin/prompt-templates/analytics/usage,getUsageAnalytics,Usage analytics grouped by department / doctor / day,src/modules/prompt-management/prompt-management.controller.ts,admin-getusageanalytics,Yes
+prompt-management,/api/v1/admin/prompt-templates/assign-department,assignDepartment,Assign prompt templates to a department,src/modules/prompt-management/prompt-management.controller.ts,admin-assigndepartment,Yes
+prompt-management,/api/v1/admin/prompt-templates/tags,listTags,Distinct prompt tags with usage counts (autocomplete),src/modules/prompt-management/prompt-management.controller.ts,admin-listtags,Yes
+prompt-management,/api/v1/admin/prompt-templates/usage-records,listUsageRecords,"Paginated prompt run history (PromptUsageRecord rows), newest first",src/modules/prompt-management/prompt-management.controller.ts,admin-listusagerecords,Yes
+ai-provider-connection,/api/v1/admin/providers/{service},list,List provider connections for one service and the scoped tenant (keys never returned).,src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-list,Yes
+ai-provider-connection,/api/v1/admin/providers/{service}/{slug},remove,Soft-delete one provider connection.,src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-remove,Yes
+ai-provider-connection,/api/v1/admin/providers/{service}/{slug},getOne,Read one provider connection (key never returned; placeholder when absent).,src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-getone,Yes
+ai-provider-connection,/api/v1/admin/providers/{service}/{slug},upsert,Create or update one provider connection.,src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-upsert,Yes
+ai-provider-connection,/api/v1/admin/providers/{service}/{slug}/models,declareModels,Declare the models this tenant's connection serves.,src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-declaremodels,Yes
+ai-provider-connection,/api/v1/admin/providers/{service}/{slug}/reset,reset,Reset one built-in provider connection to its platform default (super admin only).,src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-reset,Yes
+ai-provider-connection,/api/v1/admin/providers/{service}/{slug}/test,testConnection,Test a provider connection against the live vendor (ephemeral — never persisted).,src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-testconnection,Yes
+ai-provider-connection,/api/v1/admin/providers/{service}/platform-defaults,listPlatformDefaults,"The platform defaults this tenant inherits for one service — read-only, masked.",src/modules/ai-provider-connection/ai-provider-connection.controller.ts,admin-listplatformdefaults,Yes
+pstudio,/api/v1/admin/pstudio/status,getStatus,Report whether the Prisma Studio shell is enabled in this environment.,src/modules/pstudio/pstudio-status.controller.ts,admin-getstatus,Yes
+queue-admin,/api/v1/admin/queues,listQueues,"List every registered queue with its stats (counts, paused flag, worker count).",src/modules/queue-admin/queue-admin.controller.ts,admin-listqueues,Yes
+queue-admin,/api/v1/admin/queues/{queueName},getQueue,Get stats for a single queue.,src/modules/queue-admin/queue-admin.controller.ts,admin-getqueue,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/clean,cleanQueue,Clean finished (completed/failed) jobs older than a grace period.,src/modules/queue-admin/queue-admin.controller.ts,admin-cleanqueue,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/jobs,listJobs,"List jobs in a queue (paginated, optionally status/name filtered).",src/modules/queue-admin/queue-admin.controller.ts,admin-listjobs,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/jobs/{jobId},removeJob,Remove a job from the queue.,src/modules/queue-admin/queue-admin.controller.ts,admin-removejob,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/jobs/{jobId},getJob,"Get a single job with PII-redacted data, options, stacktrace.",src/modules/queue-admin/queue-admin.controller.ts,admin-getjob,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/jobs/{jobId}/promote,promoteJob,Promote a delayed job so it runs immediately.,src/modules/queue-admin/queue-admin.controller.ts,admin-promotejob,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/jobs/{jobId}/retry,retryJob,Retry a failed job (re-uses the original payload).,src/modules/queue-admin/queue-admin.controller.ts,admin-retryjob,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/jobs/bulk,bulkJobAction,Apply a bulk retry/remove action to a set of job ids.,src/modules/queue-admin/queue-admin.controller.ts,admin-bulkjobaction,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/pause,pauseQueue,Pause a queue (stops processing new jobs).,src/modules/queue-admin/queue-admin.controller.ts,admin-pausequeue,Yes
+queue-admin,/api/v1/admin/queues/{queueName}/resume,resumeQueue,Resume a paused queue.,src/modules/queue-admin/queue-admin.controller.ts,admin-resumequeue,Yes
+queue-admin,/api/v1/admin/queues/health/redis,getRedisHealth,Redis connection health for the queue infrastructure (PING latency + INFO stats). Never errors.,src/modules/queue-admin/queue-admin.controller.ts,admin-getredishealth,Yes
+admin-rate-limit,/api/v1/admin/rate-limit,getPolicy,"Get the effective rate-limit policy (global flag, tier baselines, known-route overrides).",src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-getpolicy,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/enabled,setEnabled,Flip the global rate-limit kill-switch.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-setenabled,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/explain,explain,Explain how a rate limit resolves for one tenant + route.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-explain,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/plans,listPlans,List each subscription plan’s rate limit.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-listplans,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/plans/{plan},setPlan,Set a subscription plan’s rate limit.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-setplan,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/routes,listRoutes,"List every gateway route, for picking a rule target.",src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-listroutes,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/routes/{routeId},setRoute,Update a per-endpoint override for a known throttled route (e.g. auth.login).,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-setroute,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/rules,listRules,List rate-limit rules.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-listrules,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/rules,createRule,Create a rate-limit rule.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-createrule,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/rules/{id},deleteRule,Delete a rate-limit rule.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-deleterule,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/rules/{id},getRule,Get one rate-limit rule.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-getrule,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/rules/{id},updateRule,Update a rate-limit rule.,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-updaterule,Yes
+admin-rate-limit,/api/v1/admin/rate-limit/tiers/{tier},setTier,Update a tier baseline (default | strict | heavy | relaxed).,src/modules/admin-rate-limit/rate-limit-admin.controller.ts,admin-settier,Yes
+rbac,/api/v1/admin/rbac/policies,findAll,List all policies,src/modules/rbac/policies.controller.ts,admin-findall,Yes
+rbac,/api/v1/admin/rbac/policies,create,Create a new policy,src/modules/rbac/policies.controller.ts,admin-create,Yes
+rbac,/api/v1/admin/rbac/policies/{id},remove,Delete a policy (requires break-glass confirmation),src/modules/rbac/policies.controller.ts,admin-remove,Yes
+rbac,/api/v1/admin/rbac/policies/{id},findOne,Get policy by ID,src/modules/rbac/policies.controller.ts,admin-findone,Yes
+rbac,/api/v1/admin/rbac/policies/{id},patch,Partially update a policy,src/modules/rbac/policies.controller.ts,admin-patch,Yes
+rbac,/api/v1/admin/rbac/policies/{id},update,Update a policy,src/modules/rbac/policies.controller.ts,admin-update,Yes
+rbac,/api/v1/admin/rbac/policies/validate,validate,Validate policy rules,src/modules/rbac/policies.controller.ts,admin-validate,Yes
+rbac,/api/v1/admin/rbac/roles,findAll,List all roles,src/modules/rbac/roles.controller.ts,admin-findall,Yes
+rbac,/api/v1/admin/rbac/roles,create,Create a new role,src/modules/rbac/roles.controller.ts,admin-create,Yes
+rbac,/api/v1/admin/rbac/roles/{id},remove,Delete a role (requires break-glass confirmation),src/modules/rbac/roles.controller.ts,admin-remove,Yes
+rbac,/api/v1/admin/rbac/roles/{id},findOne,Get role by ID,src/modules/rbac/roles.controller.ts,admin-findone,Yes
+rbac,/api/v1/admin/rbac/roles/{id},patch,Partially update a role,src/modules/rbac/roles.controller.ts,admin-patch,Yes
+rbac,/api/v1/admin/rbac/roles/{id},update,Update a role,src/modules/rbac/roles.controller.ts,admin-update,Yes
+rbac,/api/v1/admin/rbac/roles/{id}/clone,clone,"Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role, copying its policies",src/modules/rbac/roles.controller.ts,admin-clone,Yes
+rbac,/api/v1/admin/rbac/roles/{id}/members,listMembers,"List users assigned this role (paginated, tenant-scoped)",src/modules/rbac/roles.controller.ts,admin-listmembers,Yes
+rbac,/api/v1/admin/rbac/roles/{roleId}/policies/{policyId},removePolicy,Remove a policy from a role (requires break-glass confirmation),src/modules/rbac/roles.controller.ts,admin-removepolicy,Yes
+rbac,/api/v1/admin/rbac/roles/{roleId}/policies/{policyId},assignPolicy,Assign a policy to a role,src/modules/rbac/roles.controller.ts,admin-assignpolicy,Yes
+resource-subscription,/api/v1/admin/resource-subscriptions,fetchAll,List resource subscriptions (tenant-scoped),src/modules/resource-subscription/resource-subscription.controller.ts,admin-fetchall,Yes
+resource-subscription,/api/v1/admin/resource-subscriptions,create,Create a resource subscription,src/modules/resource-subscription/resource-subscription.controller.ts,admin-create,Yes
+resource-subscription,/api/v1/admin/resource-subscriptions/{id},delete,Soft-delete a resource subscription,src/modules/resource-subscription/resource-subscription.controller.ts,admin-delete,Yes
+resource-subscription,/api/v1/admin/resource-subscriptions/{id},fetchById,Get one resource subscription,src/modules/resource-subscription/resource-subscription.controller.ts,admin-fetchbyid,Yes
+resource-subscription,/api/v1/admin/resource-subscriptions/{id},update,Update a resource subscription (sparse patch),src/modules/resource-subscription/resource-subscription.controller.ts,admin-update,Yes
+resource-subscription,/api/v1/admin/resource-subscriptions/{id}/toggle,toggle,Toggle a subscription ENABLED↔DISABLED,src/modules/resource-subscription/resource-subscription.controller.ts,admin-toggle,Yes
+ai-routing-policy,/api/v1/admin/routing-policies,list,List every routing-policy revision owned by one tenant,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-list,Yes
+ai-routing-policy,/api/v1/admin/routing-policies,create,Author a new routing-policy revision (DRAFT),src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-create,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/{id},deleteById,Soft-delete a routing-policy revision,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-deletebyid,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/{id},getById,Get one routing-policy revision,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-getbyid,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/{id},update,Update a routing-policy revision under optimistic concurrency,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-update,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/{id}/activate,activate,Promote a DRAFT revision to ACTIVE,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-activate,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/{id}/default,setDefault,Elect this configuration as the default for its task,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-setdefault,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/{id}/promote,promote,Copy a configuration to another tenant,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-promote,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/effective,getEffective,"Resolve what actually serves a (tenant, task) right now",src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-geteffective,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/export,exportConfigurations,Export provider configurations as portable JSON,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-exportconfigurations,Yes
+ai-routing-policy,/api/v1/admin/routing-policies/import,importConfigurations,Import provider configurations from an exported artifact,src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts,admin-importconfigurations,Yes
+queue-admin,/api/v1/admin/schedulers,listSchedulers,List all schedulers (static @Cron + dynamic) with cron/interval/run metadata.,src/modules/queue-admin/scheduler-admin.controller.ts,admin-listschedulers,Yes
+queue-admin,/api/v1/admin/schedulers/{name}/cron,updateCron,Update a dynamic scheduler cron expression (static schedulers are rejected).,src/modules/queue-admin/scheduler-admin.controller.ts,admin-updatecron,Yes
+queue-admin,/api/v1/admin/schedulers/{name}/pause,pauseScheduler,Pause (stop) a running cron scheduler.,src/modules/queue-admin/scheduler-admin.controller.ts,admin-pausescheduler,Yes
+queue-admin,/api/v1/admin/schedulers/{name}/resume,resumeScheduler,Resume (start) a paused cron scheduler.,src/modules/queue-admin/scheduler-admin.controller.ts,admin-resumescheduler,Yes
+queue-admin,/api/v1/admin/schedulers/{name}/toggle,toggleScheduler,Enable/disable a dynamic scheduler (static schedulers are rejected).,src/modules/queue-admin/scheduler-admin.controller.ts,admin-togglescheduler,Yes
+security-policy,/api/v1/admin/security/policy,getPolicy,Read the platform credential policy.,src/modules/security-policy/security-policy.controller.ts,admin-getpolicy,Yes
+security-policy,/api/v1/admin/security/policy,updatePolicy,Update the platform credential policy (partial).,src/modules/security-policy/security-policy.controller.ts,admin-updatepolicy,Yes
+service-account,/api/v1/admin/service-accounts,getAll,List service accounts in scope,src/modules/service-account/service-account.controller.ts,admin-getall,Yes
+service-account,/api/v1/admin/service-accounts,create,Issue a service account (SUPER_ADMIN only),src/modules/service-account/service-account.controller.ts,admin-create,Yes
+service-account,/api/v1/admin/service-accounts/{id},revoke,Revoke a service account (SUPER_ADMIN only),src/modules/service-account/service-account.controller.ts,admin-revoke,Yes
+service-account,/api/v1/admin/service-accounts/{id},getById,Read one service account. Never returns credential material.,src/modules/service-account/service-account.controller.ts,admin-getbyid,Yes
+service-account,/api/v1/admin/service-accounts/{id},update,Update a service account (SUPER_ADMIN only),src/modules/service-account/service-account.controller.ts,admin-update,Yes
+service-account,/api/v1/admin/service-accounts/{id}/rotate,rotate,Rotate the client secret (SUPER_ADMIN only),src/modules/service-account/service-account.controller.ts,admin-rotate,Yes
+service-account,/api/v1/admin/service-accounts/scopes,getAvailableScopes,List available svc:* service-account scopes,src/modules/service-account/service-account.controller.ts,admin-getavailablescopes,Yes
+service-release,/api/v1/admin/service-releases,list,"Release history across all services, newest build first",src/modules/service-release/service-release-admin.controller.ts,admin-list,Yes
+service-release,/api/v1/admin/service-releases/{serviceName}/history,history,"Release timeline for one service, newest first",src/modules/service-release/service-release-admin.controller.ts,admin-history,Yes
+service-release,/api/v1/admin/service-releases/current,current,"What is running right now, one row per service",src/modules/service-release/service-release-admin.controller.ts,admin-current,Yes
+global-setting,/api/v1/admin/settings,fetchAll,Retrieving multiple GlobalSettingResponses,src/modules/global-setting/global-setting.controller.ts,admin-fetchall,Yes
+global-setting,/api/v1/admin/settings,create,Creating a GlobalSettingResponse,src/modules/global-setting/global-setting.controller.ts,admin-create,Yes
+global-setting,/api/v1/admin/settings/{id},delete,Deleting a GlobalSettingResponse by id,src/modules/global-setting/global-setting.controller.ts,admin-delete,Yes
+global-setting,/api/v1/admin/settings/{id},fetchById,Retrieving a single GlobalSettingResponse by id,src/modules/global-setting/global-setting.controller.ts,admin-fetchbyid,Yes
+global-setting,/api/v1/admin/settings/{id},update,Updating a GlobalSettingResponse by id,src/modules/global-setting/global-setting.controller.ts,admin-update,Yes
+global-setting,/api/v1/admin/settings/{id}/reveal,reveal,"Reveal a secret setting (super-admin, step-up re-auth, audited)",src/modules/global-setting/global-setting.controller.ts,admin-reveal,Yes
+global-setting,/api/v1/admin/settings/{id}/rotate,rotate,"Rotate a secret setting (super-admin, step-up re-auth, OCC, audited)",src/modules/global-setting/global-setting.controller.ts,admin-rotate,Yes
+settings-catalog,/api/v1/admin/settings/action-confirmations,getPlatform,The platform action-confirmation policy: every catalogue row with its mode and version.,src/modules/settings-catalog/settings-action-confirmations.controller.ts,admin-getplatform,Yes
+settings-catalog,/api/v1/admin/settings/action-confirmations,putPlatform,Apply a batch of action-confirmation mode edits.,src/modules/settings-catalog/settings-action-confirmations.controller.ts,admin-putplatform,Yes
+settings-catalog,/api/v1/admin/settings/action-confirmations/effective,getEffective,Resolve the confirmation requirement of every confirmable admin action.,src/modules/settings-catalog/settings-action-confirmations.controller.ts,admin-geteffective,Yes
+settings-catalog,/api/v1/admin/settings/catalog,getCatalog,List the capability/settings catalog (RBAC-filtered metadata).,src/modules/settings-catalog/settings-catalog.controller.ts,admin-getcatalog,Yes
+settings-catalog,/api/v1/admin/settings/effective,getEffective,Resolve the effective value of one non-secret setting for a context (with cascade trace).,src/modules/settings-catalog/settings-catalog.controller.ts,admin-geteffective,Yes
+settings-catalog,/api/v1/admin/settings/features/effective,getEffectiveFeatures,Resolve every feature-availability gate for the calling context.,src/modules/settings-catalog/settings-features.controller.ts,admin-geteffectivefeatures,Yes
+settings-catalog,/api/v1/admin/settings/features/matrix,getFeatureMatrix,The cross-tenant feature matrix: the platform default beside every tenant’s override.,src/modules/settings-catalog/settings-features.controller.ts,admin-getfeaturematrix,Yes
+settings-catalog,/api/v1/admin/settings/features/matrix,putFeatureMatrix,Apply a batch of feature-matrix edits.,src/modules/settings-catalog/settings-features.controller.ts,admin-putfeaturematrix,Yes
+settings-catalog,/api/v1/admin/settings/registry/{key},resetSetting,Reset one TENANT override so the key resumes inheriting the platform default.,src/modules/settings-catalog/settings-registry-write.controller.ts,admin-resetsetting,Yes
+settings-catalog,/api/v1/admin/settings/registry/{key},getSetting,Read one registry setting: its descriptor metadata plus the effective value and cascade trace.,src/modules/settings-catalog/settings-registry-write.controller.ts,admin-getsetting,Yes
+settings-catalog,/api/v1/admin/settings/registry/{key},putSetting,Write one registry setting through the single descriptor-driven enforcement point.,src/modules/settings-catalog/settings-registry-write.controller.ts,admin-putsetting,Yes
+global-setting,/api/v1/admin/settings/tenant/{tenantId},fetchByTenant,List global settings for a specific tenant,src/modules/global-setting/global-setting.controller.ts,admin-fetchbytenant,Yes
+tenant-frontend-config,/api/v1/admin/tenant-frontend-config,get,Get the tenant's frontend pipeline config (null when not yet configured),src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts,admin-get,Yes
+tenant-frontend-config,/api/v1/admin/tenant-frontend-config,upsert,Create or update the tenant frontend pipeline config,src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts,admin-upsert,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config,list,List a tenant's configured external identity providers,src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-list,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config,create,"Configure a new external OIDC identity provider (starts DRAFT — D7, no self-lockout)",src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-create,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config/{id},remove,Remove an identity provider config,src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-remove,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config/{id},getById,Get one identity provider config,src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-getbyid,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config/{id},update,Update an identity provider config under optimistic concurrency,src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-update,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config/{id}/directory-credentials,setDirectoryCredentials,Seal a directory-API credential bundle for admin-triggered sync (P3),src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-setdirectorycredentials,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config/{id}/sync,syncDirectory,Bulk-pull the provider's directory (MS Graph / Google) and pre-provision users (P3),src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-syncdirectory,Yes
+tenant-idp-config,/api/v1/admin/tenant-idp-config/{id}/test,testConnection,Test connection — OIDC discovery + client construction (D7),src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts,admin-testconnection,Yes
+tenant,/api/v1/admin/tenants,fetchAll,Retrieving multiple TenantResponses,src/modules/tenant/tenant.controller.ts,admin-fetchall,Yes
+tenant,/api/v1/admin/tenants,create,Creating a TenantResponse,src/modules/tenant/tenant.controller.ts,admin-create,Yes
+tenant,/api/v1/admin/tenants/{id},delete,Deleting a TenantResponse by id,src/modules/tenant/tenant.controller.ts,admin-delete,Yes
+tenant,/api/v1/admin/tenants/{id},fetchById,Retrieving a single TenantResponse by id,src/modules/tenant/tenant.controller.ts,admin-fetchbyid,Yes
+tenant,/api/v1/admin/tenants/{id},update,Updating a TenantResponse by id,src/modules/tenant/tenant.controller.ts,admin-update,Yes
+tenant,/api/v1/admin/tenants/{id}/archive,archive,Archive a tenant (recoverable cold state),src/modules/tenant/tenant.controller.ts,admin-archive,Yes
+tenant,/api/v1/admin/tenants/{id}/reference-set/sync,sync,Re-provision a tenant from the platform's SYSTEM reference set,src/modules/tenant/tenant-reference-set.controller.ts,admin-sync,Yes
+tenant,/api/v1/admin/tenants/{id}/restore,restore,"Restore a suspended, archived or deleted tenant to ENABLED",src/modules/tenant/tenant.controller.ts,admin-restore,Yes
+tenant,/api/v1/admin/tenants/{id}/suspend,suspend,Suspend a tenant (reversible operator hold),src/modules/tenant/tenant.controller.ts,admin-suspend,Yes
+tenant,/api/v1/admin/tenants/{id}/tags,getTags,Read a tenant's tags,src/modules/tenant/tenant.controller.ts,admin-gettags,Yes
+tenant,/api/v1/admin/tenants/{id}/tags,setTags,Replace a tenant's full tag set (idempotent set-semantics),src/modules/tenant/tenant.controller.ts,admin-settags,Yes
+tenant,/api/v1/admin/tenants/{id}/usage,getUsage,Get tenant usage statistics,src/modules/tenant/tenant.controller.ts,admin-getusage,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints,list,List a tenant's checkpoints,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-list,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints,create,Create a checkpoint,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-create,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/{id},remove,Delete a checkpoint,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-remove,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/{id},get,Get one checkpoint,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-get,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/cancel,cancel,Cancel a running checkpoint export,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-cancel,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/download-url,downloadUrl,Issue a download URL,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-downloadurl,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/restore,restore,Restore a tenant from a checkpoint,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-restore,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/restores,listRestores,List a tenant's checkpoint restores,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-listrestores,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/restores/{restoreId},getRestore,Get one checkpoint restore,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-getrestore,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/uploads,initUpload,Start a checkpoint upload,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-initupload,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/uploads/{id}/abort,abortUpload,Abort a checkpoint upload,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-abortupload,Yes
+tenant-checkpoint,/api/v1/admin/tenants/{tenantId}/checkpoints/uploads/{id}/complete,completeUpload,Complete a checkpoint upload,src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts,admin-completeupload,Yes
+tenant,/api/v1/admin/tenants/code-name/{codeName},fetchByCodeName,Retrieving a single TenantResponse by code-name,src/modules/tenant/tenant.controller.ts,admin-fetchbycodename,Yes
+tenant,/api/v1/admin/tenants/configs/{identifier},fetchTenantConfigs,Retrieving multiple PaginatedTenantConfigResponses by identifier,src/modules/tenant/tenant.controller.ts,admin-fetchtenantconfigs,Yes
+tenant,/api/v1/admin/tenants/configs/{identifier},updateTenantConfigs,Updating a PaginatedTenantConfigResponse by identifier,src/modules/tenant/tenant.controller.ts,admin-updatetenantconfigs,Yes
+tenant,/api/v1/admin/tenants/provision,provision,Creating a TenantProvisionResponse,src/modules/tenant/tenant-provision.controller.ts,admin-provision,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets,listBuckets,List all storage buckets for current tenant,src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-listbuckets,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets,createBucket,Create a custom storage bucket,src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-createbucket,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/{id},deleteBucket,Delete a custom storage bucket (system buckets cannot be deleted),src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-deletebucket,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/{id},getBucket,Get bucket by ID,src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-getbucket,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/{id}/objects,deleteObject,Delete a single object from a tenant bucket (storage-provider operation),src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-deleteobject,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/{id}/objects,listObjects,List objects in a tenant bucket (storage-provider operation),src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-listobjects,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/{id}/objects,uploadObject,Upload a single object into a tenant bucket (storage-provider operation),src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-uploadobject,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/{id}/presigned-url,getPresignedUrl,Get presigned download URL for a file in a tenant bucket,src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-getpresignedurl,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/{id}/tree,getBucketTree,Get bucket folder/file tree for UI tree view,src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-getbuckettree,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/defaults,getDefaultBuckets,Get the default bucket for each purpose (audio / attachments / misc),src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-getdefaultbuckets,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/defaults,setDefaultBuckets,Configure the default bucket for audio / attachments / misc,src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-setdefaultbuckets,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/provision/{tenantId},provisionSystemBuckets,Provision system buckets for a tenant (admin only),src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-provisionsystembuckets,Yes
+tenant-bucket,/api/v1/admin/tenants/storage/buckets/register,adoptBucket,Adopt an existing physical bucket into a tenant,src/modules/tenant-bucket/tenant-bucket.controller.ts,admin-adoptbucket,Yes
+tenant-storage-config,/api/v1/admin/tenants/storage/config,listConfigs,List storage configs for the current tenant (default + per-bucket overrides),src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts,admin-listconfigs,Yes
+tenant-storage-config,/api/v1/admin/tenants/storage/config,upsertConfig,Create or update a storage config (keyed by bucketId; omit for the tenant default),src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts,admin-upsertconfig,Yes
+tenant-storage-config,/api/v1/admin/tenants/storage/config/{id},deleteConfig,Delete a storage config (reverts that scope to the next-broader config / global),src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts,admin-deleteconfig,Yes
+tenant-storage-config,/api/v1/admin/tenants/storage/config/effective,getEffectiveConfig,Resolve the effective config for a bucket (per-bucket override → tenant default → SYSTEM default),src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts,admin-geteffectiveconfig,Yes
+tenant-storage-config,/api/v1/admin/tenants/storage/config/platform,getPlatformDefault,Read the platform-default storage config (SYSTEM row) — SUPER_ADMIN only,src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts,admin-getplatformdefault,Yes
+tenant-storage-config,/api/v1/admin/tenants/storage/config/platform,upsertPlatformDefault,Create or update the platform-default storage config under optimistic concurrency — SUPER_ADMIN only,src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts,admin-upsertplatformdefault,Yes
+storage-access-key,/api/v1/admin/tenants/storage/keys,listKeys,List all storage access keys for current tenant,src/modules/storage-access-key/storage-access-key.controller.ts,admin-listkeys,Yes
+storage-access-key,/api/v1/admin/tenants/storage/keys,generateKey,Generate a new storage access key,src/modules/storage-access-key/storage-access-key.controller.ts,admin-generatekey,Yes
+storage-access-key,/api/v1/admin/tenants/storage/keys/{id},revokeKey,Revoke a storage access key,src/modules/storage-access-key/storage-access-key.controller.ts,admin-revokekey,Yes
+tenant,/api/v1/admin/tenants/user/{userId},fetchByUserId,Retrieving multiple TenantResponses by createdByUserId,src/modules/tenant/tenant.controller.ts,admin-fetchbyuserid,Yes
+streaming,/api/v1/admin/text-generations/generate,generate,Generate text on a pinned provider and model (platform LLM playground),src/modules/streaming/text-generation-admin.controller.ts,admin-generate,Yes
+streaming,/api/v1/admin/text-generations/generate/assembled,generateAssembled,Generate text with server-side prompt assembly on a pinned provider and model (platform LLM playground),src/modules/streaming/text-generation-admin.controller.ts,admin-generateassembled,Yes
+admin-usage,/api/v1/admin/usage/cost-per-encounter,costPerEncounter,p50/p90/p99 + count of the Σ INTERNAL-basis cost per consultation over a billing period.,src/modules/admin-usage/admin-usage.controller.ts,admin-costperencounter,Yes
+admin-usage,/api/v1/admin/usage/summary,summary,Units + rated cost per capability x provider x model for a billing period. BYOK notional split out.,src/modules/admin-usage/admin-usage.controller.ts,admin-summary,Yes
+admin-usage,/api/v1/admin/usage/timeseries,timeseries,Bounded-range rollup timeseries for one capability x unit (max 92 days daily / 72h hourly).,src/modules/admin-usage/admin-usage.controller.ts,admin-timeseries,Yes
+admin-usage,/api/v1/admin/usage/top-tenants,topTenants,SUPER_ADMIN-only cross-tenant top-N by rollup cost. Every other route on this controller is tenant-scoped; this one is not.,src/modules/admin-usage/admin-usage.controller.ts,admin-toptenants,Yes
+user,/api/v1/admin/users,fetchAll,Retrieving multiple UserResponses,src/modules/user/user.controller.ts,admin-fetchall,Yes
+user,/api/v1/admin/users,create,Creating a UserResponse,src/modules/user/user.controller.ts,admin-create,Yes
+user,/api/v1/admin/users/{id},delete,Deleting a UserResponse by id,src/modules/user/user.controller.ts,admin-delete,Yes
+user,/api/v1/admin/users/{id},fetchById,Retrieving a single UserResponse by id,src/modules/user/user.controller.ts,admin-fetchbyid,Yes
+user,/api/v1/admin/users/{id},update,Updating a UserResponse by id,src/modules/user/user.controller.ts,admin-update,Yes
+user,/api/v1/admin/users/{id}/api-keys,fetchUserApiKeys,Retrieving multiple PaginatedApiKeyResponses by userId,src/modules/user/user.controller.ts,admin-fetchuserapikeys,Yes
+user,/api/v1/admin/users/{id}/departments,list,List a user's department assignments (tenant-scoped),src/modules/user/controllers/user-departments.controller.ts,admin-list,Yes
+user,/api/v1/admin/users/{id}/departments,setDepartments,Set a user's department memberships (bulk reconcile),src/modules/user/user.controller.ts,admin-setdepartments,Yes
+user,/api/v1/admin/users/{id}/departments,assign,Assign a user to a department,src/modules/user/controllers/user-departments.controller.ts,admin-assign,Yes
+user,/api/v1/admin/users/{id}/departments/{assignmentId},unassign,Unassign a user from a department (soft delete),src/modules/user/controllers/user-departments.controller.ts,admin-unassign,Yes
+user,/api/v1/admin/users/{id}/departments/{assignmentId},update,Update a user-department assignment (e.g. toggle primary),src/modules/user/controllers/user-departments.controller.ts,admin-update,Yes
+auth,/api/v1/admin/users/{id}/impersonate,impersonate,"Impersonate a user (super-admin only, time-boxed, audited)",src/modules/auth/admin-impersonation.controller.ts,admin-impersonate,Yes
+user,/api/v1/admin/users/{id}/profile,fetchUserProfile,Get a user's profile (admin),src/modules/user/user.controller.ts,admin-fetchuserprofile,Yes
+user,/api/v1/admin/users/{id}/profile,updateUserProfile,"Create or update a user's profile, incl. preferred prompt template (admin)",src/modules/user/user.controller.ts,admin-updateuserprofile,Yes
+user,/api/v1/admin/users/{id}/reset-password,resetPassword,Reset a user password (admin): set a temporary password OR mint an emailed reset link,src/modules/user/user.controller.ts,admin-resetpassword,Yes
+user,/api/v1/admin/users/{id}/roles,fetchUserRoleAssignments,Retrieving multiple UserRoleAssignmentResponses by userId,src/modules/user/user.controller.ts,admin-fetchuserroleassignments,Yes
+user,/api/v1/admin/users/{id}/roles,assignRole,Assign a role to a user,src/modules/user/user.controller.ts,admin-assignrole,Yes
+user,/api/v1/admin/users/{id}/roles/{assignmentId},removeRole,Remove a role assignment from a user,src/modules/user/user.controller.ts,admin-removerole,Yes
+user,/api/v1/admin/users/{id}/settings,fetchUserSettings,Get all settings for a specific user (admin),src/modules/user/user.controller.ts,admin-fetchusersettings,Yes
+user,/api/v1/admin/users/{id}/settings/{namespace}/{key},updateUserSetting,Upsert a setting for a specific user (admin),src/modules/user/user.controller.ts,admin-updateusersetting,Yes
+user,/api/v1/admin/users/{id}/status,updateStatus,Updating a UserResponse by id (enable/disable),src/modules/user/user.controller.ts,admin-updatestatus,Yes
+user,/api/v1/admin/users/{id}/voice-profiles,fetchUserVoiceProfiles,"List a user's enrolled voice profiles (admin, read-only)",src/modules/user/user.controller.ts,admin-fetchuservoiceprofiles,Yes
+user,/api/v1/admin/users/bulk,bulkDelete,Delete many users in one call (partial-failure envelope),src/modules/user/user.controller.ts,admin-bulkdelete,Yes
+user,/api/v1/admin/users/bulk-actions,bulkActions,Apply a bulk action (enable/disable/delete/assign-departments/assign-role) to many users,src/modules/user/user.controller.ts,admin-bulkactions,Yes
+user,/api/v1/admin/users/export,exportUsers,Export users (csv | xlsx | pdf),src/modules/user/user.controller.ts,admin-exportusers,Yes
+user,/api/v1/admin/users/tenant/{tenantId},fetchByTenant,Retrieving multiple UserResponses by tenantId,src/modules/user/user.controller.ts,admin-fetchbytenant,Yes
+webhook,/api/v1/admin/webhooks,fetchAll,"List webhooks (tenant-scoped; SUPER_ADMIN sees all, or targets one via ?tenantId=)",src/modules/webhook/webhook.controller.ts,admin-fetchall,Yes
+webhook,/api/v1/admin/webhooks,create,Create a webhook for the caller tenant. The signing secret is server-generated and returned only once.,src/modules/webhook/webhook.controller.ts,admin-create,Yes
+webhook,/api/v1/admin/webhooks/{id},delete,Soft-delete a webhook,src/modules/webhook/webhook.controller.ts,admin-delete,Yes
+webhook,/api/v1/admin/webhooks/{id},fetchById,Get one webhook,src/modules/webhook/webhook.controller.ts,admin-fetchbyid,Yes
+webhook,/api/v1/admin/webhooks/{id},update,Update a webhook (If-Match OCC),src/modules/webhook/webhook.controller.ts,admin-update,Yes
+webhook,/api/v1/admin/webhooks/{id}/deliveries,fetchDeliveries,List a webhook's delivery log (newest-first),src/modules/webhook/webhook.controller.ts,admin-fetchdeliveries,Yes
+webhook,/api/v1/admin/webhooks/{id}/rotate-secret,rotateSecret,Rotate a webhook signing secret (If-Match OCC),src/modules/webhook/webhook.controller.ts,admin-rotatesecret,Yes
+workflow-assignment,/api/v1/admin/workflow-assignments,fetchAll,List the caller tenant’s workflow assignments for one palette,src/modules/workflow-assignment/workflow-assignment.controller.ts,admin-fetchall,Yes
+workflow-assignment,/api/v1/admin/workflow-assignments,update,Re-assign one tier,src/modules/workflow-assignment/workflow-assignment.controller.ts,admin-update,Yes
+workflow-assignment,/api/v1/admin/workflow-assignments,create,"Create the assignment for one (scope, scopeId, palette) tier",src/modules/workflow-assignment/workflow-assignment.controller.ts,admin-create,Yes
+workflow-assignment,/api/v1/admin/workflow-assignments/{id},remove,Remove one assignment — the tier reverts to inheriting,src/modules/workflow-assignment/workflow-assignment.controller.ts,admin-remove,Yes
+workflow-assignment,/api/v1/admin/workflow-assignments/{id},fetchById,Get one workflow assignment,src/modules/workflow-assignment/workflow-assignment.controller.ts,admin-fetchbyid,Yes
+workflow-definition,/api/v1/admin/workflow-definitions,fetchAll,List the caller tenant’s workflow definition versions,src/modules/workflow-definition/workflow-definition.controller.ts,admin-fetchall,Yes
+workflow-definition,/api/v1/admin/workflow-definitions,create,Create a new DRAFT workflow definition for the caller tenant,src/modules/workflow-definition/workflow-definition.controller.ts,admin-create,Yes
+workflow-sandbox-run,/api/v1/admin/workflow-definitions/{definitionId}/sandbox-runs,start,"Start a sandbox run of the CURRENT graph of :definitionId — DRAFT or published, never writes external artifacts.",src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts,admin-start,Yes
+workflow-sandbox-run,/api/v1/admin/workflow-definitions/{definitionId}/sandbox-runs/{runId},getStatus,Live run status + stages (queried from the interpreter dispatcher).,src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts,admin-getstatus,Yes
+workflow-sandbox-run,/api/v1/admin/workflow-definitions/{definitionId}/sandbox-runs/{runId}/cancel,cancel,"Cancel a sandbox run — the interpreter's allow-listed cancel signal, never a caller-supplied signal name.",src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts,admin-cancel,Yes
+workflow-sandbox-run,/api/v1/admin/workflow-definitions/{definitionId}/sandbox-runs/{runId}/stream,stream,SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).,src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts,admin-stream,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id},delete,Soft-delete a workflow definition version (refused for the ACTIVE published version — deprecate it first),src/modules/workflow-definition/workflow-definition.controller.ts,admin-delete,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id},fetchById,Get one workflow definition version,src/modules/workflow-definition/workflow-definition.controller.ts,admin-fetchbyid,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id},update,Update a DRAFT workflow definition version (If-Match OCC),src/modules/workflow-definition/workflow-definition.controller.ts,admin-update,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/activate,activate,Make an already-PUBLISHED version the ACTIVE one for its slug (rollback),src/modules/workflow-definition/workflow-definition.controller.ts,admin-activate,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/clone,clone,Clone an existing workflow (or a platform template) into a NEW draft workflow,src/modules/workflow-definition/workflow-definition.controller.ts,admin-clone,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/deprecate,deprecate,Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable,src/modules/workflow-definition/workflow-definition.controller.ts,admin-deprecate,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/draft,createDraft,Edit a published (or deprecated) workflow version as a NEW draft version of the same workflow,src/modules/workflow-definition/workflow-definition.controller.ts,admin-createdraft,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/export,export,Export one workflow version as a portable JSON bundle,src/modules/workflow-definition/workflow-definition.controller.ts,admin-export,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt,updateNodePrompt,"Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin",src/modules/workflow-definition/workflow-definition.controller.ts,admin-updatenodeprompt,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/prompt-bindings,listPromptBindings,"Which prompt version each node is pinned to, and whether a newer one exists",src/modules/workflow-definition/workflow-definition.controller.ts,admin-listpromptbindings,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/publish,publish,Compile the graph and publish this version,src/modules/workflow-definition/workflow-definition.controller.ts,admin-publish,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/validate,validate,Re-run shape + engine + DRAFT rule-catalogue validation and persist the report,src/modules/workflow-definition/workflow-definition.controller.ts,admin-validate,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/{id}/versions,fetchVersions,"List every version row in this definition’s (tenantId, slug) lineage, most recent first",src/modules/workflow-definition/workflow-definition.controller.ts,admin-fetchversions,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/import,import,Import a workflow bundle as a new DRAFT workflow,src/modules/workflow-definition/workflow-definition.controller.ts,admin-import,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/lineages,fetchLineages,List the caller tenant’s workflow LINEAGES (one row per slug),src/modules/workflow-definition/workflow-definition.controller.ts,admin-fetchlineages,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/promote-to-system,promoteToSystem,Promote a workflow from the Global build tenant into the SYSTEM template library,src/modules/workflow-definition/workflow-definition.controller.ts,admin-promotetosystem,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/slug/{slug}/sync,sync,Sync one workflow version into other tenants you manage,src/modules/workflow-definition/workflow-definition.controller.ts,admin-sync,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/slug/{slug}/webhook-secret,rotateWebhookSecret,Issue or rotate the inbound webhook secret for a workflow lineage (returned exactly once),src/modules/workflow-definition/workflow-definition.controller.ts,admin-rotatewebhooksecret,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/tags,listTags,Distinct workflow tags with usage counts (autocomplete),src/modules/workflow-definition/workflow-definition.controller.ts,admin-listtags,Yes
+workflow-definition,/api/v1/admin/workflow-definitions/templates,fetchTemplates,List the platform workflow template library a tenant can clone from,src/modules/workflow-definition/workflow-definition.controller.ts,admin-fetchtemplates,Yes
+workflow-invariant-rule,/api/v1/admin/workflow-invariant-rules,fetchAll,List the caller tenant's own rules UNION the SYSTEM platform register,src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts,admin-fetchall,Yes
+workflow-invariant-rule,/api/v1/admin/workflow-invariant-rules,create,Author a workflow invariant rule for the caller tenant,src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts,admin-create,Yes
+workflow-invariant-rule,/api/v1/admin/workflow-invariant-rules/{id},delete,Soft-delete a rule,src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts,admin-delete,Yes
+workflow-invariant-rule,/api/v1/admin/workflow-invariant-rules/{id},fetchById,"Get one rule — the caller tenant’s own, or a SYSTEM register row",src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts,admin-fetchbyid,Yes
+workflow-invariant-rule,/api/v1/admin/workflow-invariant-rules/{id},update,Update a rule (If-Match OCC),src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts,admin-update,Yes
+workflow-node,/api/v1/admin/workflow-nodes,fetchAll,List the code-owned workflow node-type registry (the Studio’s node palette source),src/modules/workflow-node/workflow-node.controller.ts,admin-fetchall,Yes
+workflow-run,/api/v1/admin/workflow-runs,listRuns,"Tenant-scoped, keyset-paginated, filterable list of workflow-substrate runs. Sandbox runs excluded by default.",src/modules/workflow-run/workflow-run.controller.ts,admin-listruns,Yes
+workflow-run,/api/v1/admin/workflow-runs/{runId},getRun,"A single run, with the worker CPU it consumed. Cross-tenant / nonexistent id → 404 (never 403).",src/modules/workflow-run/workflow-run.controller.ts,admin-getrun,Yes
+workflow-run,/api/v1/admin/workflow-runs/{runId}/gate,getRunGate,"Live state of the run's human-approval gate, read from the gate child workflow. Cross-tenant / nonexistent id → 404.",src/modules/workflow-run/workflow-run.controller.ts,admin-getrungate,Yes
+workflow-run,/api/v1/admin/workflow-runs/{runId}/gate/approve,approveRunGate,Release the run's human-approval gate with a clinician decision.,src/modules/workflow-run/workflow-run.controller.ts,admin-approverungate,Yes
+workflow-run,/api/v1/admin/workflow-runs/{runId}/trace,getRunTrace,"The CQRS-lite read shape: the run row plus its per-node rollup, assembled from ONE bounded trajectory read. Cross-tenant / nonexistent id → 404.",src/modules/workflow-run/workflow-run.controller.ts,admin-getruntrace,Yes
+workflows,/api/v1/admin/workflow-runs/{runId}/trace/stream,streamTrace,"SSE: the admin trace of a run — every run protocol v2 event (debug events, all node outputs), with resume.",src/modules/workflows/workflow-run-trace.controller.ts,admin-streamtrace,Yes
+workflow-test-fixture,/api/v1/admin/workflow-test-fixtures,fetchAll,List the caller tenant’s saved fixtures,src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts,admin-fetchall,Yes
+workflow-test-fixture,/api/v1/admin/workflow-test-fixtures,create,Create a synthetic Workbench test fixture for the caller tenant,src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts,admin-create,Yes
+workflow-test-fixture,/api/v1/admin/workflow-test-fixtures/{id},delete,Soft-delete a fixture,src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts,admin-delete,Yes
+workflow-test-fixture,/api/v1/admin/workflow-test-fixtures/{id},fetchById,Get one fixture,src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts,admin-fetchbyid,Yes
+workflow-test-fixture,/api/v1/admin/workflow-test-fixtures/{id},update,Update a fixture (If-Match OCC),src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts,admin-update,Yes
+agent,/api/v1/agents,list,List the published agents visible to the tenant (own agents shadow the platform defaults),src/modules/agent/agent.controller.ts,agents-list,Yes
+agent,/api/v1/agents/{slug},get,"Describe one published agent: its task, version and I/O schemas",src/modules/agent/agent.controller.ts,agents-get,Yes
+agent,/api/v1/agents/{slug}/invocations,invoke,"Invoke a TEXT_GENERATION agent (blocking JSON, or SSE with ?mode=stream)",src/modules/agent/agent.controller.ts,agents-invoke,Yes
+agent,/api/v1/agents/{slug}/runs,startRun,"Start an agent RUN (async): answers 202 { runId, status, links } at once; poll, read the result, or follow its events",src/modules/agent/agent.controller.ts,agents-startrun,Yes
+agent,/api/v1/agents/{slug}/runs/{runId},getRun,The status of one agent run,src/modules/agent/agent.controller.ts,agents-getrun,Yes
+agent,/api/v1/agents/{slug}/runs/{runId}/cancel,cancelRun,Cancel an agent run (idempotent),src/modules/agent/agent.controller.ts,agents-cancelrun,Yes
+agent,/api/v1/agents/{slug}/runs/{runId}/events,runEvents,Follow an agent run as run protocol v2 over SSE (resumable),src/modules/agent/agent.controller.ts,agents-runevents,Yes
+agent,/api/v1/agents/{slug}/runs/{runId}/result,getRunResult,The output a finished agent run produced,src/modules/agent/agent.controller.ts,agents-getrunresult,Yes
+agent,/api/v1/agents/{slug}/runs/{runId}/stream-ticket,issueRunStreamTicket,"Mint a single-use, 30-second ticket for this agent run’s SSE stream",src/modules/agent/agent.controller.ts,agents-issuerunstreamticket,Yes
+agent,/api/v1/agents/{slug}/speech,speech,"Synthesize speech with a TEXT_TO_SPEECH agent (streamed audio, the existing speech proxy contract)",src/modules/agent/agent.controller.ts,agents-speech,Yes
+agent,/api/v1/agents/{slug}/transcriptions,transcribe,Start a batch transcription with a SPEECH_TO_TEXT agent (returns a TranscriptionJob),src/modules/agent/agent.controller.ts,agents-transcribe,Yes
+streaming,/api/v1/audio/transcription-jobs,list,"List transcription jobs (paginated, caller-owned jobs)",src/modules/streaming/transcription-job.controller.ts,audio-list,Yes
+streaming,/api/v1/audio/transcription-jobs,create,Create a transcription job,src/modules/streaming/transcription-job.controller.ts,audio-create,Yes
+streaming,/api/v1/audio/transcription-jobs/{id},getById,Get transcription job by ID,src/modules/streaming/transcription-job.controller.ts,audio-getbyid,Yes
+streaming,/api/v1/audio/transcription-jobs/{id}/cancel,cancel,Cancel a transcription job,src/modules/streaming/transcription-job.controller.ts,audio-cancel,Yes
+streaming,/api/v1/audio/transcription-jobs/{id}/retry,retry,Retry a failed transcription job,src/modules/streaming/transcription-job.controller.ts,audio-retry,Yes
+streaming,/api/v1/audio/transcription-jobs/{id}/stream,streamJob,Stream transcription job events via SSE,src/modules/streaming/transcription-job.controller.ts,audio-streamjob,Yes
+streaming,/api/v1/audio/transcription-jobs/batch,createBatch,Create a batch transcription job,src/modules/streaming/transcription-job.controller.ts,audio-createbatch,Yes
+streaming,/api/v1/audio/transcription-jobs/consultation/{consultationId},getByConsultation,Get transcription jobs by consultation (caller-owned jobs),src/modules/streaming/transcription-job.controller.ts,audio-getbyconsultation,Yes
+streaming,/api/v1/audio/transcription-jobs/language-modes,getLanguageModes,"List selectable spoken-language modes, judged against an ASR agent’s engine chain",src/modules/streaming/transcription-job.controller.ts,audio-getlanguagemodes,Yes
+streaming,/api/v1/audio/transcription-jobs/limits,getBatchLimits,"Batch upload ceilings (recordings per batch, minutes per recording, size, in-flight jobs)",src/modules/streaming/transcription-job.controller.ts,audio-getbatchlimits,Yes
+streaming,/api/v1/audio/transcription-jobs/stats,getStats,Get transcription job status counts (caller-owned jobs),src/modules/streaming/transcription-job.controller.ts,audio-getstats,Yes
+streaming,/api/v1/audio/transcription-jobs/status/{status},getByStatus,Get transcription jobs by status (caller-owned jobs),src/modules/streaming/transcription-job.controller.ts,audio-getbystatus,Yes
+streaming,/api/v1/audio/transcription-jobs/stream/session,createStreamSession,Create a WebSocket streaming session,src/modules/streaming/transcription-job.controller.ts,audio-createstreamsession,Yes
+streaming,/api/v1/audio/transcription-jobs/stream/session/{sessionId},closeStreamSession,Close a WebSocket streaming session,src/modules/streaming/transcription-job.controller.ts,audio-closestreamsession,Yes
+streaming,/api/v1/audio/transcription-jobs/stream/session/{sessionId}/refresh-ticket,refreshStreamTicket,Refresh the stream ticket for a live streaming session,src/modules/streaming/transcription-job.controller.ts,audio-refreshstreamticket,Yes
+streaming,/api/v1/audio/transcription-jobs/stream/session/{sessionId}/switch-to-fallback,switchStreamSessionToFallback,Switch a live streaming session to its ASR agent's fallback engine,src/modules/streaming/transcription-job.controller.ts,audio-switchstreamsessiontofallback,Yes
+streaming,/api/v1/audio/transcription-jobs/stream/session/{sessionId}/switch-to-primary,switchStreamSessionToPrimary,Switch a live streaming session back to its primary pipeline,src/modules/streaming/transcription-job.controller.ts,audio-switchstreamsessiontoprimary,Yes
+streaming,/api/v1/audio/transcription-jobs/streaming,createStreaming,Create a streaming transcription job,src/modules/streaming/transcription-job.controller.ts,audio-createstreaming,Yes
+streaming,/api/v1/audio/transcription-jobs/transcribe,transcribeFile,Upload audio file for batch transcription via worker,src/modules/streaming/transcription-job.controller.ts,audio-transcribefile,Yes
+user,/api/v1/auth/forgot-password,request,Request a self-service password reset link (always 202),src/modules/user/controllers/forgot-password.controller.ts,auth-request,Yes
+auth,/api/v1/auth/impersonate,impersonate,Impersonate another user (admin only),src/modules/auth/auth.controller.ts,auth-impersonate,Yes
+auth,/api/v1/auth/login,login,User login,src/modules/auth/auth.controller.ts,auth-login,Yes
+auth,/api/v1/auth/logout,logout,User logout,src/modules/auth/auth.controller.ts,auth-logout,Yes
+auth,/api/v1/auth/me,me,Get current user information,src/modules/auth/auth.controller.ts,auth-me,Yes
+auth,/api/v1/auth/refresh,refresh,Refresh access token,src/modules/auth/auth.controller.ts,auth-refresh,Yes
+auth,/api/v1/auth/register,register,Self-service registration — creates an unverified account and emails a verification link,src/modules/auth/register.controller.ts,auth-register,Yes
+auth,/api/v1/auth/register/verify,verify,Consume an email-verification token — activates the account and provisions its tenant,src/modules/auth/register.controller.ts,auth-verify,Yes
+auth,/api/v1/auth/revoke-impersonation,revokeImpersonation,Revoke the current impersonation token,src/modules/auth/auth.controller.ts,auth-revokeimpersonation,Yes
+service-account,/api/v1/auth/service-token,exchange,Exchange a service-account client secret for a short-lived access token,src/modules/service-account/service-account-token.controller.ts,auth-exchange,Yes
+auth,/api/v1/auth/sso/callback,callback,Complete the IdP's OIDC callback and mint a HOPE session,src/modules/auth/auth-sso.controller.ts,auth-callback,Yes
+auth,/api/v1/auth/sso/saml/{tenantKey}/acs,samlAcs,"Complete the SAML ACS POST (assertion validation, D4) and mint a HOPE session",src/modules/auth/auth-sso.controller.ts,auth-samlacs,Yes
+auth,/api/v1/auth/sso/saml/{tenantKey}/metadata,samlMetadata,This SP's SAML metadata for the tenant's configured IdP — register with the IdP out-of-band,src/modules/auth/auth-sso.controller.ts,auth-samlmetadata,Yes
+auth,/api/v1/auth/sso/saml/{tenantKey}/start,samlStart,Begin a tenant-scoped SAML login (SP-initiated AuthnRequest redirect),src/modules/auth/auth-sso.controller.ts,auth-samlstart,Yes
+auth,/api/v1/auth/sso/start,start,"Begin a tenant-scoped OIDC login (HRD by email, or explicit tenantKey)",src/modules/auth/auth-sso.controller.ts,auth-start,Yes
+auth,/api/v1/auth/stream-ticket,issueStreamTicket,"Issue a single-use, 30-second ticket for authenticating SSE streams",src/modules/auth/auth.controller.ts,auth-issuestreamticket,Yes
+changelog,/api/v1/changelog,list,List the release notes visible to the caller,src/modules/changelog/changelog.controller.ts,changelog-list,Yes
+changelog,/api/v1/changelog/acknowledge,acknowledge,Mark entries as seen for the current user,src/modules/changelog/changelog.controller.ts,changelog-acknowledge,Yes
+changelog,/api/v1/changelog/unseen,listUnseen,Entries driving the one-time What's New dialog,src/modules/changelog/changelog.controller.ts,changelog-listunseen,Yes
+consultation,/api/v1/consultations,list,Retrieving multiple ConsultationResponses,src/modules/consultation/consultation.controller.ts,consultations-list,Yes
+workflows,/api/v1/consultations/{consultationId}/workflows,list,The published workflows runnable AGAINST a consultation.,src/modules/workflows/consultation-workflow-runs.controller.ts,consultations-list,Yes
+workflows,/api/v1/consultations/{consultationId}/workflows/{slug}/runs,startRun,Run a published workflow against THIS consultation.,src/modules/workflows/consultation-workflow-runs.controller.ts,consultations-startrun,Yes
+consultation,/api/v1/consultations/{id},getById,Retrieving a single ConsultationResponse by id,src/modules/consultation/consultation.controller.ts,consultations-getbyid,Yes
+consultation,/api/v1/consultations/{id},update,Updating a ConsultationResponse by id,src/modules/consultation/consultation.controller.ts,consultations-update,Yes
+consultation,/api/v1/consultations/{id}/approve,approve,Approve the consultation,src/modules/consultation/consultation.controller.ts,consultations-approve,Yes
+consultation,/api/v1/consultations/{id}/attachments,list,List the consultation attachments,src/modules/consultation/consultation-attachment.controller.ts,consultations-list,Yes
+consultation,/api/v1/consultations/{id}/attachments,createIntent,Declare a file for a consultation and get an upload target,src/modules/consultation/consultation-attachment.controller.ts,consultations-createintent,Yes
+consultation,/api/v1/consultations/{id}/attachments/{attachmentId},get,Read one attachment (poll a PROCESSING one),src/modules/consultation/consultation-attachment.controller.ts,consultations-get,Yes
+consultation,/api/v1/consultations/{id}/attachments/{attachmentId}/complete,complete,Complete an upload,src/modules/consultation/consultation-attachment.controller.ts,consultations-complete,Yes
+consultation,/api/v1/consultations/{id}/attachments/{attachmentId}/content,uploadContent,Upload the file through the gateway (fallback when no upload URL was issued),src/modules/consultation/consultation-attachment.controller.ts,consultations-uploadcontent,Yes
+consultation,/api/v1/consultations/{id}/chain,getChain,Retrieving multiple ConsultationResponses by id,src/modules/consultation/consultation.controller.ts,consultations-getchain,Yes
+consultation,/api/v1/consultations/{id}/close,close,Creating a ConsultationResponse by id,src/modules/consultation/consultation.controller.ts,consultations-close,Yes
+consultation,/api/v1/consultations/{id}/context,getContextItems,Retrieving multiple ContextItemResponses by id,src/modules/consultation/consultation.controller.ts,consultations-getcontextitems,Yes
+consultation,/api/v1/consultations/{id}/context,addContext,Creating a ContextItemResponse by id,src/modules/consultation/consultation.controller.ts,consultations-addcontext,Yes
+consultation,/api/v1/consultations/{id}/context/{contextId},deleteContext,Deleting a OkResponseDto by id and contextId,src/modules/consultation/consultation.controller.ts,consultations-deletecontext,Yes
+consultation,/api/v1/consultations/{id}/context/{contextId},updateContext,Updating a ContextItemResponse by id and contextId,src/modules/consultation/consultation.controller.ts,consultations-updatecontext,Yes
+consultation,/api/v1/consultations/{id}/context/{contextId}/versions,getContextVersions,Retrieving multiple ContextItemVersionResponses by id and contextId,src/modules/consultation/consultation.controller.ts,consultations-getcontextversions,Yes
+consultation,/api/v1/consultations/{id}/context/{contextId}/versions/{versionNumber},getContextVersion,Retrieving a single ContextItemVersionResponse by id and contextId and versionNumber,src/modules/consultation/consultation.controller.ts,consultations-getcontextversion,Yes
+consultation,/api/v1/consultations/{id}/context/case-notes,getCaseNotes,Retrieving multiple ContextItemResponses by id,src/modules/consultation/consultation.controller.ts,consultations-getcasenotes,Yes
+consultation,/api/v1/consultations/{id}/context/shared,getSharedContext,Retrieving multiple ContextItemResponses by id,src/modules/consultation/consultation.controller.ts,consultations-getsharedcontext,Yes
+consultation,/api/v1/consultations/{id}/context/transcriptions,getTranscriptions,Retrieving multiple ContextItemResponses by id,src/modules/consultation/consultation.controller.ts,consultations-gettranscriptions,Yes
+consultation,/api/v1/consultations/{id}/documents/{documentKey}/sections,listDocumentSections,Retrieving multiple DocumentSectionResponses by id and documentKey,src/modules/consultation/consultation.controller.ts,consultations-listdocumentsections,Yes
+consultation,/api/v1/consultations/{id}/documents/{documentKey}/sections/{sectionKey},getDocumentSection,Retrieving a single DocumentSectionResponse by id and documentKey and sectionKey,src/modules/consultation/consultation.controller.ts,consultations-getdocumentsection,Yes
+consultation,/api/v1/consultations/{id}/documents/{documentKey}/sections/{sectionKey},updateDocumentSection,Updating a DocumentSectionResponse by id and documentKey and sectionKey,src/modules/consultation/consultation.controller.ts,consultations-updatedocumentsection,Yes
+consultation,/api/v1/consultations/{id}/documents/sections,listAllDocumentSections,Retrieving multiple DocumentSectionResponses by id,src/modules/consultation/consultation.controller.ts,consultations-listalldocumentsections,Yes
+consultation,/api/v1/consultations/{id}/encounters,listEncounters,The encounters (visits) of a consultation,src/modules/consultation/consultation.controller.ts,consultations-listencounters,Yes
+consultation-history,/api/v1/consultations/{id}/encounters/{seq}/recap,getRecap,Read the live recap of one encounter,src/modules/consultation-history/consultation-history.controller.ts,consultations-getrecap,Yes
+consultation,/api/v1/consultations/{id}/events,streamEvents,Stream lifecycle events for a consultation via SSE,src/modules/consultation/consultation-lifecycle-events.controller.ts,consultations-streamevents,Yes
+consultation,/api/v1/consultations/{id}/feedback,list,"List consultation feedback (keyset, newest first)",src/modules/consultation/consultation-feedback.controller.ts,consultations-list,Yes
+consultation,/api/v1/consultations/{id}/feedback,create,"Record feedback: rating, reasons, comment, media or a correction",src/modules/consultation/consultation-feedback.controller.ts,consultations-create,Yes
+guardrail-notice,/api/v1/consultations/{id}/guardrail-hold/resume,resume,Resume a guardrail hold,src/modules/guardrail-notice/guardrail-notice.controller.ts,consultations-resume,Yes
+guardrail-notice,/api/v1/consultations/{id}/guardrail-notices,list,The consultation`s guardrail notices,src/modules/guardrail-notice/guardrail-notice.controller.ts,consultations-list,Yes
+guardrail-notice,/api/v1/consultations/{id}/guardrail-notices/{noticeId}/ack,acknowledge,Acknowledge a guardrail notice,src/modules/guardrail-notice/guardrail-notice.controller.ts,consultations-acknowledge,Yes
+consultation,/api/v1/consultations/{id}/harness-assurance/stream,streamHarnessAssurance,Stream live harness assurance (per-claim verdicts) for a consultation via SSE,src/modules/consultation/consultation.controller.ts,consultations-streamharnessassurance,Yes
+consultation,/api/v1/consultations/{id}/harness-progress/stream,streamHarnessProgress,Stream live harness draft-generation progress for a consultation via SSE,src/modules/consultation/consultation.controller.ts,consultations-streamharnessprogress,Yes
+consultation,/api/v1/consultations/{id}/highlights,getHighlights,Retrieving multiple HighlightResponses by id,src/modules/consultation/consultation.controller.ts,consultations-gethighlights,Yes
+consultation,/api/v1/consultations/{id}/highlights,createHighlight,Creating a HighlightResponse by id,src/modules/consultation/consultation.controller.ts,consultations-createhighlight,Yes
+consultation,/api/v1/consultations/{id}/highlights/{highlightId},deleteHighlight,Deleting a OkResponseDto by id and highlightId,src/modules/consultation/consultation.controller.ts,consultations-deletehighlight,Yes
+consultation-history,/api/v1/consultations/{id}/history,getHistory,Read a consultation`s history,src/modules/consultation-history/consultation-history.controller.ts,consultations-gethistory,Yes
+consultation,/api/v1/consultations/{id}/live-assist/stream,streamLiveAssist,Stream interpreter suggestions and proposed corrections for a consultation via SSE,src/modules/consultation/consultation.controller.ts,consultations-streamliveassist,Yes
+consultation,/api/v1/consultations/{id}/live-summary/stream,streamLiveSummary,Stream the running live summary for an in-progress consultation via SSE,src/modules/consultation/consultation.controller.ts,consultations-streamlivesummary,Yes
+consultation,/api/v1/consultations/{id}/loop/stream,streamLoop,Stream consultation-loop workflow events for a consultation via SSE,src/modules/consultation/consultation.controller.ts,consultations-streamloop,Yes
+consultation,/api/v1/consultations/{id}/named-entities,getNamedEntities,Retrieving a single AggregateNerResponse by id,src/modules/consultation/consultation.controller.ts,consultations-getnamedentities,Yes
+consultation,/api/v1/consultations/{id}/pause,pause,Pause capture,src/modules/consultation/consultation.controller.ts,consultations-pause,Yes
+consultation,/api/v1/consultations/{id}/prime,prime,Creating a ConsultationResponse by id,src/modules/consultation/consultation.controller.ts,consultations-prime,Yes
+consultation,/api/v1/consultations/{id}/recording,getRecording,"The consultation recording, part by part",src/modules/consultation/consultation.controller.ts,consultations-getrecording,Yes
+consultation,/api/v1/consultations/{id}/recording/start,startRecording,Creating a RecordingStateResponse by id,src/modules/consultation/consultation.controller.ts,consultations-startrecording,Yes
+consultation,/api/v1/consultations/{id}/recording/stop,stopRecording,Creating a RecordingStateResponse by id,src/modules/consultation/consultation.controller.ts,consultations-stoprecording,Yes
+consultation,/api/v1/consultations/{id}/recordings,getRecordings,Retrieving multiple AudioRecordingResponses by id,src/modules/consultation/consultation.controller.ts,consultations-getrecordings,Yes
+consultation,/api/v1/consultations/{id}/recordings,addRecording,Creating a ContextItemResponse by id,src/modules/consultation/consultation.controller.ts,consultations-addrecording,Yes
+consultation,/api/v1/consultations/{id}/reopen,reopen,Creating a ConsultationResponse by id,src/modules/consultation/consultation.controller.ts,consultations-reopen,Yes
+consultation,/api/v1/consultations/{id}/start,start,Start (or resume) capturing audio into a consultation,src/modules/consultation/consultation.controller.ts,consultations-start,Yes
+consultation,/api/v1/consultations/{id}/stop,stop,Stop capture and finalize the transcript,src/modules/consultation/consultation.controller.ts,consultations-stop,Yes
+consultation,/api/v1/consultations/{id}/summary,getSummaries,Retrieving multiple SummaryResponses by id,src/modules/consultation/consultation.controller.ts,consultations-getsummaries,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/approve,approveSummary,Creating a SummaryApprovalResponseDto by id and contextItemId,src/modules/consultation/consultation.controller.ts,consultations-approvesummary,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/diff,diffSummaryVersions,Retrieving a single VersionDiffResponse by id and contextItemId,src/modules/consultation/consultation.controller.ts,consultations-diffsummaryversions,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/extract-entities,extractEntities,Creating a OkResponseDto by id and contextItemId,src/modules/consultation/consultation.controller.ts,consultations-extractentities,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/provenance,getSummaryProvenance,Retrieving a single SummaryProvenanceResponse by id and contextItemId,src/modules/consultation/consultation.controller.ts,consultations-getsummaryprovenance,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/tags,getSummaryTags,Retrieving multiple TagResponses by id and contextItemId,src/modules/consultation/consultation.controller.ts,consultations-getsummarytags,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/tags,tagSummary,Creating a TagResponse by id and contextItemId,src/modules/consultation/consultation.controller.ts,consultations-tagsummary,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/tags/{tagId},deleteSummaryTag,Deleting a OkResponseDto by id and contextItemId and tagId,src/modules/consultation/consultation.controller.ts,consultations-deletesummarytag,Yes
+consultation,/api/v1/consultations/{id}/summary/{contextItemId}/versions,getSummaryVersions,Retrieving multiple ContextItemVersionResponses by id and contextItemId,src/modules/consultation/consultation.controller.ts,consultations-getsummaryversions,Yes
+consultation,/api/v1/consultations/{id}/summary/{summaryId},updateSummary,Updating a SummaryResponse by id and summaryId,src/modules/consultation/consultation.controller.ts,consultations-updatesummary,Yes
+consultation,/api/v1/consultations/{id}/summary/async,generateSummaryAsync,Creating a AsyncJobResponseDto by id,src/modules/consultation/consultation.controller.ts,consultations-generatesummaryasync,Yes
+consultation,/api/v1/consultations/{id}/summary/comprehensive,generateComprehensiveSummary,Creating a ComprehensiveSummaryResponse by id,src/modules/consultation/consultation.controller.ts,consultations-generatecomprehensivesummary,Yes
+consultation,/api/v1/consultations/{id}/summary/latest,getLatestSummary,Retrieving a single SummaryResponse by id,src/modules/consultation/consultation.controller.ts,consultations-getlatestsummary,Yes
+consultation,/api/v1/consultations/{id}/summary/pre-summary/async,generatePreSummaryAsync,Creating a AsyncJobResponseDto by id,src/modules/consultation/consultation.controller.ts,consultations-generatepresummaryasync,Yes
+consultation,/api/v1/consultations/{id}/summary/pre-summary/latest,getLatestPreSummary,Retrieving a single SummaryResponse by id,src/modules/consultation/consultation.controller.ts,consultations-getlatestpresummary,Yes
+consultation,/api/v1/consultations/{id}/timeline,getTimeline,Retrieving a single ConsultationTimelineResponse by id,src/modules/consultation/consultation.controller.ts,consultations-gettimeline,Yes
+consultation,/api/v1/consultations/{id}/trajectory/stream,streamTrajectory,Stream the ordered agentic-session trajectory for a consultation via SSE,src/modules/consultation/consultation.controller.ts,consultations-streamtrajectory,Yes
+consultation,/api/v1/consultations/{id}/workflow,getGoverningWorkflow,"Which engine governs this consultation, and the identity of the tenant-authored workflow when one does.",src/modules/consultation/consultation.controller.ts,consultations-getgoverningworkflow,Yes
+consultation,/api/v1/consultations/feedback/reason-codes,reasonCodes,The effective feedback reason list for the caller tenant,src/modules/consultation/consultation-feedback.controller.ts,consultations-reasoncodes,Yes
+consultation,/api/v1/consultations/jobs/{jobId},getJob,Get the current status of an async consultation job,src/modules/consultation/consultation-job.controller.ts,consultations-getjob,Yes
+consultation,/api/v1/consultations/jobs/{jobId}/cancel,cancelJob,Cancel a pending or running async consultation job,src/modules/consultation/consultation-job.controller.ts,consultations-canceljob,Yes
+consultation,/api/v1/consultations/jobs/{jobId}/stream,streamJob,Stream real-time status updates for an async consultation job via SSE,src/modules/consultation/consultation-job.controller.ts,consultations-streamjob,Yes
+consultation,/api/v1/consultations/open,open,Creating a ConsultationResponse,src/modules/consultation/consultation.controller.ts,consultations-open,Yes
+consultation,/api/v1/consultations/patient/{patientId}/date/{date},getByPatientAndDate,Retrieving multiple ConsultationResponses by patientId and date,src/modules/consultation/consultation.controller.ts,consultations-getbypatientanddate,Yes
+consultation,/api/v1/consultations/patient/{patientId}/history,getPatientHistory,Retrieving multiple ConsultationResponses by patientId,src/modules/consultation/consultation.controller.ts,consultations-getpatienthistory,Yes
+consultation,/api/v1/consultations/workflows,listSelectableWorkflows,The workflows this caller may select when opening a consultation.,src/modules/consultation/consultation.controller.ts,consultations-listselectableworkflows,Yes
+dna-writing-style,/api/v1/dna-writing-styles/{reportId},deleteReport,Erase one of the caller doctor's DNA writing-style reports,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-deletereport,Yes
+dna-writing-style,/api/v1/dna-writing-styles/{reportId},update,Updating a DnaReportResponse by reportId,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-update,Yes
+dna-writing-style,/api/v1/dna-writing-styles/{reportId}/default,setDefault,Updating a DnaReportResponse by reportId,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-setdefault,Yes
+dna-writing-style,/api/v1/dna-writing-styles/{reportId}/versions,getVersions,Retrieving multiple DnaVersionResponses by reportId,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-getversions,Yes
+dna-writing-style,/api/v1/dna-writing-styles/doctor/{doctorId},getByDoctor,Retrieving a single DnaReportResponse by doctorId,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-getbydoctor,Yes
+dna-writing-style,/api/v1/dna-writing-styles/generate,generate,Creating a DnaJobResponseDto,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-generate,Yes
+dna-writing-style,/api/v1/dna-writing-styles/ingest,ingest,Ingest a time series of writing samples for a clinician and queue their DNA writing-style analysis,src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts,dna-writing-styles-ingest,Yes
+dna-writing-style,/api/v1/dna-writing-styles/ingest/jobs/{jobId},getIngestJob,Status of an ingest job,src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts,dna-writing-styles-getingestjob,Yes
+dna-writing-style,/api/v1/dna-writing-styles/jobs/{jobId},getJobStatus,Get current user DNA generation job status,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-getjobstatus,Yes
+dna-writing-style,/api/v1/dna-writing-styles/jobs/{jobId}/stream,streamJobStatus,Stream current user DNA generation job status via SSE,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-streamjobstatus,Yes
+dna-writing-style,/api/v1/dna-writing-styles/mine,getMine,Retrieving multiple DnaReportResponses,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-getmine,Yes
+dna-writing-style,/api/v1/dna-writing-styles/my-style,resetMyStyle,Erase the caller doctor's entire learned DNA writing-style profile,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-resetmystyle,Yes
+dna-writing-style,/api/v1/dna-writing-styles/my-style,getMyStyle,Retrieving a single DnaReportResponse,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-getmystyle,Yes
+dna-writing-style,/api/v1/dna-writing-styles/my-style/redaction-rules,getMyRedactionRules,Get the caller doctor's DNA redaction/rewrite rule set,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-getmyredactionrules,Yes
+dna-writing-style,/api/v1/dna-writing-styles/settings,getSettings,Get the caller doctor's DNA writing-style on/off settings,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-getsettings,Yes
+dna-writing-style,/api/v1/dna-writing-styles/settings,setSettings,Set the caller doctor's DNA writing-style on/off toggle,src/modules/dna-writing-style/dna-writing-style.controller.ts,dna-writing-styles-setsettings,Yes
+health,/api/v1/health,check,Detailed health check,src/modules/health/health.controller.ts,health-check,Yes
+health,/api/v1/health/live,liveness,Liveness probe - is the process running?,src/modules/health/health.controller.ts,health-liveness,Yes
+health,/api/v1/health/ready,readiness,Readiness probe - is the service ready for traffic?,src/modules/health/health.controller.ts,health-readiness,Yes
+health,/api/v1/health/startup,startup,Startup probe - has the service finished initialization?,src/modules/health/health.controller.ts,health-startup,Yes
+workflows,/api/v1/hooks/workflows/{hookId},trigger,Start a run from an external system (inbound webhook trigger). Body = the trigger payload; authenticated by HMAC over the raw body.,src/modules/workflows/workflow-hooks.controller.ts,hooks-trigger,Yes
+internal,/api/v1/internal/agents/{slug}/versions/{versionNumber}/resolved,resolveVersion,,src/modules/internal/agent-version-internal.controller.ts,internal-resolveversion,Yes
+internal,/api/v1/internal/agents/asr-spec,asrSpec,,src/modules/internal/agent-internal.controller.ts,internal-asrspec,Yes
+internal,/api/v1/internal/agents/resolve,resolve,,src/modules/internal/agent-internal.controller.ts,internal-resolve,Yes
+internal,/api/v1/internal/composed-prompts,record,,src/modules/internal/composed-prompt-internal.controller.ts,internal-record,Yes
+consultation,/api/v1/internal/consent/assert,assert,,src/modules/consultation/consent-internal.controller.ts,internal-assert,Yes
+consultation,/api/v1/internal/consultations/{consultationId}/note-plans/{planId},getNotePlan,,src/modules/consultation/harness-internal.controller.ts,internal-getnoteplan,Yes
+consultation,/api/v1/internal/consultations/{consultationId}/read,read,,src/modules/consultation/consultation-read-internal.controller.ts,internal-read,Yes
+internal,/api/v1/internal/effective-config,getEffectiveConfig,,src/modules/internal/effective-config.controller.ts,internal-geteffectiveconfig,Yes
+governed-prompt,/api/v1/internal/governed-prompts/verify,verify,,src/modules/governed-prompt/governed-prompt-internal.controller.ts,internal-verify,Yes
+guardrail-evaluation-internal,/api/v1/internal/guardrail/evaluations,ingest,,src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts,internal-ingest,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/assemble,assemble,,src/modules/consultation/harness-internal.controller.ts,internal-assemble,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/assurance,finalizeAssurance,,src/modules/consultation/harness-internal.controller.ts,internal-finalizeassurance,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/assurance-event,reportAssuranceClaim,,src/modules/consultation/harness-internal.controller.ts,internal-reportassuranceclaim,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/context-items/{contextItemId}/extracted-text,getExtractedText,,src/modules/consultation/harness-internal.controller.ts,internal-getextractedtext,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/draft,persistDraft,,src/modules/consultation/harness-internal.controller.ts,internal-persistdraft,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/endpoint/feedback,captureFeedback,,src/modules/consultation/harness-internal.controller.ts,internal-capturefeedback,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/endpoint/finalize,finalizeDocuments,,src/modules/consultation/harness-internal.controller.ts,internal-finalizedocuments,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/endpoint/session,recordSessionEndpoint,,src/modules/consultation/harness-internal.controller.ts,internal-recordsessionendpoint,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/entities,getEntities,,src/modules/consultation/harness-internal.controller.ts,internal-getentities,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/entities,persistEntities,,src/modules/consultation/harness-internal.controller.ts,internal-persistentities,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/escalation,recordEscalation,,src/modules/consultation/harness-internal.controller.ts,internal-recordescalation,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/gate-decision,recordGateDecision,,src/modules/consultation/harness-internal.controller.ts,internal-recordgatedecision,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/live-assist,publishLiveAssist,,src/modules/consultation/harness-internal.controller.ts,internal-publishliveassist,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/live-documentation/start,startLiveDocumentation,,src/modules/consultation/harness-internal.controller.ts,internal-startlivedocumentation,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/live-documentation/stop,stopLiveDocumentation,,src/modules/consultation/harness-internal.controller.ts,internal-stoplivedocumentation,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/live-handoff,liveHandoff,,src/modules/consultation/harness-internal.controller.ts,internal-livehandoff,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/live-summary,publishLiveSummary,,src/modules/consultation/harness-internal.controller.ts,internal-publishlivesummary,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/loop-event,reportLoopEvent,,src/modules/consultation/harness-internal.controller.ts,internal-reportloopevent,Yes
+consultation,/api/v1/internal/harness/consultations/{id}/progress,reportProgress,,src/modules/consultation/harness-internal.controller.ts,internal-reportprogress,Yes
+consultation,/api/v1/internal/harness/loop-config,getLoopConfig,,src/modules/consultation/harness-internal.controller.ts,internal-getloopconfig,Yes
+consultation,/api/v1/internal/harness/mcp-token,resolveMcpToken,,src/modules/consultation/harness-internal.controller.ts,internal-resolvemcptoken,Yes
+consultation,/api/v1/internal/harness/models/resolve,resolveRegistryModel,,src/modules/consultation/harness-internal.controller.ts,internal-resolveregistrymodel,Yes
+consultation,/api/v1/internal/harness/policy,getEffectivePolicy,,src/modules/consultation/harness-internal.controller.ts,internal-geteffectivepolicy,Yes
+consultation,/api/v1/internal/harness/prompt-templates/{id}/resolved,getResolvedPromptTemplate,,src/modules/consultation/harness-internal.controller.ts,internal-getresolvedprompttemplate,Yes
+consultation,/api/v1/internal/harness/provider-credential,resolveProviderCredential,,src/modules/consultation/harness-internal.controller.ts,internal-resolveprovidercredential,Yes
+consultation,/api/v1/internal/harness/stt/batch-jobs,createSttBatchJob,,src/modules/consultation/harness-internal.controller.ts,internal-createsttbatchjob,Yes
+consultation,/api/v1/internal/harness/stt/batch-jobs/{id},getSttBatchJobStatus,,src/modules/consultation/harness-internal.controller.ts,internal-getsttbatchjobstatus,Yes
+consultation,/api/v1/internal/harness/trajectory,reportTrajectory,,src/modules/consultation/harness-internal.controller.ts,internal-reporttrajectory,Yes
+speech,/api/v1/internal/harness/tts/synthesize,synthesize,,src/modules/speech/harness-tts-internal.controller.ts,internal-synthesize,Yes
+internal,/api/v1/internal/model-registry-credential,getModelRegistryCredential,,src/modules/internal/model-registry-internal.controller.ts,internal-getmodelregistrycredential,Yes
+internal,/api/v1/internal/models/{slug}/serving-spec,servingSpec,,src/modules/internal/model-serving-internal.controller.ts,internal-servingspec,Yes
+service-release,/api/v1/internal/service-releases,register,,src/modules/service-release/service-release-internal.controller.ts,internal-register,Yes
+service-release,/api/v1/internal/service-releases/digest,attachDigest,,src/modules/service-release/service-release-internal.controller.ts,internal-attachdigest,Yes
+internal,/api/v1/internal/stt/audio-records,createAudioRecord,,src/modules/internal/stt-internal.controller.ts,internal-createaudiorecord,Yes
+internal,/api/v1/internal/stt/jobs/{id}/complete,completeJob,,src/modules/internal/stt-internal.controller.ts,internal-completejob,Yes
+internal,/api/v1/internal/stt/jobs/{id}/fail,failJob,,src/modules/internal/stt-internal.controller.ts,internal-failjob,Yes
+internal,/api/v1/internal/stt/jobs/{id}/progress,updateProgress,,src/modules/internal/stt-internal.controller.ts,internal-updateprogress,Yes
+internal,/api/v1/internal/stt/jobs/{id}/start,startJob,,src/modules/internal/stt-internal.controller.ts,internal-startjob,Yes
+internal,/api/v1/internal/stt/jobs/{id}/status,getJobStatus,,src/modules/internal/stt-internal.controller.ts,internal-getjobstatus,Yes
+internal,/api/v1/internal/stt/media,createMedia,,src/modules/internal/stt-internal.controller.ts,internal-createmedia,Yes
+internal,/api/v1/internal/stt/model-registry-credential,getModelRegistryCredential,,src/modules/internal/stt-internal.controller.ts,internal-getmodelregistrycredential,Yes
+internal,/api/v1/internal/stt/provider-overrides,getProviderOverrides,,src/modules/internal/stt-internal.controller.ts,internal-getprovideroverrides,Yes
+internal,/api/v1/internal/stt/segments,ingestSegments,,src/modules/internal/stt-internal.controller.ts,internal-ingestsegments,Yes
+internal,/api/v1/internal/stt/sessions/{sessionId}/transcript,transcript,,src/modules/internal/stt-session-transcript-internal.controller.ts,internal-transcript,Yes
+internal,/api/v1/internal/stt/streaming/usage,recordStreamingUsage,,src/modules/internal/stt-internal.controller.ts,internal-recordstreamingusage,Yes
+internal,/api/v1/internal/stt/transcripts,createTranscript,,src/modules/internal/stt-internal.controller.ts,internal-createtranscript,Yes
+media,/api/v1/media,upload,Upload an attachment or an audio file into the tenant's media store,src/modules/media/media.controller.ts,media-upload,Yes
+media,/api/v1/media/{mediaId},getReference,Read back the reference of one media object,src/modules/media/media.controller.ts,media-getreference,Yes
+prompt-management,/api/v1/prompt-templates,createPersonal,Create a personal prompt template owned by the calling clinician,src/modules/prompt-management/prompt-template.controller.ts,prompt-templates-createpersonal,Yes
+prompt-management,/api/v1/prompt-templates/{id},deletePersonal,Soft-delete a personal prompt template the caller owns,src/modules/prompt-management/prompt-template.controller.ts,prompt-templates-deletepersonal,Yes
+prompt-management,/api/v1/prompt-templates/{id},updatePersonal,Update a personal prompt template the caller owns,src/modules/prompt-management/prompt-template.controller.ts,prompt-templates-updatepersonal,Yes
+prompt-management,/api/v1/prompt-templates/available,available,List the prompt templates the calling clinician may use,src/modules/prompt-management/prompt-template.controller.ts,prompt-templates-available,Yes
+prompt-management,/api/v1/prompt-templates/preferred,setPreferred,Set or clear the calling clinician's preferred prompt template,src/modules/prompt-management/prompt-template.controller.ts,prompt-templates-setpreferred,Yes
+ai-inference,/api/v1/safety-checks,analyzeGuardrail,Run a content-safety / PII / prompt-injection check on the supplied text (proxied to the Guardrail service).,src/modules/ai-inference/safety-check.controller.ts,safety-checks-analyzeguardrail,Yes
+speech,/api/v1/speech/synthesize,synthesize,"Synthesize speech via TTS (batch audio, streamed audio, or SSE)",src/modules/speech/speech-proxy.controller.ts,speech-synthesize,Yes
+speech,/api/v1/speech/voices,voices,List available TTS voices (stable internal ids + providers),src/modules/speech/speech-proxy.controller.ts,speech-voices,Yes
+storage,/api/v1/storage/buckets,listBuckets,List all storage buckets,src/modules/storage/storage.controller.ts,storage-listbuckets,Yes
+storage,/api/v1/storage/buckets,createBucket,Create a new storage bucket,src/modules/storage/storage.controller.ts,storage-createbucket,Yes
+storage,/api/v1/storage/buckets/{name},deleteBucket,Delete a storage bucket,src/modules/storage/storage.controller.ts,storage-deletebucket,Yes
+storage,/api/v1/storage/buckets/{name},getBucket,Get bucket info,src/modules/storage/storage.controller.ts,storage-getbucket,Yes
+storage,/api/v1/storage/buckets/{name},updateBucket,Update bucket metadata,src/modules/storage/storage.controller.ts,storage-updatebucket,Yes
+storage,/api/v1/storage/buckets/{name}/files,listFiles,List files in bucket,src/modules/storage/storage.controller.ts,storage-listfiles,Yes
+storage,/api/v1/storage/buckets/{name}/files,uploadFile,Upload file to bucket,src/modules/storage/storage.controller.ts,storage-uploadfile,Yes
+storage,/api/v1/storage/buckets/{name}/files/{key},deleteFile,Delete file from bucket,src/modules/storage/storage.controller.ts,storage-deletefile,Yes
+storage,/api/v1/storage/buckets/{name}/files/{key},getFileInfo,Get file info with presigned download URL,src/modules/storage/storage.controller.ts,storage-getfileinfo,Yes
+storage,/api/v1/storage/health,checkHealth,Check storage service health (detailed),src/modules/storage/storage.controller.ts,storage-checkhealth,Yes
+tenant,/api/v1/tenants/me,me,Get current tenant information,src/modules/tenant/my-tenant.controller.ts,tenants-me,Yes
+tenant,/api/v1/tenants/me/config,myConfig,Get current tenant configuration,src/modules/tenant/my-tenant.controller.ts,tenants-myconfig,Yes
+tenant,/api/v1/tenants/me/config,updateMyConfig,Update current tenant configuration,src/modules/tenant/my-tenant.controller.ts,tenants-updatemyconfig,Yes
+consultation-context-schema,/api/v1/tenants/me/context-schema,getEffective,Discover the caller tenant's pinned consultation context schema,src/modules/consultation-context-schema/consultation-context-schema.controller.ts,tenants-geteffective,Yes
+document-template,/api/v1/tenants/me/document-template,getEffective,Discover the caller tenant's pinned document template,src/modules/document-template/document-template.controller.ts,tenants-geteffective,Yes
+entitlements,/api/v1/tenants/me/entitlements,me,"Capability/usage snapshot for the caller's own tenant (limits, usage, meters, features, trial clock).",src/modules/entitlements/my-entitlements.controller.ts,tenants-me,Yes
+billing,/api/v1/tenants/me/invoices,listMine,"The caller's own tenant's invoices, newest period first.",src/modules/billing/my-billing.controller.ts,tenants-listmine,Yes
+billing,/api/v1/tenants/me/invoices/{id},getMine,"One of my invoices (lines, memos, BYOK notional spend). A foreign id → 404.",src/modules/billing/my-billing.controller.ts,tenants-getmine,Yes
+billing,/api/v1/tenants/me/spend,spend,Month-to-date usage-and-spend snapshot vs my spend limit. Defaults to the current period.,src/modules/billing/my-billing.controller.ts,tenants-spend,Yes
+admin-usage,/api/v1/tenants/me/usage-burndown,burndown,"Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. Defaults to the current UTC month.",src/modules/admin-usage/my-usage.controller.ts,tenants-burndown,Yes
+admin-usage,/api/v1/tenants/me/usage-summary,summary,The caller's own tenant's usage summary for a billing period. Defaults to the current UTC month.,src/modules/admin-usage/my-usage.controller.ts,tenants-summary,Yes
+ai-inference,/api/v1/text-analyses/diagnosis,suggestDiagnosis,Derive diagnosis suggestions from the supplied clinical text (proxied to the NLP diagnosis endpoint).,src/modules/ai-inference/ai-inference.controller.ts,text-analyses-suggestdiagnosis,Yes
+ai-inference,/api/v1/text-analyses/entities,extractEntities,Extract medical entities (NER) from the supplied text (proxied to the NLP token-classification endpoint).,src/modules/ai-inference/ai-inference.controller.ts,text-analyses-extractentities,Yes
+ai-inference,/api/v1/text-analyses/intent,classifyIntent,"Classify text into one of the caller tenant configured intents (open-taxonomy, delegated by NLP to text).",src/modules/ai-inference/ai-inference.controller.ts,text-analyses-classifyintent,Yes
+ai-inference,/api/v1/text-analyses/topic,classifyTopic,"Classify text into one of the caller tenant configured topics (open-taxonomy, delegated by NLP to text).",src/modules/ai-inference/ai-inference.controller.ts,text-analyses-classifytopic,Yes
+streaming,/api/v1/text-generations/generate,generate,,src/modules/streaming/text-proxy.controller.ts,text-generations-generate,Yes
+streaming,/api/v1/text-generations/generate/assembled,generateAssembled,Generate text with server-side prompt assembly (debug mode),src/modules/streaming/text-proxy.controller.ts,text-generations-generateassembled,Yes
+streaming,/api/v1/text-generations/guardrail-providers,getGuardrailProviders,"List Guardrail LLM providers/models from the AiModel registry (ENABLED GUARDRAIL rows), the effective guardrail.validate default marked. SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=__GLOBAL__.",src/modules/streaming/text-proxy.controller.ts,text-generations-getguardrailproviders,Yes
+streaming,/api/v1/text-generations/providers,getProviders,"List LLM providers/models from the AiModel registry (ENABLED TEXT_GENERATION/SUMMARIZATION rows), with a live TEXT probe fallback when the registry is empty. SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=__GLOBAL__.",src/modules/streaming/text-proxy.controller.ts,text-generations-getproviders,Yes
+streaming,/api/v1/text-generations/tasks/{taskId},getTaskStatus,Get task status from TEXT,src/modules/streaming/text-proxy.controller.ts,text-generations-gettaskstatus,Yes
+streaming,/api/v1/text-generations/tasks/{taskId}/cancel,cancelTask,Cancel a running TEXT task,src/modules/streaming/text-proxy.controller.ts,text-generations-canceltask,Yes
+streaming,/api/v1/text-generations/tasks/{taskId}/stream,streamTaskEvents,Stream task chunks via SSE from TEXT,src/modules/streaming/text-proxy.controller.ts,text-generations-streamtaskevents,Yes
+rbac,/api/v1/users/{id}/permission-checks,checkPermission,Check if a user has a specific permission,src/modules/rbac/permission-check.controller.ts,users-checkpermission,Yes
+rbac,/api/v1/users/{id}/permission-checks/bulk,checkPermissionsBulk,Check multiple permissions at once,src/modules/rbac/permission-check.controller.ts,users-checkpermissionsbulk,Yes
+user,/api/v1/users/{id}/roles,listMyRoleAssignments,List roles assigned to the current user (self-only),src/modules/user/controllers/user-roles.controller.ts,users-listmyroleassignments,Yes
+user,/api/v1/users/me/departments,myDepartments,List the caller's own department assignments (tenant-scoped),src/modules/user/controllers/user-departments-me.controller.ts,users-mydepartments,Yes
+rbac,/api/v1/users/me/permission-checks,getMyPermissions,Get current user's effective permissions,src/modules/rbac/permission-check.controller.ts,users-getmypermissions,Yes
+user,/api/v1/users/me/preferences,getPreferences,Get current user preferences,src/modules/user/controllers/user-preferences.controller.ts,users-getpreferences,Yes
+user,/api/v1/users/me/preferences,updatePreferences,Update current user preferences (partial),src/modules/user/controllers/user-preferences.controller.ts,users-updatepreferences,Yes
+user,/api/v1/users/me/settings,getMySettings,Get all settings for current user,src/modules/user/controllers/user-settings.controller.ts,users-getmysettings,Yes
+user,/api/v1/users/me/settings/{namespace}/{key},updateSetting,Update a specific setting by namespace and key,src/modules/user/controllers/user-settings.controller.ts,users-updatesetting,Yes
+user,/api/v1/users/password-reset/complete,complete,Complete a password reset using a single-use token,src/modules/user/controllers/password-reset.controller.ts,users-complete,Yes
+voice-profile,/api/v1/voice-profiles,list,List voice profiles for current user,src/modules/voice-profile/voice-profile.controller.ts,voice-profiles-list,Yes
+voice-profile,/api/v1/voice-profiles/{id},deleteById,Delete a voice profile,src/modules/voice-profile/voice-profile.controller.ts,voice-profiles-deletebyid,Yes
+voice-profile,/api/v1/voice-profiles/{id}/activate,activate,Activate a voice profile,src/modules/voice-profile/voice-profile.controller.ts,voice-profiles-activate,Yes
+voice-profile,/api/v1/voice-profiles/{id}/deactivate,deactivate,Deactivate a voice profile,src/modules/voice-profile/voice-profile.controller.ts,voice-profiles-deactivate,Yes
+voice-profile,/api/v1/voice-profiles/enroll,enroll,Enroll a voice profile from audio samples,src/modules/voice-profile/voice-profile.controller.ts,voice-profiles-enroll,Yes
+voice-profile,/api/v1/voice-profiles/enrollment-target,enrollmentTarget,The embedding model a new enrollment would use,src/modules/voice-profile/voice-profile.controller.ts,voice-profiles-enrollmenttarget,Yes
+workflows,/api/v1/workflows,list,"The tenant's published + active, invokable workflows (slug + identity — no per-definition input schema exists yet).",src/modules/workflows/workflows.controller.ts,workflows-list,Yes
+workflows,/api/v1/workflows/{slug}/invoke,invoke,DEPRECATED alias of POST :slug/runs. Start a run of the tenant's active published version of :slug.,src/modules/workflows/workflows.controller.ts,workflows-invoke,Yes
+workflows,/api/v1/workflows/{slug}/runs,startRun,Start a run of the tenant's active published version of :slug. The canonical invocation entry point.,src/modules/workflows/workflows.controller.ts,workflows-startrun,Yes
+workflows,/api/v1/workflows/{slug}/runs/{runId},getRunStatus,Live run status + result (queried from the interpreter dispatcher).,src/modules/workflows/workflows.controller.ts,workflows-getrunstatus,Yes
+workflows,/api/v1/workflows/{slug}/runs/{runId}/cancel,cancelRun,"Cancel a run — sends the interpreter's allow-listed cancel signal, never a caller-supplied signal name.",src/modules/workflows/workflows.controller.ts,workflows-cancelrun,Yes
+workflows,/api/v1/workflows/{slug}/runs/{runId}/result,getRunResult,"The result a finished run delivered: the JSON value inline, or a short-lived signed URL for a large result.",src/modules/workflows/workflows.controller.ts,workflows-getrunresult,Yes
+workflows,/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId},getReview,"The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.",src/modules/workflows/workflows.controller.ts,workflows-getreview,Yes
+workflows,/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide,decideReview,Release a Human-review node with a decision — the graph resumes down the `approved` or `rejected` handle.,src/modules/workflows/workflows.controller.ts,workflows-decidereview,Yes
+workflows,/api/v1/workflows/{slug}/runs/{runId}/stream,streamRunStatus,SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).,src/modules/workflows/workflows.controller.ts,workflows-streamrunstatus,Yes
+workflows,/api/v1/workflows/{slug}/runs/{runId}/stream-ticket,issueRunStreamTicket,"Mint a single-use, 30-second ticket for this run’s WebSocket stream.",src/modules/workflows/workflows.controller.ts,workflows-issuerunstreamticket,Yes
+workflows,/api/v1/workflows/{slug}/schema,getSchema,"The published definition`s generated contract: input/output component schemas, trigger kinds, protocols, admitted modes, and an AsyncAPI fragment for its run events (TASK-864).",src/modules/workflows/workflows.controller.ts,workflows-getschema,Yes
+(root),/metrics,index,,,(root)-index,No

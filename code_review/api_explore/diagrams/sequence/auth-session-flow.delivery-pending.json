@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "command": "deliver",
+  "status": "pending",
+  "receiptId": "cc0d69d7-0d0d-44a0-9f0a-365e3bc40d1c",
+  "input": "/tmp/auth-flow-clean.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-session-flow.html"
+}

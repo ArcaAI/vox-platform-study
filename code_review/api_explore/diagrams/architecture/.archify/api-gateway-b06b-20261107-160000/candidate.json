@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B06b Inference, Prompts & Knowledge",
+    "subtitle": "AI inference/safety, engines, prompts, NLP instructions, knowledge (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b06b-20261107-160000/api-gateway-b06b-inference-prompts-knowledge.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_infer","eg_prompt","eg_nlp","eg_know","ctl_infer","ctl_prompt","ctl_nlp","ctl_know","svc_infer","svc_prompt","svc_know","data_ai","ext_ai"],"note":"B06b completes B06 AI platform."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_infer","type":"frontend","label":"AI inference & engines API","sublabel":"text-analyses, safety-checks, inference-engines (8)","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-inference/ai-inference.controller.ts","line":103,"label":"AiInferenceController /text-analyses"},{"path":"apps/api/src/modules/ai-inference/safety-check.controller.ts","line":21,"label":"SafetyCheckController"},{"path":"apps/api/src/modules/inference-engines/inference-engines.controller.ts","line":31,"label":"InferenceEnginesController"}]},
+    {"id":"eg_prompt","type":"frontend","label":"Prompt management/inspector API","sublabel":"prompt-templates, composed prompts, preview (25)","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/prompt-management/prompt-management.controller.ts","line":60,"label":"PromptManagementController"},{"path":"apps/api/src/modules/prompt-management/prompt-template.controller.ts","line":37,"label":"PromptTemplateController"},{"path":"apps/api/src/modules/prompt-inspector/prompt-preview.controller.ts","line":18,"label":"PromptPreviewController"}]},
+    {"id":"eg_nlp","type":"frontend","label":"NLP task instructions API (2)","sublabel":"/admin/nlp-task-instructions","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts","line":39,"label":"NlpTaskInstructionsAdminController"}]},
+    {"id":"eg_know","type":"frontend","label":"Knowledge documents API (5)","sublabel":"/admin/knowledge/documents","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/knowledge/knowledge.controller.ts","line":33,"label":"KnowledgeController"}]},
+
+    {"id":"ctl_infer","type":"backend","label":"Inference/engine controllers","sublabel":"Text analyses, safety checks, inference engine admin","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-inference/ai-inference.controller.ts","line":110,"label":"AiInferenceController"},{"path":"apps/api/src/modules/ai-inference/safety-check.controller.ts","line":28,"label":"SafetyCheckController"},{"path":"apps/api/src/modules/inference-engines/inference-engines.controller.ts","line":33,"label":"InferenceEnginesController"}]},
+    {"id":"ctl_prompt","type":"backend","label":"Prompt controllers","sublabel":"Template admin/runtime + composed prompt inspector","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/prompt-management/prompt-management.controller.ts","line":62,"label":"PromptManagementController"},{"path":"apps/api/src/modules/prompt-inspector/composed-prompt-admin.controller.ts","line":17,"label":"ComposedPromptAdminController"}]},
+    {"id":"ctl_nlp","type":"backend","label":"NlpTaskInstructionsAdminController","sublabel":"NLP task instruction admin operations","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts","line":40,"label":"NlpTaskInstructionsAdminController"}]},
+    {"id":"ctl_know","type":"backend","label":"KnowledgeController","sublabel":"Knowledge document admin operations","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/knowledge/knowledge.controller.ts","line":35,"label":"class KnowledgeController"}]},
+
+    {"id":"svc_infer","type":"backend","label":"Inference/engine services","sublabel":"Inference/safety orchestration + serving engine (LM Studio)","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/inference-engine/lmstudio-serving.service.ts","line":69,"label":"LmStudioServingService"},{"path":"apps/api/src/modules/ai-inference/ai-inference.controller.ts","line":103,"label":"AI inference module (service wiring verify)"}]},
+    {"id":"svc_prompt","type":"backend","label":"Prompt services","sublabel":"Prompt template management and composed prompt/preview","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/prompt-management/prompt-management.service.ts","line":233,"label":"PromptManagementService"},{"path":"packages/applications/src/services/composed-prompt/composed-prompt.service.ts","line":37,"label":"ComposedPromptService"}]},
+    {"id":"svc_know","type":"backend","label":"Knowledge services","sublabel":"Knowledge document management and NLP task config","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/knowledge/knowledge-document.service.ts","line":54,"label":"KnowledgeDocumentService"},{"path":"apps/api/src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts","line":39,"label":"NLP task instructions module (verify)"}]},
+
+    {"id":"data_ai","type":"database","label":"Prompts/knowledge/config data","sublabel":"Prompt templates, composed prompts, NLP/knowledge docs","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/prompt-management/prompt-management.service.ts","line":233,"label":"Prompt/template persistence"},{"path":"packages/applications/src/services/knowledge/knowledge-document.service.ts","line":54,"label":"Knowledge document persistence"}]},
+    {"id":"ext_ai","type":"external","label":"Inference/AI runtime","sublabel":"Safety/inference backends, LM Studio/engines, embeddings","tag":"external","row":3,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/inference-engine/lmstudio-serving.service.ts","line":69,"label":"LM Studio serving integration"},{"path":"apps/api/src/modules/ai-inference/safety-check.controller.ts","line":21,"label":"Safety check endpoint"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_infer","eg_prompt","eg_nlp","eg_know"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_infer","ctl_prompt","ctl_nlp","ctl_know"]},
+    {"kind":"region","label":"Application services","wraps":["svc_infer","svc_prompt","svc_know"]},
+    {"kind":"region","label":"Data stores / AI runtime","wraps":["data_ai","ext_ai"]}
+  ],
+  "connections": [
+    {"id":"q1","from":"eg_infer","to":"ctl_infer","label":"HTTP"},
+    {"id":"q2","from":"eg_prompt","to":"ctl_prompt","label":"HTTP"},
+    {"id":"q3","from":"eg_nlp","to":"ctl_nlp","label":"HTTP"},
+    {"id":"q4","from":"eg_know","to":"ctl_know","label":"HTTP"},
+    {"id":"q5","from":"ctl_infer","to":"svc_infer","label":"delegate"},
+    {"id":"q6","from":"ctl_prompt","to":"svc_prompt","label":"delegate"},
+    {"id":"q7","from":"ctl_nlp","to":"svc_know","label":"delegate"},
+    {"id":"q8","from":"ctl_know","to":"svc_know","label":"delegate"},
+    {"id":"q9","from":"svc_prompt","to":"data_ai","label":"prompts"},
+    {"id":"q10","from":"svc_know","to":"data_ai","label":"knowledge"},
+    {"id":"q11","from":"svc_infer","to":"ext_ai","label":"inference"},
+    {"id":"q12","from":"svc_know","to":"ext_ai","label":"retrieval/AI"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B06b scope (inference, prompts, knowledge)","items":["Completes B06-ai-platform. Modules: ai-inference (5/2), inference-engines (3/1), prompt-management (22/2), prompt-inspector (3/2), nlp-task-instructions (2/1), knowledge (5/1) = 40 routes / 9 controllers.","Inference/engines: /text-analyses, /safety-checks, /admin/inference-engines/lm-studio. Prompts: admin/runtime prompt-templates plus composed-prompt/preview admin surfaces.","NLP task instructions and knowledge documents are admin surfaces for instruction config and knowledge document management. Grouped endpoint nodes for readability."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Text analysis/safety check: inference request payloads -> analysis/safety result payloads (verify model selection, moderation/safety semantics, and PII handling).","Inference engines (LM Studio): admin engine/serving requests -> engine status/config/serving responses.","Prompt management/inspector: template CRUD/render/preview requests -> prompt template/composed prompt/preview results (verify variable rendering and consultation preview inputs).","Knowledge/NLP instructions: admin document/instruction CRUD requests -> document/instruction records; knowledge flows may involve indexing/embeddings/retrieval runtime. Verify exact DTOs and async processing."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified where found (PromptManagementService, ComposedPromptService, KnowledgeDocumentService, LmStudioServingService).","Downstreams: prompts/knowledge/config data store (Postgres/Prisma) and inference/AI runtime (safety/inference backends, LM Studio/engine integrations, knowledge retrieval/embedding pipelines as applicable).","Limitations: grouped endpoint nodes (40 routes/9 controllers); AiInference/SafetyCheck and NLP task instructions service implementation paths not separately verified in this pass; reconcile route/DTO contracts, safety semantics, and retrieval/embedding runtime with OpenAPI/implementation."]}
+  ]
+}

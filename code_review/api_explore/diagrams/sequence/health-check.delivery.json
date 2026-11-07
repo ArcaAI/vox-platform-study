@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "44af5b8b-ce94-41c7-ad34-7223b90e4e5f",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/updated-health-check.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/health-check.html",
+  "specification": {
+    "sha256": "9cb46a3e4f0d7f5a1f5579a8fc6bd1ecf391db67fe9057a1ec8748d14a5401fc",
+    "bytes": 3926
+  },
+  "artifact": {
+    "sha256": "8eaa827380489e3079c2409b56b354d2fafcf1cfdc630aac3b2803b23d7a3611",
+    "bytes": 756553
+  }
+}

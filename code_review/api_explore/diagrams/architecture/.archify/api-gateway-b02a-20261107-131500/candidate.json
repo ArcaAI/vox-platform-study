@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B02a Tenant Core & Config",
+    "subtitle": "Tenant lifecycle, allowed origins, frontend/storage config (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b02a-20261107-131500/api-gateway-b02a-tenant-core-config.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_tenant","eg_me","eg_origin","eg_cfg","ctl_tenant","ctl_me","ctl_origin","ctl_cfg","svc_tenant","svc_origin","svc_cfg","data_tenant","ext_storage"],"note":"B02a covers tenant core/config; bucket/checkpoint in B02b."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_tenant","type":"frontend","label":"Admin tenant API group","sublabel":"lifecycle, usage, tags, ref-set, provision","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant/tenant.controller.ts","line":49,"label":"TenantController /admin/tenants"},{"path":"apps/api/src/modules/tenant/tenant-reference-set.controller.ts","line":28,"label":"TenantReferenceSetController"},{"path":"apps/api/src/modules/tenant/tenant-provision.controller.ts","line":26,"label":"TenantProvisionController"}]},
+    {"id":"eg_me","type":"frontend","label":"Tenant self API (/tenants/me)","sublabel":"GET tenant, GET/PATCH config","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant/my-tenant.controller.ts","line":29,"label":"MyTenantController /tenants/me"}]},
+    {"id":"eg_origin","type":"frontend","label":"Allowed origins API (6 routes)","sublabel":"posture, list/get/create/patch/delete","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts","line":68,"label":"TenantAllowedOriginController"}]},
+    {"id":"eg_cfg","type":"frontend","label":"Frontend/storage config APIs","sublabel":"tenant frontend config + storage config/admin","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts","line":28,"label":"TenantFrontendConfigAdminController"},{"path":"apps/api/src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts","line":32,"label":"TenantStorageConfigAdminController"}]},
+
+    {"id":"ctl_tenant","type":"backend","label":"Tenant admin controllers","sublabel":"Lifecycle/usage/tags/ref-set/provision","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant/tenant.controller.ts","line":155,"label":"usage/suspend/archive/restore/tags"},{"path":"apps/api/src/modules/tenant/tenant-reference-set.controller.ts","line":32,"label":"POST :id/reference-set/sync"}]},
+    {"id":"ctl_me","type":"backend","label":"MyTenantController","sublabel":"Caller tenant read and config update","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant/my-tenant.controller.ts","line":51,"label":"GET /tenants/me, config handlers"}]},
+    {"id":"ctl_origin","type":"backend","label":"TenantAllowedOriginController","sublabel":"Origin allow-list + enforcement posture","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts","line":80,"label":"posture/list/get/create/patch/delete"}]},
+    {"id":"ctl_cfg","type":"backend","label":"Tenant config controllers","sublabel":"Frontend config and storage config surfaces","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts","line":36,"label":"GET/PUT frontend config"},{"path":"apps/api/src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts","line":40,"label":"storage config CRUD/effective/platform"}]},
+
+    {"id":"svc_tenant","type":"backend","label":"TenantService","sublabel":"Tenant domain/admin/provisioning operations","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant/tenant.service.ts","line":73,"label":"TenantService class"}]},
+    {"id":"svc_origin","type":"backend","label":"TenantAllowedOriginService","sublabel":"Origin registry/allow-list management","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant-allowed-origin/tenant-allowed-origin.service.ts","line":43,"label":"TenantAllowedOriginService"}]},
+    {"id":"svc_cfg","type":"backend","label":"Tenant config services","sublabel":"Frontend config + storage config services","tag":"service","row":3,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant-frontend-config/tenant-frontend-config.service.ts","line":46,"label":"TenantFrontendConfigService"},{"path":"packages/applications/src/services/tenant-storage-config/tenant-storage-config.service.ts","line":67,"label":"TenantStorageConfigService"}]},
+
+    {"id":"data_tenant","type":"database","label":"Tenant/config data store","sublabel":"Tenants, origins, frontend/storage config","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant/tenant.service.ts","line":73,"label":"Tenant persistence"},{"path":"packages/applications/src/services/tenant-storage-config/tenant-storage-config.service.ts","line":67,"label":"Storage config persistence"}]},
+    {"id":"ext_storage","type":"cloud","label":"Storage backends (config target)","sublabel":"S3/MinIO/Azure backend config/effective state","tag":"storage","row":3,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts","line":107,"label":"GET effective storage config"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_tenant","eg_me","eg_origin","eg_cfg"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_tenant","ctl_me","ctl_origin","ctl_cfg"]},
+    {"kind":"region","label":"Application services","wraps":["svc_tenant","svc_origin","svc_cfg"]},
+    {"kind":"region","label":"Data stores / configured backends","wraps":["data_tenant","ext_storage"]}
+  ],
+  "connections": [
+    {"id":"t1","from":"eg_tenant","to":"ctl_tenant","label":"HTTP"},
+    {"id":"t2","from":"eg_me","to":"ctl_me","label":"HTTP"},
+    {"id":"t3","from":"eg_origin","to":"ctl_origin","label":"HTTP"},
+    {"id":"t4","from":"eg_cfg","to":"ctl_cfg","label":"HTTP"},
+    {"id":"t5","from":"ctl_tenant","to":"svc_tenant","label":"delegate"},
+    {"id":"t6","from":"ctl_me","to":"svc_tenant","label":"self"},
+    {"id":"t7","from":"ctl_origin","to":"svc_origin","label":"delegate"},
+    {"id":"t8","from":"ctl_cfg","to":"svc_cfg","label":"delegate"},
+    {"id":"t9","from":"svc_tenant","to":"data_tenant","label":"tenants"},
+    {"id":"t10","from":"svc_origin","to":"data_tenant","label":"origins"},
+    {"id":"t11","from":"svc_cfg","to":"data_tenant","label":"config"},
+    {"id":"t12","from":"svc_cfg","to":"ext_storage","label":"effective"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B02a scope (tenant core & config)","items":["Modules: tenant, tenant-allowed-origin, tenant-frontend-config, tenant-storage-config (~34 routes est.). B02 split into B02a/B02b/B02c; tenant-idp-config excluded (in B01).","Admin tenant: /admin/tenants lifecycle/admin endpoints including usage, suspend/archive/restore, tags, reference-set sync, provisioning controllers (base CRUD may be via shared/decorator patterns; verify full route list in catalog/OpenAPI).","Self tenant: GET /tenants/me, GET/PATCH /tenants/me/config. Allowed origins: posture + CRUD (6). Config: tenant frontend config GET/PUT; tenant storage config tenant/platform/effective CRUD paths."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Tenant lifecycle: POST /admin/tenants/:id/suspend|archive|restore -> tenant/status response; PUT/GET tags manage tenant tags.","My tenant config: PATCH /tenants/me/config with config DTO -> updated config.","Allowed origin create: POST /admin/allowed-origins with origin DTO -> origin record; posture reports enforcement state.","Storage config: PUT /admin/tenants/storage/config or platform path with backend config DTO -> effective/config response. Verify DTO schemas and sensitive field handling."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams: tenant/config data store (Postgres/Prisma); storage backend config affects S3/MinIO/Azure effective storage behavior. Origin registry supports gateway origin enforcement.","Limitations: grouped endpoint nodes; tenant base CRUD routes may be implemented via shared patterns not fully enumerated by simple grep — reconcile against catalog/OpenAPI for strict 1:1 coverage; example I/O summarized from route contracts."]}
+  ]
+}

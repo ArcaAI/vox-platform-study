@@ -1,0 +1,693 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B04b Streaming/Speech/Media (Remaining)",
+    "subtitle": "Remaining B04 flows: storage, access keys, voice profiles, transcription/text/speech route groups (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b04b-20261107-121500/api-gateway-b04b-streaming-speech-media-remaining.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0",
+      "link_mode": "web"
+    },
+    "views": [
+      {
+        "id": "flow",
+        "label": "Endpoint to downstream",
+        "focus": [
+          "eg_storage",
+          "eg_storage_keys",
+          "eg_voice",
+          "eg_stt_mgmt",
+          "eg_text_ops",
+          "ctl_storage",
+          "ctl_keys",
+          "ctl_voice",
+          "ctl_stt",
+          "ctl_text",
+          "svc_storage",
+          "svc_keys",
+          "svc_voice",
+          "svc_stt",
+          "ext_blob",
+          "ext_stt",
+          "ext_text",
+          "ext_tts"
+        ],
+        "note": "B04b groups remaining B04 routes for readability; see cards for route-level examples."
+      },
+      {
+        "id": "data",
+        "label": "Storage & voice",
+        "focus": [
+          "eg_storage",
+          "eg_storage_keys",
+          "eg_voice",
+          "ctl_storage",
+          "ctl_keys",
+          "ctl_voice",
+          "svc_storage",
+          "svc_keys",
+          "svc_voice",
+          "ext_blob",
+          "ext_stt"
+        ],
+        "note": "Tenant object storage and voice-profile/STT dependencies."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      40,
+      60
+    ],
+    "cols": 4,
+    "gapX": 90,
+    "gapY": 48,
+    "cellW": 340,
+    "cellH": 128
+  },
+  "components": [
+    {
+      "id": "eg_storage",
+      "type": "frontend",
+      "label": "Storage API group (10 routes)",
+      "sublabel": "/storage buckets/files/health CRUD + presign",
+      "tag": "endpoint group",
+      "row": 0,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/storage/storage.controller.ts",
+          "line": 54,
+          "label": "StorageController @Controller('storage')"
+        }
+      ]
+    },
+    {
+      "id": "eg_storage_keys",
+      "type": "frontend",
+      "label": "Storage access-key admin (3 routes)",
+      "sublabel": "GET/POST/DELETE /admin/tenants/storage/keys*",
+      "tag": "endpoint group",
+      "row": 1,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/storage-access-key/storage-access-key.controller.ts",
+          "line": 15,
+          "label": "StorageAccessKeyController routes"
+        }
+      ]
+    },
+    {
+      "id": "eg_voice",
+      "type": "frontend",
+      "label": "Voice profiles API (6 routes)",
+      "sublabel": "Enroll/list/activate/deactivate/delete/target",
+      "tag": "endpoint group",
+      "row": 2,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/voice-profile/voice-profile.controller.ts",
+          "line": 42,
+          "label": "VoiceProfileController @Controller('voice-profi\u2026"
+        }
+      ]
+    },
+    {
+      "id": "eg_stt_mgmt",
+      "type": "frontend",
+      "label": "Transcription/STT mgmt group",
+      "sublabel": "Job/session list/get/stream/cancel/retry/admin ops",
+      "tag": "endpoint group",
+      "row": 3,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/transcription-job.controller.ts",
+          "line": 124,
+          "label": "TranscriptionJobController remaining routes"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/admin-transcription-job.controller.ts",
+          "line": 36,
+          "label": "AdminTranscriptionJobController routes"
+        }
+      ]
+    },
+    {
+      "id": "eg_text_ops",
+      "type": "frontend",
+      "label": "Text tasks/providers/admin group",
+      "sublabel": "generate/assembled, tasks, providers, admin text",
+      "tag": "endpoint group",
+      "row": 4,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 322,
+          "label": "TextProxyController remaining routes"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/text-generation-admin.controller.ts",
+          "line": 37,
+          "label": "TextGenerationAdminController"
+        },
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 470,
+          "label": "SpeechProxyController.voices()"
+        }
+      ]
+    },
+    {
+      "id": "ctl_storage",
+      "type": "backend",
+      "label": "StorageController",
+      "sublabel": "Bucket/file ops, tenant ownership, presigned URLs",
+      "tag": "controller",
+      "row": 0,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/storage/storage.controller.ts",
+          "line": 59,
+          "label": "StorageController class"
+        }
+      ]
+    },
+    {
+      "id": "ctl_keys",
+      "type": "backend",
+      "label": "StorageAccessKeyController",
+      "sublabel": "Admin tenant storage keys; API key forbidden",
+      "tag": "controller",
+      "row": 1,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/storage-access-key/storage-access-key.controller.ts",
+          "line": 17,
+          "label": "StorageAccessKeyController class"
+        }
+      ]
+    },
+    {
+      "id": "ctl_voice",
+      "type": "backend",
+      "label": "VoiceProfileController",
+      "sublabel": "Voice biometrics/JWT-only enrollment + mgmt",
+      "tag": "controller",
+      "row": 2,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/voice-profile/voice-profile.controller.ts",
+          "line": 51,
+          "label": "VoiceProfileController class"
+        }
+      ]
+    },
+    {
+      "id": "ctl_stt",
+      "type": "backend",
+      "label": "Transcription controllers (mgmt)",
+      "sublabel": "Job/session/admin mgmt; owner/tenant scoped",
+      "tag": "controller",
+      "row": 3,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/transcription-job.controller.ts",
+          "line": 124,
+          "label": "TranscriptionJobController"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/admin-transcription-job.controller.ts",
+          "line": 38,
+          "label": "AdminTranscriptionJobController"
+        }
+      ]
+    },
+    {
+      "id": "ctl_text",
+      "type": "backend",
+      "label": "Text/Speech proxy controllers",
+      "sublabel": "Tasks/providers/assembled/admin text + voices",
+      "tag": "controller",
+      "row": 4,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 331,
+          "label": "TextProxyController"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/text-generation-admin.controller.ts",
+          "line": 37,
+          "label": "TextGenerationAdminController"
+        },
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 470,
+          "label": "SpeechProxyController.voices()"
+        }
+      ]
+    },
+    {
+      "id": "svc_storage",
+      "type": "backend",
+      "label": "Storage services",
+      "sublabel": "Tenant buckets + blob/S3/media/thumbnail services",
+      "tag": "service",
+      "row": 0,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/tenant-bucket/tenant-bucket.service.ts",
+          "line": 66,
+          "label": "TenantBucketService"
+        },
+        {
+          "path": "packages/applications/src/services/baseServices/storage/blob-storage.service.ts",
+          "line": 36,
+          "label": "BlobStorageService"
+        },
+        {
+          "path": "packages/applications/src/services/baseServices/storage/s3/s3.service.ts",
+          "line": 43,
+          "label": "S3Service"
+        }
+      ]
+    },
+    {
+      "id": "svc_keys",
+      "type": "backend",
+      "label": "StorageAccessKeyService",
+      "sublabel": "Generates/lists/revokes tenant storage keys",
+      "tag": "service",
+      "row": 1,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/storage-access-key/storage-access-key.service.ts",
+          "line": 29,
+          "label": "StorageAccessKeyService class"
+        }
+      ]
+    },
+    {
+      "id": "svc_voice",
+      "type": "backend",
+      "label": "VoiceProfileService",
+      "sublabel": "Enroll/resolve embedding target, profile lifecycle",
+      "tag": "service",
+      "row": 2,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/user/voiceProfile/voiceProfile.service.ts",
+          "line": 91,
+          "label": "VoiceProfileService class"
+        }
+      ]
+    },
+    {
+      "id": "svc_stt",
+      "type": "backend",
+      "label": "STT job/session services",
+      "sublabel": "List/stats/cancel/retry/session + admin views",
+      "tag": "service",
+      "row": 3,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/stt/job/transcriptionJob.service.ts",
+          "line": 49,
+          "label": "TranscriptionJobService"
+        },
+        {
+          "path": "packages/applications/src/services/stt/streaming/streamingSession.service.ts",
+          "line": 75,
+          "label": "StreamingSessionService"
+        }
+      ]
+    },
+    {
+      "id": "svc_text",
+      "type": "backend",
+      "label": "Text proxy/enrichment services",
+      "sublabel": "Task status/cancel/stream, provider listing, policy",
+      "tag": "service",
+      "row": 4,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 417,
+          "label": "TextRequestEnrichmentService usage"
+        },
+        {
+          "path": "packages/applications/src/services/stt/streaming/streamingSession.service.ts",
+          "line": 119,
+          "label": "STT URL/config pattern (downstream ref)"
+        }
+      ]
+    },
+    {
+      "id": "ext_blob",
+      "type": "cloud",
+      "label": "Object storage (S3/MinIO/Azure blob)",
+      "sublabel": "Tenant buckets, file objects, presigned access",
+      "tag": "storage",
+      "row": 0,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/storage/storage.controller.ts",
+          "line": 60,
+          "label": "IBlobStorageService/IS3Service injection"
+        }
+      ]
+    },
+    {
+      "id": "ext_stt",
+      "type": "external",
+      "label": "STT microservice (apps/stt)",
+      "sublabel": "Streaming/session + voice enrollment target deps",
+      "tag": "microservice",
+      "row": 2,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/stt/streaming/streamingSession.service.ts",
+          "line": 119,
+          "label": "STT_URL resolution"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/admin-transcription-job.controller.ts",
+          "line": 36,
+          "label": "Admin transcription over STT jobs"
+        }
+      ]
+    },
+    {
+      "id": "ext_text",
+      "type": "external",
+      "label": "Text microservice (apps/text)",
+      "sublabel": "Generate/assembled/tasks/providers/guardrail",
+      "tag": "microservice",
+      "row": 4,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 513,
+          "label": "TEXT_URL base"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 990,
+          "label": "Task/provider proxy routes to TEXT"
+        }
+      ]
+    },
+    {
+      "id": "ext_tts",
+      "type": "external",
+      "label": "TTS microservice (apps/tts)",
+      "sublabel": "Voices listing and synthesis (B04a ref)",
+      "tag": "microservice",
+      "row": 3,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 470,
+          "label": "GET /speech/voices proxies to TTS"
+        },
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 152,
+          "label": "TTS_URL base"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "API endpoint groups (left)",
+      "wraps": [
+        "eg_storage",
+        "eg_storage_keys",
+        "eg_voice",
+        "eg_stt_mgmt",
+        "eg_text_ops"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Controllers",
+      "wraps": [
+        "ctl_storage",
+        "ctl_keys",
+        "ctl_voice",
+        "ctl_stt",
+        "ctl_text"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Application services",
+      "wraps": [
+        "svc_storage",
+        "svc_keys",
+        "svc_voice",
+        "svc_stt",
+        "svc_text"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Downstream microservices / APIs",
+      "wraps": [
+        "ext_blob",
+        "ext_stt",
+        "ext_tts",
+        "ext_text"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "b1",
+      "from": "eg_storage",
+      "to": "ctl_storage",
+      "label": "HTTP"
+    },
+    {
+      "id": "b2",
+      "from": "eg_storage_keys",
+      "to": "ctl_keys",
+      "label": "HTTP"
+    },
+    {
+      "id": "b3",
+      "from": "eg_voice",
+      "to": "ctl_voice",
+      "label": "HTTP"
+    },
+    {
+      "id": "b4",
+      "from": "eg_stt_mgmt",
+      "to": "ctl_stt",
+      "label": "HTTP"
+    },
+    {
+      "id": "b5",
+      "from": "eg_text_ops",
+      "to": "ctl_text",
+      "label": "HTTP"
+    },
+    {
+      "id": "b6",
+      "from": "ctl_storage",
+      "to": "svc_storage",
+      "label": "delegate"
+    },
+    {
+      "id": "b7",
+      "from": "ctl_keys",
+      "to": "svc_keys",
+      "label": "delegate"
+    },
+    {
+      "id": "b8",
+      "from": "ctl_voice",
+      "to": "svc_voice",
+      "label": "delegate"
+    },
+    {
+      "id": "b9",
+      "from": "ctl_stt",
+      "to": "svc_stt",
+      "label": "delegate"
+    },
+    {
+      "id": "b10",
+      "from": "ctl_text",
+      "to": "svc_text",
+      "label": "enrich"
+    },
+    {
+      "id": "b11",
+      "from": "svc_storage",
+      "to": "ext_blob",
+      "label": "objects"
+    },
+    {
+      "id": "b12",
+      "from": "svc_voice",
+      "to": "ext_stt",
+      "label": "enroll/target"
+    },
+    {
+      "id": "b13",
+      "from": "svc_stt",
+      "to": "ext_stt",
+      "label": "jobs/session"
+    },
+    {
+      "id": "b14",
+      "from": "ctl_stt",
+      "to": "ext_stt",
+      "label": "SSE/stream"
+    },
+    {
+      "id": "b15",
+      "from": "ctl_text",
+      "to": "ext_text",
+      "label": "proxy"
+    },
+    {
+      "id": "b16",
+      "from": "ctl_text",
+      "to": "ext_tts",
+      "label": "voices"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "B04b scope (remaining B04, grouped)",
+      "items": [
+        "Covers remaining B04 modules/routes not in B04a: storage (10), storage-access-key (3), voice-profile (6), plus remaining streaming/speech route groups (admin transcription 3; transcription job/session/mgmt routes beyond B04a representatives; text tasks/cancel/stream/providers/guardrail-providers/assembled + admin text generation routes; speech voices).",
+        "Left side uses endpoint groups for readability because B04b spans ~50+ remaining routes. Each group node has controller sources; cards list route-level detail and examples.",
+        "Reconcile final route counts against review/api_explore/inventory/summary.json and catalog.md when producing follow-up detail diagrams if strict per-endpoint node coverage is required."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Route groups and example I/O",
+      "items": [
+        "Storage /storage: GET/POST/PATCH/DELETE buckets, list/create/delete/get/presign files, GET health. Example input: create bucket {name}; upload multipart file to bucket. Output: bucket/file metadata and presigned URLs.",
+        "Storage access keys /admin/tenants/storage/keys: GET list, POST generate, DELETE :id. Input: create key request. Output: key metadata; secret shown once on create.",
+        "Voice profiles /voice-profiles: POST enroll (multipart audio files + label/agentSlug?), GET enrollment-target, GET list, PATCH :id/activate|deactivate, DELETE :id. Input: 1-3 audio files; output: VoiceProfileResponse; JWT-only/ForbidApiKey due to biometrics.",
+        "Transcription/STT mgmt: POST create/batch/streaming jobs, GET stats/status/consultation/:id/language-modes/limits/:id, GET /:id/stream SSE, POST cancel/retry, session DELETE/refresh-ticket/switch-to-fallback/switch-to-primary; admin GET list/stats/status. Inputs/outputs follow TranscriptionJob/stream DTOs; SSE for live/stream endpoints.",
+        "Text/speech ops: POST text-generations/generate/assembled, GET/POST tasks/:taskId, GET tasks/:taskId/stream, GET providers/guardrail-providers, admin POST admin/text-generations/generate|generate/assembled, GET /speech/voices. Inputs: prompt/context/template/provider routing fields (business plane restricts raw pinning). Outputs: TEXT/TTS proxied JSON or streams."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Evidence and limitations",
+      "items": [
+        "Repo: https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Sources point to controllers/services verified in local tree.",
+        "Downstream: S3/MinIO/Azure blob storage (IBlobStorageService/S3Service), STT (STT_URL), TEXT (TEXT_URL), TTS (TTS_URL). Runtime URLs/config are deployment-specific.",
+        "Limitations: endpoint-group nodes (not 1:1 endpoint boxes) for readability; example I/O summarized in cards; some handler-level service calls are represented by controller/service class sources rather than every internal call chain; TextGenerationAdminController handler line can be deepened in a follow-up pass."
+      ]
+    }
+  ]
+}

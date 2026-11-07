@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "19972b9b-c12a-44db-99ef-f9e6de287fef",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/rate-limit-management-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/rate-limit-management-flow.html",
+  "specification": {
+    "sha256": "f3b45712a410bd760bf86fd62615122e36eb0529af3619c9f49798ee73c48bcd",
+    "bytes": 3526
+  },
+  "artifact": {
+    "sha256": "40d63089cd415247ec7b779bf33f3855d4daaf5db97b6479ee4a3eceb458dd25",
+    "bytes": 754533
+  }
+}

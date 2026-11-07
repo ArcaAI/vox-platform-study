@@ -1,0 +1,27 @@
+{
+ "routes": 818,
+ "controllers": 148,
+ "modules": 77,
+ "public_routes": 62,
+ "api_key_forbidden": 573,
+ "api_key_allowed": 189,
+ "requires_if_match": 69,
+ "api_excluded": 57,
+ "no_permission_and_no_scope": 78,
+ "routes_without_any_test_reference": 9,
+ "routes_without_e2e_route_reference": 463,
+ "routes_without_openapi_operation": 57,
+ "method_counts": {
+  "GET": 404,
+  "PATCH": 63,
+  "POST": 267,
+  "DELETE": 53,
+  "PUT": 31
+ },
+ "controllers_without_any_test_reference": [
+  "MyTenantDocumentTemplateController",
+  "StorageAccessKeyController",
+  "WorkflowInvariantRuleController"
+ ],
+ "openapi_paths": 607
+}

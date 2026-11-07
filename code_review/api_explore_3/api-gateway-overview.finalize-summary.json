@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/apple/repos/VOX/review/api_explore_3/diagrams/api-gateway-overview.candidate.json",
+    "sha256": "19e3395564aaf3ee40bbdc470d73997e2ea93495752573f21360707e80ad85a5",
+    "bytes": 39621
+  },
+  "artifact": {
+    "path": "/Users/apple/repos/VOX/review/api_explore_3/api-gateway-overview.html",
+    "sha256": "50a3d1c2367f1cd781da931419feaea41e5bbef9c82dbafa2b72d276d78977a0",
+    "bytes": 872405
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/apple/repos/VOX/review/api_explore_3/api-gateway-overview.finalize.json",
+    "summaryReceipt": "/Users/apple/repos/VOX/review/api_explore_3/api-gateway-overview.finalize-summary.json",
+    "browserCheckReceipt": "/Users/apple/repos/VOX/review/api_explore_3/api-gateway-overview.browser-check.json"
+  },
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-11-07T10:50:33.302Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-11-07T10:50:33.302Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1910
+}

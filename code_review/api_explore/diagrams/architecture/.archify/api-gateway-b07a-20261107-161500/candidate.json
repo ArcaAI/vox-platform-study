@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B07a Guardrails",
+    "subtitle": "Guardrail availability/policy/notices/evaluations (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b07a-20261107-161500/api-gateway-b07a-guardrails.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_admin","eg_notice","eg_admin_eval","eg_internal","ctl_admin","ctl_notice","ctl_admin_eval","ctl_internal","svc_admin","svc_notice","svc_eval","data_gr","ext_eval"],"note":"B07a: guardrail admin/policy, consultation notices, internal evaluation ingest."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_admin","type":"frontend","label":"Guardrail admin config API","sublabel":"availability, policy, metrics, rule-test, tenant policy","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-policy/guardrail-policy.controller.ts","line":65,"label":"GuardrailPolicyController"},{"path":"apps/api/src/modules/guardrail-availability/guardrail-availability.controller.ts","line":41,"label":"GuardrailAvailabilityController"},{"path":"apps/api/src/modules/guardrail-tenant-policy/guardrail-tenant-policy.controller.ts","line":28,"label":"GuardrailTenantPolicyController"}]},
+    {"id":"eg_notice","type":"frontend","label":"Consultation guardrail notices API","sublabel":"/consultations guardrail notices (6 routes)","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-notice/guardrail-notice.controller.ts","line":48,"label":"GuardrailNoticeController"}]},
+    {"id":"eg_admin_eval","type":"frontend","label":"Admin guardrail evaluations API","sublabel":"admin consultation guardrail evaluations (1 route)","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts","line":22,"label":"AdminGuardrailEvaluationController"}]},
+    {"id":"eg_internal","type":"frontend","label":"Internal guardrail evaluation API","sublabel":"POST /internal/guardrail/evaluations (service token)","tag":"internal group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts","line":40,"label":"GuardrailEvaluationInternalController"}]},
+
+    {"id":"ctl_admin","type":"backend","label":"Guardrail admin controllers","sublabel":"Policy/metrics/availability/rule-test/tenant policy","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-policy/guardrail-policy.controller.ts","line":67,"label":"GuardrailPolicyController"},{"path":"apps/api/src/modules/guardrail-policy/guardrail-metrics.controller.ts","line":30,"label":"GuardrailMetricsController"},{"path":"apps/api/src/modules/guardrail-tenant-policy/guardrail-rule-test.controller.ts","line":25,"label":"GuardrailRuleTestController"}]},
+    {"id":"ctl_notice","type":"backend","label":"GuardrailNoticeController","sublabel":"Consultation-facing guardrail notices","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-notice/guardrail-notice.controller.ts","line":51,"label":"class GuardrailNoticeController"}]},
+    {"id":"ctl_admin_eval","type":"backend","label":"AdminGuardrailEvaluationController","sublabel":"Admin consultation guardrail evaluation reads","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts","line":24,"label":"AdminGuardrailEvaluationController"}]},
+    {"id":"ctl_internal","type":"backend","label":"GuardrailEvaluationInternalController","sublabel":"Internal evaluation ingest (service token/tenant lock)","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts","line":41,"label":"GuardrailEvaluationInternalController"},{"path":"apps/api/src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts","line":13,"label":"InternalServiceTokenGuard/TenantLock"}]},
+
+    {"id":"svc_admin","type":"backend","label":"Guardrail admin services","sublabel":"Policy, availability, tenant policy, rule test, metrics","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/guardrail-policy/guardrail-policy.service.ts","line":232,"label":"GuardrailPolicyService"},{"path":"packages/applications/src/services/guardrail-availability/guardrail-availability.service.ts","line":75,"label":"GuardrailAvailabilityService"},{"path":"packages/applications/src/services/guardrail-availability/guardrail-rule-test.service.ts","line":40,"label":"GuardrailRuleTestService"}]},
+    {"id":"svc_notice","type":"backend","label":"Guardrail notice/hold services","sublabel":"Consultation notices and hold handling","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/guardrail-notice/guardrail-notice.service.ts","line":100,"label":"GuardrailNoticeService"},{"path":"packages/applications/src/services/guardrail-notice/guardrail-hold.service.ts","line":214,"label":"GuardrailHoldService"}]},
+    {"id":"svc_eval","type":"backend","label":"Guardrail evaluation services","sublabel":"Evaluation ingest/admin/reconciliation","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/guardrail-evaluation/guardrail-evaluation-ingest.service.ts","line":87,"label":"GuardrailEvaluationIngestService"},{"path":"packages/applications/src/services/guardrail-evaluation/guardrail-evaluation-admin.service.ts","line":114,"label":"GuardrailEvaluationAdminService"}]},
+
+    {"id":"data_gr","type":"database","label":"Guardrail data stores","sublabel":"Policies, notices/holds, evaluations, tenant config","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/guardrail-policy/guardrail-policy.service.ts","line":232,"label":"Guardrail policy persistence"},{"path":"packages/applications/src/services/guardrail-evaluation/guardrail-evaluation-ingest.service.ts","line":87,"label":"Evaluation persistence"}]},
+    {"id":"ext_eval","type":"external","label":"Guardrail evaluation runtime","sublabel":"Evaluation producers/callers (internal services)","tag":"runtime","row":3,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts","line":26,"label":"Service-to-service evaluation ingest"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_admin","eg_notice","eg_admin_eval","eg_internal"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_admin","ctl_notice","ctl_admin_eval","ctl_internal"]},
+    {"kind":"region","label":"Application services","wraps":["svc_admin","svc_notice","svc_eval"]},
+    {"kind":"region","label":"Data stores / evaluation runtime","wraps":["data_gr","ext_eval"]}
+  ],
+  "connections": [
+    {"id":"g1","from":"eg_admin","to":"ctl_admin","label":"HTTP"},
+    {"id":"g2","from":"eg_notice","to":"ctl_notice","label":"HTTP"},
+    {"id":"g3","from":"eg_admin_eval","to":"ctl_admin_eval","label":"HTTP"},
+    {"id":"g4","from":"eg_internal","to":"ctl_internal","label":"internal"},
+    {"id":"g5","from":"ctl_admin","to":"svc_admin","label":"delegate"},
+    {"id":"g6","from":"ctl_notice","to":"svc_notice","label":"delegate"},
+    {"id":"g7","from":"ctl_admin_eval","to":"svc_eval","label":"delegate"},
+    {"id":"g8","from":"ctl_internal","to":"svc_eval","label":"ingest"},
+    {"id":"g9","from":"svc_admin","to":"data_gr","label":"policy/config"},
+    {"id":"g10","from":"svc_notice","to":"data_gr","label":"notices"},
+    {"id":"g11","from":"svc_eval","to":"data_gr","label":"evaluations"},
+    {"id":"g12","from":"ext_eval","to":"ctl_internal","label":"service call"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B07a scope (guardrails)","items":["Part of B07-guardrails-ops split (103 routes/22 controllers reconciled; throttle/platform-knobs excluded as 0-route modules). Guardrail modules: availability (4/1), evaluation-internal (1/1), notice (6/2), policy (17/2), tenant-policy (3/2) = 31 routes / 8 controllers.","Admin surfaces: guardrail availability, policy, metrics, tenant policy, rule test. Consultation-facing: guardrail notices. Admin evaluation reads: /admin/consultations guardrail evaluations.","Internal evaluation ingest is service-to-service (guardrail service token/internal tenant lock patterns evidenced)."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Guardrail policy/availability/tenant policy: admin CRUD/config requests -> policy/availability/config responses. Rule test requests evaluate sample inputs against rules -> test/evaluation result.","Guardrail notices: consultation notice list/read/ack flows -> notice/hold state for consultation UI/workflows. Verify notice payloads and PHI-safety semantics.","Internal evaluation ingest: POST /internal/guardrail/evaluations with service token + tenant context -> persisted evaluation/ingest result. Verify DTO, idempotency, and auth requirements."]},
+    {"dot":"emerald","title":"Evidence, security, limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Security/internal: guardrail evaluation internal controller is @Public/@ApiExcludeController with InternalServiceTokenGuard + InternalTenantLockGuard (service=guardrail token model per controller comments).","Limitations: grouped endpoint nodes (31 routes/8 controllers); reconcile exact route/DTO contracts, notice/evaluation schemas, and hold/reconciliation behavior with OpenAPI/implementation."]}
+  ]
+}

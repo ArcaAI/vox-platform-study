@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B01b1 User Management",
+    "subtitle": "User module flows: admin users, self-service, roles/departments, password reset (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b01b1-20261107-124500/api-gateway-b01b1-user.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_admin_user","eg_me","eg_pwd","ctl_admin","ctl_me","ctl_pwd","svc_user","svc_user_sub","data_identity"],"note":"B01b1 groups user-module routes for readability."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_admin_user","type":"frontend","label":"Admin user API group","sublabel":"/admin/users CRUD/export/bulk/profile/settings","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/user/user.controller.ts","line":86,"label":"UserController /admin/users"},{"path":"apps/api/src/modules/user/controllers/user-departments.controller.ts","line":32,"label":"UserDepartmentsController"}]},
+    {"id":"eg_me","type":"frontend","label":"Self-service /users/me group","sublabel":"preferences, settings, departments, roles view","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/user/controllers/user-preferences.controller.ts","line":29,"label":"UserPreferencesController"},{"path":"apps/api/src/modules/user/controllers/user-settings.controller.ts","line":32,"label":"UserSettingsController"},{"path":"apps/api/src/modules/user/controllers/user-departments-me.controller.ts","line":28,"label":"UserDepartmentsMeController"}]},
+    {"id":"eg_pwd","type":"frontend","label":"Password/reset API group","sublabel":"forgot-password + password-reset/complete","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/user/controllers/forgot-password.controller.ts","line":22,"label":"ForgotPasswordController"},{"path":"apps/api/src/modules/user/controllers/password-reset.controller.ts","line":15,"label":"PasswordResetController"}]},
+
+    {"id":"ctl_admin","type":"backend","label":"Admin user controllers","sublabel":"User mgmt, departments, role assignments","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/user/user.controller.ts","line":88,"label":"UserController class"},{"path":"apps/api/src/modules/user/controllers/user-departments.controller.ts","line":34,"label":"UserDepartmentsController"},{"path":"apps/api/src/modules/user/controllers/user-roles.controller.ts","line":41,"label":"UserRolesController"}]},
+    {"id":"ctl_me","type":"backend","label":"Self-service controllers","sublabel":"Own preferences/settings/departments/roles","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/user/controllers/user-preferences.controller.ts","line":29,"label":"UserPreferencesController"},{"path":"apps/api/src/modules/user/controllers/user-settings.controller.ts","line":40,"label":"UserSettingsController"},{"path":"apps/api/src/modules/user/controllers/user-departments-me.controller.ts","line":34,"label":"UserDepartmentsMeController"}]},
+    {"id":"ctl_pwd","type":"backend","label":"Password/reset controllers","sublabel":"Forgot-password and reset completion","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/user/controllers/forgot-password.controller.ts","line":28,"label":"POST forgot-password"},{"path":"apps/api/src/modules/user/controllers/password-reset.controller.ts","line":16,"label":"PasswordResetController"}]},
+
+    {"id":"svc_user","type":"backend","label":"UserService","sublabel":"Core user CRUD/profile/admin operations","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/user/user/user.service.ts","line":47,"label":"UserService class"}]},
+    {"id":"svc_user_sub","type":"backend","label":"User sub-services","sublabel":"Settings, departments, role assignments","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/user/userSettings/userSettings.service.ts","line":14,"label":"UserSettingsService"},{"path":"packages/applications/src/services/user/userDepartment/user-department.service.ts","line":36,"label":"UserDepartmentService"},{"path":"packages/applications/src/services/user/userRoleAssignment/userRoleAssignment.service.ts","line":46,"label":"UserRoleAssignmentService"}]},
+
+    {"id":"data_identity","type":"database","label":"Identity/user data store","sublabel":"Users, profiles, settings, departments, roles","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/user/user/user.service.ts","line":47,"label":"UserService persistence"},{"path":"packages/applications/src/services/user/userSettings/userSettings.service.ts","line":14,"label":"Settings persistence"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_admin_user","eg_me","eg_pwd"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_admin","ctl_me","ctl_pwd"]},
+    {"kind":"region","label":"Application services","wraps":["svc_user","svc_user_sub"]},
+    {"kind":"region","label":"Data stores","wraps":["data_identity"]}
+  ],
+  "connections": [
+    {"id":"u1","from":"eg_admin_user","to":"ctl_admin","label":"HTTP"},
+    {"id":"u2","from":"eg_me","to":"ctl_me","label":"HTTP"},
+    {"id":"u3","from":"eg_pwd","to":"ctl_pwd","label":"HTTP"},
+    {"id":"u4","from":"ctl_admin","to":"svc_user","label":"delegate"},
+    {"id":"u5","from":"ctl_admin","to":"svc_user_sub","label":"sub-res"},
+    {"id":"u6","from":"ctl_me","to":"svc_user_sub","label":"delegate"},
+    {"id":"u7","from":"ctl_pwd","to":"svc_user","label":"reset"},
+    {"id":"u8","from":"svc_user","to":"data_identity","label":"users"},
+    {"id":"u9","from":"svc_user_sub","to":"data_identity","label":"state"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B01b1 scope (user module)","items":["Covers user module (~33 routes est.) as grouped endpoint flows. B01b split: B01b1 user, B01b2 rbac/security-policy/tenant-idp-config pending.","Admin user routes include /admin/users management (export, bulk-actions, profile, settings, reset-password, roles, departments, voice-profiles sub-resources as present in controller) and admin user department assignment endpoints.","Self-service routes include /users/me/preferences, /users/me/settings, /users/me/departments, /users/:id/roles view path (controller order-sensitive), and password flows: POST forgot-password, POST /users/password-reset/complete."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Admin user update: PATCH /admin/users/:id/profile or settings with user/profile/settings DTO; output user/profile/setting response.","User settings: GET/PATCH /users/me/settings[/:namespace/:key] with settings payload; output effective settings values.","Department/role assignment: POST/PATCH/DELETE assignment endpoints with assignment IDs/role/department payloads; output assignment records.","Password reset: forgot-password accepts identifier/email DTO; reset complete accepts token/new password DTO. Exact schemas/side effects (email/token issuance) should be verified against DTOs/services/tests."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstream represented as identity/user data store (Postgres/Prisma via application services). Password reset may involve additional token/email infrastructure; confirm in implementation before treating as complete contract.","Limitations: grouped endpoint nodes for readability; example I/O summarized from route contracts; route count should be reconciled against catalog/inventory for strict 1:1 endpoint coverage."]}
+  ]
+}

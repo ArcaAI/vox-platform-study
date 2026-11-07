@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "538e76ed-bfbf-4c1c-b181-9e8262000dc8",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/architecture-api-system-20261023-114803/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/architecture-api-system-20261023-114803/api-system-context.html",
+  "specification": {
+    "sha256": "c32f99224629a10eab006b29c7c39463f87a8fee4a072dac10fa635d42c86e97",
+    "bytes": 6456
+  },
+  "artifact": {
+    "sha256": "96b3ac06c4ea821c1e023f31d73ec2492981fc7636b8bd419527a3d43c54395f",
+    "bytes": 768417
+  }
+}

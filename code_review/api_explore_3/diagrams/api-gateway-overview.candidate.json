@@ -1,0 +1,1651 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "HOPE API Gateway - Runtime Path & Downstream Services",
+    "subtitle": "818 routes, 148 controllers, the global request pipeline, application services, Python microservices and data infrastructure",
+    "output": "review/api_explore_3/api-gateway-overview.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0",
+      "link_mode": "web"
+    },
+    "views": [
+      {
+        "id": "pipeline",
+        "label": "Request pipeline",
+        "focus": [
+          "g_throttle",
+          "g_cls",
+          "g_unified",
+          "g_tenantlock",
+          "g_consent",
+          "g_sse",
+          "g_origin",
+          "g_occ",
+          "i_metrics",
+          "i_ratelim",
+          "i_context",
+          "i_exception",
+          "i_maint",
+          "i_imperson",
+          "i_etag",
+          "f_all",
+          "f_envelope",
+          "f_notfound",
+          "f_consentf",
+          "route_catalog",
+          "app_services"
+        ],
+        "note": "Guards, then interceptors, then filters; controller handlers delegate into application services."
+      },
+      {
+        "id": "surface",
+        "label": "818-route surface",
+        "focus": [
+          "route_catalog",
+          "mod_clinical",
+          "mod_agent",
+          "mod_ai",
+          "mod_tenancy",
+          "app_services",
+          "ext_harness",
+          "ext_text",
+          "ext_nlp",
+          "ext_guardrail"
+        ],
+        "note": "148 controllers across 77 module files; 607 operations are in the public OpenAPI document."
+      },
+      {
+        "id": "downstream",
+        "label": "Downstream services",
+        "focus": [
+          "app_services",
+          "ext_harness",
+          "ext_text",
+          "ext_nlp",
+          "ext_guardrail",
+          "ext_temporal",
+          "ext_stt",
+          "ext_tts",
+          "ext_ai",
+          "qdrant",
+          "prisma",
+          "postgres"
+        ],
+        "note": "Proxies and clients are the verified hop. Harness owns Temporal and calls Text/Guardrail/Qdrant inside the workflow."
+      },
+      {
+        "id": "data",
+        "label": "Data & side processes",
+        "focus": [
+          "prisma",
+          "postgres",
+          "redis",
+          "bullmq",
+          "s3",
+          "vault",
+          "qdrant",
+          "prometheus",
+          "workers",
+          "checkpoint",
+          "stream",
+          "otel"
+        ],
+        "note": "Postgres is transactional, Redis backs throttling/tickets/BullMQ, S3 stores media/weights and Qdrant stores knowledge vectors."
+      },
+      {
+        "id": "boot",
+        "label": "Boot audits",
+        "focus": [
+          "main_boot",
+          "app_module",
+          "config",
+          "boot_audits",
+          "g_unified",
+          "g_consent",
+          "g_occ"
+        ],
+        "note": "Startup audits fail closed on permission, scope, consent, WebSocket and CASL drift; OCC is warn-only."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      40,
+      60
+    ],
+    "cols": 4,
+    "gapX": 20,
+    "gapY": 40,
+    "cellW": 232,
+    "cellH": 112
+  },
+  "components": [
+    {
+      "id": "main_boot",
+      "type": "backend",
+      "label": "main.ts",
+      "sublabel": "Boot: env, audits, NestFactory, prefix, ETag",
+      "tag": "boot",
+      "row": 0,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 50,
+          "label": "Bootstrap and global middleware order"
+        }
+      ]
+    },
+    {
+      "id": "app_module",
+      "type": "backend",
+      "label": "AppModule",
+      "sublabel": "Root module: common + feature module arrays",
+      "tag": "root",
+      "row": 0,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/app.module.ts",
+          "line": 620,
+          "label": "AppModule composition and providers"
+        }
+      ]
+    },
+    {
+      "id": "config",
+      "type": "backend",
+      "label": "Config",
+      "sublabel": "Zod-validated env surface and feature flags",
+      "tag": "env",
+      "row": 0,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/config/env.schema.ts",
+          "line": 1,
+          "label": "Zod env schema"
+        }
+      ]
+    },
+    {
+      "id": "boot_audits",
+      "type": "security",
+      "label": "Boot Audits",
+      "sublabel": "Startup fails on permission/scope/consent drift",
+      "tag": "audit",
+      "row": 0,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 365,
+          "label": "Audit invocation order"
+        },
+        {
+          "path": "apps/api/src/bootstrap/consent-route-coverage-audit.ts",
+          "line": 1,
+          "label": "Consent route coverage audit"
+        },
+        {
+          "path": "apps/api/src/bootstrap/occ-coverage-audit.ts",
+          "line": 1,
+          "label": "Optimistic concurrency audit"
+        }
+      ]
+    },
+    {
+      "id": "g_throttle",
+      "type": "security",
+      "label": "TieredThrottlerGuard",
+      "sublabel": "Guard 1: Redis-backed tiered rate limits",
+      "tag": "guard 1",
+      "row": 1,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/throttle/tiered-throttler.guard.ts",
+          "line": 163,
+          "label": "Tiered rate-limit guard"
+        }
+      ]
+    },
+    {
+      "id": "g_cls",
+      "type": "security",
+      "label": "ClsGuard",
+      "sublabel": "Guard 2: initializes the request CLS store",
+      "tag": "guard 2",
+      "row": 1,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/app.module.ts",
+          "line": 213,
+          "label": "nestjs-cls guard wiring"
+        }
+      ]
+    },
+    {
+      "id": "g_unified",
+      "type": "security",
+      "label": "UnifiedAuthGuard",
+      "sublabel": "Guard 3: deny-by-default JWT/API-key/svc auth",
+      "tag": "guard 3",
+      "row": 1,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/authorization/unified-auth.guard.ts",
+          "line": 377,
+          "label": "Deny-by-default authentication guard"
+        }
+      ]
+    },
+    {
+      "id": "g_tenantlock",
+      "type": "security",
+      "label": "TenantLockGuard",
+      "sublabel": "Guard 4: blocks calls while tenant is locked",
+      "tag": "guard 4",
+      "row": 1,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/guards/tenant-lock.guard.ts",
+          "line": 1,
+          "label": "Tenant lock enforcement"
+        }
+      ]
+    },
+    {
+      "id": "g_occ",
+      "type": "security",
+      "label": "RequiresIfMatchGuard",
+      "sublabel": "Guard 8: If-Match precondition on OCC writes",
+      "tag": "guard 8",
+      "row": 2,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/decorators/requiresIfMatch.guard.ts",
+          "line": 30,
+          "label": "Optimistic-concurrency guard"
+        }
+      ]
+    },
+    {
+      "id": "g_origin",
+      "type": "security",
+      "label": "OriginTenantBindingGuard",
+      "sublabel": "Guard 7: binds Origin to tenant allow-list",
+      "tag": "guard 7",
+      "row": 2,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/guards/origin-tenant-binding.guard.ts",
+          "line": 1,
+          "label": "Origin-to-tenant binding"
+        }
+      ]
+    },
+    {
+      "id": "g_sse",
+      "type": "security",
+      "label": "TenantOwnedResourceSSEGuard",
+      "sublabel": "Guard 6: tenant isolation for SSE streams",
+      "tag": "guard 6",
+      "row": 2,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/common/tenant-owned-resource-sse.guard.ts",
+          "line": 1,
+          "label": "SSE tenant isolation guard"
+        }
+      ]
+    },
+    {
+      "id": "g_consent",
+      "type": "security",
+      "label": "PatientConsentGuard",
+      "sublabel": "Guard 5: consent/ABAC choke point",
+      "tag": "guard 5",
+      "row": 2,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/guards/patient-consent.guard.ts",
+          "line": 1,
+          "label": "Patient consent and ABAC guard"
+        }
+      ]
+    },
+    {
+      "id": "i_metrics",
+      "type": "backend",
+      "label": "MetricsInterceptor",
+      "sublabel": "Records HTTP latency/status after routing",
+      "tag": "metrics",
+      "row": 3,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/interceptors/metrics.interceptor.ts",
+          "line": 1,
+          "label": "HTTP metrics interceptor"
+        }
+      ]
+    },
+    {
+      "id": "i_ratelim",
+      "type": "backend",
+      "label": "RateLimitHeadersInterceptor",
+      "sublabel": "Adds RateLimit-Limit/Remaining/Reset headers",
+      "tag": "headers",
+      "row": 3,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/throttle/rate-limit-headers.interceptor.ts",
+          "line": 1,
+          "label": "Rate-limit response headers"
+        }
+      ]
+    },
+    {
+      "id": "i_context",
+      "type": "backend",
+      "label": "ContextInterceptor",
+      "sublabel": "Enriches request context after auth",
+      "tag": "context",
+      "row": 3,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/interceptors/context.interceptor.ts",
+          "line": 1,
+          "label": "Request context enrichment"
+        }
+      ]
+    },
+    {
+      "id": "i_exception",
+      "type": "backend",
+      "label": "ExceptionInterceptor",
+      "sublabel": "Normalizes thrown errors before filters",
+      "tag": "errors",
+      "row": 3,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/interceptors/exception.interceptor.ts",
+          "line": 1,
+          "label": "Exception normalization"
+        }
+      ]
+    },
+    {
+      "id": "i_etag",
+      "type": "backend",
+      "label": "ETagInterceptor",
+      "sublabel": "Strong ETag from body.version; handles 304",
+      "tag": "ETag",
+      "row": 4,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/interceptors/etag.interceptor.ts",
+          "line": 1,
+          "label": "Strong ETag and conditional GET"
+        }
+      ]
+    },
+    {
+      "id": "i_imperson",
+      "type": "backend",
+      "label": "ImpersonationAuditInterceptor",
+      "sublabel": "Audits admin impersonation and actor identity",
+      "tag": "audit",
+      "row": 4,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/interceptors/impersonation-audit.interceptor.ts",
+          "line": 23,
+          "label": "Impersonation audit interceptor"
+        }
+      ]
+    },
+    {
+      "id": "i_maint",
+      "type": "backend",
+      "label": "MaintenanceInterceptor",
+      "sublabel": "Short-circuits with a maintenance response",
+      "tag": "maint",
+      "row": 4,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/interceptors/maintenance.interceptor.ts",
+          "line": 1,
+          "label": "Maintenance-mode short circuit"
+        }
+      ]
+    },
+    {
+      "id": "f_all",
+      "type": "security",
+      "label": "AllExceptionsFilter",
+      "sublabel": "Catch-all: logs one failure line, hides internals",
+      "tag": "filter 1",
+      "row": 5,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/filters/all-exceptions.filter.ts",
+          "line": 1,
+          "label": "Catch-all exception filter"
+        }
+      ]
+    },
+    {
+      "id": "f_envelope",
+      "type": "security",
+      "label": "HttpExceptionEnvelopeFilter",
+      "sublabel": "Normalizes HttpException into error envelope",
+      "tag": "filter 2",
+      "row": 5,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/filters/http-exception-envelope.filter.ts",
+          "line": 1,
+          "label": "Error envelope normalizer"
+        }
+      ]
+    },
+    {
+      "id": "f_notfound",
+      "type": "security",
+      "label": "DataNotFoundExceptionFilter",
+      "sublabel": "Maps DataNotFound to 404, hides existence",
+      "tag": "filter 3",
+      "row": 5,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/filters/data-not-found.filter.ts",
+          "line": 1,
+          "label": "Data-not-found mapping"
+        }
+      ]
+    },
+    {
+      "id": "f_consentf",
+      "type": "security",
+      "label": "ConsentExceptionFilter",
+      "sublabel": "Serializes consent/ABAC denials consistently",
+      "tag": "filter 4",
+      "row": 5,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/filters/consent.filter.ts",
+          "line": 1,
+          "label": "Consent exception filter"
+        }
+      ]
+    },
+    {
+      "id": "authz_guard",
+      "type": "security",
+      "label": "AuthorizationGuard",
+      "sublabel": "CASL/RBAC ability check for route permissions",
+      "tag": "authz",
+      "row": 6,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/authorization/authorization.guard.ts",
+          "line": 1,
+          "label": "CASL authorization guard"
+        }
+      ]
+    },
+    {
+      "id": "auth_svc",
+      "type": "security",
+      "label": "AuthService",
+      "sublabel": "JWT/session login, refresh, principal resolution",
+      "tag": "authn",
+      "row": 6,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/auth/auth.module.ts",
+          "line": 79,
+          "label": "Auth module"
+        }
+      ]
+    },
+    {
+      "id": "apikey_svc",
+      "type": "security",
+      "label": "ApiKeyService",
+      "sublabel": "API-key validation, scopes, rotation and audit",
+      "tag": "api key",
+      "row": 6,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/api-key/api-key.module.ts",
+          "line": 9,
+          "label": "API-key module"
+        }
+      ]
+    },
+    {
+      "id": "svcacct_svc",
+      "type": "security",
+      "label": "ServiceAccountService",
+      "sublabel": "Machine-to-machine service-account credentials",
+      "tag": "svc acct",
+      "row": 6,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/service-account/service-account.module.ts",
+          "line": 12,
+          "label": "Service-account module"
+        }
+      ]
+    },
+    {
+      "id": "consent_svc",
+      "type": "security",
+      "label": "ConsentService",
+      "sublabel": "Evaluates patient consent and ABAC policy",
+      "tag": "consent",
+      "row": 7,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/consent/consent.module.ts",
+          "line": 10,
+          "label": "Consent module"
+        }
+      ]
+    },
+    {
+      "id": "origin_reg",
+      "type": "security",
+      "label": "OriginRegistryService",
+      "sublabel": "Resolves tenant allowed origins per request",
+      "tag": "origin",
+      "row": 7,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/tenant-allowed-origin/tenant-allowed-origin.module.ts",
+          "line": 9,
+          "label": "Tenant allowed-origin module"
+        }
+      ]
+    },
+    {
+      "id": "route_catalog",
+      "type": "backend",
+      "label": "Route inventory",
+      "sublabel": "818 routes \u00b7 148 controllers \u00b7 3 surfaces",
+      "tag": "routes",
+      "row": 7,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/route-manifest.json",
+          "line": 1,
+          "label": "Authoritative 818-route manifest"
+        },
+        {
+          "path": "apps/api/openapi.json",
+          "line": 1,
+          "label": "607 public OpenAPI paths"
+        }
+      ]
+    },
+    {
+      "id": "mod_clinical",
+      "type": "backend",
+      "label": "Clinical Core",
+      "sublabel": "Consultation, history, consent, templates",
+      "tag": "clinical",
+      "row": 8,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/consultation/consultation.module.ts",
+          "line": 180,
+          "label": "Consultation and clinical services"
+        }
+      ]
+    },
+    {
+      "id": "mod_agent",
+      "type": "backend",
+      "label": "Agent & Workflows",
+      "sublabel": "Agent runtime, trajectories, workflows, prompts",
+      "tag": "agent",
+      "row": 8,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/agent/agent.module.ts",
+          "line": 67,
+          "label": "Agent runtime module"
+        }
+      ]
+    },
+    {
+      "id": "mod_ai",
+      "type": "backend",
+      "label": "AI Platform",
+      "sublabel": "Inference routing, models, providers, guardrails",
+      "tag": "AI",
+      "row": 8,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.module.ts",
+          "line": 46,
+          "label": "AI inference module"
+        }
+      ]
+    },
+    {
+      "id": "mod_tenancy",
+      "type": "backend",
+      "label": "Tenancy & Identity",
+      "sublabel": "Tenant, user, RBAC, entitlements, billing",
+      "tag": "tenancy",
+      "row": 8,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/tenant/tenant.module.ts",
+          "line": 19,
+          "label": "Tenant and identity module"
+        }
+      ]
+    },
+    {
+      "id": "app_services",
+      "type": "backend",
+      "label": "Application services",
+      "sublabel": "Domain rules, clients, persistence",
+      "tag": "services",
+      "row": 9,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/index.ts",
+          "line": 1,
+          "label": "Application-service barrel"
+        },
+        {
+          "path": "packages/applications/src/services/consultation/jobs/consultation-job.service.ts",
+          "line": 102,
+          "label": "Idempotent consultation job service"
+        }
+      ]
+    },
+    {
+      "id": "ext_harness",
+      "type": "external",
+      "label": "Harness Service",
+      "sublabel": "Workflow API on :8866",
+      "tag": "external",
+      "row": 9,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/consultation/harness/harness-gateway.service.ts",
+          "line": 475,
+          "label": "start() harness workflow"
+        },
+        {
+          "path": "apps/harness/src/harness/main.py",
+          "line": 99,
+          "label": "Harness FastAPI application"
+        }
+      ]
+    },
+    {
+      "id": "ext_text",
+      "type": "external",
+      "label": "Text Service",
+      "sublabel": "Text/NLP service proxy target (apps/text)",
+      "tag": "external",
+      "row": 9,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 1,
+          "label": "Text proxy controller"
+        }
+      ]
+    },
+    {
+      "id": "ext_nlp",
+      "type": "external",
+      "label": "NLP Service",
+      "sublabel": "NLP on :8864 (apps/nlp)",
+      "tag": "external",
+      "row": 9,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.client.ts",
+          "line": 81,
+          "label": "classifyTokens call to NLP"
+        },
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.client.ts",
+          "line": 105,
+          "label": "NLP_URL resolution"
+        }
+      ]
+    },
+    {
+      "id": "prisma",
+      "type": "database",
+      "label": "Prisma ORM",
+      "sublabel": "Tenant-scoped Prisma via TenantContextProvider",
+      "tag": "ORM",
+      "row": 10,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/database/tenant-context.provider.ts",
+          "line": 46,
+          "label": "Tenant-scoped Prisma context"
+        }
+      ]
+    },
+    {
+      "id": "ext_temporal",
+      "type": "external",
+      "label": "Temporal",
+      "sublabel": "Durable activities & signals",
+      "tag": "external",
+      "row": 10,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/harness/src/harness/temporal/workflows.py",
+          "line": 337,
+          "label": "HarnessDocWorkflow definition"
+        },
+        {
+          "path": "apps/harness/src/harness/main.py",
+          "line": 1,
+          "label": "Harness Temporal worker bootstrap"
+        }
+      ]
+    },
+    {
+      "id": "ext_guardrail",
+      "type": "external",
+      "label": "Guardrail Service",
+      "sublabel": "Safety on :8863 (apps/guardrail)",
+      "tag": "external",
+      "row": 10,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.client.ts",
+          "line": 76,
+          "label": "analyzeGuardrail call"
+        },
+        {
+          "path": "apps/api/src/modules/ai-inference/ai-inference.client.ts",
+          "line": 101,
+          "label": "GUARDRAIL_URL resolution"
+        }
+      ]
+    },
+    {
+      "id": "ext_stt",
+      "type": "external",
+      "label": "STT Service",
+      "sublabel": "Speech-to-text service on :8861 (apps/stt)",
+      "tag": "external",
+      "row": 10,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/stt-ws.gateway.ts",
+          "line": 1,
+          "label": "STT WebSocket gateway"
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Postgres",
+      "sublabel": "Primary transactional store, tenant-isolated",
+      "tag": "SQL",
+      "row": 11,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/database/src/index.ts",
+          "line": 1,
+          "label": "Database package entry"
+        }
+      ]
+    },
+    {
+      "id": "ext_tts",
+      "type": "external",
+      "label": "TTS Service",
+      "sublabel": "Text-to-speech service on :8865 (apps/tts)",
+      "tag": "external",
+      "row": 11,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/speech/tts-ws.gateway.ts",
+          "line": 1,
+          "label": "TTS WebSocket gateway"
+        }
+      ]
+    },
+    {
+      "id": "ext_ai",
+      "type": "external",
+      "label": "AI Providers",
+      "sublabel": "External LLM endpoints via routing policy",
+      "tag": "external",
+      "row": 11,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/ai-routing-policy/ai-routing-policy.module.ts",
+          "line": 1,
+          "label": "AI routing policy module"
+        }
+      ]
+    },
+    {
+      "id": "qdrant",
+      "type": "database",
+      "label": "Qdrant",
+      "sublabel": "Knowledge vectors / retrieval",
+      "tag": "vector",
+      "row": 12,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/knowledge/knowledge.controller.ts",
+          "line": 86,
+          "label": "Qdrant vector cleanup path"
+        },
+        {
+          "path": "apps/api/src/modules/consultation/harness-internal.controller.ts",
+          "line": 1,
+          "label": "Harness knowledge callbacks"
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "cloud",
+      "label": "S3 / MinIO",
+      "sublabel": "Tenant buckets for media and model artifacts",
+      "tag": "objects",
+      "row": 12,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/storage/storage.module.ts",
+          "line": 12,
+          "label": "Object-storage wiring"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "Rate limits, cache, tickets, BullMQ backing store",
+      "tag": "cache",
+      "row": 12,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/app.module.ts",
+          "line": 293,
+          "label": "Redis/BullMQ module wiring"
+        }
+      ]
+    },
+    {
+      "id": "otel",
+      "type": "backend",
+      "label": "OpenTelemetry",
+      "sublabel": "Tracing/metrics bootstrap and OTLP flush",
+      "tag": "telemetry",
+      "row": 12,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/instrumentation.ts",
+          "line": 1,
+          "label": "OTel instrumentation bootstrap"
+        }
+      ]
+    },
+    {
+      "id": "vault",
+      "type": "security",
+      "label": "Vault / Secrets",
+      "sublabel": "Vault-backed secrets wired into Prisma",
+      "tag": "secrets",
+      "row": 13,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/vault-prisma.module.ts",
+          "line": 1,
+          "label": "Vault/Prisma module"
+        }
+      ]
+    },
+    {
+      "id": "mod_storage",
+      "type": "backend",
+      "label": "Storage & Media",
+      "sublabel": "Tenant buckets, object storage, media keys",
+      "tag": "storage",
+      "row": 13,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/storage/storage.module.ts",
+          "line": 12,
+          "label": "Storage module"
+        }
+      ]
+    },
+    {
+      "id": "bullmq",
+      "type": "messagebus",
+      "label": "BullMQ",
+      "sublabel": "Queue producers/processors for async jobs",
+      "tag": "queue",
+      "row": 13,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/webhook/webhook-delivery.processor.ts",
+          "line": 188,
+          "label": "Representative BullMQ worker"
+        }
+      ]
+    },
+    {
+      "id": "mod_ops",
+      "type": "backend",
+      "label": "Ops & Observability",
+      "sublabel": "Health, metrics, audit, webhooks, notifications",
+      "tag": "ops",
+      "row": 13,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/health/health.module.ts",
+          "line": 19,
+          "label": "Health and ops module"
+        }
+      ]
+    },
+    {
+      "id": "workers",
+      "type": "backend",
+      "label": "Background Workers",
+      "sublabel": "Rotation, reapers, retention, outbox drains",
+      "tag": "scheduler",
+      "row": 14,
+      "col": 0,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/workers/scheduled-rotation.processor.ts",
+          "line": 63,
+          "label": "Scheduled rotation processor"
+        }
+      ]
+    },
+    {
+      "id": "checkpoint",
+      "type": "backend",
+      "label": "Checkpoint Worker",
+      "sublabel": "Separate tenant export/restore worker",
+      "tag": "worker",
+      "row": 14,
+      "col": 1,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/checkpoint-worker.main.ts",
+          "line": 1,
+          "label": "Checkpoint worker bootstrap"
+        }
+      ]
+    },
+    {
+      "id": "prometheus",
+      "type": "cloud",
+      "label": "Prometheus",
+      "sublabel": "Metrics scrape /metrics",
+      "tag": "observability",
+      "row": 14,
+      "col": 2,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/observability/metrics.ts",
+          "line": 1,
+          "label": "API-process Prometheus metrics"
+        },
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 50,
+          "label": "Global prefix excludes /metrics"
+        }
+      ]
+    },
+    {
+      "id": "stream",
+      "type": "backend",
+      "label": "Streaming Gateways",
+      "sublabel": "STT/TTS WebSocket gateways and text proxy",
+      "tag": "stream",
+      "row": 14,
+      "col": 3,
+      "size": [
+        222,
+        88
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/streaming.module.ts",
+          "line": 141,
+          "label": "Streaming module"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Bootstrap & configuration",
+      "wraps": [
+        "main_boot",
+        "app_module",
+        "config",
+        "boot_audits"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Global guards (order 1-8)",
+      "wraps": [
+        "g_throttle",
+        "g_cls",
+        "g_unified",
+        "g_tenantlock",
+        "g_consent",
+        "g_sse",
+        "g_origin",
+        "g_occ"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Global interceptors",
+      "wraps": [
+        "i_metrics",
+        "i_ratelim",
+        "i_context",
+        "i_exception",
+        "i_maint",
+        "i_imperson",
+        "i_etag"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Global exception filters (last wins)",
+      "wraps": [
+        "f_all",
+        "f_envelope",
+        "f_notfound",
+        "f_consentf"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "AuthN / AuthZ & tenancy services",
+      "wraps": [
+        "authz_guard",
+        "auth_svc",
+        "apikey_svc",
+        "svcacct_svc",
+        "consent_svc",
+        "origin_reg"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Route surface & domain modules",
+      "wraps": [
+        "route_catalog",
+        "mod_clinical",
+        "mod_agent",
+        "mod_ai",
+        "mod_tenancy"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Application-service layer",
+      "wraps": [
+        "app_services"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Downstream microservices",
+      "wraps": [
+        "ext_harness",
+        "ext_text",
+        "ext_nlp",
+        "ext_temporal",
+        "ext_guardrail",
+        "ext_stt",
+        "ext_tts",
+        "ext_ai"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Application persistence",
+      "wraps": [
+        "prisma",
+        "postgres"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Data, storage & background platform",
+      "wraps": [
+        "qdrant",
+        "s3",
+        "redis",
+        "otel",
+        "vault",
+        "mod_storage",
+        "bullmq",
+        "mod_ops",
+        "workers",
+        "checkpoint",
+        "prometheus",
+        "stream"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "k0",
+      "from": "main_boot",
+      "to": "app_module"
+    },
+    {
+      "id": "k1",
+      "from": "app_module",
+      "to": "config"
+    },
+    {
+      "id": "k2",
+      "from": "boot_audits",
+      "to": "g_unified"
+    },
+    {
+      "id": "gp0",
+      "from": "g_throttle",
+      "to": "g_cls"
+    },
+    {
+      "id": "gp1",
+      "from": "g_cls",
+      "to": "g_unified"
+    },
+    {
+      "id": "gp2",
+      "from": "g_unified",
+      "to": "g_tenantlock"
+    },
+    {
+      "id": "gp3",
+      "from": "g_tenantlock",
+      "to": "g_consent"
+    },
+    {
+      "id": "gp4",
+      "from": "g_consent",
+      "to": "g_sse"
+    },
+    {
+      "id": "gp5",
+      "from": "g_sse",
+      "to": "g_origin"
+    },
+    {
+      "id": "gp6",
+      "from": "g_origin",
+      "to": "g_occ"
+    },
+    {
+      "id": "ip0",
+      "from": "i_metrics",
+      "to": "i_ratelim"
+    },
+    {
+      "id": "ip1",
+      "from": "i_ratelim",
+      "to": "i_context"
+    },
+    {
+      "id": "ip2",
+      "from": "i_context",
+      "to": "i_exception"
+    },
+    {
+      "id": "ip3",
+      "from": "i_exception",
+      "to": "i_maint"
+    },
+    {
+      "id": "ip4",
+      "from": "i_maint",
+      "to": "i_imperson"
+    },
+    {
+      "id": "ip5",
+      "from": "i_imperson",
+      "to": "i_etag"
+    },
+    {
+      "id": "fp0",
+      "from": "f_all",
+      "to": "f_envelope"
+    },
+    {
+      "id": "fp1",
+      "from": "f_envelope",
+      "to": "f_notfound"
+    },
+    {
+      "id": "fp2",
+      "from": "f_notfound",
+      "to": "f_consentf"
+    },
+    {
+      "id": "e0",
+      "from": "mod_clinical",
+      "to": "app_services"
+    },
+    {
+      "id": "e1",
+      "from": "mod_ai",
+      "to": "ext_nlp"
+    },
+    {
+      "id": "e2",
+      "from": "app_services",
+      "to": "ext_harness"
+    },
+    {
+      "id": "e3",
+      "from": "app_services",
+      "to": "prisma"
+    },
+    {
+      "id": "e4",
+      "from": "ext_harness",
+      "to": "ext_temporal"
+    },
+    {
+      "id": "e5",
+      "from": "ext_harness",
+      "to": "ext_text"
+    },
+    {
+      "id": "e6",
+      "from": "prisma",
+      "to": "postgres"
+    },
+    {
+      "id": "e7",
+      "from": "mod_storage",
+      "to": "s3"
+    },
+    {
+      "id": "e8",
+      "from": "bullmq",
+      "to": "redis"
+    },
+    {
+      "id": "e9",
+      "from": "mod_ops",
+      "to": "prometheus"
+    },
+    {
+      "id": "e10",
+      "from": "workers",
+      "to": "checkpoint"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Request lifecycle (order is load-bearing)",
+      "items": [
+        "Guards run before interceptors: 429/401/403 never reach MetricsInterceptor; an Express response middleware counts them instead.",
+        "1 TieredThrottlerGuard -> 2 ClsGuard -> 3 UnifiedAuthGuard -> 4 TenantLockGuard -> 5 PatientConsentGuard -> 6 TenantOwnedResourceSSEGuard -> 7 OriginTenantBindingGuard -> 8 RequiresIfMatchGuard.",
+        "Interceptors: Metrics -> RateLimitHeaders -> Context -> Exception -> Maintenance -> ImpersonationAudit -> ETag (ETag is registered from main.ts).",
+        "Filters: AllExceptions -> HttpExceptionEnvelope -> DataNotFound -> Consent; Nest consults the LAST registered matching filter first."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Identity, authz and tenancy",
+      "items": [
+        "UnifiedAuthGuard is deny-by-default and accepts JWT, API key, service account and stream tickets; unknown credential classes fail closed.",
+        "AuthorizationGuard applies CASL/RBAC abilities at controller/route level; PatientConsentGuard adds patient-scoped consent/ABAC.",
+        "Tenant isolation: CLS store -> TenantContextProvider/Prisma tenant scope; OriginTenantBindingGuard binds origins; the SSE guard checks resource ownership.",
+        "Errors are shaped as 404-over-403 where existence must not leak."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "818 routes and the controller layer",
+      "items": [
+        "The route manifest is the inventory: 818 route-methods across 148 controllers and 77 module files. 607 operations are in the public OpenAPI document.",
+        "Clinical & Consultation: 166 routes. Agentic & Workflows: 165. AI Models & Guardrails: 135. Speech & Audio: 40. Platform Admin & Tenancy: 312.",
+        "Controllers parse input and delegate; application services in packages/applications own domain rules, clients and persistence.",
+        "Every route-method appears in the companion explorer with controller/service line numbers, input/output and client examples."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Downstream service matrix",
+      "items": [
+        "STT :8861, Text :8862, Guardrail :8863, NLP :8864, TTS :8865, Harness :8866. Proxy/gateway controllers and ai-inference.client.ts provide verified URL evidence.",
+        "Harness owns durable HarnessDocWorkflow execution in Temporal; the gateway only speaks HTTP to Harness, so Temporal concerns do not leak into NestJS.",
+        "Harness workflow calls Text for generation, Guardrail for safety gates and Qdrant for retrieval. These are inferred-chain hops when the verified upstream is Harness.",
+        "External AI providers are reached through routing policy and provider connections, not through the Python text service."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Data, workers and side processes",
+      "items": [
+        "Prisma is tenant-scoped through TenantContextProvider; Postgres is the transactional store; Redis backs throttling, tickets and BullMQ.",
+        "BullMQ jobs cover consultation summaries/entities, DNA reports, RAG ingest, webhook delivery, AI usage outbox, fact ledger, checkpoints and model download.",
+        "The checkpoint worker is a separate process for tenant export/restore; the API process keeps only producers.",
+        "S3/MinIO stores tenant media and model artifacts; Vault supplies secrets; Qdrant stores knowledge vectors; Prometheus scrapes /metrics."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Evidence and how to use this with the explorer",
+      "items": [
+        "All source links are pinned to 8cb2e5e8e6bb. Open the companion explorer at review/api_explore_3/api-gateway-explorer.html for all 818 endpoints.",
+        "Explorer boxes carry code file/function/line, request input/output, curl/fetch examples and a verified/inferred/inferred-chain confidence label.",
+        "The deep dive diagram remains pinned to its original revision in review/api_explore/diagrams; this overview is the new HEAD snapshot.",
+        "Static analysis is not runtime tracing: queues, Temporal activities and Python-internal calls can be wider than the gateway code shows."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2ab04f27-c59d-4bd1-8bb3-fc7713454306",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/updated-streaming-transcribe.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/streaming-transcribe.html",
+  "specification": {
+    "sha256": "703049b7fb1850292bdf084f65d34223e3f6de92caa11a59d63205ea638fdfb7",
+    "bytes": 4564
+  },
+  "artifact": {
+    "sha256": "3f6e2671dbca349b6258fc6983f3ab614b0122034d2dd36ba7fb03dc61fb2ee4",
+    "bytes": 760716
+  }
+}

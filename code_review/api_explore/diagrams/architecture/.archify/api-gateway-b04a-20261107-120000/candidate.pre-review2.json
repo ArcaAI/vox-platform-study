@@ -1,0 +1,654 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B04a Streaming, Speech & Media (Pilot)",
+    "subtitle": "Representative endpoint flows: API Endpoint -> Controller/Gateway -> Service -> Downstream Microservice/API (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b04a-20261107-120000/api-gateway-b04a-streaming-speech-media-pilot.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0",
+      "link_mode": "web"
+    },
+    "views": [
+      {
+        "id": "flow",
+        "label": "Endpoint to downstream flow",
+        "focus": [
+          "ep_transcribe",
+          "ep_stream",
+          "ep_text",
+          "ep_speech",
+          "ep_media",
+          "ctrl_transcription",
+          "ctrl_text",
+          "ctrl_speech",
+          "ctrl_media",
+          "svc_stt_jobs",
+          "svc_text_enrich",
+          "svc_media",
+          "ext_stt",
+          "ext_text",
+          "ext_tts",
+          "infra_blob"
+        ],
+        "note": "Pilot batch: representative streaming/speech/media flows with real controller/service/microservice evidence."
+      },
+      {
+        "id": "downstream",
+        "label": "Downstream services",
+        "focus": [
+          "ctrl_transcription",
+          "gw_stt",
+          "ctrl_text",
+          "ctrl_speech",
+          "gw_tts",
+          "ctrl_media",
+          "svc_stt_jobs",
+          "svc_text_enrich",
+          "svc_media",
+          "ext_stt",
+          "ext_text",
+          "ext_tts",
+          "infra_blob"
+        ],
+        "note": "TEXT :8862, STT :8861, TTS :8865 and tenant blob/object storage."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      40,
+      60
+    ],
+    "cols": 4,
+    "gapX": 90,
+    "gapY": 48,
+    "cellW": 340,
+    "cellH": 128
+  },
+  "components": [
+    {
+      "id": "ep_transcribe",
+      "type": "frontend",
+      "label": "POST /audio/transcription-jobs/transcribe",
+      "sublabel": "Batch upload; owner/ASR resolve, queue STT job",
+      "tag": "endpoint",
+      "row": 0,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/transcription-job.controller.ts",
+          "line": 642,
+          "label": "TranscriptionJobController.transcribeFile()"
+        }
+      ]
+    },
+    {
+      "id": "ep_stream",
+      "type": "frontend",
+      "label": "POST /audio/transcription-jobs/stream/ses\u2026",
+      "sublabel": "Create live STT WS session/ticket",
+      "tag": "endpoint",
+      "row": 1,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/transcription-job.controller.ts",
+          "line": 932,
+          "label": "TranscriptionJobController.createStreamSession()"
+        }
+      ]
+    },
+    {
+      "id": "ep_text",
+      "type": "frontend",
+      "label": "POST /text-generations/generate",
+      "sublabel": "Business text gen proxy; no raw model pinning",
+      "tag": "endpoint",
+      "row": 2,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 799,
+          "label": "TextProxyController.generate()"
+        }
+      ]
+    },
+    {
+      "id": "ep_speech",
+      "type": "frontend",
+      "label": "POST /speech/synthesize",
+      "sublabel": "TTS proxy; resolve agent, quota, stream audio",
+      "tag": "endpoint",
+      "row": 3,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 269,
+          "label": "SpeechProxyController.synthesize()"
+        }
+      ]
+    },
+    {
+      "id": "ep_media",
+      "type": "frontend",
+      "label": "POST/GET /media (+/:mediaId)",
+      "sublabel": "Upload/reference media metadata (no bytes/URL)",
+      "tag": "endpoint",
+      "row": 4,
+      "col": 0,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/media/media.controller.ts",
+          "line": 82,
+          "label": "MediaController.upload()"
+        },
+        {
+          "path": "apps/api/src/modules/media/media.controller.ts",
+          "line": 106,
+          "label": "MediaController.getReference()"
+        }
+      ]
+    },
+    {
+      "id": "ctrl_transcription",
+      "type": "backend",
+      "label": "TranscriptionJobController",
+      "sublabel": "Scopes, limits, ASR resolve, upload/dispatch",
+      "tag": "controller",
+      "row": 0,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/transcription-job.controller.ts",
+          "line": 124,
+          "label": "TranscriptionJobController class"
+        }
+      ]
+    },
+    {
+      "id": "gw_stt",
+      "type": "backend",
+      "label": "SttWsGateway",
+      "sublabel": "/ws/stt/stream bridge, reconnect/resume",
+      "tag": "gateway",
+      "row": 1,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/stt-ws.gateway.ts",
+          "line": 486,
+          "label": "SttWsGateway class (WS handshake/session bridge)"
+        }
+      ]
+    },
+    {
+      "id": "ctrl_text",
+      "type": "backend",
+      "label": "TextProxyController",
+      "sublabel": "Select model, enrich/override, proxy to TEXT",
+      "tag": "controller",
+      "row": 2,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 331,
+          "label": "TextProxyController class"
+        }
+      ]
+    },
+    {
+      "id": "ctrl_speech",
+      "type": "backend",
+      "label": "SpeechProxyController",
+      "sublabel": "Inject TTS spec, preflight quota, proxy TTS",
+      "tag": "controller",
+      "row": 3,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 89,
+          "label": "SpeechProxyController class"
+        }
+      ]
+    },
+    {
+      "id": "gw_tts",
+      "type": "backend",
+      "label": "TtsWsGateway",
+      "sublabel": "Duplex /ws/tts/stream path",
+      "tag": "gateway",
+      "row": 3,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/speech/tts-ws.gateway.ts",
+          "line": 148,
+          "label": "TtsWsGateway class (/ws/tts/stream)"
+        }
+      ]
+    },
+    {
+      "id": "ctrl_media",
+      "type": "backend",
+      "label": "MediaController",
+      "sublabel": "MIME/category validation, media service",
+      "tag": "controller",
+      "row": 4,
+      "col": 1,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/media/media.controller.ts",
+          "line": 51,
+          "label": "MediaController class"
+        }
+      ]
+    },
+    {
+      "id": "svc_stt_jobs",
+      "type": "backend",
+      "label": "STT application services",
+      "sublabel": "Job/session/realtime STT services",
+      "tag": "service",
+      "row": 0,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/stt/job/transcriptionJob.service.ts",
+          "line": 49,
+          "label": "TranscriptionJobService class"
+        },
+        {
+          "path": "packages/applications/src/services/stt/streaming/streamingSession.service.ts",
+          "line": 75,
+          "label": "StreamingSessionService class"
+        },
+        {
+          "path": "packages/applications/src/services/stt/realtime/transcriptionRealtime.service.ts",
+          "line": 31,
+          "label": "TranscriptionRealtimeService class"
+        }
+      ]
+    },
+    {
+      "id": "svc_text_enrich",
+      "type": "backend",
+      "label": "Text request enrichment / agent resolution",
+      "sublabel": "Text enrichment + TTS agent resolver",
+      "tag": "service",
+      "row": 2,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 417,
+          "label": "TextRequestEnrichmentService construction/use i\u2026"
+        },
+        {
+          "path": "packages/applications/src/services/agent/tts-agent-resolver.service.ts",
+          "line": 95,
+          "label": "TtsAgentResolverService class (used by speech p\u2026"
+        }
+      ]
+    },
+    {
+      "id": "svc_media",
+      "type": "backend",
+      "label": "MediaUploadService",
+      "sublabel": "Tenant media store; returns safe metadata",
+      "tag": "service",
+      "row": 4,
+      "col": 2,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/media-upload/media-upload.service.ts",
+          "line": 71,
+          "label": "MediaUploadService class"
+        }
+      ]
+    },
+    {
+      "id": "ext_stt",
+      "type": "external",
+      "label": "STT microservice (apps/stt)",
+      "sublabel": "apps/stt via STT_URL (~8861)",
+      "tag": "microservice",
+      "row": 0,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/services/stt/streaming/streamingSession.service.ts",
+          "line": 119,
+          "label": "STT base URL resolution (STT_URL fallback local\u2026"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/stt-ws.gateway.ts",
+          "line": 486,
+          "label": "STT WS gateway bridges live session to upstream\u2026"
+        }
+      ]
+    },
+    {
+      "id": "ext_text",
+      "type": "external",
+      "label": "Text microservice (apps/text)",
+      "sublabel": "apps/text via TEXT_URL (~8862)",
+      "tag": "microservice",
+      "row": 2,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 513,
+          "label": "TextProxyController.getTextBaseUrl() via TEXT_U\u2026"
+        },
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 858,
+          "label": "postTextGenerate() proxies POST /api/v1/generat\u2026"
+        }
+      ]
+    },
+    {
+      "id": "ext_tts",
+      "type": "external",
+      "label": "TTS microservice (apps/tts)",
+      "sublabel": "apps/tts via TTS_URL (~8865)",
+      "tag": "microservice",
+      "row": 3,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 152,
+          "label": "SpeechProxyController.getTtsBaseUrl() via TTS_U\u2026"
+        },
+        {
+          "path": "apps/api/src/modules/speech/speech-proxy.controller.ts",
+          "line": 269,
+          "label": "synthesize() proxies to /api/v1/audio/speech an\u2026"
+        }
+      ]
+    },
+    {
+      "id": "infra_blob",
+      "type": "cloud",
+      "label": "Tenant blob/object storage",
+      "sublabel": "Tenant audio/media object storage",
+      "tag": "storage",
+      "row": 4,
+      "col": 3,
+      "size": [
+        330,
+        116
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/transcription-job.controller.ts",
+          "line": 749,
+          "label": "transcribeFileOnce resolves tenant audio bucket\u2026"
+        },
+        {
+          "path": "apps/api/src/modules/media/media.controller.ts",
+          "line": 91,
+          "label": "upload() delegates bytes to IMediaUploadService\u2026"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "API endpoints (left)",
+      "wraps": [
+        "ep_transcribe",
+        "ep_stream",
+        "ep_text",
+        "ep_speech",
+        "ep_media"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Controllers / gateways",
+      "wraps": [
+        "ctrl_transcription",
+        "gw_stt",
+        "ctrl_text",
+        "ctrl_speech",
+        "gw_tts",
+        "ctrl_media"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Application services",
+      "wraps": [
+        "svc_stt_jobs",
+        "svc_text_enrich",
+        "svc_media"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Downstream microservices / APIs",
+      "wraps": [
+        "ext_stt",
+        "ext_text",
+        "ext_tts",
+        "infra_blob"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "ep_transcribe",
+      "to": "ctrl_transcription",
+      "label": "multipart"
+    },
+    {
+      "id": "c2",
+      "from": "ep_stream",
+      "to": "ctrl_transcription",
+      "label": "session"
+    },
+    {
+      "id": "c3",
+      "from": "ep_text",
+      "to": "ctrl_text",
+      "label": "POST"
+    },
+    {
+      "id": "c4",
+      "from": "ep_speech",
+      "to": "ctrl_speech",
+      "label": "POST"
+    },
+    {
+      "id": "c5",
+      "from": "ep_media",
+      "to": "ctrl_media",
+      "label": "POST/GET"
+    },
+    {
+      "id": "c6",
+      "from": "ctrl_transcription",
+      "to": "svc_stt_jobs",
+      "label": "dispatch"
+    },
+    {
+      "id": "c7",
+      "from": "ctrl_transcription",
+      "to": "gw_stt",
+      "label": "session"
+    },
+    {
+      "id": "c8",
+      "from": "gw_stt",
+      "to": "ext_stt",
+      "label": "WS audio"
+    },
+    {
+      "id": "c9",
+      "from": "svc_stt_jobs",
+      "to": "ext_stt",
+      "label": "worker"
+    },
+    {
+      "id": "c10",
+      "from": "ctrl_text",
+      "to": "svc_text_enrich",
+      "label": "enrich"
+    },
+    {
+      "id": "c11",
+      "from": "ctrl_text",
+      "to": "ext_text",
+      "label": "generate"
+    },
+    {
+      "id": "c12",
+      "from": "ctrl_speech",
+      "to": "svc_text_enrich",
+      "label": "resolve"
+    },
+    {
+      "id": "c13",
+      "from": "ctrl_speech",
+      "to": "ext_tts",
+      "label": "synthesize"
+    },
+    {
+      "id": "c14",
+      "from": "gw_tts",
+      "to": "ext_tts",
+      "label": "WS stream"
+    },
+    {
+      "id": "c15",
+      "from": "ctrl_media",
+      "to": "svc_media",
+      "label": "delegate"
+    },
+    {
+      "id": "c16",
+      "from": "svc_media",
+      "to": "infra_blob",
+      "label": "store"
+    },
+    {
+      "id": "c17",
+      "from": "ctrl_transcription",
+      "to": "infra_blob",
+      "label": "upload"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "B04a pilot scope and batch status",
+      "items": [
+        "Pilot batch for streaming/speech/media gateway flows (B04 split). Covers representative endpoints from streaming, speech, and media modules; not full 818-route coverage.",
+        "Left side = API endpoints (method+path). Middle = controllers/gateways. Right middle = services. Right = downstream microservices/APIs/storage.",
+        "Full B04 follow-up should cover storage, storage-access-key, voice-profile, admin-transcription, text task/stream routes, and all remaining endpoint-level nodes with reconciled counts from inventory/catalog."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Example Input / Output (per key node)",
+      "items": [
+        "ep_transcribe (POST /audio/transcription-jobs/transcribe): Input = multipart/form-data `file` (audio) + fields from TranscribeFileRequest (e.g., consultationId?, agentSlug?, language?, clinicianUserId? for machine callers). Output = BatchTranscribeResponse {id, status, sseUrl, audioUri, agentSlug?, agentVersionId?, warnings?}.",
+        "ep_stream (POST /audio/transcription-jobs/stream/session): Input = CreateStreamSessionRequest (consultationId or workflowSlug, agentSlug?, language/languageMode?, context?). Output = StreamSessionResponse (session/ticket/connection metadata; warnings? when optional ASR stages are degraded off).",
+        "ep_text (POST /text-generations/generate): Input = TextGenerateRequest {prompt, system_prompt? (deprecated), agentSlug?, temperature?, max_tokens?, top_p?, frequency_penalty?, presence_penalty?, stream?, response_format?, context?, reasoning?}; raw provider/model pinning is refused on business plane. Output = sync JSON from TEXT or gateway streaming ack/task mapping depending on stream mode.",
+        "ep_speech (POST /speech/synthesize): Input = SpeechSynthesizeRequest {input, voice?, response_format? pcm|wav|mp3, speed?, stream_format? audio|sse, model?, agentSlug?}; gateway injects resolved_spec/provider_overrides. Output = streamed audio bytes or SSE; headers carry TTS metadata (provider, characters, audio seconds where available).",
+        "ep_media (POST /media): Input = multipart/form-data `file` (attachment MIME or audio MIME allow-list). Output = {mediaId, mime, sizeBytes, sha256}. GET /media/:mediaId returns same reference metadata, never bytes/URL/location."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Evidence and verification notes",
+      "items": [
+        "Repository: https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0 (repo root /Users/apple/repos/VOX/project-hope). Sources are repo-relative paths/lines/function labels verified against local tree during batch authoring.",
+        "Downstream service URLs are config-driven (TEXT_URL, TTS_URL, STT_URL) with local default patterns seen in code/tests (e.g., 8862/8865/8861); runtime values depend on deployment config.",
+        "TtsWsGateway exact handler lines should be rechecked in a follow-up pass if deeper WS method-level evidence is required; class/file source included.",
+        "Limitations: representative endpoint nodes (not every route in B04 scope), example I/O summarized from DTOs/controller contracts and placed in cards because architecture node schema has no dedicated example fields; Archify passport still exposes sources/relationships per node."
+      ]
+    }
+  ]
+}

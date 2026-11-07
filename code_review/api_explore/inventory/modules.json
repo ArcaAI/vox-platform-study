@@ -1,0 +1,1084 @@
+[
+ {
+  "dir": "__tests__",
+  "module_class": null,
+  "module_file": "",
+  "module_line": null,
+  "controllers": 0,
+  "controller_files": [],
+  "services": 0,
+  "test_files": 1,
+  "routes": 0
+ },
+ {
+  "dir": "admin-rate-limit",
+  "module_class": "RateLimitAdminModule",
+  "module_file": "src/modules/admin-rate-limit/rate-limit-admin.module.ts",
+  "module_line": 21,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/admin-rate-limit/rate-limit-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 13
+ },
+ {
+  "dir": "admin-usage",
+  "module_class": "AdminUsageApiModule",
+  "module_file": "src/modules/admin-usage/admin-usage.module.ts",
+  "module_line": 21,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/admin-usage/admin-usage.controller.ts",
+   "src/modules/admin-usage/my-usage.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 6
+ },
+ {
+  "dir": "agent",
+  "module_class": "AgentModule",
+  "module_file": "src/modules/agent/agent.module.ts",
+  "module_line": 67,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/agent/agent.controller.ts"
+  ],
+  "services": 1,
+  "test_files": 18,
+  "routes": 11
+ },
+ {
+  "dir": "agent-admin",
+  "module_class": "AgentAdminModule",
+  "module_file": "src/modules/agent-admin/agent-admin.module.ts",
+  "module_line": 16,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/agent-admin/agent-assignment-admin.controller.ts",
+   "src/modules/agent-admin/agent-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 5,
+  "routes": 25
+ },
+ {
+  "dir": "agent-promotion",
+  "module_class": "AgentPromotionModule",
+  "module_file": "src/modules/agent-promotion/agent-promotion.module.ts",
+  "module_line": 10,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/agent-promotion/agent-promotion.controller.ts",
+   "src/modules/agent-promotion/agent-promote-to-system.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 4
+ },
+ {
+  "dir": "agent-trajectory",
+  "module_class": "AgentTrajectoryModule",
+  "module_file": "src/modules/agent-trajectory/agent-trajectory.module.ts",
+  "module_line": 16,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/agent-trajectory/agent-trajectory.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 3
+ },
+ {
+  "dir": "agentic-admin",
+  "module_class": "AgenticAdminModule",
+  "module_file": "src/modules/agentic-admin/agentic-admin.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/agentic-admin/agentic-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 1
+ },
+ {
+  "dir": "ai-inference",
+  "module_class": "AiInferenceModule",
+  "module_file": "src/modules/ai-inference/ai-inference.module.ts",
+  "module_line": 46,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/ai-inference/safety-check.controller.ts",
+   "src/modules/ai-inference/ai-inference.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 6,
+  "routes": 5
+ },
+ {
+  "dir": "ai-model",
+  "module_class": "AiModelModule",
+  "module_file": "src/modules/ai-model/ai-model.module.ts",
+  "module_line": 61,
+  "controllers": 5,
+  "controller_files": [
+   "src/modules/ai-model/ai-model-catalogue.controller.ts",
+   "src/modules/ai-model/ai-model-jobs.controller.ts",
+   "src/modules/ai-model/ai-model-registration.controller.ts",
+   "src/modules/ai-model/ai-model-discovery.controller.ts",
+   "src/modules/ai-model/ai-model-admin.controller.ts"
+  ],
+  "services": 1,
+  "test_files": 7,
+  "routes": 26
+ },
+ {
+  "dir": "ai-provider-connection",
+  "module_class": "AiProviderConnectionModule",
+  "module_file": "src/modules/ai-provider-connection/ai-provider-connection.module.ts",
+  "module_line": 19,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/ai-provider-connection/ai-provider-connection.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 8
+ },
+ {
+  "dir": "ai-routing-policy",
+  "module_class": "AiRoutingPolicyModule",
+  "module_file": "src/modules/ai-routing-policy/ai-routing-policy.module.ts",
+  "module_line": 16,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 11
+ },
+ {
+  "dir": "ai-service-admin",
+  "module_class": "AiServiceAdminModule",
+  "module_file": "src/modules/ai-service-admin/ai-service-admin.module.ts",
+  "module_line": 25,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/ai-service-admin/ai-service-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 5,
+  "routes": 9
+ },
+ {
+  "dir": "api-key",
+  "module_class": "ApiKeyModule",
+  "module_file": "src/modules/api-key/api-key.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/api-key/api-key.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 9
+ },
+ {
+  "dir": "audit-log",
+  "module_class": "AuditLogModule",
+  "module_file": "src/modules/audit-log/audit-log.module.ts",
+  "module_line": 21,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/audit-log/audit-log.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 6
+ },
+ {
+  "dir": "auth",
+  "module_class": "StreamTicketModule",
+  "module_file": "src/modules/auth/stream-ticket.module.ts",
+  "module_line": 21,
+  "controllers": 4,
+  "controller_files": [
+   "src/modules/auth/auth.controller.ts",
+   "src/modules/auth/auth-sso.controller.ts",
+   "src/modules/auth/register.controller.ts",
+   "src/modules/auth/admin-impersonation.controller.ts"
+  ],
+  "services": 1,
+  "test_files": 17,
+  "routes": 15
+ },
+ {
+  "dir": "billing",
+  "module_class": "BillingApiModule",
+  "module_file": "src/modules/billing/billing.module.ts",
+  "module_line": 17,
+  "controllers": 3,
+  "controller_files": [
+   "src/modules/billing/my-billing.controller.ts",
+   "src/modules/billing/rate-card-admin.controller.ts",
+   "src/modules/billing/billing-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 13
+ },
+ {
+  "dir": "changelog",
+  "module_class": "ChangelogModule",
+  "module_file": "src/modules/changelog/changelog.module.ts",
+  "module_line": 10,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/changelog/changelog-admin.controller.ts",
+   "src/modules/changelog/changelog.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 7
+ },
+ {
+  "dir": "consent",
+  "module_class": "ConsentModule",
+  "module_file": "src/modules/consent/consent.module.ts",
+  "module_line": 10,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/consent/consent.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 3
+ },
+ {
+  "dir": "consultation",
+  "module_class": "ConsultationModule",
+  "module_file": "src/modules/consultation/consultation.module.ts",
+  "module_line": 180,
+  "controllers": 11,
+  "controller_files": [
+   "src/modules/consultation/admin-consultation.controller.ts",
+   "src/modules/consultation/harness-internal.controller.ts",
+   "src/modules/consultation/consultation-read-internal.controller.ts",
+   "src/modules/consultation/consultation-feedback.controller.ts",
+   "src/modules/consultation/consultation-lifecycle-events.controller.ts",
+   "src/modules/consultation/consultation-attachment.controller.ts",
+   "src/modules/consultation/consent-internal.controller.ts",
+   "src/modules/consultation/consultation.controller.ts",
+   "src/modules/consultation/consultation-job.controller.ts",
+   "src/modules/consultation/consultation-telemetry.controller.ts",
+   "src/modules/consultation/admin-feedback-rollup.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 38,
+  "routes": 108
+ },
+ {
+  "dir": "consultation-context-schema",
+  "module_class": "ConsultationContextSchemaModule",
+  "module_file": "src/modules/consultation-context-schema/consultation-context-schema.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/consultation-context-schema/consultation-context-schema.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 9
+ },
+ {
+  "dir": "consultation-history",
+  "module_class": "ConsultationHistoryModule",
+  "module_file": "src/modules/consultation-history/consultation-history.module.ts",
+  "module_line": 14,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/consultation-history/admin-consultation-history.controller.ts",
+   "src/modules/consultation-history/consultation-history.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 7
+ },
+ {
+  "dir": "department",
+  "module_class": "DepartmentModule",
+  "module_file": "src/modules/department/department.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/department/department.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 10
+ },
+ {
+  "dir": "dna-writing-style",
+  "module_class": "DnaWritingStyleModule",
+  "module_file": "src/modules/dna-writing-style/dna-writing-style.module.ts",
+  "module_line": 17,
+  "controllers": 4,
+  "controller_files": [
+   "src/modules/dna-writing-style/dna-writing-style.controller.ts",
+   "src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts",
+   "src/modules/dna-writing-style/dna-writing-style-admin.controller.ts",
+   "src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 6,
+  "routes": 31
+ },
+ {
+  "dir": "document-template",
+  "module_class": "DocumentTemplateModule",
+  "module_file": "src/modules/document-template/document-template.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/document-template/document-template.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 0,
+  "routes": 8
+ },
+ {
+  "dir": "entitlements",
+  "module_class": "EntitlementsApiModule",
+  "module_file": "src/modules/entitlements/entitlements.module.ts",
+  "module_line": 17,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/entitlements/entitlements-admin.controller.ts",
+   "src/modules/entitlements/my-entitlements.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 12
+ },
+ {
+  "dir": "global-setting",
+  "module_class": "GlobalSettingModule",
+  "module_file": "src/modules/global-setting/global-setting.module.ts",
+  "module_line": 13,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/global-setting/global-setting.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 8
+ },
+ {
+  "dir": "governed-prompt",
+  "module_class": "GovernedPromptModule",
+  "module_file": "src/modules/governed-prompt/governed-prompt.module.ts",
+  "module_line": 13,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/governed-prompt/governed-prompt-internal.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 1
+ },
+ {
+  "dir": "guardrail-availability",
+  "module_class": "GuardrailAvailabilityModule",
+  "module_file": "src/modules/guardrail-availability/guardrail-availability.module.ts",
+  "module_line": 11,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/guardrail-availability/guardrail-availability.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 4
+ },
+ {
+  "dir": "guardrail-evaluation-internal",
+  "module_class": "GuardrailEvaluationInternalModule",
+  "module_file": "src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.module.ts",
+  "module_line": 16,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 1
+ },
+ {
+  "dir": "guardrail-notice",
+  "module_class": null,
+  "module_file": "",
+  "module_line": null,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/guardrail-notice/guardrail-notice.controller.ts",
+   "src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 6
+ },
+ {
+  "dir": "guardrail-policy",
+  "module_class": "GuardrailPolicyModule",
+  "module_file": "src/modules/guardrail-policy/guardrail-policy.module.ts",
+  "module_line": 11,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/guardrail-policy/guardrail-policy.controller.ts",
+   "src/modules/guardrail-policy/guardrail-metrics.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 17
+ },
+ {
+  "dir": "guardrail-tenant-policy",
+  "module_class": "GuardrailTenantPolicyModule",
+  "module_file": "src/modules/guardrail-tenant-policy/guardrail-tenant-policy.module.ts",
+  "module_line": 14,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/guardrail-tenant-policy/guardrail-tenant-policy.controller.ts",
+   "src/modules/guardrail-tenant-policy/guardrail-rule-test.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 3
+ },
+ {
+  "dir": "harness-admin",
+  "module_class": "HarnessAdminModule",
+  "module_file": "src/modules/harness-admin/harness-admin.module.ts",
+  "module_line": 43,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/harness-admin/harness-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 5,
+  "routes": 29
+ },
+ {
+  "dir": "health",
+  "module_class": "HealthModule",
+  "module_file": "src/modules/health/health.module.ts",
+  "module_line": 19,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/health/admin-health-services.controller.ts",
+   "src/modules/health/health.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 3,
+  "routes": 6
+ },
+ {
+  "dir": "inference-engines",
+  "module_class": "InferenceEnginesModule",
+  "module_file": "src/modules/inference-engines/inference-engines.module.ts",
+  "module_line": 10,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/inference-engines/inference-engines.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 3
+ },
+ {
+  "dir": "internal",
+  "module_class": "InternalModule",
+  "module_file": "src/modules/internal/internal.module.ts",
+  "module_line": 77,
+  "controllers": 8,
+  "controller_files": [
+   "src/modules/internal/model-registry-internal.controller.ts",
+   "src/modules/internal/composed-prompt-internal.controller.ts",
+   "src/modules/internal/effective-config.controller.ts",
+   "src/modules/internal/stt-session-transcript-internal.controller.ts",
+   "src/modules/internal/agent-internal.controller.ts",
+   "src/modules/internal/model-serving-internal.controller.ts",
+   "src/modules/internal/agent-version-internal.controller.ts",
+   "src/modules/internal/stt-internal.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 14,
+  "routes": 20
+ },
+ {
+  "dir": "knowledge",
+  "module_class": "KnowledgeModule",
+  "module_file": "src/modules/knowledge/knowledge.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/knowledge/knowledge.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 5
+ },
+ {
+  "dir": "mcp-admin",
+  "module_class": "McpAdminModule",
+  "module_file": "src/modules/mcp-admin/mcp-admin.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/mcp-admin/mcp-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 5
+ },
+ {
+  "dir": "media",
+  "module_class": "MediaModule",
+  "module_file": "src/modules/media/media.module.ts",
+  "module_line": 10,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/media/media.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 2
+ },
+ {
+  "dir": "model-residency",
+  "module_class": "ModelResidencyModule",
+  "module_file": "src/modules/model-residency/model-residency.module.ts",
+  "module_line": 10,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/model-residency/model-residency.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 14
+ },
+ {
+  "dir": "monitoring",
+  "module_class": "MonitoringModule",
+  "module_file": "src/modules/monitoring/monitoring.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/monitoring/monitoring.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 4
+ },
+ {
+  "dir": "nlp-task-instructions",
+  "module_class": "NlpTaskInstructionsModule",
+  "module_file": "src/modules/nlp-task-instructions/nlp-task-instructions.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 2
+ },
+ {
+  "dir": "notification",
+  "module_class": "NotificationModule",
+  "module_file": "src/modules/notification/notification.module.ts",
+  "module_line": 10,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/notification/notification.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 4
+ },
+ {
+  "dir": "platform-knobs",
+  "module_class": "PlatformKnobsModule",
+  "module_file": "src/modules/platform-knobs/platform-knobs.module.ts",
+  "module_line": 26,
+  "controllers": 0,
+  "controller_files": [],
+  "services": 0,
+  "test_files": 2,
+  "routes": 0
+ },
+ {
+  "dir": "platform-metrics",
+  "module_class": "PlatformMetricsModule",
+  "module_file": "src/modules/platform-metrics/platform-metrics.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/platform-metrics/platform-metrics.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 3
+ },
+ {
+  "dir": "prompt-inspector",
+  "module_class": "PromptInspectorModule",
+  "module_file": "src/modules/prompt-inspector/prompt-inspector.module.ts",
+  "module_line": 11,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/prompt-inspector/prompt-preview.controller.ts",
+   "src/modules/prompt-inspector/composed-prompt-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 3
+ },
+ {
+  "dir": "prompt-management",
+  "module_class": "PromptManagementModule",
+  "module_file": "src/modules/prompt-management/prompt-management.module.ts",
+  "module_line": 12,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/prompt-management/prompt-template.controller.ts",
+   "src/modules/prompt-management/prompt-management.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 22
+ },
+ {
+  "dir": "pstudio",
+  "module_class": "PrismaStudioStatusModule",
+  "module_file": "src/modules/pstudio/pstudio-status.module.ts",
+  "module_line": 11,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/pstudio/pstudio-status.controller.ts",
+   "src/modules/pstudio/pstudio.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 3,
+  "routes": 1
+ },
+ {
+  "dir": "queue-admin",
+  "module_class": "QueueAdminModule",
+  "module_file": "src/modules/queue-admin/queue-admin.module.ts",
+  "module_line": 23,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/queue-admin/scheduler-admin.controller.ts",
+   "src/modules/queue-admin/queue-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 3,
+  "routes": 17
+ },
+ {
+  "dir": "rbac",
+  "module_class": "RbacModule",
+  "module_file": "src/modules/rbac/rbac.module.ts",
+  "module_line": 38,
+  "controllers": 3,
+  "controller_files": [
+   "src/modules/rbac/roles.controller.ts",
+   "src/modules/rbac/permission-check.controller.ts",
+   "src/modules/rbac/policies.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 5,
+  "routes": 18
+ },
+ {
+  "dir": "resource-subscription",
+  "module_class": "ResourceSubscriptionModule",
+  "module_file": "src/modules/resource-subscription/resource-subscription.module.ts",
+  "module_line": 10,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/resource-subscription/resource-subscription.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 6
+ },
+ {
+  "dir": "security-policy",
+  "module_class": "SecurityPolicyModule",
+  "module_file": "src/modules/security-policy/security-policy.module.ts",
+  "module_line": 11,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/security-policy/security-policy.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 2
+ },
+ {
+  "dir": "service-account",
+  "module_class": "ServiceAccountModule",
+  "module_file": "src/modules/service-account/service-account.module.ts",
+  "module_line": 12,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/service-account/service-account-token.controller.ts",
+   "src/modules/service-account/service-account.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 3,
+  "routes": 8
+ },
+ {
+  "dir": "service-release",
+  "module_class": "ServiceReleaseModule",
+  "module_file": "src/modules/service-release/service-release.module.ts",
+  "module_line": 15,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/service-release/service-release-internal.controller.ts",
+   "src/modules/service-release/service-release-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 4,
+  "routes": 5
+ },
+ {
+  "dir": "settings-catalog",
+  "module_class": "SettingsCatalogModule",
+  "module_file": "src/modules/settings-catalog/settings-catalog.module.ts",
+  "module_line": 28,
+  "controllers": 4,
+  "controller_files": [
+   "src/modules/settings-catalog/settings-features.controller.ts",
+   "src/modules/settings-catalog/settings-action-confirmations.controller.ts",
+   "src/modules/settings-catalog/settings-catalog.controller.ts",
+   "src/modules/settings-catalog/settings-registry-write.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 8,
+  "routes": 11
+ },
+ {
+  "dir": "speech",
+  "module_class": "SpeechModule",
+  "module_file": "src/modules/speech/speech.module.ts",
+  "module_line": 59,
+  "controllers": 2,
+  "controller_files": [
+   "src/modules/speech/speech-proxy.controller.ts",
+   "src/modules/speech/harness-tts-internal.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 11,
+  "routes": 3
+ },
+ {
+  "dir": "storage",
+  "module_class": "StorageModule",
+  "module_file": "src/modules/storage/storage.module.ts",
+  "module_line": 12,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/storage/storage.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 6,
+  "routes": 10
+ },
+ {
+  "dir": "storage-access-key",
+  "module_class": "StorageAccessKeyModule",
+  "module_file": "src/modules/storage-access-key/storage-access-key.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/storage-access-key/storage-access-key.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 0,
+  "routes": 3
+ },
+ {
+  "dir": "streaming",
+  "module_class": "StreamingModule",
+  "module_file": "src/modules/streaming/streaming.module.ts",
+  "module_line": 141,
+  "controllers": 4,
+  "controller_files": [
+   "src/modules/streaming/admin-transcription-job.controller.ts",
+   "src/modules/streaming/text-proxy.controller.ts",
+   "src/modules/streaming/transcription-job.controller.ts",
+   "src/modules/streaming/text-generation-admin.controller.ts"
+  ],
+  "services": 1,
+  "test_files": 56,
+  "routes": 31
+ },
+ {
+  "dir": "tenant",
+  "module_class": "TenantModule",
+  "module_file": "src/modules/tenant/tenant.module.ts",
+  "module_line": 19,
+  "controllers": 4,
+  "controller_files": [
+   "src/modules/tenant/tenant-reference-set.controller.ts",
+   "src/modules/tenant/tenant-provision.controller.ts",
+   "src/modules/tenant/my-tenant.controller.ts",
+   "src/modules/tenant/tenant.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 5,
+  "routes": 20
+ },
+ {
+  "dir": "tenant-allowed-origin",
+  "module_class": "TenantAllowedOriginModule",
+  "module_file": "src/modules/tenant-allowed-origin/tenant-allowed-origin.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 6
+ },
+ {
+  "dir": "tenant-bucket",
+  "module_class": "TenantBucketModule",
+  "module_file": "src/modules/tenant-bucket/tenant-bucket.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/tenant-bucket/tenant-bucket.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 13
+ },
+ {
+  "dir": "tenant-checkpoint",
+  "module_class": "TenantCheckpointModule",
+  "module_file": "src/modules/tenant-checkpoint/tenant-checkpoint.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 12
+ },
+ {
+  "dir": "tenant-frontend-config",
+  "module_class": "TenantFrontendConfigModule",
+  "module_file": "src/modules/tenant-frontend-config/tenant-frontend-config.module.ts",
+  "module_line": 13,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 2
+ },
+ {
+  "dir": "tenant-idp-config",
+  "module_class": "TenantIdpConfigModule",
+  "module_file": "src/modules/tenant-idp-config/tenant-idp-config.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 8
+ },
+ {
+  "dir": "tenant-storage-config",
+  "module_class": "TenantStorageConfigModule",
+  "module_file": "src/modules/tenant-storage-config/tenant-storage-config.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 6
+ },
+ {
+  "dir": "throttle",
+  "module_class": "ThrottleConfigModule",
+  "module_file": "src/modules/throttle/throttle.module.ts",
+  "module_line": 86,
+  "controllers": 0,
+  "controller_files": [],
+  "services": 2,
+  "test_files": 11,
+  "routes": 0
+ },
+ {
+  "dir": "user",
+  "module_class": "UserModule",
+  "module_file": "src/modules/user/user.module.ts",
+  "module_line": 61,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/user/user.controller.ts"
+  ],
+  "services": 1,
+  "test_files": 12,
+  "routes": 21
+ },
+ {
+  "dir": "voice-profile",
+  "module_class": "VoiceProfileModule",
+  "module_file": "src/modules/voice-profile/voice-profile.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/voice-profile/voice-profile.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 2,
+  "routes": 6
+ },
+ {
+  "dir": "webhook",
+  "module_class": "WebhookModule",
+  "module_file": "src/modules/webhook/webhook.module.ts",
+  "module_line": 10,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/webhook/webhook.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 7
+ },
+ {
+  "dir": "workflow-assignment",
+  "module_class": "WorkflowAssignmentModule",
+  "module_file": "src/modules/workflow-assignment/workflow-assignment.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/workflow-assignment/workflow-assignment.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 5
+ },
+ {
+  "dir": "workflow-definition",
+  "module_class": "WorkflowDefinitionModule",
+  "module_file": "src/modules/workflow-definition/workflow-definition.module.ts",
+  "module_line": 12,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/workflow-definition/workflow-definition.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 6,
+  "routes": 22
+ },
+ {
+  "dir": "workflow-invariant-rule",
+  "module_class": "WorkflowInvariantRuleModule",
+  "module_file": "src/modules/workflow-invariant-rule/workflow-invariant-rule.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 0,
+  "routes": 5
+ },
+ {
+  "dir": "workflow-node",
+  "module_class": "WorkflowNodeModule",
+  "module_file": "src/modules/workflow-node/workflow-node.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/workflow-node/workflow-node.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 1
+ },
+ {
+  "dir": "workflow-run",
+  "module_class": "WorkflowRunModule",
+  "module_file": "src/modules/workflow-run/workflow-run.module.ts",
+  "module_line": 18,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/workflow-run/workflow-run.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 5
+ },
+ {
+  "dir": "workflow-sandbox-run",
+  "module_class": "WorkflowSandboxRunModule",
+  "module_file": "src/modules/workflow-sandbox-run/workflow-sandbox-run.module.ts",
+  "module_line": 15,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts"
+  ],
+  "services": 1,
+  "test_files": 1,
+  "routes": 4
+ },
+ {
+  "dir": "workflow-test-fixture",
+  "module_class": "WorkflowTestFixtureModule",
+  "module_file": "src/modules/workflow-test-fixture/workflow-test-fixture.module.ts",
+  "module_line": 9,
+  "controllers": 1,
+  "controller_files": [
+   "src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts"
+  ],
+  "services": 0,
+  "test_files": 1,
+  "routes": 5
+ },
+ {
+  "dir": "workflows",
+  "module_class": "WorkflowsModule",
+  "module_file": "src/modules/workflows/workflows.module.ts",
+  "module_line": 39,
+  "controllers": 4,
+  "controller_files": [
+   "src/modules/workflows/consultation-workflow-runs.controller.ts",
+   "src/modules/workflows/workflow-run-trace.controller.ts",
+   "src/modules/workflows/workflows.controller.ts",
+   "src/modules/workflows/workflow-hooks.controller.ts"
+  ],
+  "services": 2,
+  "test_files": 25,
+  "routes": 15
+ }
+]

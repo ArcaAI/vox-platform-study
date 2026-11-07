@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B06a Model, Provider & Routing",
+    "subtitle": "AI models, residency, provider connections, routing, service admin (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b06a-20261107-154500/api-gateway-b06a-model-provider-routing.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_models","eg_res","eg_conn","eg_svc","ctl_models","ctl_res","ctl_conn","ctl_svc","svc_models","svc_res","svc_conn","data_ai","ext_prov"],"note":"B06a: model/provider/routing/residency/service-admin. Inference/prompts/knowledge in B06b."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_models","type":"frontend","label":"AI model registry API group","sublabel":"catalogue/admin/registration/discovery/jobs (26)","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-model/ai-model-admin.controller.ts","line":54,"label":"AiModelAdminController"},{"path":"apps/api/src/modules/ai-model/ai-model-catalogue.controller.ts","line":54,"label":"AiModelCatalogueController"},{"path":"apps/api/src/modules/ai-model/ai-model-registration.controller.ts","line":25,"label":"AiModelRegistrationController"}]},
+    {"id":"eg_res","type":"frontend","label":"Model residency API (14 routes)","sublabel":"/admin/model-residency policies/state","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/model-residency/model-residency.controller.ts","line":46,"label":"ModelResidencyController"}]},
+    {"id":"eg_conn","type":"frontend","label":"Provider & routing API group","sublabel":"provider connections (8) + routing policies (11)","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts","line":97,"label":"ProviderConnectionController"},{"path":"apps/api/src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts","line":84,"label":"AiRoutingPolicyAdminController"}]},
+    {"id":"eg_svc","type":"frontend","label":"AI service admin API (9 routes)","sublabel":"/admin/ai-services configuration/management","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-service-admin/ai-service-admin.controller.ts","line":39,"label":"AiServiceAdminController"}]},
+
+    {"id":"ctl_models","type":"backend","label":"AI model controllers (5)","sublabel":"Admin/catalogue/registration/discovery/jobs","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-model/ai-model-admin.controller.ts","line":56,"label":"AiModelAdminController"},{"path":"apps/api/src/modules/ai-model/ai-model-discovery.controller.ts","line":25,"label":"AiModelDiscoveryController"},{"path":"apps/api/src/modules/ai-model/ai-model-jobs.controller.ts","line":27,"label":"AiModelJobsController"}]},
+    {"id":"ctl_res","type":"backend","label":"ModelResidencyController","sublabel":"Model residency admin operations","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/model-residency/model-residency.controller.ts","line":48,"label":"class ModelResidencyController"}]},
+    {"id":"ctl_conn","type":"backend","label":"Provider/routing controllers","sublabel":"Provider connections and AI routing policies","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts","line":98,"label":"ProviderConnectionController"},{"path":"apps/api/src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts","line":85,"label":"AiRoutingPolicyAdminController"}]},
+    {"id":"ctl_svc","type":"backend","label":"AiServiceAdminController","sublabel":"AI service admin configuration endpoints","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-service-admin/ai-service-admin.controller.ts","line":40,"label":"class AiServiceAdminController"}]},
+
+    {"id":"svc_models","type":"backend","label":"AI model services","sublabel":"Model registry, download/unregister, jobs/discovery","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/ai-model/aiModel.service.ts","line":251,"label":"AiModelService"},{"path":"packages/applications/src/services/ai-model/publish/ai-model-download.service.ts","line":139,"label":"AiModelDownloadService"},{"path":"packages/applications/src/services/ai-model/publish/model-unregister.service.ts","line":71,"label":"AiModelUnregisterService"}]},
+    {"id":"svc_res","type":"backend","label":"ModelResidencyService","sublabel":"Residency policies/state management","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/model-residency/model-residency.service.ts","line":449,"label":"ModelResidencyService"}]},
+    {"id":"svc_conn","type":"backend","label":"Provider/routing services","sublabel":"Provider connections and routing policy resolution","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/ai-provider-connection/ai-provider-connection.service.ts","line":132,"label":"AiProviderConnectionService"},{"path":"packages/applications/src/services/ai-routing-policy/ai-routing-policy.service.ts","line":140,"label":"AiRoutingPolicyService"}]},
+
+    {"id":"data_ai","type":"database","label":"AI platform config data","sublabel":"Models, residency, providers, routing, service config","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/ai-model/aiModel.service.ts","line":251,"label":"Model registry persistence"},{"path":"packages/applications/src/services/ai-provider-connection/ai-provider-connection.service.ts","line":132,"label":"Provider/routing config persistence"}]},
+    {"id":"ext_prov","type":"external","label":"AI providers/model artifacts","sublabel":"External providers, model downloads, inference targets","tag":"external","row":3,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts","line":97,"label":"Provider connections admin"},{"path":"apps/api/src/modules/ai-model/ai-model-registration.controller.ts","line":25,"label":"AI model registration/discovery"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_models","eg_res","eg_conn","eg_svc"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_models","ctl_res","ctl_conn","ctl_svc"]},
+    {"kind":"region","label":"Application services","wraps":["svc_models","svc_res","svc_conn"]},
+    {"kind":"region","label":"Data stores / AI providers","wraps":["data_ai","ext_prov"]}
+  ],
+  "connections": [
+    {"id":"v1","from":"eg_models","to":"ctl_models","label":"HTTP"},
+    {"id":"v2","from":"eg_res","to":"ctl_res","label":"HTTP"},
+    {"id":"v3","from":"eg_conn","to":"ctl_conn","label":"HTTP"},
+    {"id":"v4","from":"eg_svc","to":"ctl_svc","label":"HTTP"},
+    {"id":"v5","from":"ctl_models","to":"svc_models","label":"delegate"},
+    {"id":"v6","from":"ctl_res","to":"svc_res","label":"delegate"},
+    {"id":"v7","from":"ctl_conn","to":"svc_conn","label":"delegate"},
+    {"id":"v8","from":"ctl_svc","to":"svc_conn","label":"delegate"},
+    {"id":"v9","from":"svc_models","to":"data_ai","label":"models"},
+    {"id":"v10","from":"svc_res","to":"data_ai","label":"residency"},
+    {"id":"v11","from":"svc_conn","to":"data_ai","label":"config"},
+    {"id":"v12","from":"svc_models","to":"ext_prov","label":"artifacts"},
+    {"id":"v13","from":"svc_conn","to":"ext_prov","label":"providers"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B06a scope (model/provider/routing)","items":["Part of B06-ai-platform split (108 routes/18 controllers reconciled). Modules: ai-model (26/5), model-residency (14/1), ai-provider-connection (8/1), ai-routing-policy (11/1), ai-service-admin (9/1) = 68 routes / 9 controllers.","AI model registry: admin/catalogue/registration/discovery/jobs under /admin/ai-models. Residency: /admin/model-residency. Provider connections: /admin/providers. Routing policies: /admin/routing-policies. AI service admin: /admin/ai-services.","Grouped endpoint nodes for readability; route-level contracts/examples summarized in cards."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Model registration/discovery/jobs: admin requests register/discover/download/unregister models or manage model jobs -> model registry records/job metadata. Verify artifact URLs, credentials, and async job behavior.","Model residency: policy/state CRUD requests -> residency policy/state responses (data residency constraints for model usage).","Provider connection/routing policy: create/update provider credentials/endpoints and routing rules -> resolved provider/routing config. Verify secret storage/authref handling and policy precedence.","AI service admin: service configuration requests -> AI service config records. Exact DTOs and downstream service wiring should be verified."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree (ai-model services, residency, provider connection, routing policy).","Downstreams: AI platform config data store (Postgres/Prisma) and external AI providers/model artifacts/inference targets (config-driven).","Limitations: grouped endpoint nodes (68 routes/9 controllers); AiServiceAdmin service implementation path not separately verified; secret/authref/model artifact handling and routing precedence are implementation-specific — reconcile with OpenAPI/implementation."]}
+  ]
+}

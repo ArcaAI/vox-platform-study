@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ffb3dc08-a050-45bf-b301-ce6f87ec91ef",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/workflow-assignment-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/workflow-assignment-flow.html",
+  "specification": {
+    "sha256": "b1e98f19ce67d4c895fb53bc715c37c704a2e13eb90ef29019a3829fa2ad9231",
+    "bytes": 3548
+  },
+  "artifact": {
+    "sha256": "3bea3059b8185ad036b07cb5dc552e2e884954b06634452265fc6932c31b73f6",
+    "bytes": 754835
+  }
+}

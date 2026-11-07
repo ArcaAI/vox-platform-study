@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b51ae794-db0b-4e19-a2f6-e0670a61fba4",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/updated-metrics.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/metrics.html",
+  "specification": {
+    "sha256": "b283ffe8eb48d3a8daede39bc5583de386a60da9f65c29a269747630ff24000a",
+    "bytes": 3014
+  },
+  "artifact": {
+    "sha256": "082c5943ff008f4f3daafd4cdf13b0773fb90832394f31dac01cc13d1ad5c474",
+    "bytes": 751735
+  }
+}

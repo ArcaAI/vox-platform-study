@@ -1,0 +1,3566 @@
+[
+ {
+  "controller": "RateLimitAdminController",
+  "file": "src/modules/admin-rate-limit/rate-limit-admin.controller.ts",
+  "dir": "admin-rate-limit",
+  "class_line": 57,
+  "controller_decorator": "'admin/rate-limit'",
+  "class_decorators": [
+   "@ApiTags('admin-rate-limit')",
+   "@ApiBearerAuth()",
+   "@Authorize(['manage', 'all'])",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:rate-limit:manage')",
+   "@Controller('admin/rate-limit')"
+  ],
+  "routes": 13,
+  "public_routes": 0,
+  "api_key_forbidden": 13,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/admin-rate-limit/__tests__/rate-limit-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AdminUsageController",
+  "file": "src/modules/admin-usage/admin-usage.controller.ts",
+  "dir": "admin-usage",
+  "class_line": 43,
+  "controller_decorator": "'admin/usage'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-usage')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:usage:manage')",
+   "@Controller('admin/usage')",
+   "@CanManage('UsageAnalytics')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/admin-usage/__tests__/admin-usage.controllers.test.ts"
+  ]
+ },
+ {
+  "controller": "MyUsageController",
+  "file": "src/modules/admin-usage/my-usage.controller.ts",
+  "dir": "admin-usage",
+  "class_line": 31,
+  "controller_decorator": "'tenants/me'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('usage')",
+   "@Controller('tenants/me')",
+   "@RequiredScopes('tenant:account:read')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/admin-usage/__tests__/admin-usage.controllers.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentController",
+  "file": "src/modules/agent/agent.controller.ts",
+  "dir": "agent",
+  "class_line": 285,
+  "controller_decorator": "'agents'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('agents')",
+   "@Controller('agents')"
+  ],
+  "routes": 11,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 16,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-scope-audit.test.ts",
+   "src/bootstrap/__tests__/task-773-admin-scope-map.test.ts",
+   "src/modules/agent/__tests__/agent.controller.run-principal.task1038.test.ts",
+   "src/modules/agent/__tests__/agent.controller.runs-fixes.task1038.test.ts",
+   "src/modules/agent/__tests__/agent.controller.runs.task1038.test.ts",
+   "src/modules/agent/__tests__/agent.controller.speech-blob.task1036.test.ts",
+   "src/modules/agent/__tests__/agent.controller.speech-status.task957.test.ts",
+   "src/modules/agent/__tests__/agent.controller.spend-limit.task957.test.ts",
+   "src/modules/agent/__tests__/agent.controller.stream-ticket.task1038.test.ts",
+   "src/modules/agent/__tests__/agent.controller.test.ts",
+   "src/modules/agent/__tests__/agent.controller.transcription-language.task1004.test.ts",
+   "src/modules/agent/__tests__/agent.controller.tts-compute.task959.test.ts",
+   "src/modules/agent/__tests__/agent.controller.tts-connection.task958.test.ts",
+   "src/modules/agent/__tests__/agent.controller.tts-unattributed.task957.test.ts",
+   "src/modules/agent/__tests__/agent.controller.usage-detail.task957.test.ts",
+   "src/modules/agent/__tests__/agent.controller.usage-doctor.task950.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentAdminController",
+  "file": "src/modules/agent-admin/agent-admin.controller.ts",
+  "dir": "agent-admin",
+  "class_line": 69,
+  "controller_decorator": "'admin/agents'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-agents')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:agent:manage')",
+   "@Controller('admin/agents')",
+   "@CanManage('Agent')"
+  ],
+  "routes": 20,
+  "public_routes": 0,
+  "api_key_forbidden": 20,
+  "occ_routes": 1,
+  "test_files": 5,
+  "unit_test_files": [
+   "src/modules/agent-admin/__tests__/agent-admin.controller.test.ts",
+   "src/modules/agent-admin/__tests__/agent-admin.lineages.task965.test.ts",
+   "src/modules/agent-admin/__tests__/agent-admin.tags.task1036.test.ts",
+   "src/modules/agent-admin/__tests__/agent-admin.usage.task1036.test.ts",
+   "src/modules/agent-admin/__tests__/language-warnings.task1004.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentAssignmentAdminController",
+  "file": "src/modules/agent-admin/agent-assignment-admin.controller.ts",
+  "dir": "agent-admin",
+  "class_line": 24,
+  "controller_decorator": "'admin/agent-assignments'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-agent-assignments')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:agent:manage')",
+   "@Controller('admin/agent-assignments')",
+   "@CanManage('Agent')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 2,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/agent-admin/__tests__/agent-admin.controller.test.ts",
+   "src/modules/agent-admin/__tests__/language-warnings.task1004.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentPromoteToSystemController",
+  "file": "src/modules/agent-promotion/agent-promote-to-system.controller.ts",
+  "dir": "agent-promotion",
+  "class_line": 24,
+  "controller_decorator": "'admin/agents'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-agents')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:agent:manage')",
+   "@Controller('admin/agents')",
+   "@CanManage('Agent')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/agent-promotion/__tests__/agent-promote-to-system.controller.task930.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentPromotionController",
+  "file": "src/modules/agent-promotion/agent-promotion.controller.ts",
+  "dir": "agent-promotion",
+  "class_line": 33,
+  "controller_decorator": "'admin/agent-promotions'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-agent-promotions')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:agent-promotion:manage')",
+   "@Controller('admin/agent-promotions')",
+   "@CanManage('WorkflowDefinition')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/agent-promotion/__tests__/agent-promotion.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentTrajectoryController",
+  "file": "src/modules/agent-trajectory/agent-trajectory.controller.ts",
+  "dir": "agent-trajectory",
+  "class_line": 40,
+  "controller_decorator": "'admin/agent-trajectory'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-agent-trajectory')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:agent-trajectory:read')",
+   "@Controller('admin/agent-trajectory')",
+   "@CanRead('AgentTrajectory')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/agent-trajectory/__tests__/agent-trajectory.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AgenticAdminController",
+  "file": "src/modules/agentic-admin/agentic-admin.controller.ts",
+  "dir": "agentic-admin",
+  "class_line": 35,
+  "controller_decorator": "'admin/agentic'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-agentic')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:agentic:manage')",
+   "@Controller('admin/agentic')",
+   "@Authorize()"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/agentic-admin/__tests__/agentic-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AiInferenceController",
+  "file": "src/modules/ai-inference/ai-inference.controller.ts",
+  "dir": "ai-inference",
+  "class_line": 110,
+  "controller_decorator": "'text-analyses'",
+  "class_decorators": [
+   "@ApiTags('ai-inference')",
+   "@ApiBearerAuth()",
+   "@Controller('text-analyses')",
+   "@RequiredScopes('ai:inference:write')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 5,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/ai-inference/__tests__/ai-inference-model-path.controller.test.ts",
+   "src/modules/ai-inference/__tests__/ai-inference.controller.test.ts",
+   "src/modules/ai-inference/__tests__/ai-inference.topic-intent-selection.task1016.test.ts",
+   "src/modules/ai-inference/__tests__/ai-inference.usage.task957.test.ts"
+  ]
+ },
+ {
+  "controller": "SafetyCheckController",
+  "file": "src/modules/ai-inference/safety-check.controller.ts",
+  "dir": "ai-inference",
+  "class_line": 28,
+  "controller_decorator": "'safety-checks'",
+  "class_decorators": [
+   "@ApiTags('ai-inference')",
+   "@ApiBearerAuth()",
+   "@Controller('safety-checks')",
+   "@RequiredScopes('ai:inference:write')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/ai-inference/__tests__/ai-inference.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AiModelAdminController",
+  "file": "src/modules/ai-model/ai-model-admin.controller.ts",
+  "dir": "ai-model",
+  "class_line": 56,
+  "controller_decorator": "'admin/ai-models'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-ai-models')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:ai-model:manage')",
+   "@Controller('admin/ai-models')",
+   "@Authorize(['manage', 'all'])"
+  ],
+  "routes": 17,
+  "public_routes": 0,
+  "api_key_forbidden": 17,
+  "occ_routes": 1,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/modules/ai-model/__tests__/ai-model-admin.controller.task1019.test.ts",
+   "src/modules/ai-model/__tests__/ai-model-admin.controller.test.ts",
+   "src/modules/ai-model/__tests__/ai-model-catalogue.controller.registry.task1023.test.ts"
+  ]
+ },
+ {
+  "controller": "AiModelCatalogueController",
+  "file": "src/modules/ai-model/ai-model-catalogue.controller.ts",
+  "dir": "ai-model",
+  "class_line": 55,
+  "controller_decorator": "'admin/ai-models'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-ai-models')",
+   "@ForbidApiKey()",
+   "@Controller('admin/ai-models')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/ai-model/__tests__/ai-model-catalogue.controller.registry.task1023.test.ts",
+   "src/modules/ai-model/__tests__/ai-model-catalogue.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AiModelDiscoveryController",
+  "file": "src/modules/ai-model/ai-model-discovery.controller.ts",
+  "dir": "ai-model",
+  "class_line": 25,
+  "controller_decorator": "'admin/ai-models'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-ai-models')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:ai-model:manage')",
+   "@Controller('admin/ai-models')",
+   "@Authorize(['manage', 'all'])"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/ai-model/__tests__/ai-model-discovery.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AiModelJobsController",
+  "file": "src/modules/ai-model/ai-model-jobs.controller.ts",
+  "dir": "ai-model",
+  "class_line": 27,
+  "controller_decorator": "'admin/ai-models'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-ai-models')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:ai-model:manage')",
+   "@Controller('admin/ai-models')",
+   "@Authorize(['manage', 'all'])"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/ai-model/__tests__/ai-model-jobs.controller.task1023.test.ts"
+  ]
+ },
+ {
+  "controller": "AiModelRegistrationController",
+  "file": "src/modules/ai-model/ai-model-registration.controller.ts",
+  "dir": "ai-model",
+  "class_line": 27,
+  "controller_decorator": "'admin/ai-models'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-ai-models')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:ai-model:manage')",
+   "@Controller('admin/ai-models')",
+   "@Authorize(['manage', 'all'])"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/ai-model/__tests__/ai-model-registration.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ProviderConnectionController",
+  "file": "src/modules/ai-provider-connection/ai-provider-connection.controller.ts",
+  "dir": "ai-provider-connection",
+  "class_line": 98,
+  "controller_decorator": "'admin/providers'",
+  "class_decorators": [
+   "@ApiTags('admin-provider-connections')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:ai-provider:manage')",
+   "@Controller('admin/providers')"
+  ],
+  "routes": 8,
+  "public_routes": 0,
+  "api_key_forbidden": 8,
+  "occ_routes": 1,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-scope-audit.test.ts",
+   "src/bootstrap/__tests__/task-773-admin-scope-map.test.ts",
+   "src/modules/ai-provider-connection/__tests__/provider-connection.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AiRoutingPolicyAdminController",
+  "file": "src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts",
+  "dir": "ai-routing-policy",
+  "class_line": 85,
+  "controller_decorator": "'admin/routing-policies'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-ai-routing-policies')",
+   "@ApiExtraModels(EffectiveRoutingPolicyResponse)",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@CanManage('AiRoutingPolicy')",
+   "@Controller('admin/routing-policies')"
+  ],
+  "routes": 11,
+  "public_routes": 0,
+  "api_key_forbidden": 11,
+  "occ_routes": 3,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/ai-routing-policy/__tests__/ai-routing-policy-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AiServiceAdminController",
+  "file": "src/modules/ai-service-admin/ai-service-admin.controller.ts",
+  "dir": "ai-service-admin",
+  "class_line": 40,
+  "controller_decorator": "'admin/ai-services'",
+  "class_decorators": [
+   "@ApiTags('admin-ai-services')",
+   "@ApiBearerAuth()",
+   "@Authorize(['manage', 'all'])",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:ai-service:manage')",
+   "@Controller('admin/ai-services')"
+  ],
+  "routes": 9,
+  "public_routes": 0,
+  "api_key_forbidden": 9,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/ai-service-admin/__tests__/ai-service-admin.controller.test.ts",
+   "src/modules/ai-service-admin/__tests__/ai-service-readiness.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ApiKeyController",
+  "file": "src/modules/api-key/api-key.controller.ts",
+  "dir": "api-key",
+  "class_line": 98,
+  "controller_decorator": "'admin/api-keys'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-api-keys')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:apikey:write')",
+   "@Controller('admin/api-keys')",
+   "@CanManage('ApiKey')"
+  ],
+  "routes": 9,
+  "public_routes": 0,
+  "api_key_forbidden": 9,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/api-key/__tests__/api-key.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AuditLogController",
+  "file": "src/modules/audit-log/audit-log.controller.ts",
+  "dir": "audit-log",
+  "class_line": 43,
+  "controller_decorator": "'admin/audit-logs'",
+  "class_decorators": [
+   "@ApiTags('admin-audit-logs')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:audit:read')",
+   "@Controller('admin/audit-logs')",
+   "@CanRead('AuditLog')"
+  ],
+  "routes": 6,
+  "public_routes": 0,
+  "api_key_forbidden": 6,
+  "occ_routes": 0,
+  "test_files": 6,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/audit-log/__tests__/audit-log.controller.swagger.test.ts",
+   "src/modules/audit-log/__tests__/audit-log.controller.test.ts",
+   "src/modules/department/__tests__/department.controller.test.ts",
+   "src/modules/user/__tests__/user.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AdminImpersonationController",
+  "file": "src/modules/auth/admin-impersonation.controller.ts",
+  "dir": "auth",
+  "class_line": 89,
+  "controller_decorator": "'admin/users'",
+  "class_decorators": [
+   "@ApiTags('admin-users')",
+   "@ForbidApiKey()",
+   "@Controller('admin/users')",
+   "@ForbidServiceAccount()"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/auth/__tests__/admin-impersonation.controller.task401.test.ts",
+   "src/modules/auth/__tests__/auth.service-account.task430.test.ts"
+  ]
+ },
+ {
+  "controller": "AuthSsoController",
+  "file": "src/modules/auth/auth-sso.controller.ts",
+  "dir": "auth",
+  "class_line": 36,
+  "controller_decorator": "'auth/sso'",
+  "class_decorators": [
+   "@ApiTags('auth')",
+   "@Controller('auth/sso')"
+  ],
+  "routes": 5,
+  "public_routes": 5,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/auth/__tests__/auth-sso.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AuthController",
+  "file": "src/modules/auth/auth.controller.ts",
+  "dir": "auth",
+  "class_line": 108,
+  "controller_decorator": "'auth'",
+  "class_decorators": [
+   "@ApiTags('auth')",
+   "@Controller('auth')",
+   "@ForbidApiKey()"
+  ],
+  "routes": 7,
+  "public_routes": 2,
+  "api_key_forbidden": 7,
+  "occ_routes": 0,
+  "test_files": 16,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-surface-audit.test.ts",
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/auth/__tests__/auth.controller.bug024.test.ts",
+   "src/modules/auth/__tests__/auth.controller.stream-ticket.run-trace.task1038.test.ts",
+   "src/modules/auth/__tests__/auth.controller.stream-ticket.test.ts",
+   "src/modules/auth/__tests__/auth.controller.swallowed-errors.test.ts",
+   "src/modules/auth/__tests__/auth.controller.task224.test.ts",
+   "src/modules/auth/__tests__/auth.controller.task295.test.ts",
+   "src/modules/auth/__tests__/auth.controller.task307-w2.test.ts",
+   "src/modules/auth/__tests__/auth.controller.task307.test.ts",
+   "src/modules/auth/__tests__/auth.controller.task401.test.ts",
+   "src/modules/auth/__tests__/auth.controller.task541.test.ts",
+   "src/modules/auth/__tests__/auth.controller.test.ts",
+   "src/modules/auth/__tests__/auth.service-account.task430.test.ts",
+   "src/modules/throttle/__tests__/throttle-decorators.test.ts",
+   "src/modules/throttle/__tests__/throttle-guard.test.ts"
+  ]
+ },
+ {
+  "controller": "RegisterController",
+  "file": "src/modules/auth/register.controller.ts",
+  "dir": "auth",
+  "class_line": 37,
+  "controller_decorator": "'auth'",
+  "class_decorators": [
+   "@ApiTags('auth')",
+   "@Controller('auth')"
+  ],
+  "routes": 2,
+  "public_routes": 2,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/auth/__tests__/register.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "BillingAdminController",
+  "file": "src/modules/billing/billing-admin.controller.ts",
+  "dir": "billing",
+  "class_line": 42,
+  "controller_decorator": "'admin/billing/invoices'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-billing-invoices')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:billing:manage')",
+   "@Controller('admin/billing/invoices')",
+   "@CanManage('BillingInvoice')"
+  ],
+  "routes": 7,
+  "public_routes": 0,
+  "api_key_forbidden": 7,
+  "occ_routes": 2,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/billing/__tests__/billing.controllers.test.ts"
+  ]
+ },
+ {
+  "controller": "MyBillingController",
+  "file": "src/modules/billing/my-billing.controller.ts",
+  "dir": "billing",
+  "class_line": 40,
+  "controller_decorator": "'tenants/me'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('billing')",
+   "@Controller('tenants/me')",
+   "@RequiredScopes('tenant:account:read')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/billing/__tests__/billing.controllers.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts"
+  ]
+ },
+ {
+  "controller": "RateCardAdminController",
+  "file": "src/modules/billing/rate-card-admin.controller.ts",
+  "dir": "billing",
+  "class_line": 32,
+  "controller_decorator": "'admin/billing/rate-card'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-billing-rate-card')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:billing:manage')",
+   "@Controller('admin/billing/rate-card')",
+   "@CanManage('AiPriceBook')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/billing/__tests__/billing.controllers.test.ts"
+  ]
+ },
+ {
+  "controller": "ChangelogAdminController",
+  "file": "src/modules/changelog/changelog-admin.controller.ts",
+  "dir": "changelog",
+  "class_line": 25,
+  "controller_decorator": "'admin/changelog'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-changelog')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:changelog:manage')",
+   "@Controller('admin/changelog')",
+   "@CanManage('ChangelogEntry')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 2,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/changelog/__tests__/changelog.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ChangelogController",
+  "file": "src/modules/changelog/changelog.controller.ts",
+  "dir": "changelog",
+  "class_line": 29,
+  "controller_decorator": "'changelog'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('changelog')",
+   "@Controller('changelog')",
+   "@Authorize()",
+   "@RequiredScopes('platform:changelog:read')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/changelog/__tests__/changelog.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsentGrantController",
+  "file": "src/modules/consent/consent.controller.ts",
+  "dir": "consent",
+  "class_line": 54,
+  "controller_decorator": "'admin/consent-grants'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consent-grants')",
+   "@Controller('admin/consent-grants')",
+   "@CanManage('ConsentGrant')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 1,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-scope-audit.test.ts",
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/consent/__tests__/consent.controller.authorization.test.ts"
+  ]
+ },
+ {
+  "controller": "AdminConsultationController",
+  "file": "src/modules/consultation/admin-consultation.controller.ts",
+  "dir": "consultation",
+  "class_line": 42,
+  "controller_decorator": "'admin/consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consultations')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-admin:manage')",
+   "@Controller('admin/consultations')",
+   "@CanManage('Consultation')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/modules/consultation/__tests__/admin-consultation.controller.sort.task999.test.ts",
+   "src/modules/consultation/__tests__/admin-consultation.controller.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.lifecycle.task1045.test.ts"
+  ]
+ },
+ {
+  "controller": "AdminFeedbackRollupController",
+  "file": "src/modules/consultation/admin-feedback-rollup.controller.ts",
+  "dir": "consultation",
+  "class_line": 57,
+  "controller_decorator": "'admin/feedback'",
+  "class_decorators": [
+   "@ApiPropertyOptional()",
+   "@IsOptional()",
+   "@IsString()",
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consultations')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-admin:manage')",
+   "@Controller('admin/feedback')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation/__tests__/consultation-feedback.controller.task1045.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsentInternalController",
+  "file": "src/modules/consultation/consent-internal.controller.ts",
+  "dir": "consultation",
+  "class_line": 94,
+  "controller_decorator": "'internal/consent'",
+  "class_decorators": [
+   "@ApiPropertyOptional({ description: \"Denial reason (only meaningful when allowed=false and unavailable is not set \u2014 R4's 'denied' case).\" })",
+   "@ApiPropertyOptional({",
+   "@ApiPropertyOptional()",
+   "@ApiPropertyOptional({ nullable: true })",
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/consent')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation/__tests__/consent-internal.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationAttachmentController",
+  "file": "src/modules/consultation/consultation-attachment.controller.ts",
+  "dir": "consultation",
+  "class_line": 49,
+  "controller_decorator": "'consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('consultations')",
+   "@Controller('consultations')",
+   "@Authorize()",
+   "@RequiredScopes('consultation:session:write')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation/__tests__/consultation-attachment.controller.task1045.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationFeedbackController",
+  "file": "src/modules/consultation/consultation-feedback.controller.ts",
+  "dir": "consultation",
+  "class_line": 62,
+  "controller_decorator": "'consultations'",
+  "class_decorators": [
+   "@IsInt()",
+   "@Min(1)",
+   "@Max(200)",
+   "@ApiBearerAuth()",
+   "@ApiTags('consultations')",
+   "@Controller('consultations')",
+   "@Authorize()",
+   "@RequiredScopes('consultation:session:write')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation/__tests__/consultation-feedback.controller.task1045.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationJobController",
+  "file": "src/modules/consultation/consultation-job.controller.ts",
+  "dir": "consultation",
+  "class_line": 31,
+  "controller_decorator": "'consultations/jobs'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('consultation-jobs')",
+   "@Controller('consultations/jobs')",
+   "@Authorize()"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-scope-audit.test.ts",
+   "src/modules/consultation/__tests__/consultation-job.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationLifecycleEventsController",
+  "file": "src/modules/consultation/consultation-lifecycle-events.controller.ts",
+  "dir": "consultation",
+  "class_line": 21,
+  "controller_decorator": "'consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('consultations')",
+   "@Controller('consultations')",
+   "@Authorize()",
+   "@RequiredScopes('consultation:session:write')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation/__tests__/consultation.controller.lifecycle.task1045.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationReadInternalController",
+  "file": "src/modules/consultation/consultation-read-internal.controller.ts",
+  "dir": "consultation",
+  "class_line": 49,
+  "controller_decorator": "'internal/consultations'",
+  "class_decorators": [
+   "@IsArray()",
+   "@ArrayNotEmpty()",
+   "@ArrayMaxSize(64)",
+   "@IsString({ each: true })",
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/consultations')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation/__tests__/consultation-read-internal.controller.task1038.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationTelemetryController",
+  "file": "src/modules/consultation/consultation-telemetry.controller.ts",
+  "dir": "consultation",
+  "class_line": 41,
+  "controller_decorator": "'admin/consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consultations')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-admin:manage')",
+   "@Controller('admin/consultations')",
+   "@CanManage('Consultation')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 0,
+  "unit_test_files": []
+ },
+ {
+  "controller": "ConsultationController",
+  "file": "src/modules/consultation/consultation.controller.ts",
+  "dir": "consultation",
+  "class_line": 319,
+  "controller_decorator": "'consultations'",
+  "class_decorators": [
+   "@ApiProperty({ description: 'Success indicator', example: true })",
+   "@ApiBearerAuth()",
+   "@ApiTags('consultations')",
+   "@Controller('consultations')",
+   "@Authorize()",
+   "@RequiredScopes('consultation:session:write')",
+   "@UseInterceptors(ConsultationLifecycleVocabularyInterceptor)"
+  ],
+  "routes": 61,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 9,
+  "test_files": 28,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-scope-audit.test.ts",
+   "src/bootstrap/__tests__/occ-coverage-audit.test.ts",
+   "src/modules/__tests__/task-773-admin-plane-reachability.test.ts",
+   "src/modules/consultation/__tests__/admin-consultation.controller.sort.task999.test.ts",
+   "src/modules/consultation/__tests__/admin-consultation.controller.test.ts",
+   "src/modules/consultation/__tests__/consultation-job-starts.idempotency.task1038.test.ts",
+   "src/modules/consultation/__tests__/consultation-job-starts.initiator.task1045.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.context-identity.task950.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.document-sections-encounter.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.document-sections.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.finish-plane.task972.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.harness-assurance.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.harness-progress.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.highlights.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.language-mode.task1004.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.lifecycle.task1045.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.loop.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.recording-lifecycle.task1003.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.recording-stop.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.service-account.task933.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.sse-teardown.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.substrate-gate.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.svc-plane.task1045.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.trajectory.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.workflow-discovery.task813.test.ts",
+   "src/modules/consultation/__tests__/realtime-delivery.routes.test.ts",
+   "src/modules/consultation/__tests__/sync-summary-routes-removed.task1006.test.ts"
+  ]
+ },
+ {
+  "controller": "HarnessInternalController",
+  "file": "src/modules/consultation/harness-internal.controller.ts",
+  "dir": "consultation",
+  "class_line": 454,
+  "controller_decorator": "'internal/harness'",
+  "class_decorators": [
+   "@ApiPropertyOptional({ description: 'The approved PromptVersion content. Present only when approved is true.' })",
+   "@ApiPropertyOptional({ description: 'The approved version number this content was pinned at.' })",
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/harness')"
+  ],
+  "routes": 28,
+  "public_routes": 28,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 11,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-scope-audit.test.ts",
+   "src/guards/__tests__/internal-tenant-lock.coverage.test.ts",
+   "src/modules/consultation/__tests__/consent-internal.controller.test.ts",
+   "src/modules/consultation/__tests__/harness-internal-stt-batch.controller.test.ts",
+   "src/modules/consultation/__tests__/harness-internal-stt-batch.language.task1004.test.ts",
+   "src/modules/consultation/__tests__/harness-internal.compute-samples.task959.test.ts",
+   "src/modules/consultation/__tests__/harness-internal.controller.test.ts",
+   "src/modules/consultation/__tests__/harness-internal.identity.task957.test.ts",
+   "src/modules/consultation/__tests__/harness-internal.model-resolve.controller.test.ts",
+   "src/modules/consultation/__tests__/realtime-delivery.routes.test.ts",
+   "src/modules/internal/__tests__/effective-config.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "HarnessNotePlanController",
+  "file": "src/modules/consultation/harness-internal.controller.ts",
+  "dir": "consultation",
+  "class_line": 1314,
+  "controller_decorator": "'internal/consultations'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/consultations')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 0,
+  "unit_test_files": []
+ },
+ {
+  "controller": "ConsultationContextSchemaAdminController",
+  "file": "src/modules/consultation-context-schema/consultation-context-schema.controller.ts",
+  "dir": "consultation-context-schema",
+  "class_line": 41,
+  "controller_decorator": "'admin/consultation-context-schemas'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consultation-context-schemas')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-context-schema:manage')",
+   "@Controller('admin/consultation-context-schemas')",
+   "@CanManage('ConsultationContextSchema')"
+  ],
+  "routes": 9,
+  "public_routes": 0,
+  "api_key_forbidden": 9,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation-context-schema/__tests__/consultation-context-schema.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "MyTenantContextSchemaController",
+  "file": "src/modules/consultation-context-schema/consultation-context-schema.controller.ts",
+  "dir": "consultation-context-schema",
+  "class_line": 226,
+  "controller_decorator": "'tenants/me/context-schema'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('tenant')",
+   "@Controller('tenants/me/context-schema')",
+   "@Authorize()",
+   "@RequiredScopes('tenant:context-schema:read')",
+   "@RequiredSvcScopes('svc:tenant:context-schema:read')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts"
+  ]
+ },
+ {
+  "controller": "AdminConsultationHistoryController",
+  "file": "src/modules/consultation-history/admin-consultation-history.controller.ts",
+  "dir": "consultation-history",
+  "class_line": 36,
+  "controller_decorator": "'admin/consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consultations')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-admin:manage')",
+   "@Controller('admin/consultations')",
+   "@CanRead('Consultation')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation-history/__tests__/consultation-history.controllers.task1045.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationHistoryController",
+  "file": "src/modules/consultation-history/consultation-history.controller.ts",
+  "dir": "consultation-history",
+  "class_line": 28,
+  "controller_decorator": "'consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('consultations')",
+   "@Authorize()",
+   "@Controller('consultations')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/consultation-history/__tests__/consultation-history.controllers.task1045.test.ts"
+  ]
+ },
+ {
+  "controller": "DepartmentController",
+  "file": "src/modules/department/department.controller.ts",
+  "dir": "department",
+  "class_line": 26,
+  "controller_decorator": "'admin/departments'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-departments')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:department:manage')",
+   "@Controller('admin/departments')",
+   "@CanManage('Department')"
+  ],
+  "routes": 10,
+  "public_routes": 0,
+  "api_key_forbidden": 10,
+  "occ_routes": 2,
+  "test_files": 6,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/__tests__/task-773-admin-plane-reachability.test.ts",
+   "src/modules/department/__tests__/department-prompt-config.controller.test.ts",
+   "src/modules/department/__tests__/department.controller.test.ts",
+   "src/modules/workflow-run/__tests__/workflow-run.controller.test.ts",
+   "src/modules/workflow-test-fixture/__tests__/workflow-test-fixture.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "DnaWritingStyleAdminController",
+  "file": "src/modules/dna-writing-style/dna-writing-style-admin.controller.ts",
+  "dir": "dna-writing-style",
+  "class_line": 42,
+  "controller_decorator": "'admin/dna-writing-styles'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-dna-writing-styles')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:dna-writing-style:manage')",
+   "@Controller('admin/dna-writing-styles')",
+   "@Authorize(['manage', 'DnaWritingStyleReport'])"
+  ],
+  "routes": 9,
+  "public_routes": 0,
+  "api_key_forbidden": 9,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/dna-writing-style/__tests__/dna-writing-style-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "DnaWritingStyleIngestController",
+  "file": "src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts",
+  "dir": "dna-writing-style",
+  "class_line": 47,
+  "controller_decorator": "'dna-writing-styles/ingest'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('dna-writing-styles')",
+   "@Controller('dna-writing-styles/ingest')",
+   "@Authorize()",
+   "@RequiredScopes('dna-writing-style:ingest')",
+   "@RequiredSvcScopes('svc:dna-writing-style:ingest')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/dna-writing-style/__tests__/dna-writing-style-ingest.controller.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.machine-owner.task991.test.ts"
+  ]
+ },
+ {
+  "controller": "DnaWritingStyleMemoryAdminController",
+  "file": "src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts",
+  "dir": "dna-writing-style",
+  "class_line": 29,
+  "controller_decorator": "'admin/dna-writing-styles'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-dna-writing-styles')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:dna-writing-style:manage')",
+   "@Controller('admin/dna-writing-styles')",
+   "@Authorize(['manage', 'DnaWritingStyleReport'])"
+  ],
+  "routes": 6,
+  "public_routes": 0,
+  "api_key_forbidden": 6,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/dna-writing-style/__tests__/dna-writing-style-memory-admin.controller.task1034.test.ts"
+  ]
+ },
+ {
+  "controller": "DnaWritingStyleController",
+  "file": "src/modules/dna-writing-style/dna-writing-style.controller.ts",
+  "dir": "dna-writing-style",
+  "class_line": 71,
+  "controller_decorator": "'dna-writing-styles'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('dna-writing-styles')",
+   "@Controller('dna-writing-styles')",
+   "@Authorize()",
+   "@ForbidApiKey()"
+  ],
+  "routes": 14,
+  "public_routes": 0,
+  "api_key_forbidden": 14,
+  "occ_routes": 3,
+  "test_files": 5,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/bootstrap/__tests__/occ-coverage-audit.test.ts",
+   "src/modules/dna-writing-style/__tests__/dna-writing-style-admin.controller.test.ts",
+   "src/modules/dna-writing-style/__tests__/dna-writing-style-ingest.controller.test.ts",
+   "src/modules/dna-writing-style/__tests__/dna-writing-style.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "DocumentTemplateAdminController",
+  "file": "src/modules/document-template/document-template.controller.ts",
+  "dir": "document-template",
+  "class_line": 43,
+  "controller_decorator": "'admin/document-templates'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-document-templates')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:document-template:manage')",
+   "@Controller('admin/document-templates')",
+   "@CanManage('DocumentTemplate')"
+  ],
+  "routes": 8,
+  "public_routes": 0,
+  "api_key_forbidden": 8,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/task-773-admin-scope-map.test.ts"
+  ]
+ },
+ {
+  "controller": "MyTenantDocumentTemplateController",
+  "file": "src/modules/document-template/document-template.controller.ts",
+  "dir": "document-template",
+  "class_line": 199,
+  "controller_decorator": "'tenants/me/document-template'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('tenant')",
+   "@Controller('tenants/me/document-template')",
+   "@Authorize()",
+   "@RequiredScopes('tenant:document-template:read')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 0,
+  "unit_test_files": []
+ },
+ {
+  "controller": "EntitlementsAdminController",
+  "file": "src/modules/entitlements/entitlements-admin.controller.ts",
+  "dir": "entitlements",
+  "class_line": 38,
+  "controller_decorator": "'admin/entitlements'",
+  "class_decorators": [
+   "@ApiTags('admin-entitlements')",
+   "@ApiBearerAuth()",
+   "@Authorize(['manage', 'all'])",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:entitlement:manage')",
+   "@Controller('admin/entitlements')"
+  ],
+  "routes": 11,
+  "public_routes": 0,
+  "api_key_forbidden": 11,
+  "occ_routes": 2,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/occ-coverage-audit.test.ts",
+   "src/modules/entitlements/__tests__/entitlements-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "MyEntitlementsController",
+  "file": "src/modules/entitlements/my-entitlements.controller.ts",
+  "dir": "entitlements",
+  "class_line": 31,
+  "controller_decorator": "'tenants/me'",
+  "class_decorators": [
+   "@ApiTags('entitlements')",
+   "@ApiBearerAuth()",
+   "@Controller('tenants/me')",
+   "@RequiredScopes('tenant:account:read')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/entitlements/__tests__/my-entitlements.controller.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts"
+  ]
+ },
+ {
+  "controller": "GlobalSettingController",
+  "file": "src/modules/global-setting/global-setting.controller.ts",
+  "dir": "global-setting",
+  "class_line": 60,
+  "controller_decorator": "'admin/settings'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-global-settings')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:settings:manage')",
+   "@Controller('admin/settings')",
+   "@CanManage('GlobalSetting')"
+  ],
+  "routes": 8,
+  "public_routes": 0,
+  "api_key_forbidden": 8,
+  "occ_routes": 2,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/modules/global-setting/__tests__/global-setting.controller.rotate.test.ts",
+   "src/modules/global-setting/__tests__/global-setting.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "GovernedPromptInternalController",
+  "file": "src/modules/governed-prompt/governed-prompt-internal.controller.ts",
+  "dir": "governed-prompt",
+  "class_line": 81,
+  "controller_decorator": "'internal/governed-prompts'",
+  "class_decorators": [
+   "@Type(() => VerifyGovernedPiece)",
+   "@ApiProperty()",
+   "@ApiProperty({ nullable: true, type: String })",
+   "@ApiExcludeController()",
+   "@ApiTags('internal-governed-prompts')",
+   "@Public()",
+   "@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/governed-prompts')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/governed-prompt/__tests__/governed-prompt-internal.controller.task1047.test.ts"
+  ]
+ },
+ {
+  "controller": "GuardrailAvailabilityController",
+  "file": "src/modules/guardrail-availability/guardrail-availability.controller.ts",
+  "dir": "guardrail-availability",
+  "class_line": 43,
+  "controller_decorator": "'admin/guardrail/availability'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-guardrail-availability')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/guardrail/availability')",
+   "@CanManage('Tenant')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 1,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-scope-audit.test.ts",
+   "src/modules/guardrail-availability/__tests__/guardrail-availability.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "GuardrailEvaluationInternalController",
+  "file": "src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts",
+  "dir": "guardrail-evaluation-internal",
+  "class_line": 41,
+  "controller_decorator": "'internal/guardrail/evaluations'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/guardrail/evaluations')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/guardrail-evaluation-internal/__tests__/guardrail-evaluation-internal.controller.task1050.test.ts"
+  ]
+ },
+ {
+  "controller": "AdminGuardrailEvaluationController",
+  "file": "src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts",
+  "dir": "guardrail-notice",
+  "class_line": 24,
+  "controller_decorator": "'admin/consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consultations')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-admin:manage')",
+   "@Controller('admin/consultations')",
+   "@CanRead('Consultation')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/guardrail-notice/__tests__/guardrail-notice.controller.task1050.test.ts"
+  ]
+ },
+ {
+  "controller": "GuardrailNoticeController",
+  "file": "src/modules/guardrail-notice/guardrail-notice.controller.ts",
+  "dir": "guardrail-notice",
+  "class_line": 51,
+  "controller_decorator": "'consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('consultations')",
+   "@Controller('consultations')",
+   "@Authorize()",
+   "@RequiredScopes('consultation:session:write')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 2,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/guardrail-notice/__tests__/guardrail-notice.controller.task1050.test.ts"
+  ]
+ },
+ {
+  "controller": "GuardrailMetricsController",
+  "file": "src/modules/guardrail-policy/guardrail-metrics.controller.ts",
+  "dir": "guardrail-policy",
+  "class_line": 32,
+  "controller_decorator": "'admin/guardrail/metrics'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-guardrail-availability')",
+   "@ForbidApiKey()",
+   "@Controller('admin/guardrail/metrics')",
+   "@CanManage('AiModel')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/guardrail-policy/__tests__/guardrail-policy.controller.task1050.test.ts"
+  ]
+ },
+ {
+  "controller": "GuardrailPolicyController",
+  "file": "src/modules/guardrail-policy/guardrail-policy.controller.ts",
+  "dir": "guardrail-policy",
+  "class_line": 67,
+  "controller_decorator": "'admin/guardrail'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-guardrail-availability')",
+   "@ForbidApiKey()",
+   "@Controller('admin/guardrail')",
+   "@CanManage('AiModel')"
+  ],
+  "routes": 13,
+  "public_routes": 0,
+  "api_key_forbidden": 13,
+  "occ_routes": 2,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/guardrail-policy/__tests__/guardrail-policy.controller.task1050.test.ts"
+  ]
+ },
+ {
+  "controller": "GuardrailRuleTestController",
+  "file": "src/modules/guardrail-tenant-policy/guardrail-rule-test.controller.ts",
+  "dir": "guardrail-tenant-policy",
+  "class_line": 26,
+  "controller_decorator": "'admin/guardrail'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-guardrail-availability')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/guardrail')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/guardrail-tenant-policy/__tests__/guardrail-rule-test.controller.task1050.test.ts"
+  ]
+ },
+ {
+  "controller": "GuardrailTenantPolicyController",
+  "file": "src/modules/guardrail-tenant-policy/guardrail-tenant-policy.controller.ts",
+  "dir": "guardrail-tenant-policy",
+  "class_line": 29,
+  "controller_decorator": "'admin/guardrail/policy'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-guardrail-availability')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/guardrail/policy')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/guardrail-tenant-policy/__tests__/guardrail-tenant-policy.controller.task1050.test.ts"
+  ]
+ },
+ {
+  "controller": "HarnessAdminController",
+  "file": "src/modules/harness-admin/harness-admin.controller.ts",
+  "dir": "harness-admin",
+  "class_line": 79,
+  "controller_decorator": "'admin/harness'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-harness')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:harness:manage')",
+   "@Controller('admin/harness')",
+   "@Authorize()"
+  ],
+  "routes": 29,
+  "public_routes": 0,
+  "api_key_forbidden": 29,
+  "occ_routes": 2,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/modules/harness-admin/__tests__/harness-admin.cancel-confirmation.task1057.test.ts",
+   "src/modules/harness-admin/__tests__/harness-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AdminHealthServicesController",
+  "file": "src/modules/health/admin-health-services.controller.ts",
+  "dir": "health",
+  "class_line": 77,
+  "controller_decorator": "'admin/health/services'",
+  "class_decorators": [
+   "@ApiTags('health')",
+   "@ApiBearerAuth()",
+   "@Throttle({ default: { limit: 30, ttl: 60000 } })",
+   "@Controller('admin/health/services')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/health/__tests__/admin-health-services.controller.test.ts",
+   "src/modules/health/__tests__/health.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ApiHealthController",
+  "file": "src/modules/health/health.controller.ts",
+  "dir": "health",
+  "class_line": 40,
+  "controller_decorator": "'health'",
+  "class_decorators": [
+   "@ApiTags('health')",
+   "@Throttle({ default: { limit: 30, ttl: 60000 } })",
+   "@Controller('health')",
+   "@ForbidApiKey()"
+  ],
+  "routes": 4,
+  "public_routes": 4,
+  "api_key_forbidden": 4,
+  "occ_routes": 0,
+  "test_files": 6,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/health/__tests__/admin-health-services.controller.test.ts",
+   "src/modules/health/__tests__/health.controller.test.ts",
+   "src/modules/health/__tests__/probe-throttle-exemption.task808.test.ts",
+   "src/modules/throttle/__tests__/throttle-decorators.test.ts",
+   "src/modules/throttle/__tests__/throttle-guard.test.ts"
+  ]
+ },
+ {
+  "controller": "InferenceEnginesController",
+  "file": "src/modules/inference-engines/inference-engines.controller.ts",
+  "dir": "inference-engines",
+  "class_line": 33,
+  "controller_decorator": "'admin/inference-engines/lm-studio'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-inference-engines')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:ai-model:manage')",
+   "@Controller('admin/inference-engines/lm-studio')",
+   "@CanManage('AiModel')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/inference-engines/__tests__/inference-engines.controller.task1005.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentInternalController",
+  "file": "src/modules/internal/agent-internal.controller.ts",
+  "dir": "internal",
+  "class_line": 52,
+  "controller_decorator": "'internal/agents'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@ApiTags('internal-agents')",
+   "@Public()",
+   "@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/agents')"
+  ],
+  "routes": 2,
+  "public_routes": 2,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/internal/__tests__/agent-internal.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "AgentVersionInternalController",
+  "file": "src/modules/internal/agent-version-internal.controller.ts",
+  "dir": "internal",
+  "class_line": 37,
+  "controller_decorator": "'internal/agents'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@ApiTags('internal-agents')",
+   "@Public()",
+   "@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/agents')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/internal/__tests__/agent-version-internal.controller.task1038.test.ts"
+  ]
+ },
+ {
+  "controller": "ComposedPromptInternalController",
+  "file": "src/modules/internal/composed-prompt-internal.controller.ts",
+  "dir": "internal",
+  "class_line": 26,
+  "controller_decorator": "'internal/composed-prompts'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@ApiTags('internal-composed-prompts')",
+   "@Public()",
+   "@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/composed-prompts')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/prompt-inspector/__tests__/prompt-inspector.controllers.task1035.test.ts"
+  ]
+ },
+ {
+  "controller": "EffectiveConfigController",
+  "file": "src/modules/internal/effective-config.controller.ts",
+  "dir": "internal",
+  "class_line": 31,
+  "controller_decorator": "'internal/effective-config'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/effective-config')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-scope-audit.test.ts",
+   "src/modules/internal/__tests__/agent-internal.controller.test.ts",
+   "src/modules/internal/__tests__/effective-config.controller.test.ts",
+   "src/modules/internal/__tests__/model-registry-internal.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ModelRegistryInternalController",
+  "file": "src/modules/internal/model-registry-internal.controller.ts",
+  "dir": "internal",
+  "class_line": 62,
+  "controller_decorator": "'internal'",
+  "class_decorators": [
+   "@ApiTags('internal-model-registry')",
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/internal/__tests__/model-registry-internal.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ModelServingInternalController",
+  "file": "src/modules/internal/model-serving-internal.controller.ts",
+  "dir": "internal",
+  "class_line": 32,
+  "controller_decorator": "'internal/models'",
+  "class_decorators": [
+   "@ApiTags('internal-model-registry')",
+   "@Public()",
+   "@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/models')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/internal/__tests__/model-serving-internal.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "SttInternalController",
+  "file": "src/modules/internal/stt-internal.controller.ts",
+  "dir": "internal",
+  "class_line": 80,
+  "controller_decorator": "'internal/stt'",
+  "class_decorators": [
+   "@RequiredScopes('internal:stt:worker')",
+   "@UseGuards(InternalTenantLockGuard)",
+   "@Controller('internal/stt')"
+  ],
+  "routes": 12,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 7,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-scope-audit.test.ts",
+   "src/guards/__tests__/internal-tenant-lock.coverage.test.ts",
+   "src/modules/consultation/__tests__/consultation.controller.lifecycle.task1045.test.ts",
+   "src/modules/internal/__tests__/model-registry-credential.util.test.ts",
+   "src/modules/internal/__tests__/model-registry-internal.controller.test.ts",
+   "src/modules/internal/__tests__/stt-internal.controller.scope.test.ts",
+   "src/modules/internal/__tests__/stt-internal.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "SttSessionTranscriptInternalController",
+  "file": "src/modules/internal/stt-session-transcript-internal.controller.ts",
+  "dir": "internal",
+  "class_line": 35,
+  "controller_decorator": "'internal/stt/sessions'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/stt/sessions')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/internal/__tests__/stt-session-transcript-internal.controller.task1042.test.ts"
+  ]
+ },
+ {
+  "controller": "KnowledgeController",
+  "file": "src/modules/knowledge/knowledge.controller.ts",
+  "dir": "knowledge",
+  "class_line": 35,
+  "controller_decorator": "'admin/knowledge/documents'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-knowledge')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:knowledge:manage')",
+   "@Controller('admin/knowledge/documents')",
+   "@CanManage('KnowledgeDocument')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/admin-scope-audit.test.ts",
+   "src/modules/knowledge/__tests__/knowledge.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "McpAdminController",
+  "file": "src/modules/mcp-admin/mcp-admin.controller.ts",
+  "dir": "mcp-admin",
+  "class_line": 56,
+  "controller_decorator": "'admin/mcp-servers'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-mcp-servers')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:mcp-server:manage')",
+   "@Controller('admin/mcp-servers')",
+   "@Authorize()"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 2,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/mcp-admin/__tests__/mcp-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "MediaController",
+  "file": "src/modules/media/media.controller.ts",
+  "dir": "media",
+  "class_line": 51,
+  "controller_decorator": "'media'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('storage')",
+   "@Controller('media')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/media/__tests__/media.controller.task1038.test.ts"
+  ]
+ },
+ {
+  "controller": "ModelResidencyController",
+  "file": "src/modules/model-residency/model-residency.controller.ts",
+  "dir": "model-residency",
+  "class_line": 48,
+  "controller_decorator": "'admin/model-residency'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-model-residency')",
+   "@ForbidApiKey()",
+   "@Controller('admin/model-residency')",
+   "@CanManage('ModelResidencyPolicy')"
+  ],
+  "routes": 14,
+  "public_routes": 0,
+  "api_key_forbidden": 14,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/model-residency/__tests__/model-residency.controller.task1005.test.ts"
+  ]
+ },
+ {
+  "controller": "MonitoringController",
+  "file": "src/modules/monitoring/monitoring.controller.ts",
+  "dir": "monitoring",
+  "class_line": 41,
+  "controller_decorator": "'admin/monitoring'",
+  "class_decorators": [
+   "@CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])",
+   "@Throttle({ default: { limit: 300, ttl: 60000 } })",
+   "@Controller('admin/monitoring')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 0,
+  "test_files": 6,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/ai-routing-policy/__tests__/ai-routing-policy-admin.controller.test.ts",
+   "src/modules/monitoring/__tests__/monitoring.controller.route.test.ts",
+   "src/modules/monitoring/__tests__/monitoring.controller.test.ts",
+   "src/modules/throttle/__tests__/throttle-decorators.test.ts"
+  ]
+ },
+ {
+  "controller": "NlpTaskInstructionsAdminController",
+  "file": "src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts",
+  "dir": "nlp-task-instructions",
+  "class_line": 40,
+  "controller_decorator": "'admin/nlp-task-instructions'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-nlp-task-instructions')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:nlp-task-instructions:manage')",
+   "@Controller('admin/nlp-task-instructions')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/nlp-task-instructions/__tests__/nlp-task-instructions-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "NotificationController",
+  "file": "src/modules/notification/notification.controller.ts",
+  "dir": "notification",
+  "class_line": 29,
+  "controller_decorator": "'admin/notifications'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-notifications')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:notification:manage')",
+   "@Controller('admin/notifications')",
+   "@CanManage('Notification')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/notification/__tests__/notification.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "PlatformMetricsController",
+  "file": "src/modules/platform-metrics/platform-metrics.controller.ts",
+  "dir": "platform-metrics",
+  "class_line": 25,
+  "controller_decorator": "'admin/platform'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-platform-metrics')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:platform-metrics:read')",
+   "@Controller('admin/platform')",
+   "@CanManage('PlatformMetrics')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/platform-metrics/__tests__/platform-metrics.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ComposedPromptAdminController",
+  "file": "src/modules/prompt-inspector/composed-prompt-admin.controller.ts",
+  "dir": "prompt-inspector",
+  "class_line": 19,
+  "controller_decorator": "'admin/composed-prompts'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-composed-prompts')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-admin:manage')",
+   "@Controller('admin/composed-prompts')",
+   "@CanRead('Consultation')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/prompt-inspector/__tests__/prompt-inspector.controllers.task1035.test.ts"
+  ]
+ },
+ {
+  "controller": "PromptPreviewController",
+  "file": "src/modules/prompt-inspector/prompt-preview.controller.ts",
+  "dir": "prompt-inspector",
+  "class_line": 20,
+  "controller_decorator": "'admin/consultations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-consultations')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:consultation-admin:manage')",
+   "@Controller('admin/consultations')",
+   "@CanRead('Consultation')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/prompt-inspector/__tests__/prompt-inspector.controllers.task1035.test.ts"
+  ]
+ },
+ {
+  "controller": "PromptManagementController",
+  "file": "src/modules/prompt-management/prompt-management.controller.ts",
+  "dir": "prompt-management",
+  "class_line": 62,
+  "controller_decorator": "'admin/prompt-templates'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-prompt-templates')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:prompt-template:manage')",
+   "@Controller('admin/prompt-templates')",
+   "@Authorize(['manage', 'PromptTemplate'])"
+  ],
+  "routes": 17,
+  "public_routes": 0,
+  "api_key_forbidden": 17,
+  "occ_routes": 3,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/prompt-management/__tests__/prompt-management.controller.test.ts",
+   "src/modules/prompt-management/__tests__/prompt-template.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "PromptTemplateController",
+  "file": "src/modules/prompt-management/prompt-template.controller.ts",
+  "dir": "prompt-management",
+  "class_line": 44,
+  "controller_decorator": "'prompt-templates'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('prompt-templates')",
+   "@Controller('prompt-templates')",
+   "@RequiredScopes('prompt:template:read')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 1,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/prompt-management/__tests__/prompt-template.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "PrismaStudioStatusController",
+  "file": "src/modules/pstudio/pstudio-status.controller.ts",
+  "dir": "pstudio",
+  "class_line": 31,
+  "controller_decorator": "'admin/pstudio/status'",
+  "class_decorators": [
+   "@ApiProperty({ description: 'Whether the Prisma Studio shell is enabled in this environment (ENABLE_PRISMA_STUDIO flag).' })",
+   "@ApiTags('admin-pstudio')",
+   "@ApiBearerAuth()",
+   "@Authorize(['manage', 'PrismaStudio'])",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:pstudio:manage')",
+   "@Controller('admin/pstudio/status')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/pstudio/__tests__/pstudio-status.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "PrismaStudioController",
+  "file": "src/modules/pstudio/pstudio.controller.ts",
+  "dir": "pstudio",
+  "class_line": 37,
+  "controller_decorator": "'admin/pstudio'",
+  "class_decorators": [
+   "@ApiTags('admin-pstudio')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:pstudio:manage')",
+   "@Controller('admin/pstudio')",
+   "@CanManage('PrismaStudio')"
+  ],
+  "routes": 0,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/pstudio/__tests__/pstudio.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "QueueAdminController",
+  "file": "src/modules/queue-admin/queue-admin.controller.ts",
+  "dir": "queue-admin",
+  "class_line": 42,
+  "controller_decorator": "'admin/queues'",
+  "class_decorators": [
+   "@ApiTags('admin-queues')",
+   "@ApiBearerAuth()",
+   "@Authorize(['manage', 'all'])",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:queue:manage')",
+   "@Controller('admin/queues')"
+  ],
+  "routes": 12,
+  "public_routes": 0,
+  "api_key_forbidden": 12,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/queue-admin/__tests__/queue-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "SchedulerAdminController",
+  "file": "src/modules/queue-admin/scheduler-admin.controller.ts",
+  "dir": "queue-admin",
+  "class_line": 25,
+  "controller_decorator": "'admin/schedulers'",
+  "class_decorators": [
+   "@ApiTags('admin-schedulers')",
+   "@ApiBearerAuth()",
+   "@Authorize(['manage', 'all'])",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:scheduler:manage')",
+   "@Controller('admin/schedulers')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/queue-admin/__tests__/scheduler-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "PermissionCheckController",
+  "file": "src/modules/rbac/permission-check.controller.ts",
+  "dir": "rbac",
+  "class_line": 30,
+  "controller_decorator": "'users/me/permission-checks'",
+  "class_decorators": [
+   "@ApiTags('rbac-permission-check')",
+   "@ApiBearerAuth()",
+   "@Controller('users/me/permission-checks')",
+   "@RequiredScopes('user:profile:read')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/rbac/__tests__/permission-check.controller.test.ts",
+   "src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts"
+  ]
+ },
+ {
+  "controller": "UserPermissionCheckController",
+  "file": "src/modules/rbac/permission-check.controller.ts",
+  "dir": "rbac",
+  "class_line": 92,
+  "controller_decorator": "'users/:id/permission-checks'",
+  "class_decorators": [
+   "@ApiTags('rbac-permission-check')",
+   "@ApiBearerAuth()",
+   "@Controller('users/:id/permission-checks')",
+   "@RequiredScopes('user:profile:read')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/rbac/__tests__/permission-check.controller.test.ts",
+   "src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts"
+  ]
+ },
+ {
+  "controller": "PoliciesController",
+  "file": "src/modules/rbac/policies.controller.ts",
+  "dir": "rbac",
+  "class_line": 33,
+  "controller_decorator": "'admin/rbac/policies'",
+  "class_decorators": [
+   "@ApiTags('admin-rbac-policies')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:rbac-policy:write')",
+   "@Controller('admin/rbac/policies')",
+   "@CanManage('Policy')"
+  ],
+  "routes": 7,
+  "public_routes": 0,
+  "api_key_forbidden": 7,
+  "occ_routes": 0,
+  "test_files": 5,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/modules/rbac/__tests__/break-glass.task409.test.ts",
+   "src/modules/rbac/__tests__/policies.controller.test.ts",
+   "src/modules/rbac/__tests__/rbac-permissions.test.ts"
+  ]
+ },
+ {
+  "controller": "RolesController",
+  "file": "src/modules/rbac/roles.controller.ts",
+  "dir": "rbac",
+  "class_line": 77,
+  "controller_decorator": "'admin/rbac/roles'",
+  "class_decorators": [
+   "@ApiTags('admin-rbac-roles')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:role:write')",
+   "@Controller('admin/rbac/roles')",
+   "@CanManage('Role')"
+  ],
+  "routes": 10,
+  "public_routes": 0,
+  "api_key_forbidden": 10,
+  "occ_routes": 0,
+  "test_files": 10,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/rbac/__tests__/break-glass.task409.test.ts",
+   "src/modules/rbac/__tests__/rbac-permissions.test.ts",
+   "src/modules/rbac/__tests__/roles-members.task444.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts",
+   "src/modules/user/controllers/__tests__/user-roles.controller.test.ts",
+   "src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts"
+  ]
+ },
+ {
+  "controller": "ResourceSubscriptionController",
+  "file": "src/modules/resource-subscription/resource-subscription.controller.ts",
+  "dir": "resource-subscription",
+  "class_line": 30,
+  "controller_decorator": "'admin/resource-subscriptions'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-resource-subscriptions')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:resource-subscription:manage')",
+   "@Controller('admin/resource-subscriptions')",
+   "@CanManage('ResourceSubscription')"
+  ],
+  "routes": 6,
+  "public_routes": 0,
+  "api_key_forbidden": 6,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/resource-subscription/__tests__/resource-subscription.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "SecurityPolicyController",
+  "file": "src/modules/security-policy/security-policy.controller.ts",
+  "dir": "security-policy",
+  "class_line": 31,
+  "controller_decorator": "'admin/security'",
+  "class_decorators": [
+   "@ApiTags('admin-security-policy')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:settings:manage')",
+   "@Controller('admin/security')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/security-policy/__tests__/security-policy.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ServiceAccountTokenController",
+  "file": "src/modules/service-account/service-account-token.controller.ts",
+  "dir": "service-account",
+  "class_line": 36,
+  "controller_decorator": "'auth'",
+  "class_decorators": [
+   "@ApiTags('service-account-auth')",
+   "@Controller('auth')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/service-account/__tests__/client-ip-attribution.task993.test.ts",
+   "src/modules/service-account/__tests__/service-account-token.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ServiceAccountController",
+  "file": "src/modules/service-account/service-account.controller.ts",
+  "dir": "service-account",
+  "class_line": 55,
+  "controller_decorator": "'admin/service-accounts'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-service-accounts')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/service-accounts')",
+   "@CanManage('ServiceAccount')"
+  ],
+  "routes": 7,
+  "public_routes": 0,
+  "api_key_forbidden": 7,
+  "occ_routes": 1,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/__tests__/task-773-admin-plane-reachability.test.ts",
+   "src/modules/service-account/__tests__/service-account.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ServiceReleaseAdminController",
+  "file": "src/modules/service-release/service-release-admin.controller.ts",
+  "dir": "service-release",
+  "class_line": 28,
+  "controller_decorator": "'admin/service-releases'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-service-releases')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:service-release:manage')",
+   "@Controller('admin/service-releases')",
+   "@CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/service-release/__tests__/service-release-admin.controller.test.ts",
+   "src/modules/service-release/__tests__/service-release.controllers.metadata.test.ts"
+  ]
+ },
+ {
+  "controller": "ServiceReleaseInternalController",
+  "file": "src/modules/service-release/service-release-internal.controller.ts",
+  "dir": "service-release",
+  "class_line": 22,
+  "controller_decorator": "'internal/service-releases'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(ServiceReleaseTokenGuard, InternalTenantLockGuard)",
+   "@ApiSecurity('serviceToken')",
+   "@Controller('internal/service-releases')"
+  ],
+  "routes": 2,
+  "public_routes": 2,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-scope-audit.test.ts",
+   "src/modules/service-release/__tests__/service-release-internal.controller.test.ts",
+   "src/modules/service-release/__tests__/service-release.controllers.metadata.test.ts"
+  ]
+ },
+ {
+  "controller": "SettingsActionConfirmationsController",
+  "file": "src/modules/settings-catalog/settings-action-confirmations.controller.ts",
+  "dir": "settings-catalog",
+  "class_line": 28,
+  "controller_decorator": "'admin/settings'",
+  "class_decorators": [
+   "@ApiTags('admin-settings-features')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:settings:manage')",
+   "@Controller('admin/settings')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/settings-catalog/__tests__/settings-action-confirmations.controller.task1057.test.ts"
+  ]
+ },
+ {
+  "controller": "SettingsCatalogController",
+  "file": "src/modules/settings-catalog/settings-catalog.controller.ts",
+  "dir": "settings-catalog",
+  "class_line": 44,
+  "controller_decorator": "'admin/settings'",
+  "class_decorators": [
+   "@ApiTags('admin-settings-catalog')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:settings:manage')",
+   "@Controller('admin/settings')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/modules/settings-catalog/__tests__/settings-catalog.controller.console-route.task1033.test.ts",
+   "src/modules/settings-catalog/__tests__/settings-catalog.controller.pair.task969.test.ts",
+   "src/modules/settings-catalog/__tests__/settings-catalog.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "SettingsFeaturesController",
+  "file": "src/modules/settings-catalog/settings-features.controller.ts",
+  "dir": "settings-catalog",
+  "class_line": 33,
+  "controller_decorator": "'admin/settings'",
+  "class_decorators": [
+   "@ApiTags('admin-settings-features')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:settings:manage')",
+   "@Controller('admin/settings')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/settings-catalog/__tests__/settings-features.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "SettingsRegistryWriteController",
+  "file": "src/modules/settings-catalog/settings-registry-write.controller.ts",
+  "dir": "settings-catalog",
+  "class_line": 44,
+  "controller_decorator": "'admin/settings'",
+  "class_decorators": [
+   "@ApiTags('admin-settings-registry')",
+   "@ApiBearerAuth()",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:settings:manage')",
+   "@Controller('admin/settings')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/occ-coverage-audit.test.ts",
+   "src/modules/settings-catalog/__tests__/settings-registry-write.controller.pair.task969.test.ts",
+   "src/modules/settings-catalog/__tests__/settings-registry-write.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "HarnessTtsInternalController",
+  "file": "src/modules/speech/harness-tts-internal.controller.ts",
+  "dir": "speech",
+  "class_line": 140,
+  "controller_decorator": "'internal/harness/tts'",
+  "class_decorators": [
+   "@ApiExcludeController()",
+   "@Public()",
+   "@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)",
+   "@Controller('internal/harness/tts')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/speech/__tests__/harness-tts-internal.controller.test.ts",
+   "src/modules/speech/__tests__/tts-unattributed-provider.task957.test.ts"
+  ]
+ },
+ {
+  "controller": "SpeechProxyController",
+  "file": "src/modules/speech/speech-proxy.controller.ts",
+  "dir": "speech",
+  "class_line": 89,
+  "controller_decorator": "'speech'",
+  "class_decorators": [
+   "@ApiTags('speech')",
+   "@ApiBearerAuth()",
+   "@Controller('speech')",
+   "@RequiredScopes('tts:speech:write')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-surface-audit.test.ts",
+   "src/modules/speech/__tests__/speech-proxy.controller.quota.task615.test.ts",
+   "src/modules/speech/__tests__/speech-proxy.controller.test.ts",
+   "src/modules/speech/__tests__/tts-unattributed-provider.task957.test.ts"
+  ]
+ },
+ {
+  "controller": "StorageController",
+  "file": "src/modules/storage/storage.controller.ts",
+  "dir": "storage",
+  "class_line": 59,
+  "controller_decorator": "'storage'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('storage')",
+   "@Controller('storage')",
+   "@RequiredScopes('media:file:write')"
+  ],
+  "routes": 10,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 6,
+  "unit_test_files": [
+   "src/common/__tests__/tenant-owned-resource.interceptor.test.ts",
+   "src/modules/storage/__tests__/storage.controller.media-record-failure.test.ts",
+   "src/modules/storage/__tests__/storage.controller.metadata.test.ts",
+   "src/modules/storage/__tests__/storage.controller.task318-w2.test.ts",
+   "src/modules/storage/__tests__/storage.controller.task375-thumbnails.test.ts",
+   "src/modules/storage/__tests__/storage.controller.task932-cross-tenant.test.ts"
+  ]
+ },
+ {
+  "controller": "StorageAccessKeyController",
+  "file": "src/modules/storage-access-key/storage-access-key.controller.ts",
+  "dir": "storage-access-key",
+  "class_line": 17,
+  "controller_decorator": "'admin/tenants/storage/keys'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('tenant-storage-keys')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:storage-key:manage')",
+   "@Controller('admin/tenants/storage/keys')",
+   "@CanManage('Tenant')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 0,
+  "unit_test_files": []
+ },
+ {
+  "controller": "AdminTranscriptionJobController",
+  "file": "src/modules/streaming/admin-transcription-job.controller.ts",
+  "dir": "streaming",
+  "class_line": 38,
+  "controller_decorator": "'admin/audio/transcription-jobs'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-transcription-jobs')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:transcription-job:read')",
+   "@Controller('admin/audio/transcription-jobs')",
+   "@CanManage('Tenant')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 3,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/streaming/__tests__/admin-transcription-job.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TextGenerationAdminController",
+  "file": "src/modules/streaming/text-generation-admin.controller.ts",
+  "dir": "streaming",
+  "class_line": 37,
+  "controller_decorator": "'admin/text-generations'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-ai-models')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/text-generations')",
+   "@Authorize(['manage', 'all'])"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/streaming/__tests__/text-proxy.model-pinning.task1012.test.ts"
+  ]
+ },
+ {
+  "controller": "TextProxyController",
+  "file": "src/modules/streaming/text-proxy.controller.ts",
+  "dir": "streaming",
+  "class_line": 331,
+  "controller_decorator": "'text-generations'",
+  "class_decorators": [
+   "@ApiTags('text')",
+   "@ApiBearerAuth()",
+   "@Controller('text-generations')",
+   "@RequiredScopes('consultation:report:write')",
+   "@RequiredSvcScopes('svc:consultation:report:write')"
+  ],
+  "routes": 7,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 15,
+  "unit_test_files": [
+   "src/modules/streaming/__tests__/text-proxy-tenant-byo.controller.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.compute-device.task959.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.controller.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.guardrail-relay.task1050.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.metering-precheck.task890.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.model-pinning.task1012.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.provider-omission.controller.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.request-id.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.retry-after.task993.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.sse-error-frame.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.sync-usage.task957.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.system-prompt-deprecation.task1047.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.task818-stream-contract.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.usage-emission.task615.test.ts",
+   "src/modules/streaming/__tests__/text-proxy.visit-type.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TranscriptionJobController",
+  "file": "src/modules/streaming/transcription-job.controller.ts",
+  "dir": "streaming",
+  "class_line": 161,
+  "controller_decorator": null,
+  "class_decorators": [
+   "@RequiredScopes('stt:transcription:write')",
+   "@RequiredSvcScopes('svc:stt:transcription:write')"
+  ],
+  "routes": 19,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 20,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-surface-audit.test.ts",
+   "src/modules/consultation/__tests__/harness-internal-stt-batch.controller.test.ts",
+   "src/modules/streaming/__tests__/admin-transcription-job.controller.test.ts",
+   "src/modules/streaming/__tests__/stt-ws.gateway.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.agent-spec.controller.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.asr-precedence.task1002.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.batch-language.task1004.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.batch-limits.controller.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.caller-spec-refused.task1012.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.context-echo.task951.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.controller.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.idempotency.task1038.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.language-mode.task1004.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.language-modes.task1004.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.machine-owner.task991.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.post-create-compensation.task985.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.stream-owner.task933.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.stt-fallback.controller.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.warnings.task1048.test.ts",
+   "src/modules/streaming/__tests__/transcription-job.workflow-session.task1042.test.ts"
+  ]
+ },
+ {
+  "controller": "MyTenantController",
+  "file": "src/modules/tenant/my-tenant.controller.ts",
+  "dir": "tenant",
+  "class_line": 36,
+  "controller_decorator": "'tenants/me'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('tenant')",
+   "@Controller('tenants/me')",
+   "@Authorize()",
+   "@RequiredScopes('tenant:profile:read')"
+  ],
+  "routes": 3,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 1,
+  "test_files": 5,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-surface-audit.test.ts",
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/tenant/__tests__/my-tenant-config-authorization.controller.test.ts",
+   "src/modules/tenant/__tests__/my-tenant.controller.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantProvisionController",
+  "file": "src/modules/tenant/tenant-provision.controller.ts",
+  "dir": "tenant",
+  "class_line": 27,
+  "controller_decorator": "'admin/tenants'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-tenants')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:tenant:write')",
+   "@Controller('admin/tenants')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/tenant/__tests__/tenant-provision.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantReferenceSetController",
+  "file": "src/modules/tenant/tenant-reference-set.controller.ts",
+  "dir": "tenant",
+  "class_line": 29,
+  "controller_decorator": "'admin/tenants'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-tenants')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:tenant:write')",
+   "@Controller('admin/tenants')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 0,
+  "unit_test_files": []
+ },
+ {
+  "controller": "TenantController",
+  "file": "src/modules/tenant/tenant.controller.ts",
+  "dir": "tenant",
+  "class_line": 51,
+  "controller_decorator": "'admin/tenants'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-tenants')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:tenant:write')",
+   "@Controller('admin/tenants')",
+   "@CanAny(['manage', 'Tenant'], ['update', 'Tenant'])"
+  ],
+  "routes": 15,
+  "public_routes": 0,
+  "api_key_forbidden": 15,
+  "occ_routes": 2,
+  "test_files": 13,
+  "unit_test_files": [
+   "src/__tests__/controller-route-renames.test.ts",
+   "src/__tests__/route-param-names.test.ts",
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/api-key-surface-audit.test.ts",
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/bootstrap/__tests__/occ-coverage-audit.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/__tests__/task-773-admin-plane-reachability.test.ts",
+   "src/modules/tenant/__tests__/my-tenant-config-authorization.controller.test.ts",
+   "src/modules/tenant/__tests__/my-tenant.controller.test.ts",
+   "src/modules/tenant/__tests__/tenant.controller.swagger.test.ts",
+   "src/modules/tenant/__tests__/tenant.controller.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantAllowedOriginController",
+  "file": "src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts",
+  "dir": "tenant-allowed-origin",
+  "class_line": 70,
+  "controller_decorator": "'admin/allowed-origins'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-allowed-origins')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:allowed-origin:manage')",
+   "@Controller('admin/allowed-origins')",
+   "@CanManage('TenantAllowedOrigin')"
+  ],
+  "routes": 6,
+  "public_routes": 0,
+  "api_key_forbidden": 6,
+  "occ_routes": 1,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/tenant-allowed-origin/__tests__/tenant-allowed-origin.admin-route-audit.test.ts",
+   "src/modules/tenant-allowed-origin/__tests__/tenant-allowed-origin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantBucketController",
+  "file": "src/modules/tenant-bucket/tenant-bucket.controller.ts",
+  "dir": "tenant-bucket",
+  "class_line": 39,
+  "controller_decorator": "'admin/tenants/storage/buckets'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('tenant-storage')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:tenant-storage:manage')",
+   "@Controller('admin/tenants/storage/buckets')",
+   "@CanManage('Tenant')"
+  ],
+  "routes": 13,
+  "public_routes": 0,
+  "api_key_forbidden": 13,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/streaming/__tests__/admin-transcription-job.controller.test.ts",
+   "src/modules/tenant-bucket/__tests__/tenant-bucket.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantCheckpointController",
+  "file": "src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts",
+  "dir": "tenant-checkpoint",
+  "class_line": 41,
+  "controller_decorator": "'admin/tenants/:tenantId/checkpoints'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('tenant-checkpoints')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/tenants/:tenantId/checkpoints')"
+  ],
+  "routes": 12,
+  "public_routes": 0,
+  "api_key_forbidden": 12,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/tenant-checkpoint/__tests__/tenant-checkpoint.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantFrontendConfigAdminController",
+  "file": "src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts",
+  "dir": "tenant-frontend-config",
+  "class_line": 30,
+  "controller_decorator": "'admin/tenant-frontend-config'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-frontend-pipeline-config')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:tenant-frontend-config:manage')",
+   "@Controller('admin/tenant-frontend-config')",
+   "@CanAny(['manage', 'Tenant'], ['update', 'Tenant'])"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 2,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/occ-coverage-audit.test.ts",
+   "src/modules/tenant-frontend-config/__tests__/tenant-frontend-config-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantIdpConfigAdminController",
+  "file": "src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts",
+  "dir": "tenant-idp-config",
+  "class_line": 32,
+  "controller_decorator": "'admin/tenant-idp-config'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-tenant-idp-config')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:tenant-idp-config:manage')",
+   "@Controller('admin/tenant-idp-config')",
+   "@Authorize()"
+  ],
+  "routes": 8,
+  "public_routes": 0,
+  "api_key_forbidden": 8,
+  "occ_routes": 2,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/occ-coverage-audit.test.ts",
+   "src/modules/tenant-idp-config/__tests__/tenant-idp-config-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "TenantStorageConfigAdminController",
+  "file": "src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts",
+  "dir": "tenant-storage-config",
+  "class_line": 34,
+  "controller_decorator": "'admin/tenants/storage/config'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-storage-config')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:tenant-storage:manage')",
+   "@Controller('admin/tenants/storage/config')",
+   "@CanAny(['manage', 'Tenant'], ['update', 'Tenant'])"
+  ],
+  "routes": 6,
+  "public_routes": 0,
+  "api_key_forbidden": 6,
+  "occ_routes": 1,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/tenant-storage-config/__tests__/tenant-storage-config-admin.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ForgotPasswordController",
+  "file": "src/modules/user/controllers/forgot-password.controller.ts",
+  "dir": "user",
+  "class_line": 22,
+  "controller_decorator": "'auth'",
+  "class_decorators": [
+   "@ApiTags('auth')",
+   "@Controller('auth')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/user/controllers/__tests__/forgot-password.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "PasswordResetController",
+  "file": "src/modules/user/controllers/password-reset.controller.ts",
+  "dir": "user",
+  "class_line": 16,
+  "controller_decorator": "'users/password-reset'",
+  "class_decorators": [
+   "@ApiTags('auth')",
+   "@Controller('users/password-reset')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/user/controllers/__tests__/password-reset.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "UserDepartmentsMeController",
+  "file": "src/modules/user/controllers/user-departments-me.controller.ts",
+  "dir": "user",
+  "class_line": 34,
+  "controller_decorator": "'users/me/departments'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('user')",
+   "@Controller('users/me/departments')",
+   "@Authorize()",
+   "@RequiredScopes('user:profile:read')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts",
+   "src/modules/user/controllers/__tests__/user-departments-me.controller.test.ts",
+   "src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts"
+  ]
+ },
+ {
+  "controller": "UserDepartmentsController",
+  "file": "src/modules/user/controllers/user-departments.controller.ts",
+  "dir": "user",
+  "class_line": 34,
+  "controller_decorator": "'admin/users'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-user-departments')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:user:write')",
+   "@Controller('admin/users')",
+   "@CanManage('User')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 1,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/user/controllers/__tests__/user-departments-me.controller.test.ts",
+   "src/modules/user/controllers/__tests__/user-departments.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "UserPreferencesController",
+  "file": "src/modules/user/controllers/user-preferences.controller.ts",
+  "dir": "user",
+  "class_line": 29,
+  "controller_decorator": "'users/me/preferences'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('user')",
+   "@Controller('users/me/preferences')",
+   "@Authorize()",
+   "@RequiredScopes('user:preferences:write')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts",
+   "src/modules/user/controllers/__tests__/user-preferences.controller.test.ts",
+   "src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts"
+  ]
+ },
+ {
+  "controller": "UserRolesController",
+  "file": "src/modules/user/controllers/user-roles.controller.ts",
+  "dir": "user",
+  "class_line": 41,
+  "controller_decorator": "'users'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('user')",
+   "@Controller('users')",
+   "@Authorize()",
+   "@RequiredScopes('user:profile:read')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts",
+   "src/modules/user/controllers/__tests__/user-roles.controller.test.ts",
+   "src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts"
+  ]
+ },
+ {
+  "controller": "UserSettingsController",
+  "file": "src/modules/user/controllers/user-settings.controller.ts",
+  "dir": "user",
+  "class_line": 40,
+  "controller_decorator": "'users/me/settings'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('user')",
+   "@Controller('users/me/settings')",
+   "@Authorize()",
+   "@RequiredScopes('user:settings:read')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 5,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts",
+   "src/modules/user/controllers/__tests__/user-departments-me.controller.test.ts",
+   "src/modules/user/controllers/__tests__/user-settings.controller.test.ts",
+   "src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts"
+  ]
+ },
+ {
+  "controller": "UserController",
+  "file": "src/modules/user/user.controller.ts",
+  "dir": "user",
+  "class_line": 88,
+  "controller_decorator": "'admin/users'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-users')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:user:write')",
+   "@Controller('admin/users')",
+   "@CanManage('User')"
+  ],
+  "routes": 21,
+  "public_routes": 0,
+  "api_key_forbidden": 21,
+  "occ_routes": 0,
+  "test_files": 4,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/user/__tests__/user.controller.test.ts",
+   "src/modules/user/controllers/__tests__/user-departments.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "VoiceProfileController",
+  "file": "src/modules/voice-profile/voice-profile.controller.ts",
+  "dir": "voice-profile",
+  "class_line": 51,
+  "controller_decorator": "'voice-profiles'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('voice-profile')",
+   "@Controller('voice-profiles')",
+   "@ForbidApiKey()"
+  ],
+  "routes": 6,
+  "public_routes": 0,
+  "api_key_forbidden": 6,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts",
+   "src/modules/voice-profile/__tests__/voice-profile.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "WebhookController",
+  "file": "src/modules/webhook/webhook.controller.ts",
+  "dir": "webhook",
+  "class_line": 44,
+  "controller_decorator": "'admin/webhooks'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-webhooks')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:webhook:event:write')",
+   "@Controller('admin/webhooks')",
+   "@CanManage('Webhook')"
+  ],
+  "routes": 7,
+  "public_routes": 0,
+  "api_key_forbidden": 7,
+  "occ_routes": 2,
+  "test_files": 5,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/__tests__/task-773-admin-plane-reachability.test.ts",
+   "src/modules/webhook/__tests__/webhook.controller.test.ts",
+   "src/modules/workflow-test-fixture/__tests__/workflow-test-fixture.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowAssignmentController",
+  "file": "src/modules/workflow-assignment/workflow-assignment.controller.ts",
+  "dir": "workflow-assignment",
+  "class_line": 26,
+  "controller_decorator": "'admin/workflow-assignments'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-assignments')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:workflow-definition:manage')",
+   "@Controller('admin/workflow-assignments')",
+   "@CanManage('WorkflowDefinition')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 2,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/workflow-assignment/__tests__/workflow-assignment.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowDefinitionController",
+  "file": "src/modules/workflow-definition/workflow-definition.controller.ts",
+  "dir": "workflow-definition",
+  "class_line": 65,
+  "controller_decorator": "'admin/workflow-definitions'",
+  "class_decorators": [
+   "@ApiProperty({ description: 'The relative URL external systems POST signed deliveries to.' })",
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-definitions')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:workflow-definition:manage')",
+   "@Controller('admin/workflow-definitions')",
+   "@CanManage('WorkflowDefinition')"
+  ],
+  "routes": 22,
+  "public_routes": 0,
+  "api_key_forbidden": 22,
+  "occ_routes": 2,
+  "test_files": 6,
+  "unit_test_files": [
+   "src/modules/workflow-definition/__tests__/workflow-definition.controller.tags.task1036.test.ts",
+   "src/modules/workflow-definition/__tests__/workflow-definition.controller.task1036.test.ts",
+   "src/modules/workflow-definition/__tests__/workflow-definition.controller.task885.test.ts",
+   "src/modules/workflow-definition/__tests__/workflow-definition.controller.test.ts",
+   "src/modules/workflow-definition/__tests__/workflow-definition.language-warnings.task1004.test.ts",
+   "src/modules/workflow-definition/__tests__/workflow-definition.lineages.task965.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowInvariantRuleController",
+  "file": "src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts",
+  "dir": "workflow-invariant-rule",
+  "class_line": 49,
+  "controller_decorator": "'admin/workflow-invariant-rules'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-invariant-rules')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/workflow-invariant-rules')",
+   "@CanManage('WorkflowInvariantRule')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 1,
+  "test_files": 0,
+  "unit_test_files": []
+ },
+ {
+  "controller": "WorkflowNodeController",
+  "file": "src/modules/workflow-node/workflow-node.controller.ts",
+  "dir": "workflow-node",
+  "class_line": 24,
+  "controller_decorator": "'admin/workflow-nodes'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-nodes')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:workflow-node:read')",
+   "@Controller('admin/workflow-nodes')",
+   "@CanRead('WorkflowDefinition')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/workflow-node/__tests__/workflow-node.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowRunController",
+  "file": "src/modules/workflow-run/workflow-run.controller.ts",
+  "dir": "workflow-run",
+  "class_line": 49,
+  "controller_decorator": "'admin/workflow-runs'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-runs')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:workflow-run:read')",
+   "@Controller('admin/workflow-runs')",
+   "@CanRead('WorkflowRun')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 0,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/service-account-surface-audit.test.ts",
+   "src/modules/workflow-run/__tests__/workflow-run.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowSandboxRunController",
+  "file": "src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts",
+  "dir": "workflow-sandbox-run",
+  "class_line": 38,
+  "controller_decorator": "'admin/workflow-definitions/:definitionId/sandbox-runs'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-sandbox-runs')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:workflow-definition:manage')",
+   "@Controller('admin/workflow-definitions/:definitionId/sandbox-runs')"
+  ],
+  "routes": 4,
+  "public_routes": 0,
+  "api_key_forbidden": 4,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/admin-plane-forbids-api-keys.test.ts",
+   "src/bootstrap/__tests__/admin-scope-audit.test.ts",
+   "src/modules/workflow-sandbox-run/__tests__/workflow-sandbox-run.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowTestFixtureController",
+  "file": "src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts",
+  "dir": "workflow-test-fixture",
+  "class_line": 30,
+  "controller_decorator": "'admin/workflow-test-fixtures'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-test-fixtures')",
+   "@ForbidApiKey()",
+   "@RequiredSvcScopes('svc:admin:workflow-test-fixture:manage')",
+   "@Controller('admin/workflow-test-fixtures')",
+   "@CanManage('WorkflowTestFixture')"
+  ],
+  "routes": 5,
+  "public_routes": 0,
+  "api_key_forbidden": 5,
+  "occ_routes": 1,
+  "test_files": 2,
+  "unit_test_files": [
+   "src/modules/workflow-definition/__tests__/workflow-definition.controller.test.ts",
+   "src/modules/workflow-test-fixture/__tests__/workflow-test-fixture.controller.test.ts"
+  ]
+ },
+ {
+  "controller": "ConsultationWorkflowRunsController",
+  "file": "src/modules/workflows/consultation-workflow-runs.controller.ts",
+  "dir": "workflows",
+  "class_line": 71,
+  "controller_decorator": "'consultations/:consultationId/workflows'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('workflows')",
+   "@Controller('consultations/:consultationId/workflows')"
+  ],
+  "routes": 2,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/workflows/__tests__/workflows.runs.task850.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowHooksController",
+  "file": "src/modules/workflows/workflow-hooks.controller.ts",
+  "dir": "workflows",
+  "class_line": 25,
+  "controller_decorator": "'hooks/workflows'",
+  "class_decorators": [
+   "@ApiTags('workflows')",
+   "@Controller('hooks/workflows')"
+  ],
+  "routes": 1,
+  "public_routes": 1,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 1,
+  "unit_test_files": [
+   "src/modules/workflows/__tests__/workflow-hooks.task864.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowRunTraceController",
+  "file": "src/modules/workflows/workflow-run-trace.controller.ts",
+  "dir": "workflows",
+  "class_line": 42,
+  "controller_decorator": "'admin/workflow-runs'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('admin-workflow-runs')",
+   "@ForbidApiKey()",
+   "@ForbidServiceAccount()",
+   "@Controller('admin/workflow-runs')"
+  ],
+  "routes": 1,
+  "public_routes": 0,
+  "api_key_forbidden": 1,
+  "occ_routes": 0,
+  "test_files": 3,
+  "unit_test_files": [
+   "src/modules/auth/__tests__/auth.controller.stream-ticket.run-trace.task1038.test.ts",
+   "src/modules/workflows/__tests__/workflow-run-trace.controller.audit.task1036.test.ts",
+   "src/modules/workflows/__tests__/workflow-run-trace.controller.task1038.test.ts"
+  ]
+ },
+ {
+  "controller": "WorkflowsController",
+  "file": "src/modules/workflows/workflows.controller.ts",
+  "dir": "workflows",
+  "class_line": 96,
+  "controller_decorator": "'workflows'",
+  "class_decorators": [
+   "@ApiBearerAuth()",
+   "@ApiTags('workflows')",
+   "@Controller('workflows')"
+  ],
+  "routes": 11,
+  "public_routes": 0,
+  "api_key_forbidden": 0,
+  "occ_routes": 0,
+  "test_files": 11,
+  "unit_test_files": [
+   "src/bootstrap/__tests__/api-key-scope-audit.test.ts",
+   "src/modules/workflows/__tests__/workflow-hooks.task864.test.ts",
+   "src/modules/workflows/__tests__/workflows.controller.test.ts",
+   "src/modules/workflows/__tests__/workflows.reviews.task890.test.ts",
+   "src/modules/workflows/__tests__/workflows.run-principal.task1038.test.ts",
+   "src/modules/workflows/__tests__/workflows.run-result.task1038.test.ts",
+   "src/modules/workflows/__tests__/workflows.runs.task850.test.ts",
+   "src/modules/workflows/__tests__/workflows.sse-ticket.task1038.test.ts",
+   "src/modules/workflows/__tests__/workflows.stream-lane-gate.task1038.test.ts",
+   "src/modules/workflows/__tests__/workflows.stream-ticket.settings.task1036.test.ts",
+   "src/modules/workflows/__tests__/workflows.stream-ticket.task930.test.ts"
+  ]
+ }
+]

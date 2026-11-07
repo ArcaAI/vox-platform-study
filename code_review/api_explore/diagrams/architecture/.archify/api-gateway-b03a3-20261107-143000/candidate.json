@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B03a3 Consultation Internal/Harness",
+    "subtitle": "Internal harness, consultation read, consent assert (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b03a3-20261107-143000/api-gateway-b03a3-consultation-internal-harness.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Internal endpoint to downstream","focus":["eg_hcfg","eg_hops","eg_read","eg_consent","ctl_harness","ctl_read","ctl_consent","svc_harness","svc_read","svc_consent","data_consult","ext_models"],"note":"B03a3: internal/service-to-service surfaces (X-Service-Token). Excluded from public Swagger."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_hcfg","type":"frontend","label":"Internal harness config/creds","sublabel":"policy, prompt-template, models resolve, mcp/credential","tag":"internal group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/harness-internal.controller.ts","line":453,"label":"HarnessInternalController /internal/harness"},{"path":"apps/api/src/modules/consultation/harness-internal.controller.ts","line":509,"label":"policy/prompt/models/mcp/credential"}]},
+    {"id":"eg_hops","type":"frontend","label":"Internal harness consultation ops","sublabel":"entities, assemble, draft, gate-decision, escalation","tag":"internal group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/harness-internal.controller.ts","line":731,"label":"consultation entities/assemble/draft"}]},
+    {"id":"eg_read","type":"frontend","label":"Internal consultation read","sublabel":"POST internal/consultations/:id/read (declared paths)","tag":"internal","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-read-internal.controller.ts","line":48,"label":"ConsultationReadInternalController"}]},
+    {"id":"eg_consent","type":"frontend","label":"Internal consent assert","sublabel":"POST internal/consent/assert (non-throwing decision)","tag":"internal","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consent-internal.controller.ts","line":93,"label":"ConsentInternalController"}]},
+
+    {"id":"ctl_harness","type":"backend","label":"HarnessInternalController","sublabel":"Harness config + consultation internal operations","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/harness-internal.controller.ts","line":452,"label":"Service token + tenant lock guards"},{"path":"apps/api/src/modules/consultation/harness-internal.controller.ts","line":454,"label":"class HarnessInternalController"}]},
+    {"id":"ctl_read","type":"backend","label":"ConsultationReadInternalController","sublabel":"Declared consultation path reads for workflow nodes","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-read-internal.controller.ts","line":55,"label":"POST :consultationId/read"}]},
+    {"id":"ctl_consent","type":"backend","label":"ConsentInternalController","sublabel":"Consent check for non-HTTP callers (activities/workers)","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consent-internal.controller.ts","line":101,"label":"POST assert"}]},
+
+    {"id":"svc_harness","type":"backend","label":"HarnessInternalService","sublabel":"Policy/prompt/model/credential + harness consultation ops","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/harness/harness-internal.service.ts","line":269,"label":"HarnessInternalService"}]},
+    {"id":"svc_read","type":"backend","label":"IConsultationReadService","sublabel":"Schema/declaration-checked consultation path reads","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-read-internal.controller.ts","line":1,"label":"IConsultationReadService (injected)"}]},
+    {"id":"svc_consent","type":"backend","label":"IConsultationConsentService","sublabel":"Non-throwing consent decision (checkConsent)","tag":"service","row":3,"col":2,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consent-internal.controller.ts","line":1,"label":"IConsultationConsentService (injected)"}]},
+
+    {"id":"data_consult","type":"database","label":"Consultation/consent/audit data","sublabel":"Consultation state, entities/drafts, consent grants, audit","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/harness/harness-internal.service.ts","line":269,"label":"Harness consultation ops persistence"},{"path":"apps/api/src/modules/consultation/consultation-read-internal.controller.ts","line":60,"label":"Reads audited (paths, not values)"}]},
+    {"id":"ext_models","type":"external","label":"Model/MCP/provider registries","sublabel":"Model resolution, MCP token, provider credential sources","tag":"external","row":0,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/harness-internal.controller.ts","line":630,"label":"GET models/resolve"},{"path":"apps/api/src/modules/consultation/harness-internal.controller.ts","line":682,"label":"GET mcp-token, provider-credential"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"Internal endpoint groups (service-to-service)","wraps":["eg_hcfg","eg_hops","eg_read","eg_consent"]},
+    {"kind":"region","label":"Controllers (internal guards)","wraps":["ctl_harness","ctl_read","ctl_consent"]},
+    {"kind":"region","label":"Application services","wraps":["svc_harness","svc_read","svc_consent"]},
+    {"kind":"region","label":"Data stores / registries","wraps":["data_consult","ext_models"]}
+  ],
+  "connections": [
+    {"id":"n1","from":"eg_hcfg","to":"ctl_harness","label":"internal"},
+    {"id":"n2","from":"eg_hops","to":"ctl_harness","label":"internal"},
+    {"id":"n3","from":"eg_read","to":"ctl_read","label":"internal"},
+    {"id":"n4","from":"eg_consent","to":"ctl_consent","label":"internal"},
+    {"id":"n5","from":"ctl_harness","to":"svc_harness","label":"delegate"},
+    {"id":"n6","from":"ctl_read","to":"svc_read","label":"delegate"},
+    {"id":"n7","from":"ctl_consent","to":"svc_consent","label":"check"},
+    {"id":"n8","from":"svc_harness","to":"data_consult","label":"state"},
+    {"id":"n9","from":"svc_read","to":"data_consult","label":"read/audit"},
+    {"id":"n10","from":"svc_consent","to":"data_consult","label":"grants"},
+    {"id":"n11","from":"svc_harness","to":"ext_models","label":"resolve"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B03a3 scope (internal/harness)","items":["Part of B03-consultation-core split. Internal service-to-service surfaces: HarnessInternalController (29+ route decorators observed), ConsultationReadInternalController, ConsentInternalController.","Harness config/creds: policy, prompt-templates resolved, models resolve, MCP token, provider credential. Harness consultation ops: entities, assemble, draft, gate-decision, escalation (and related internal ops; verify full list in controller/OpenAPI-internal inventory).","Consultation read: POST internal/consultations/:consultationId/read validates declared paths/schema and audits paths (not values). Consent assert: POST internal/consent/assert returns non-throwing decision (allowed/reason/unavailable/grantId/expiresAt)."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Models resolve: GET /internal/harness/models/resolve?taskKey|slug (+ tenant/taskType context) -> resolved model/provider metadata for harness use.","Consultation read: body {runId,nodeId,paths[]} + X-Tenant-Id -> {values, readAt, schemaVersion}; 400 for unknown/undeclared paths, 404 for foreign/unknown run/consultation.","Consent assert: {tenantId, externalPatientId, purpose, scope?, consultationId?, toolName?} -> {allowed, reason?/unavailable?, grantId?, expiresAt?}. Non-HTTP callers use this to distinguish denial vs unavailable (R4).","Harness ops (entities/assemble/draft/gate-decision/escalation): internal DTOs + idempotency where applicable -> persisted operation results. Verify DTO schemas and idempotency semantics."]},
+    {"dot":"emerald","title":"Evidence, security, limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controllers/services verified in local tree.","Security/internal: controllers are @ApiExcludeController/@Public with HarnessServiceTokenGuard (+ InternalTenantLockGuard where applied). X-Service-Token and tenant context requirements are evidenced in controller code; do not treat as public API.","Limitations: grouped endpoint nodes (harness-internal is large); full harness route inventory should be reconciled with controller/OpenAPI/internal docs; downstream registries (model/MCP/provider) are summarized; audit/PHI-safety behavior is implementation-specific and noted where explicit in code comments."]}
+  ]
+}

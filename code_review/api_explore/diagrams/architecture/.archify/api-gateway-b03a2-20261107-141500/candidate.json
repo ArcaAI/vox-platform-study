@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B03a2 Consultation Interactions & Admin",
+    "subtitle": "Attachments, feedback, admin consultation/rollups, telemetry (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b03a2-20261107-141500/api-gateway-b03a2-consultation-interactions-admin.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_attach","eg_feedback","eg_admin","ctl_attach","ctl_feedback","ctl_admin","svc_attach","svc_feedback","svc_admin","data_store","ext_blob"],"note":"B03a2: consultation interactions and admin surfaces (split of B03)."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_attach","type":"frontend","label":"Consultation attachments API","sublabel":"create/complete/content/list/get attachments","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-attachment.controller.ts","line":46,"label":"ConsultationAttachmentController"}]},
+    {"id":"eg_feedback","type":"frontend","label":"Feedback & rollups API group","sublabel":"reason-codes, submit/list feedback, admin rollups","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-feedback.controller.ts","line":59,"label":"ConsultationFeedbackController"},{"path":"apps/api/src/modules/consultation/admin-feedback-rollup.controller.ts","line":56,"label":"AdminFeedbackRollupController"}]},
+    {"id":"eg_admin","type":"frontend","label":"Admin consultation/telemetry API","sublabel":"admin list/aggregate/detail, :id/telemetry","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/admin-consultation.controller.ts","line":40,"label":"AdminConsultationController"},{"path":"apps/api/src/modules/consultation/consultation-telemetry.controller.ts","line":39,"label":"ConsultationTelemetryController"}]},
+
+    {"id":"ctl_attach","type":"backend","label":"ConsultationAttachmentController","sublabel":"Attachment upload lifecycle and retrieval","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-attachment.controller.ts","line":55,"label":"create/complete/content/list/get"}]},
+    {"id":"ctl_feedback","type":"backend","label":"Feedback controllers","sublabel":"User feedback + admin rollup read","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-feedback.controller.ts","line":70,"label":"reason-codes/feedback handlers"},{"path":"apps/api/src/modules/consultation/admin-feedback-rollup.controller.ts","line":60,"label":"GET rollups"}]},
+    {"id":"ctl_admin","type":"backend","label":"Admin consultation controllers","sublabel":"Tenant/cross-tenant list, aggregate, detail, telemetry","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/admin-consultation.controller.ts","line":116,"label":"aggregate + getById handlers"},{"path":"apps/api/src/modules/consultation/consultation-telemetry.controller.ts","line":47,"label":"GET :id/telemetry"}]},
+
+    {"id":"svc_attach","type":"backend","label":"ConsultationAttachmentService","sublabel":"Attachment metadata and content orchestration","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/attachment/consultation-attachment.service.ts","line":152,"label":"ConsultationAttachmentService"}]},
+    {"id":"svc_feedback","type":"backend","label":"Feedback services","sublabel":"Consultation feedback and rollup processing/reads","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/feedback/consultation-feedback.service.ts","line":78,"label":"ConsultationFeedbackService"},{"path":"packages/applications/src/services/consultation/feedback/feedback-rollup.service.ts","line":52,"label":"FeedbackRollupService"}]},
+    {"id":"svc_admin","type":"backend","label":"Admin consultation services","sublabel":"Consultation list/aggregate + telemetry reads","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/consultation/consultation.service.ts","line":218,"label":"ConsultationService (admin reads)"},{"path":"packages/applications/src/services/consultation/telemetry/consultation-telemetry.service.ts","line":79,"label":"ConsultationTelemetryService"}]},
+
+    {"id":"data_store","type":"database","label":"Consultation/feedback data","sublabel":"Consultations, attachments metadata, feedback, telemetry","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/consultation/consultation/consultation.service.ts","line":218,"label":"Consultation persistence"},{"path":"packages/applications/src/services/consultation/feedback/consultation-feedback.service.ts","line":78,"label":"Feedback persistence"}]},
+    {"id":"ext_blob","type":"cloud","label":"Attachment content storage","sublabel":"Blob/object storage for attachment content uploads","tag":"storage","row":0,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/consultation/consultation-attachment.controller.ts","line":102,"label":"POST :attachmentId/content"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_attach","eg_feedback","eg_admin"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_attach","ctl_feedback","ctl_admin"]},
+    {"kind":"region","label":"Application services","wraps":["svc_attach","svc_feedback","svc_admin"]},
+    {"kind":"region","label":"Data stores / attachment storage","wraps":["data_store","ext_blob"]}
+  ],
+  "connections": [
+    {"id":"m1","from":"eg_attach","to":"ctl_attach","label":"HTTP"},
+    {"id":"m2","from":"eg_feedback","to":"ctl_feedback","label":"HTTP"},
+    {"id":"m3","from":"eg_admin","to":"ctl_admin","label":"HTTP"},
+    {"id":"m4","from":"ctl_attach","to":"svc_attach","label":"delegate"},
+    {"id":"m5","from":"ctl_feedback","to":"svc_feedback","label":"delegate"},
+    {"id":"m6","from":"ctl_admin","to":"svc_admin","label":"delegate"},
+    {"id":"m7","from":"svc_attach","to":"data_store","label":"metadata"},
+    {"id":"m8","from":"svc_attach","to":"ext_blob","label":"content"},
+    {"id":"m9","from":"svc_feedback","to":"data_store","label":"feedback"},
+    {"id":"m10","from":"svc_admin","to":"data_store","label":"reads"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B03a2 scope (interactions & admin)","items":["Part of B03-consultation-core split. Controllers: consultation-attachment, consultation-feedback, admin-consultation, admin-feedback-rollup, consultation-telemetry.","Attachments: POST create/complete/content, GET list/get. Feedback: GET reason-codes, POST/GET :id/feedback; admin GET /admin/feedback/rollups.","Admin consultation: list/aggregate/getById under /admin/consultations (uses ApiEndpoint/custom patterns; handlers verified). Telemetry: GET /admin/consultations/:id/telemetry."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Attachment create/complete/content: upload lifecycle requests -> attachment records/content upload results. Verify multipart/content-type handling.","Feedback submit: POST /consultations/:id/feedback with reason/rating payload -> feedback record; rollups return aggregated admin metrics.","Admin aggregate: GET /admin/consultations/aggregate?from&to[&granularity] -> zero-filled new/revisit aggregation (scope depends on tenant/SUPER_ADMIN context).","Telemetry: GET /admin/consultations/:id/telemetry -> consultation telemetry payload. Verify exact schemas and access controls."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","AdminConsultationController uses @ApiEndpoint/custom decorator patterns for some routes; handler methods are verified but route decorators are partially implicit — reconcile with OpenAPI/inventory for strict route list.","Limitations: grouped endpoint nodes; attachment content storage backend is config-driven; admin cross-tenant scope behavior is implementation-specific (as noted in controller docs)."]}
+  ]
+}

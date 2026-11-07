@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B08b Internal Module",
+    "subtitle": "Internal service-to-service controllers (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b08b-20261107-171500/api-gateway-b08b-internal-misc.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Internal endpoint to downstream","focus":["eg_agent","eg_stt","eg_sess","ctl_agent","ctl_stt","ctl_sess","svc_internal","data_ops","ext_callers"],"note":"B08b: internal module (20 routes/8 controllers). Sensitive service-to-service surfaces."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 52, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_agent","type":"frontend","label":"Internal agent/model/config API","sublabel":"agents, composed-prompts, effective-config, model-reg/serving","tag":"internal group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/agent-internal.controller.ts","line":51,"label":"AgentInternalController"},{"path":"apps/api/src/modules/internal/model-registry-internal.controller.ts","line":61,"label":"ModelRegistryInternalController"},{"path":"apps/api/src/modules/internal/effective-config.controller.ts","line":30,"label":"EffectiveConfigController"}]},
+    {"id":"eg_stt","type":"frontend","label":"Internal STT callbacks/ops API","sublabel":"transcripts, segments, job updates, media/provider (12 routes)","tag":"internal group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/stt-internal.controller.ts","line":79,"label":"SttInternalController /internal/stt"}]},
+    {"id":"eg_sess","type":"frontend","label":"Internal STT session transcript API","sublabel":"GET /internal/stt/sessions/:sessionId/transcript","tag":"internal","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/stt-session-transcript-internal.controller.ts","line":34,"label":"SttSessionTranscriptInternalController"}]},
+
+    {"id":"ctl_agent","type":"backend","label":"Internal agent/model/config controllers","sublabel":"Agent/version, composed prompt, config, model registry/serving","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/agent-internal.controller.ts","line":50,"label":"InternalServiceTokenGuard + TenantLock"},{"path":"apps/api/src/modules/internal/composed-prompt-internal.controller.ts","line":25,"label":"ComposedPromptInternalController"},{"path":"apps/api/src/modules/internal/model-serving-internal.controller.ts","line":31,"label":"ModelServingInternalController"}]},
+    {"id":"ctl_stt","type":"backend","label":"SttInternalController","sublabel":"STT transcript/segment/job/media/provider internal ops","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/stt-internal.controller.ts","line":48,"label":"@ApiExcludeController (internal)"},{"path":"apps/api/src/modules/internal/stt-internal.controller.ts","line":78,"label":"@UseGuards(InternalTenantLockGuard)"},{"path":"apps/api/src/modules/internal/stt-internal.controller.ts","line":197,"label":"transcripts/segments/jobs/media handlers"}]},
+    {"id":"ctl_sess","type":"backend","label":"SttSessionTranscriptInternalController","sublabel":"STT session transcript read for internal callers","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/stt-session-transcript-internal.controller.ts","line":33,"label":"HarnessServiceTokenGuard + TenantLock"}]},
+
+    {"id":"svc_internal","type":"backend","label":"Internal application services","sublabel":"Agent/model/config/STT service wiring (verify per controller)","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/agent-internal.controller.ts","line":52,"label":"Agent internal service deps (verify)"},{"path":"apps/api/src/modules/internal/stt-internal.controller.ts","line":80,"label":"STT internal service deps (verify)"}]},
+
+    {"id":"data_ops","type":"database","label":"Internal domain state","sublabel":"Agent/model/config/STT metadata and transcripts","tag":"data","row":0,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/stt-internal.controller.ts","line":197,"label":"Transcript/segment/job persistence paths"},{"path":"apps/api/src/modules/internal/model-registry-internal.controller.ts","line":61,"label":"Model registry/config reads (internal)"}]},
+    {"id":"ext_callers","type":"external","label":"Internal callers / media runtime","sublabel":"Harness/STT/NLP services, media/provider integrations","tag":"runtime","row":2,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/internal/stt-internal.controller.ts","line":358,"label":"POST media / provider integration paths"},{"path":"apps/api/src/modules/internal/model-serving-internal.controller.ts","line":41,"label":"GET :slug/serving-spec for internal callers"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"Internal endpoint groups (service-to-service)","wraps":["eg_agent","eg_stt","eg_sess"]},
+    {"kind":"region","label":"Controllers (internal guards)","wraps":["ctl_agent","ctl_stt","ctl_sess"]},
+    {"kind":"region","label":"Application services","wraps":["svc_internal"]},
+    {"kind":"region","label":"Data stores / internal callers","wraps":["data_ops","ext_callers"]}
+  ],
+  "connections": [
+    {"id":"i1","from":"eg_agent","to":"ctl_agent","label":"internal"},
+    {"id":"i2","from":"eg_stt","to":"ctl_stt","label":"internal"},
+    {"id":"i3","from":"eg_sess","to":"ctl_sess","label":"internal"},
+    {"id":"i4","from":"ctl_agent","to":"svc_internal","label":"delegate"},
+    {"id":"i5","from":"ctl_stt","to":"svc_internal","label":"delegate"},
+    {"id":"i6","from":"ctl_sess","to":"svc_internal","label":"delegate"},
+    {"id":"i7","from":"svc_internal","to":"data_ops","label":"state"},
+    {"id":"i8","from":"svc_internal","to":"ext_callers","label":"runtime"},
+    {"id":"i9","from":"ext_callers","to":"ctl_agent","label":"service call"},
+    {"id":"i10","from":"ext_callers","to":"ctl_stt","label":"callbacks"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B08b scope (internal module)","items":["Completes B08-billing-internal-misc. Module: internal (20 routes, 8 controllers) — all service-to-service/internal surfaces.","Controllers: agent-internal, agent-version-internal, composed-prompt-internal, effective-config, model-registry-internal, model-serving-internal, stt-internal (12 routes), stt-session-transcript-internal.","Grouped endpoint nodes used for readability; STT internal is the largest surface (transcripts, segments, streaming usage, job lifecycle, audio/media, model registry credential/provider overrides)."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Agent/model/config internal reads/writes: service-to-service requests (e.g., model serving spec, registry lookups, effective config, agent/version/composed prompt ops) -> internal config/model/agent payloads. Verify DTOs and caller identities.","STT internal callbacks/ops: POST transcripts/segments/audio-records/media, PATCH job start/progress/complete/fail, GET job status/provider overrides/model registry credential -> persisted STT/job/media state and provider/config payloads.","STT session transcript internal: GET /internal/stt/sessions/:sessionId/transcript with internal auth + tenant context -> transcript payload (verify tenant scoping and PHI handling)."]},
+    {"dot":"emerald","title":"Security, evidence, limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller sources verified in local tree; all are @ApiExcludeController/internal.","Auth patterns evidenced: most use @Public with InternalServiceTokenGuard/HarnessServiceTokenGuard + InternalTenantLockGuard; stt-internal shows @UseGuards(InternalTenantLockGuard) and should be verified for its full token/auth mechanism (not assumed identical).","Limitations: grouped endpoint nodes (20 routes/8 controllers); per-controller service wiring and exact DTO/security semantics not fully enumerated in this pass; reconcile with implementation/OpenAPI-internal inventory before treating contracts as stable."]}
+  ]
+}

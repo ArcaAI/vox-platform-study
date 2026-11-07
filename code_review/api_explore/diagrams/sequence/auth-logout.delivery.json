@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "fcfaca6a-dd97-4b10-9973-2442bf0ce314",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/updated-auth-logout.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-logout.html",
+  "specification": {
+    "sha256": "11a710ed502761ff86d4ed188c9c442d4e8138deb016f44addef1343c728ff19",
+    "bytes": 3483
+  },
+  "artifact": {
+    "sha256": "e2516069c9dec44ece9d749ab9c402eba5f01d55f09f5619d346316ec0aeb3be",
+    "bytes": 754285
+  }
+}

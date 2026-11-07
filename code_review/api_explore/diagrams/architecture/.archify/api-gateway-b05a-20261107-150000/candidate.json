@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B05a Agents & MCP Admin",
+    "subtitle": "Agent runtime/admin, promotions, trajectory, MCP servers (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b05a-20261107-150000/api-gateway-b05a-agents-mcp.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_agent","eg_admin","eg_obs","eg_mcp","ctl_agent","ctl_admin","ctl_obs","ctl_mcp","svc_agent","svc_admin","svc_obs","svc_mcp","data_agent","ext_runtime"],"note":"B05a: agents/trajectory/MCP admin. Harness-admin in B05b, workflows in B05c."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_agent","type":"frontend","label":"Agent runtime API group","sublabel":"/agents endpoints (11 routes)","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/agent/agent.controller.ts","line":284,"label":"AgentController /agents"}]},
+    {"id":"eg_admin","type":"frontend","label":"Agent admin/promotion API group","sublabel":"admin agents, assignments, promotions (29 routes)","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/agent-admin/agent-admin.controller.ts","line":67,"label":"AgentAdminController"},{"path":"apps/api/src/modules/agent-admin/agent-assignment-admin.controller.ts","line":22,"label":"AgentAssignmentAdminController"},{"path":"apps/api/src/modules/agent-promotion/agent-promotion.controller.ts","line":31,"label":"AgentPromotionController"}]},
+    {"id":"eg_obs","type":"frontend","label":"Trajectory/agentic admin API","sublabel":"agent-trajectory sessions/steps, agentic admin (4)","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/agent-trajectory/agent-trajectory.controller.ts","line":38,"label":"AgentTrajectoryController"},{"path":"apps/api/src/modules/agentic-admin/agentic-admin.controller.ts","line":33,"label":"AgenticAdminController"}]},
+    {"id":"eg_mcp","type":"frontend","label":"MCP server admin API (5 routes)","sublabel":"CRUD /admin/mcp-servers","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/mcp-admin/mcp-admin.controller.ts","line":54,"label":"McpAdminController"}]},
+
+    {"id":"ctl_agent","type":"backend","label":"AgentController","sublabel":"Agent runtime-facing operations","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/agent/agent.controller.ts","line":285,"label":"class AgentController"}]},
+    {"id":"ctl_admin","type":"backend","label":"Agent admin controllers","sublabel":"Agent config, assignments, promotion flows","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/agent-admin/agent-admin.controller.ts","line":69,"label":"AgentAdminController"},{"path":"apps/api/src/modules/agent-promotion/agent-promote-to-system.controller.ts","line":22,"label":"AgentPromoteToSystemController"}]},
+    {"id":"ctl_obs","type":"backend","label":"Trajectory/agentic controllers","sublabel":"Agent trajectory reads and agentic admin ops","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/agent-trajectory/agent-trajectory.controller.ts","line":40,"label":"AgentTrajectoryController"},{"path":"apps/api/src/modules/agentic-admin/agentic-admin.controller.ts","line":35,"label":"AgenticAdminController"}]},
+    {"id":"ctl_mcp","type":"backend","label":"McpAdminController","sublabel":"MCP external tools server registry admin","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/mcp-admin/mcp-admin.controller.ts","line":56,"label":"class McpAdminController"}]},
+
+    {"id":"svc_agent","type":"backend","label":"AgentService","sublabel":"Agent domain/runtime orchestration","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/agent/agent.service.ts","line":280,"label":"AgentService"}]},
+    {"id":"svc_admin","type":"backend","label":"Agent admin services","sublabel":"Assignment and promotion services","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/agent-assignment/agent-assignment.service.ts","line":44,"label":"AgentAssignmentService"},{"path":"packages/applications/src/services/agentPromotion/agentPromotion.service.ts","line":137,"label":"AgentPromotionService"}]},
+    {"id":"svc_obs","type":"backend","label":"AgentTrajectoryService","sublabel":"Trajectory session/step reads and observability","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/agent-trajectory/agent-trajectory.service.ts","line":113,"label":"AgentTrajectoryService"}]},
+    {"id":"svc_mcp","type":"backend","label":"McpServerAdminService","sublabel":"MCP server registry management","tag":"service","row":3,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/mcp-server/mcp-server-admin.service.ts","line":47,"label":"McpServerAdminService"}]},
+
+    {"id":"data_agent","type":"database","label":"Agent/MCP/trajectory data","sublabel":"Agent config, assignments, promotions, MCP, trajectories","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/agent/agent.service.ts","line":280,"label":"Agent persistence"},{"path":"packages/applications/src/services/mcp-server/mcp-server-admin.service.ts","line":47,"label":"MCP registry persistence"}]},
+    {"id":"ext_runtime","type":"external","label":"Agent runtime dependencies","sublabel":"Model/tool/runtime integrations (deployment-specific)","tag":"runtime","row":3,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/agent/agent.controller.ts","line":284,"label":"Agent runtime-facing routes"},{"path":"apps/api/src/modules/mcp-admin/mcp-admin.controller.ts","line":54,"label":"MCP server registry admin"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_agent","eg_admin","eg_obs","eg_mcp"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_agent","ctl_admin","ctl_obs","ctl_mcp"]},
+    {"kind":"region","label":"Application services","wraps":["svc_agent","svc_admin","svc_obs","svc_mcp"]},
+    {"kind":"region","label":"Data stores / runtime deps","wraps":["data_agent","ext_runtime"]}
+  ],
+  "connections": [
+    {"id":"a1","from":"eg_agent","to":"ctl_agent","label":"HTTP"},
+    {"id":"a2","from":"eg_admin","to":"ctl_admin","label":"HTTP"},
+    {"id":"a3","from":"eg_obs","to":"ctl_obs","label":"HTTP"},
+    {"id":"a4","from":"eg_mcp","to":"ctl_mcp","label":"HTTP"},
+    {"id":"a5","from":"ctl_agent","to":"svc_agent","label":"delegate"},
+    {"id":"a6","from":"ctl_admin","to":"svc_admin","label":"delegate"},
+    {"id":"a7","from":"ctl_obs","to":"svc_obs","label":"delegate"},
+    {"id":"a8","from":"ctl_mcp","to":"svc_mcp","label":"delegate"},
+    {"id":"a9","from":"svc_agent","to":"data_agent","label":"agents"},
+    {"id":"a10","from":"svc_admin","to":"data_agent","label":"admin"},
+    {"id":"a11","from":"svc_obs","to":"data_agent","label":"trajectory"},
+    {"id":"a12","from":"svc_mcp","to":"data_agent","label":"MCP"},
+    {"id":"a13","from":"svc_agent","to":"ext_runtime","label":"runtime"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B05a scope (agents & MCP admin)","items":["Part of B05-agent-workflow split (140 routes/20 controllers reconciled). Modules: agent (11/1), agent-admin (25/2), agent-promotion (4/2), agent-trajectory (3/1), agentic-admin (1/1), mcp-admin (5/1).","Agent runtime: /agents. Agent admin: /admin/agents, /admin/agent-assignments, /admin/agent-promotions (incl. promote-to-system). Observability/admin: /admin/agent-trajectory sessions/steps, /admin/agentic. MCP admin: /admin/mcp-servers CRUD.","Harness-admin is split into B05b; workflow modules into B05c."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Agent runtime/admin routes: agent/assignment/promotion DTOs -> agent config/assignment/promotion records (verify exact route contracts per controller).","Agent trajectory: GET sessions and GET sessions/:sessionId/steps -> grouped session stats and ordered step records (PHI-safe/admin-scoped; cross-tenant/nonexistent handling per controller behavior).","MCP server admin: POST/PATCH/DELETE /admin/mcp-servers -> MCP server registry records (optimistic concurrency/tenant/SYSTEM rules noted in catalog). Verify authrefs/secret handling."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams: agent/MCP/trajectory data store (Postgres/Prisma). Agent runtime may call model/tool/MCP execution dependencies (deployment-specific) — summarized as runtime deps.","Limitations: grouped endpoint nodes (49 routes across 8 controllers); agentic-admin service naming not separately verified; reconcile exact route/DTO contracts and MCP secret/authref handling with OpenAPI/implementation."]}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "398f10bd-9ef4-4864-b4d5-4d700025dcc3",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/guardrail-notice-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/guardrail-notice-flow.html",
+  "specification": {
+    "sha256": "95b10d3fc811fb520fe6367ab725f8086ebb0e443036cce2f1cef9f96bb6a95a",
+    "bytes": 3596
+  },
+  "artifact": {
+    "sha256": "6ec6c364973a8b86ba219416976b1abb37327185419a0a9736731ca1782c7866",
+    "bytes": 754746
+  }
+}

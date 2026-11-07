@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B05b Harness Admin",
+    "subtitle": "Harness admin control plane: policy, eval, gates, workflows/live (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b05b-20261107-151500/api-gateway-b05b-harness-admin.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_policy","eg_eval","eg_gate","eg_live","ctl_harness","svc_policy","svc_eval","svc_gate","svc_live","data_admin","ext_ops"],"note":"B05b: harness-admin (29 routes, 1 controller), grouped by concern."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_policy","type":"frontend","label":"Harness policy/audit API","sublabel":"policy/global read+patch, audit log (5 routes)","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":77,"label":"HarnessAdminController /admin/harness"},{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":105,"label":"GET/PATCH policy, GET audit"}]},
+    {"id":"eg_eval","type":"frontend","label":"Eval runs & golden sets API","sublabel":"eval-runs, golden-sets/cases/run (8 routes)","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":202,"label":"eval-runs/golden-sets handlers"}]},
+    {"id":"eg_gate","type":"frontend","label":"Gate queue/edit exemplars API","sublabel":"gate-queue, edit-burden, exemplars/curation/promote","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":349,"label":"gate-queue/edit-burden/exemplars"}]},
+    {"id":"eg_live","type":"frontend","label":"Workflows/live admin API","sublabel":"workflows control, live sessions/capabilities/config","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":537,"label":"workflows and live handlers"}]},
+
+    {"id":"ctl_harness","type":"backend","label":"HarnessAdminController","sublabel":"Admin control plane for harness/eval/live/workflows","tag":"controller","row":1,"col":1,"size":[330,128],"sources":[{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":79,"label":"class HarnessAdminController"},{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":80,"label":"policy/observability/eval/live deps"}]},
+
+    {"id":"svc_policy","type":"backend","label":"Policy/observability services","sublabel":"Harness policy and observability/audit reads","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/harness-policy/harness-policy.service.ts","line":330,"label":"HarnessPolicyService"},{"path":"packages/applications/src/services/harness-observability/harness-observability.service.ts","line":74,"label":"HarnessObservabilityService"}]},
+    {"id":"svc_eval","type":"backend","label":"Eval/golden services","sublabel":"Eval runs, golden sets/cases, promotion","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/eval/eval.service.ts","line":90,"label":"EvalService"},{"path":"packages/applications/src/services/eval/eval-run.service.ts","line":257,"label":"EvalRunService"},{"path":"packages/applications/src/services/eval/golden-case-promotion.service.ts","line":61,"label":"GoldenCasePromotionService"}]},
+    {"id":"svc_gate","type":"backend","label":"GateEditMiningService","sublabel":"Gate queue, edit burden, exemplars/curation/export","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/gate-edit-mining/gate-edit-mining.service.ts","line":243,"label":"GateEditMiningService"}]},
+    {"id":"svc_live","type":"backend","label":"Live/workflow ops services","sublabel":"Live documentation + workflow ops (HarnessOpsClient)","tag":"service","row":3,"col":2,"size":[330,116],"sources":[{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":80,"label":"LiveDocumentationService injected"},{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":570,"label":"workflow cancel/terminate/signal handlers"}]},
+
+    {"id":"data_admin","type":"database","label":"Harness admin data","sublabel":"Policies, audits, eval/golden sets, gate exemplars","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/harness-policy/harness-policy.service.ts","line":330,"label":"Policy persistence"},{"path":"packages/applications/src/services/gate-edit-mining/gate-edit-mining.service.ts","line":243,"label":"Gate/edit exemplar persistence"}]},
+    {"id":"ext_ops","type":"external","label":"Harness/workflow runtime ops","sublabel":"Harness ops client, workflow engine, live sessions","tag":"runtime","row":3,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/harness-admin/harness-admin.controller.ts","line":537,"label":"workflows control + live session handlers"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_policy","eg_eval","eg_gate","eg_live"]},
+    {"kind":"region","label":"Controller","wraps":["ctl_harness"]},
+    {"kind":"region","label":"Application services","wraps":["svc_policy","svc_eval","svc_gate","svc_live"]},
+    {"kind":"region","label":"Data stores / runtime ops","wraps":["data_admin","ext_ops"]}
+  ],
+  "connections": [
+    {"id":"h1","from":"eg_policy","to":"ctl_harness","label":"HTTP"},
+    {"id":"h2","from":"eg_eval","to":"ctl_harness","label":"HTTP"},
+    {"id":"h3","from":"eg_gate","to":"ctl_harness","label":"HTTP"},
+    {"id":"h4","from":"eg_live","to":"ctl_harness","label":"HTTP"},
+    {"id":"h5","from":"ctl_harness","to":"svc_policy","label":"policy/audit"},
+    {"id":"h6","from":"ctl_harness","to":"svc_eval","label":"eval/golden"},
+    {"id":"h7","from":"ctl_harness","to":"svc_gate","label":"gate mining"},
+    {"id":"h8","from":"ctl_harness","to":"svc_live","label":"live/ops"},
+    {"id":"h9","from":"svc_policy","to":"data_admin","label":"config"},
+    {"id":"h10","from":"svc_eval","to":"data_admin","label":"eval data"},
+    {"id":"h11","from":"svc_gate","to":"data_admin","label":"exemplars"},
+    {"id":"h12","from":"svc_live","to":"ext_ops","label":"control"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B05b scope (harness admin)","items":["Part of B05-agent-workflow split. Module: harness-admin (29 routes, 1 controller) under /admin/harness.","Policy/audit: GET/PATCH policy, GET/PATCH policy/global, GET audit. Eval/golden sets: eval-runs list/get, golden-sets CRUD-like endpoints, cases, run, promote-to-golden-set flows.","Gate/edit: gate-queue, edit-burden, gate-edit-exemplars list/export/curation/promote. Workflows/live: workflows list/get/cancel/terminate/signal, live sessions/capabilities/config read+patch."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Policy: GET /admin/harness/policy or /policy/global -> effective policy; PATCH accepts policy updates -> updated policy (global/tenant scope per handler).","Golden set run: POST /admin/harness/golden-sets/:id/run -> eval run/result metadata. Exemplar curation/promote: PATCH curation or POST promote-to-golden-set -> updated exemplar/promotion result.","Workflow control: POST /admin/harness/workflows/:id/cancel|terminate|signal -> control operation result (action confirmation/reason policies may apply). Live config: GET/PATCH /admin/harness/live/config -> live documentation config/state.","Verify exact DTO schemas, RBAC/authorize scopes, and confirmation/audit behavior for destructive workflow operations."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. HarnessAdminController and key service sources verified in local tree.","Controller dependencies include HarnessPolicyService, HarnessObservabilityService, HarnessOpsClient, LiveDocumentationService, EvalService, GateEditMiningService, EvalRunService, GoldenCasePromotionService (+ optional confirmation/event services).","Limitations: grouped endpoint nodes (29 routes in 1 controller); HarnessOpsClient location/runtime topology summarized as external ops; exact route DTOs, scopes, and workflow-engine integration should be reconciled with OpenAPI/implementation."]}
+  ]
+}

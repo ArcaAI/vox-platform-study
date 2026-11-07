@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B08a Billing, Usage & Misc",
+    "subtitle": "Billing/admin usage, governed-prompt internal, Prisma Studio (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b08a-20261107-170000/api-gateway-b08a-billing-admin-misc.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_bill","eg_gp","eg_ps","ctl_bill","ctl_gp","ctl_ps","svc_bill","svc_gp","svc_ps","data_ops","ext_ops"],"note":"B08a: billing/admin-usage/governed-prompt/pstudio. Internal module in B08b."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 52, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_bill","type":"frontend","label":"Billing & admin usage API","sublabel":"admin billing/invoices, /tenants/me billing+usage","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/billing/billing-admin.controller.ts","line":40,"label":"BillingAdminController"},{"path":"apps/api/src/modules/billing/my-billing.controller.ts","line":34,"label":"MyBillingController"},{"path":"apps/api/src/modules/admin-usage/admin-usage.controller.ts","line":41,"label":"AdminUsageController"}]},
+    {"id":"eg_gp","type":"frontend","label":"Governed prompt internal API","sublabel":"POST /internal/governed-prompts (service token)","tag":"internal group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/governed-prompt/governed-prompt-internal.controller.ts","line":80,"label":"GovernedPromptInternalController"}]},
+    {"id":"eg_ps","type":"frontend","label":"Prisma Studio admin API","sublabel":"/admin/pstudio + /admin/pstudio/status","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/pstudio/pstudio.controller.ts","line":32,"label":"PrismaStudioController"},{"path":"apps/api/src/modules/pstudio/pstudio-status.controller.ts","line":30,"label":"PrismaStudioStatusController"}]},
+
+    {"id":"ctl_bill","type":"backend","label":"Billing/usage controllers","sublabel":"Admin invoices/usage + tenant self billing/usage","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/billing/billing-admin.controller.ts","line":42,"label":"BillingAdminController"},{"path":"apps/api/src/modules/admin-usage/my-usage.controller.ts","line":26,"label":"MyUsageController"}]},
+    {"id":"ctl_gp","type":"backend","label":"GovernedPromptInternalController","sublabel":"Internal governed prompt verification (service token)","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/governed-prompt/governed-prompt-internal.controller.ts","line":81,"label":"GovernedPromptInternalController"},{"path":"apps/api/src/modules/governed-prompt/governed-prompt-internal.controller.ts","line":7,"label":"HarnessServiceToken+TenantLock guards"}]},
+    {"id":"ctl_ps","type":"backend","label":"Prisma Studio controllers","sublabel":"Admin Prisma Studio proxy/status surfaces","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/pstudio/pstudio.controller.ts","line":37,"label":"PrismaStudioController"},{"path":"apps/api/src/modules/pstudio/pstudio-status.controller.ts","line":31,"label":"PrismaStudioStatusController"}]},
+
+    {"id":"svc_bill","type":"backend","label":"Billing services","sublabel":"Billing/invoice domain (usage service wiring verify)","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/billing/billing.service.ts","line":117,"label":"BillingService"},{"path":"apps/api/src/modules/admin-usage/admin-usage.controller.ts","line":41,"label":"AdminUsageController wiring (verify)"}]},
+    {"id":"svc_gp","type":"backend","label":"GovernedPromptRegistryService","sublabel":"Governed prompt verification/registry","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/governed-prompt/governed-prompt-registry.service.ts","line":161,"label":"GovernedPromptRegistryService"}]},
+    {"id":"svc_ps","type":"backend","label":"PrismaStudioService","sublabel":"Prisma Studio lifecycle/status/proxy support","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/pstudio/pstudio.service.ts","line":30,"label":"PrismaStudioService"}]},
+
+    {"id":"data_ops","type":"database","label":"Billing/governed config data","sublabel":"Invoices/billing, usage data, governed prompt registry","tag":"data","row":0,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/billing/billing.service.ts","line":117,"label":"Billing persistence"},{"path":"packages/applications/src/services/governed-prompt/governed-prompt-registry.service.ts","line":161,"label":"Governed prompt registry state"}]},
+    {"id":"ext_ops","type":"external","label":"DB admin/runtime targets","sublabel":"Prisma Studio target DB/runtime (admin-only, sensitive)","tag":"runtime","row":2,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/pstudio/pstudio.controller.ts","line":32,"label":"Prisma Studio admin endpoint"},{"path":"packages/applications/src/services/pstudio/pstudio.service.ts","line":30,"label":"PrismaStudioService"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_bill","eg_gp","eg_ps"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_bill","ctl_gp","ctl_ps"]},
+    {"kind":"region","label":"Application services","wraps":["svc_bill","svc_gp","svc_ps"]},
+    {"kind":"region","label":"Data stores / admin runtime","wraps":["data_ops","ext_ops"]}
+  ],
+  "connections": [
+    {"id":"b1","from":"eg_bill","to":"ctl_bill","label":"HTTP"},
+    {"id":"b2","from":"eg_gp","to":"ctl_gp","label":"internal"},
+    {"id":"b3","from":"eg_ps","to":"ctl_ps","label":"HTTP"},
+    {"id":"b4","from":"ctl_bill","to":"svc_bill","label":"delegate"},
+    {"id":"b5","from":"ctl_gp","to":"svc_gp","label":"verify"},
+    {"id":"b6","from":"ctl_ps","to":"svc_ps","label":"delegate"},
+    {"id":"b7","from":"svc_bill","to":"data_ops","label":"billing/usage"},
+    {"id":"b8","from":"svc_gp","to":"data_ops","label":"registry"},
+    {"id":"b9","from":"svc_ps","to":"ext_ops","label":"admin DB"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B08a scope (billing/admin/misc)","items":["Part of B08-billing-internal-misc split (reconciled 41 routes/16 controllers). Modules: billing (13/3), admin-usage (6/2), governed-prompt (1/1), pstudio (1/2) = 21 routes / 8 controllers.","Billing/usage: admin invoices and usage plus tenant self billing/usage under /tenants/me. Governed prompt: internal POST /internal/governed-prompts for verification/registry checks. Prisma Studio: admin pstudio/status and pstudio surfaces (sensitive admin DB tooling).","Grouped endpoint nodes for readability."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Billing admin/invoices and tenant self billing: query/list/invoice operations -> billing/invoice/entitlement-adjacent responses. Verify exact DTOs and billing provider integration details.","Admin/tenant usage: usage queries -> aggregated usage metrics/records. Verify time windows, tenant scoping, and data sources.","Governed prompt internal: verification request payload (pieces/prompts) -> verification/registry response. Service-to-service; verify DTO and idempotency/security semantics.","Prisma Studio: status/start/proxy related admin requests -> studio status/proxy behavior. Highly sensitive admin-only surface; verify RBAC, environment restrictions, and audit controls."]},
+    {"dot":"emerald","title":"Evidence, security, limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controllers/services verified (BillingService, GovernedPromptRegistryService, PrismaStudioService).","Governed prompt internal controller uses @Public/@ApiExcludeController with HarnessServiceTokenGuard + InternalTenantLockGuard (evidenced). Prisma Studio is an admin DB tooling surface — treat as sensitive.","Limitations: grouped endpoint nodes (21 routes/8 controllers); admin-usage service implementation path not separately verified in this pass; reconcile exact route/DTO contracts, RBAC, and operational safeguards with OpenAPI/implementation."]}
+  ]
+}

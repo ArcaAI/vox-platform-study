@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B02b Tenant Bucket & Checkpoint",
+    "subtitle": "Tenant storage buckets and checkpoint/restore flows (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b02b-20261107-133000/api-gateway-b02b-tenant-data-ops.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_bucket","eg_ckpt","ctl_bucket","ctl_ckpt","svc_bucket","svc_ckpt","data_meta","ext_blob"],"note":"B02b covers tenant bucket admin and checkpoint/export/restore operations."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_bucket","type":"frontend","label":"Tenant bucket API group (13)","sublabel":"defaults, CRUD, register, objects, presign, provision","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-bucket/tenant-bucket.controller.ts","line":37,"label":"TenantBucketController routes"}]},
+    {"id":"eg_ckpt","type":"frontend","label":"Tenant checkpoint API group (12)","sublabel":"create/list/get/cancel/download, uploads, restore","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts","line":40,"label":"TenantCheckpointController routes"}]},
+
+    {"id":"ctl_bucket","type":"backend","label":"TenantBucketController","sublabel":"Bucket admin, object ops, presigned/provision","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-bucket/tenant-bucket.controller.ts","line":45,"label":"list/defaults/register/objects handlers"}]},
+    {"id":"ctl_ckpt","type":"backend","label":"TenantCheckpointController","sublabel":"Checkpoint lifecycle, upload/download, restore","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts","line":53,"label":"restores/uploads/checkpoint handlers"}]},
+
+    {"id":"svc_bucket","type":"backend","label":"TenantBucketService","sublabel":"Tenant bucket registry/defaults/object orchestration","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant-bucket/tenant-bucket.service.ts","line":66,"label":"TenantBucketService class"}]},
+    {"id":"svc_ckpt","type":"backend","label":"TenantCheckpointService","sublabel":"Checkpoint/create/upload/download/restore logic","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant-checkpoint/tenant-checkpoint.service.ts","line":111,"label":"TenantCheckpointService class"}]},
+
+    {"id":"data_meta","type":"database","label":"Tenant metadata store","sublabel":"Bucket/restore/checkpoint metadata (Postgres)","tag":"data","row":0,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/tenant-bucket/tenant-bucket.service.ts","line":66,"label":"Bucket metadata persistence"},{"path":"packages/applications/src/services/tenant-checkpoint/tenant-checkpoint.service.ts","line":111,"label":"Checkpoint metadata persistence"}]},
+    {"id":"ext_blob","type":"cloud","label":"Object storage / checkpoint blobs","sublabel":"Bucket objects, checkpoint uploads/download URLs","tag":"storage","row":1,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/tenant-bucket/tenant-bucket.controller.ts","line":159,"label":"POST/GET/DELETE :id/objects, presigned-url"},{"path":"apps/api/src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts","line":85,"label":"uploads/complete/abort/download-url"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_bucket","eg_ckpt"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_bucket","ctl_ckpt"]},
+    {"kind":"region","label":"Application services","wraps":["svc_bucket","svc_ckpt"]},
+    {"kind":"region","label":"Metadata / object storage","wraps":["data_meta","ext_blob"]}
+  ],
+  "connections": [
+    {"id":"d1","from":"eg_bucket","to":"ctl_bucket","label":"HTTP"},
+    {"id":"d2","from":"eg_ckpt","to":"ctl_ckpt","label":"HTTP"},
+    {"id":"d3","from":"ctl_bucket","to":"svc_bucket","label":"delegate"},
+    {"id":"d4","from":"ctl_ckpt","to":"svc_ckpt","label":"delegate"},
+    {"id":"d5","from":"svc_bucket","to":"data_meta","label":"metadata"},
+    {"id":"d6","from":"svc_ckpt","to":"data_meta","label":"metadata"},
+    {"id":"d7","from":"svc_bucket","to":"ext_blob","label":"objects"},
+    {"id":"d8","from":"svc_ckpt","to":"ext_blob","label":"blobs"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B02b scope (tenant data ops)","items":["Modules: tenant-bucket (13 routes), tenant-checkpoint (12 routes).","Tenant bucket: GET/PUT defaults, list/get/create/register/delete buckets, GET tree, GET/POST/DELETE :id/objects, GET presigned-url, POST provision/:tenantId.","Tenant checkpoint: list/get restores, upload init/complete/abort, create/list/get/cancel/delete checkpoint, POST download-url, POST restore."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Bucket create/register: bucket DTO/name -> bucket record; defaults PUT accepts purpose/default mapping.","Object ops: POST :id/objects (upload/multipart or object request per implementation) -> object metadata; presigned-url returns time-limited URL.","Checkpoint create/upload: POST checkpoint/upload -> upload session/URL metadata; complete/abort finalize or cancel upload; download-url returns access URL.","Restore: POST :id/restore with restore request/options -> restore job/result metadata. Verify exact DTOs and async worker involvement."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams: metadata store (Postgres/Prisma) and object storage/checkpoint blobs (S3/MinIO/Azure via blob storage). Checkpoint restore may involve async worker/processes — verify implementation.","Limitations: grouped endpoint nodes; example I/O summarized from route contracts; async checkpoint worker details not expanded as separate microservice nodes without additional verified sources."]}
+  ]
+}

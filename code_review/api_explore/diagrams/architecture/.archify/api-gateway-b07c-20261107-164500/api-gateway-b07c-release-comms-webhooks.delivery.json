@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "740d9fa1-3378-48fc-9cfe-7b447cb7bce4",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/api-gateway-b07c-release-comms-webhooks.html",
+  "specification": {
+    "sha256": "f3d85f4a9840e7de157ca4c0e35383e1a562da6f6516f715a6e23f3a6a969e2d",
+    "bytes": 8722
+  },
+  "artifact": {
+    "sha256": "9b66c7326e500ae75da865a8a4a24f492161f83d75a17eb19ae409a90e2ced9a",
+    "bytes": 782635
+  }
+}

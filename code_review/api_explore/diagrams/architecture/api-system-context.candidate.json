@@ -1,0 +1,343 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "HOPE API Gateway - System Context",
+    "subtitle": "apps/api NestJS gateway - request lifecycle, auth, tenancy, integrations",
+    "output": "api-system-context.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "4e1434992f4eed101836aa532311b31c3402ac47",
+      "link_mode": "web"
+    }
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "Clients",
+      "sublabel": "Web/Mobile/API Keys",
+      "pos": [
+        50,
+        250
+      ],
+      "size": [
+        120,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 484
+        }
+      ]
+    },
+    {
+      "id": "cdn",
+      "type": "cloud",
+      "label": "Ingress",
+      "sublabel": "Cloudflare/Traefik",
+      "pos": [
+        220,
+        250
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 222
+        }
+      ]
+    },
+    {
+      "id": "api_gateway",
+      "type": "backend",
+      "label": "API Gateway",
+      "sublabel": "NestJS 11 :8868 /api/v1",
+      "pos": [
+        420,
+        250
+      ],
+      "size": [
+        140,
+        70
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/main.ts",
+          "line": 50
+        },
+        {
+          "path": "apps/api/src/app.module.ts",
+          "line": 617
+        }
+      ]
+    },
+    {
+      "id": "unified_auth",
+      "type": "security",
+      "label": "UnifiedAuthGuard",
+      "sublabel": "JWT/API-Key/ServiceAccount",
+      "pos": [
+        420,
+        120
+      ],
+      "size": [
+        150,
+        65
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/authorization/unified-auth.guard.ts",
+          "line": 377
+        }
+      ]
+    },
+    {
+      "id": "authz",
+      "type": "security",
+      "label": "Authorization",
+      "sublabel": "CASL/RBAC",
+      "pos": [
+        620,
+        120
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "packages/applications/src/authorization/authorization.guard.ts",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "consent",
+      "type": "security",
+      "label": "PatientConsentGuard",
+      "sublabel": "Consent/ABAC",
+      "pos": [
+        620,
+        250
+      ],
+      "size": [
+        150,
+        65
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/guards/patient-consent.guard.ts",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Postgres",
+      "sublabel": "Prisma + tenant-scope",
+      "pos": [
+        620,
+        380
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/database/tenant-context.provider.ts",
+          "line": 46
+        },
+        {
+          "path": "packages/database/src/index.ts",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "BullMQ/Throttle/Tickets",
+      "pos": [
+        420,
+        380
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/app.module.ts",
+          "line": 293
+        }
+      ]
+    },
+    {
+      "id": "stt",
+      "type": "external",
+      "label": "STT Service",
+      "sublabel": "apps/stt :8861",
+      "pos": [
+        220,
+        120
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/stt-ws.gateway.ts",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "text",
+      "type": "external",
+      "label": "Text Service",
+      "sublabel": "apps/text",
+      "pos": [
+        220,
+        380
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/streaming/text-proxy.controller.ts",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "tts",
+      "type": "external",
+      "label": "TTS Service",
+      "sublabel": "apps/tts :8865",
+      "pos": [
+        50,
+        380
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps/api/src/modules/speech/tts-ws.gateway.ts",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "clients",
+      "to": "cdn",
+      "label": "HTTPS"
+    },
+    {
+      "id": "c2",
+      "from": "cdn",
+      "to": "api_gateway",
+      "label": "HTTPS :8868"
+    },
+    {
+      "id": "c3",
+      "from": "api_gateway",
+      "to": "unified_auth",
+      "label": "auth",
+      "variant": "security"
+    },
+    {
+      "id": "c4",
+      "from": "unified_auth",
+      "to": "authz",
+      "label": "abilities"
+    },
+    {
+      "id": "c5",
+      "from": "api_gateway",
+      "to": "consent",
+      "label": "consent"
+    },
+    {
+      "id": "c6",
+      "from": "api_gateway",
+      "to": "postgres",
+      "label": "Prisma"
+    },
+    {
+      "id": "c7",
+      "from": "api_gateway",
+      "to": "redis",
+      "label": "queues/cache"
+    },
+    {
+      "id": "c8",
+      "from": "api_gateway",
+      "to": "stt",
+      "label": "WS/REST"
+    },
+    {
+      "id": "c9",
+      "from": "api_gateway",
+      "to": "text",
+      "label": "proxy"
+    },
+    {
+      "id": "c10",
+      "from": "api_gateway",
+      "to": "tts",
+      "label": "WS"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "api/v1 Gateway",
+      "wraps": [
+        "api_gateway",
+        "unified_auth",
+        "authz",
+        "consent"
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Auth Pipeline",
+      "items": [
+        "TieredThrottlerGuard → ClsGuard → UnifiedAuthGuard → TenantLockGuard → PatientConsentGuard → ..."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Observability",
+      "items": [
+        "OTel, Prometheus /metrics, Winston logging"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Security",
+      "items": [
+        "Deny-by-default, 404-over-403, origin binding, tenant isolation"
+      ]
+    }
+  ]
+}

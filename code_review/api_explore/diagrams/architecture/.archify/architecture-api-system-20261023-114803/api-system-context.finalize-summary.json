@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/architecture-api-system-20261023-114803/candidate.json",
+    "sha256": "c32f99224629a10eab006b29c7c39463f87a8fee4a072dac10fa635d42c86e97",
+    "bytes": 6456
+  },
+  "artifact": {
+    "path": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/architecture-api-system-20261023-114803/api-system-context.html",
+    "sha256": "96b3ac06c4ea821c1e023f31d73ec2492981fc7636b8bd419527a3d43c54395f",
+    "bytes": 768417
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/architecture-api-system-20261023-114803/api-system-context.finalize.json",
+    "summaryReceipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/architecture-api-system-20261023-114803/api-system-context.finalize-summary.json",
+    "browserCheckReceipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/architecture-api-system-20261023-114803/api-system-context.browser-check.json"
+  },
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-10-23T06:29:06.440Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-10-23T06:29:06.440Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 7281
+}

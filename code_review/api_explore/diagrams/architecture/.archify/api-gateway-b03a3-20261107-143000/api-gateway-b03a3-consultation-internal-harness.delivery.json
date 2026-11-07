@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "6b754024-5527-488d-96ea-f0b15c2fc743",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b03a3-20261107-143000/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b03a3-20261107-143000/api-gateway-b03a3-consultation-internal-harness.html",
+  "specification": {
+    "sha256": "ae1c4be50de27540b4c748a05692d05c27856931369056b3a08095e6a5152839",
+    "bytes": 9394
+  },
+  "artifact": {
+    "sha256": "06c31c68dc94ed86fb16e722eb654b049e51d2f808243189e37418e91612dc0a",
+    "bytes": 782085
+  }
+}

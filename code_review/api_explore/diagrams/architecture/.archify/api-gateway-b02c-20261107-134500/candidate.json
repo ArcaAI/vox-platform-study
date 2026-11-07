@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B02c Settings & Entitlements",
+    "subtitle": "Departments, settings catalog/global settings, entitlements, subscriptions (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b02c-20261107-134500/api-gateway-b02c-settings-entitlements.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_dept","eg_settings","eg_ent","eg_sub","ctl_dept","ctl_settings","ctl_ent","ctl_sub","svc_dept","svc_settings","svc_ent","svc_sub","data_cfg","ext_policy"],"note":"B02c completes B02 tenancy/admin split."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_dept","type":"frontend","label":"Department API group","sublabel":"admin departments CRUD + :id/users","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/department/department.controller.ts","line":24,"label":"DepartmentController /admin/departments"}]},
+    {"id":"eg_settings","type":"frontend","label":"Admin settings API group","sublabel":"global-setting, catalog/effective/features/registry","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/global-setting/global-setting.controller.ts","line":58,"label":"GlobalSettingController /admin/settings"},{"path":"apps/api/src/modules/settings-catalog/settings-catalog.controller.ts","line":43,"label":"SettingsCatalogController"},{"path":"apps/api/src/modules/settings-catalog/settings-registry-write.controller.ts","line":43,"label":"SettingsRegistryWriteController"}]},
+    {"id":"eg_ent","type":"frontend","label":"Entitlements API group","sublabel":"admin plans/overrides/downgrade + /tenants/me","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/entitlements/entitlements-admin.controller.ts","line":37,"label":"EntitlementsAdminController"},{"path":"apps/api/src/modules/entitlements/my-entitlements.controller.ts","line":26,"label":"MyEntitlementsController"}]},
+    {"id":"eg_sub","type":"frontend","label":"Resource subscriptions API (6)","sublabel":"CRUD + toggle for resource subscriptions","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/resource-subscription/resource-subscription.controller.ts","line":28,"label":"ResourceSubscriptionController"}]},
+
+    {"id":"ctl_dept","type":"backend","label":"DepartmentController","sublabel":"Department admin and member listing","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/department/department.controller.ts","line":110,"label":"GET :id/users (+ base admin routes)"}]},
+    {"id":"ctl_settings","type":"backend","label":"Settings controllers","sublabel":"Global settings, catalog/features/confirmations/registry","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/global-setting/global-setting.controller.ts","line":105,"label":"tenant reveal/rotate + settings"},{"path":"apps/api/src/modules/settings-catalog/settings-features.controller.ts","line":32,"label":"features effective/matrix"},{"path":"apps/api/src/modules/settings-catalog/settings-action-confirmations.controller.ts","line":27,"label":"action confirmations"}]},
+    {"id":"ctl_ent","type":"backend","label":"Entitlements controllers","sublabel":"Admin plan/override lifecycle and self entitlements","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/entitlements/entitlements-admin.controller.ts","line":48,"label":"plans/tenant overrides/downgrade"},{"path":"apps/api/src/modules/entitlements/my-entitlements.controller.ts","line":38,"label":"GET /tenants/me/entitlements"}]},
+    {"id":"ctl_sub","type":"backend","label":"ResourceSubscriptionController","sublabel":"Resource subscription CRUD/toggle","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/resource-subscription/resource-subscription.controller.ts","line":36,"label":"create/list/get/patch/toggle/delete"}]},
+
+    {"id":"svc_dept","type":"backend","label":"DepartmentService","sublabel":"Department domain operations","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/department/department.service.ts","line":24,"label":"DepartmentService class"}]},
+    {"id":"svc_settings","type":"backend","label":"Settings services","sublabel":"Global settings, effective settings, registry/feature","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/globalSetting/globalSetting.service.ts","line":34,"label":"GlobalSettingService"},{"path":"packages/applications/src/services/settings-registry/effective-settings.service.ts","line":1,"label":"EffectiveSettingsService"},{"path":"packages/applications/src/services/settings-registry/settings-registry-write.service.ts","line":199,"label":"SettingsRegistryWriteService"}]},
+    {"id":"svc_ent","type":"backend","label":"Entitlements services","sublabel":"Plan/override resolution and lifecycle jobs","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/entitlements/entitlements.service.ts","line":140,"label":"EntitlementsService"},{"path":"packages/applications/src/services/entitlements/entitlements-lifecycle.service.ts","line":59,"label":"EntitlementsLifecycleService"}]},
+    {"id":"svc_sub","type":"backend","label":"ResourceSubscriptionService","sublabel":"Resource subscription persistence/actions","tag":"service","row":3,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/resourceSubscription/resourceSubscription.service.ts","line":24,"label":"ResourceSubscriptionService"}]},
+
+    {"id":"data_cfg","type":"database","label":"Config/entitlement data store","sublabel":"Departments, settings, entitlements, subscriptions","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/globalSetting/globalSetting.service.ts","line":34,"label":"Settings persistence"},{"path":"packages/applications/src/services/entitlements/entitlements.service.ts","line":140,"label":"Entitlements persistence"}]},
+    {"id":"ext_policy","type":"external","label":"Feature/plan enforcement","sublabel":"Effective feature matrix and entitlement checks","tag":"policy","row":2,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/settings-registry/feature-availability.service.ts","line":1,"label":"FeatureAvailabilityService"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_dept","eg_settings","eg_ent","eg_sub"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_dept","ctl_settings","ctl_ent","ctl_sub"]},
+    {"kind":"region","label":"Application services","wraps":["svc_dept","svc_settings","svc_ent","svc_sub"]},
+    {"kind":"region","label":"Data stores / enforcement","wraps":["data_cfg","ext_policy"]}
+  ],
+  "connections": [
+    {"id":"c1","from":"eg_dept","to":"ctl_dept","label":"HTTP"},
+    {"id":"c2","from":"eg_settings","to":"ctl_settings","label":"HTTP"},
+    {"id":"c3","from":"eg_ent","to":"ctl_ent","label":"HTTP"},
+    {"id":"c4","from":"eg_sub","to":"ctl_sub","label":"HTTP"},
+    {"id":"c5","from":"ctl_dept","to":"svc_dept","label":"delegate"},
+    {"id":"c6","from":"ctl_settings","to":"svc_settings","label":"delegate"},
+    {"id":"c7","from":"ctl_ent","to":"svc_ent","label":"delegate"},
+    {"id":"c8","from":"ctl_sub","to":"svc_sub","label":"delegate"},
+    {"id":"c9","from":"svc_dept","to":"data_cfg","label":"depts"},
+    {"id":"c10","from":"svc_settings","to":"data_cfg","label":"settings"},
+    {"id":"c11","from":"svc_ent","to":"data_cfg","label":"plans"},
+    {"id":"c12","from":"svc_sub","to":"data_cfg","label":"subs"},
+    {"id":"c13","from":"svc_ent","to":"ext_policy","label":"enforce"},
+    {"id":"c14","from":"svc_settings","to":"ext_policy","label":"features"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B02c scope (settings & entitlements)","items":["Modules: department, global-setting, settings-catalog, entitlements, resource-subscription (~47 routes est., completes B02).","Department: admin departments + GET :id/users. Settings: global settings (tenant scope/reveal/rotate) and settings catalog/effective/features/action-confirmations/registry write endpoints under /admin/settings.","Entitlements: admin enabled/plans/tenant overrides/downgrade/trial-expiry plus GET /tenants/me/entitlements. Resource subscriptions: CRUD + toggle under /admin/resource-subscriptions."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Global setting reveal/rotate: POST :id/reveal or :id/rotate -> revealed/rotated secret metadata (value exposure policy applies).","Settings registry/features: GET effective/features/matrix or PUT matrix/registry key -> resolved/effective settings or updated registry/feature state.","Entitlements override/downgrade: PUT/DELETE tenant override or POST downgrade -> effective plan/override state; /tenants/me/entitlements returns resolved entitlements.","Department/resource subscription: CRUD DTOs -> department/subscription records; toggle changes active state. Verify exact DTO schemas and secret handling."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams: config/entitlement data store (Postgres/Prisma). Feature availability/entitlement enforcement is represented as policy/enforcement; actual runtime checks may be distributed.","Limitations: grouped endpoint nodes (11 controllers across 5 modules); settings-catalog service layering is summarized via EffectiveSettings/Registry/FeatureAvailability services; reconcile exact route contracts and secret redaction behavior for strict contracts."]}
+  ]
+}

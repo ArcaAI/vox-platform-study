@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "af7614bc-e72b-4fb7-94bd-8f7053c0d814",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/ai-service-admin-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/ai-service-admin-flow.html",
+  "specification": {
+    "sha256": "a8e02626cc3d4f06c5c8bb02e62e24d4d4d7a9a92213cbaf13cc28e457a9ace0",
+    "bytes": 3573
+  },
+  "artifact": {
+    "sha256": "46462504b3092c5c3707961dfdd18007173bb5c6efc9907ce5fad4e14d0b081d",
+    "bytes": 754706
+  }
+}

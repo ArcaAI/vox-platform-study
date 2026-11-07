@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/candidate.json",
+    "sha256": "f3d85f4a9840e7de157ca4c0e35383e1a562da6f6516f715a6e23f3a6a969e2d",
+    "bytes": 8722
+  },
+  "artifact": {
+    "path": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/api-gateway-b07c-release-comms-webhooks.html",
+    "sha256": "9b66c7326e500ae75da865a8a4a24f492161f83d75a17eb19ae409a90e2ced9a",
+    "bytes": 782635
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/api-gateway-b07c-release-comms-webhooks.finalize.json",
+    "summaryReceipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/api-gateway-b07c-release-comms-webhooks.finalize-summary.json",
+    "browserCheckReceipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/api-gateway-b07c-release-comms-webhooks.browser-check.json"
+  },
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-11-07T10:50:33.302Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-11-07T10:50:33.302Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1744,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 3,
+      "routesOverSuggestedBends": 3
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "z4",
+            "from": "ctl_release",
+            "to": "svc_release",
+            "label": "release",
+            "collectionIndex": 3,
+            "artifactIndex": 4
+          },
+          "right": {
+            "id": "z5",
+            "from": "ctl_release",
+            "to": "svc_changelog",
+            "label": "changelog",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "point": [
+            897,
+            111
+          ],
+          "sharedNode": "ctl_release"
+        },
+        {
+          "left": {
+            "id": "z10",
+            "from": "svc_notify",
+            "to": "data_ops",
+            "label": "state",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "right": {
+            "id": "z12",
+            "from": "svc_notify",
+            "to": "ext_out",
+            "label": "deliver",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "point": [
+            1254,
+            301
+          ],
+          "sharedNode": "svc_notify"
+        },
+        {
+          "left": {
+            "id": "z11",
+            "from": "svc_hook",
+            "to": "data_ops",
+            "label": "webhooks",
+            "collectionIndex": 10,
+            "artifactIndex": 11
+          },
+          "right": {
+            "id": "z12",
+            "from": "svc_notify",
+            "to": "ext_out",
+            "label": "deliver",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "point": [
+            1292,
+            388
+          ]
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "id": "z5",
+            "from": "ctl_release",
+            "to": "svc_changelog",
+            "label": "changelog",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "bends": 4,
+          "stretch": 1.227,
+          "directCorridorBlockers": [
+            {
+              "id": "svc_release",
+              "label": "ServiceReleaseService",
+              "box": [
+                900,
+                60,
+                330,
+                116
+              ]
+            }
+          ]
+        },
+        {
+          "relationship": {
+            "id": "z10",
+            "from": "svc_notify",
+            "to": "data_ops",
+            "label": "state",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "bends": 4,
+          "stretch": 1.299
+        },
+        {
+          "relationship": {
+            "id": "z11",
+            "from": "svc_hook",
+            "to": "data_ops",
+            "label": "webhooks",
+            "collectionIndex": 10,
+            "artifactIndex": 11
+          },
+          "bends": 3,
+          "stretch": 1
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "ctl_release → svc_release and ctl_release → svc_changelog cross next to ctl_release: move node svc_release or svc_changelog so the two reach ctl_release from different sides (for example one level with it, one directly above or below it).",
+      "svc_notify → data_ops and svc_notify → ext_out cross next to svc_notify: move node data_ops or ext_out so the two reach svc_notify from different sides (for example one level with it, one directly above or below it).",
+      "svc_hook → data_ops crosses svc_notify → ext_out: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "svc_notify → data_ops needs 4 bends: move node svc_notify or data_ops so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "svc_hook → data_ops needs 3 bends: move node svc_hook or data_ops so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

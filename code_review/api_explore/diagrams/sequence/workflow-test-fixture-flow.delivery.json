@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e08b2361-110a-4f46-a827-8d15d878aee2",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/workflow-test-fixture-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/workflow-test-fixture-flow.html",
+  "specification": {
+    "sha256": "949b5a4ef0891eba9b33435e5946706c9e91cf91978edd6806a86b4b0e637d0e",
+    "bytes": 3543
+  },
+  "artifact": {
+    "sha256": "74f208aeafdbc231b8110fa3203cb2079648ff091b313ea6cfed63dcf42878d7",
+    "bytes": 754829
+  }
+}

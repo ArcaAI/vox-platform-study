@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B07c Releases, Comms & Webhooks",
+    "subtitle": "Service releases/changelog, notifications, webhooks (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b07c-20261107-164500/api-gateway-b07c-release-comms-webhooks.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_release","eg_notify","eg_hook","ctl_release","ctl_notify","ctl_hook","svc_release","svc_changelog","svc_notify","svc_hook","data_ops","ext_out"],"note":"B07c completes B07 guardrails/ops."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_release","type":"frontend","label":"Releases & changelog API","sublabel":"service releases admin/internal + changelog public/admin","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/service-release/service-release-admin.controller.ts","line":26,"label":"ServiceReleaseAdminController"},{"path":"apps/api/src/modules/service-release/service-release-internal.controller.ts","line":21,"label":"ServiceReleaseInternalController"},{"path":"apps/api/src/modules/changelog/changelog.controller.ts","line":23,"label":"ChangelogController"}]},
+    {"id":"eg_notify","type":"frontend","label":"Notifications admin API (4)","sublabel":"/admin/notifications","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/notification/notification.controller.ts","line":27,"label":"NotificationController"}]},
+    {"id":"eg_hook","type":"frontend","label":"Webhooks admin API (7)","sublabel":"/admin/webhooks management/delivery surfaces","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/webhook/webhook.controller.ts","line":42,"label":"WebhookController"}]},
+
+    {"id":"ctl_release","type":"backend","label":"Release/changelog controllers","sublabel":"Admin/internal releases + public/admin changelog","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/service-release/service-release-admin.controller.ts","line":28,"label":"ServiceReleaseAdminController"},{"path":"apps/api/src/modules/changelog/changelog-admin.controller.ts","line":23,"label":"ChangelogAdminController"}]},
+    {"id":"ctl_notify","type":"backend","label":"NotificationController","sublabel":"Admin notification operations","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/notification/notification.controller.ts","line":29,"label":"class NotificationController"}]},
+    {"id":"ctl_hook","type":"backend","label":"WebhookController","sublabel":"Webhook subscription/admin operations","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/webhook/webhook.controller.ts","line":44,"label":"class WebhookController"}]},
+
+    {"id":"svc_release","type":"backend","label":"ServiceReleaseService","sublabel":"Release records and internal release ingestion","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/serviceRelease/serviceRelease.service.ts","line":51,"label":"ServiceReleaseService"}]},
+    {"id":"svc_changelog","type":"backend","label":"ChangelogService","sublabel":"Public/admin changelog management","tag":"service","row":0,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/changelog/changelog.service.ts","line":62,"label":"ChangelogService"}]},
+    {"id":"svc_notify","type":"backend","label":"NotificationService","sublabel":"Notification admin operations","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/notification/notification.service.ts","line":42,"label":"NotificationService"}]},
+    {"id":"svc_hook","type":"backend","label":"WebhookService","sublabel":"Webhook subscriptions and delivery management","tag":"service","row":2,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/webhook/webhook.service.ts","line":80,"label":"WebhookService"}]},
+
+    {"id":"data_ops","type":"database","label":"Ops/comms data store","sublabel":"Releases, changelog, notifications, webhook config","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/webhook/webhook.service.ts","line":80,"label":"Webhook/config persistence"},{"path":"packages/applications/src/services/changelog/changelog.service.ts","line":62,"label":"Release/changelog persistence"}]},
+    {"id":"ext_out","type":"external","label":"External delivery targets","sublabel":"Notification channels and webhook endpoints","tag":"external","row":2,"col":3,"size":[330,116],"sources":[{"path":"apps/api/src/modules/webhook/webhook.controller.ts","line":42,"label":"Webhook admin/delivery management"},{"path":"apps/api/src/modules/notification/notification.controller.ts","line":27,"label":"Notification admin endpoints"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_release","eg_notify","eg_hook"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_release","ctl_notify","ctl_hook"]},
+    {"kind":"region","label":"Application services","wraps":["svc_release","svc_changelog","svc_notify","svc_hook"]},
+    {"kind":"region","label":"Data stores / delivery targets","wraps":["data_ops","ext_out"]}
+  ],
+  "connections": [
+    {"id":"z1","from":"eg_release","to":"ctl_release","label":"HTTP/int"},
+    {"id":"z2","from":"eg_notify","to":"ctl_notify","label":"HTTP"},
+    {"id":"z3","from":"eg_hook","to":"ctl_hook","label":"HTTP"},
+    {"id":"z4","from":"ctl_release","to":"svc_release","label":"release"},
+    {"id":"z5","from":"ctl_release","to":"svc_changelog","label":"changelog"},
+    {"id":"z6","from":"ctl_notify","to":"svc_notify","label":"delegate"},
+    {"id":"z7","from":"ctl_hook","to":"svc_hook","label":"delegate"},
+    {"id":"z8","from":"svc_release","to":"data_ops","label":"releases"},
+    {"id":"z9","from":"svc_changelog","to":"data_ops","label":"changelog"},
+    {"id":"z10","from":"svc_notify","to":"data_ops","label":"state"},
+    {"id":"z11","from":"svc_hook","to":"data_ops","label":"webhooks"},
+    {"id":"z12","from":"svc_notify","to":"ext_out","label":"deliver"},
+    {"id":"z13","from":"svc_hook","to":"ext_out","label":"dispatch"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B07c scope (releases, comms, webhooks)","items":["Completes B07-guardrails-ops. Modules: service-release (5/2), changelog (7/2), notification (4/1), webhook (7/1) = 23 routes / 6 controllers.","Service releases: admin + internal release endpoints (internal controller has @Public/@ApiExcludeController/tenant-lock patterns; verify auth). Changelog: public /changelog and /admin/changelog.","Notifications: /admin/notifications. Webhooks: /admin/webhooks subscription/management/delivery surfaces. Grouped endpoint nodes for readability."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Service release admin/internal: create/update/list release records or internal ingestion payloads -> release records/status. Verify internal auth/signing and tenant lock behavior.","Changelog: public list/read -> changelog entries; admin create/update/publish -> managed changelog records.","Notification admin: create/send/list/manage notification requests -> notification records/results (delivery channel behavior is implementation-specific).","Webhook admin: subscription CRUD/test/delivery management requests -> webhook config/delivery records; outbound dispatch targets external endpoints. Verify signing, retries, and secret handling."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree (ServiceReleaseService, ChangelogService, NotificationService, WebhookService).","Downstreams: ops/comms data store (Postgres/Prisma) and external delivery targets (notification channels/webhook endpoints).","Limitations: grouped endpoint nodes (23 routes/6 controllers); service-release internal auth specifics summarized from controller metadata (verify guard details); notification/webhook delivery runtime and secret/signature handling are implementation-specific — reconcile with OpenAPI/implementation."]}
+  ]
+}

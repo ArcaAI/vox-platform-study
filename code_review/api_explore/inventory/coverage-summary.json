@@ -1,0 +1,4620 @@
+{
+ "rows": [
+  {
+   "path": "src/app.module.ts",
+   "stmts": 93.33,
+   "branches": 50.0,
+   "functions": 100.0,
+   "lines": 93.33,
+   "stmt_covered": 14,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/cors.config.ts",
+   "stmts": 100.0,
+   "branches": 91.43,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 49,
+   "stmt_total": 49
+  },
+  {
+   "path": "src/cors.headers.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/crash-handlers.ts",
+   "stmts": 100.0,
+   "branches": 81.82,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 30,
+   "stmt_total": 30
+  },
+  {
+   "path": "src/global-prefix.config.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/instrumentation.flags.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 15,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/instrumentation.ts",
+   "stmts": 82.35,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 82.35,
+   "stmt_covered": 14,
+   "stmt_total": 17
+  },
+  {
+   "path": "src/request-id.ts",
+   "stmts": 100.0,
+   "branches": 90.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 15,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/swagger.config.ts",
+   "stmts": 66.67,
+   "branches": 100.0,
+   "functions": 50.0,
+   "lines": 66.67,
+   "stmt_covered": 6,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/vault-prisma.module.ts",
+   "stmts": 95.56,
+   "branches": 95.0,
+   "functions": 80.0,
+   "lines": 95.56,
+   "stmt_covered": 43,
+   "stmt_total": 45
+  },
+  {
+   "path": "src/bootstrap/admin-route-permission-audit.ts",
+   "stmts": 76.81,
+   "branches": 52.94,
+   "functions": 100.0,
+   "lines": 76.81,
+   "stmt_covered": 53,
+   "stmt_total": 69
+  },
+  {
+   "path": "src/bootstrap/admin-scope-audit.ts",
+   "stmts": 85.92,
+   "branches": 66.04,
+   "functions": 100.0,
+   "lines": 85.92,
+   "stmt_covered": 61,
+   "stmt_total": 71
+  },
+  {
+   "path": "src/bootstrap/api-key-scope-audit.ts",
+   "stmts": 85.56,
+   "branches": 63.64,
+   "functions": 100.0,
+   "lines": 85.56,
+   "stmt_covered": 77,
+   "stmt_total": 90
+  },
+  {
+   "path": "src/bootstrap/api-key-surface-audit.ts",
+   "stmts": 73.53,
+   "branches": 50.94,
+   "functions": 100.0,
+   "lines": 73.53,
+   "stmt_covered": 50,
+   "stmt_total": 68
+  },
+  {
+   "path": "src/bootstrap/business-plane-apikey-exemptions-audit.ts",
+   "stmts": 76.06,
+   "branches": 52.83,
+   "functions": 100.0,
+   "lines": 76.06,
+   "stmt_covered": 54,
+   "stmt_total": 71
+  },
+  {
+   "path": "src/bootstrap/casl-enforce-reachability-audit.ts",
+   "stmts": 80.85,
+   "branches": 64.1,
+   "functions": 100.0,
+   "lines": 80.85,
+   "stmt_covered": 38,
+   "stmt_total": 47
+  },
+  {
+   "path": "src/bootstrap/consent-route-coverage-audit.ts",
+   "stmts": 81.03,
+   "branches": 52.38,
+   "functions": 100.0,
+   "lines": 81.03,
+   "stmt_covered": 47,
+   "stmt_total": 58
+  },
+  {
+   "path": "src/bootstrap/genai-content-capture-audit.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/bootstrap/internal-body-limit.ts",
+   "stmts": 100.0,
+   "branches": 50.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/bootstrap/jwt-secret-placeholder-audit.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/bootstrap/occ-coverage-audit.ts",
+   "stmts": 93.39,
+   "branches": 77.63,
+   "functions": 100.0,
+   "lines": 93.39,
+   "stmt_covered": 113,
+   "stmt_total": 121
+  },
+  {
+   "path": "src/bootstrap/service-account-surface-audit.ts",
+   "stmts": 87.4,
+   "branches": 82.7,
+   "functions": 95.45,
+   "lines": 87.4,
+   "stmt_covered": 222,
+   "stmt_total": 254
+  },
+  {
+   "path": "src/bootstrap/task-773-admin-scope-map.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/bootstrap/third-party-public-routes.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/bootstrap/ws-gateway-owner-audit.ts",
+   "stmts": 90.48,
+   "branches": 80.0,
+   "functions": 100.0,
+   "lines": 90.48,
+   "stmt_covered": 19,
+   "stmt_total": 21
+  },
+  {
+   "path": "src/common/gateway-http-agent.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/common/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/common/stream-session-tenant-binding.service.ts",
+   "stmts": 77.46,
+   "branches": 69.05,
+   "functions": 80.0,
+   "lines": 77.46,
+   "stmt_covered": 55,
+   "stmt_total": 71
+  },
+  {
+   "path": "src/common/tenant-owned-resource-sse.guard.ts",
+   "stmts": 94.29,
+   "branches": 85.71,
+   "functions": 100.0,
+   "lines": 94.29,
+   "stmt_covered": 33,
+   "stmt_total": 35
+  },
+  {
+   "path": "src/common/tenant-owned-resource.decorator.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/common/tenant-owned-resource.interceptor.ts",
+   "stmts": 91.0,
+   "branches": 93.41,
+   "functions": 94.12,
+   "lines": 91.0,
+   "stmt_covered": 91,
+   "stmt_total": 100
+  },
+  {
+   "path": "src/common/tenant-owned-resource.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/config/env.descriptors.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/config/env.schema.ts",
+   "stmts": 94.59,
+   "branches": 94.34,
+   "functions": 83.33,
+   "lines": 94.59,
+   "stmt_covered": 70,
+   "stmt_total": 74
+  },
+  {
+   "path": "src/config/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/database/tenant-context.provider.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 18,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/decorators/api-deprecated.decorator.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 14,
+   "stmt_total": 14
+  },
+  {
+   "path": "src/decorators/apiEndpoint.decorator.ts",
+   "stmts": 97.37,
+   "branches": 86.36,
+   "functions": 100.0,
+   "lines": 97.37,
+   "stmt_covered": 37,
+   "stmt_total": 38
+  },
+  {
+   "path": "src/decorators/apiPaginated.response.ts",
+   "stmts": 50.0,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 50.0,
+   "stmt_covered": 1,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/decorators/apiSingle.response.ts",
+   "stmts": 50.0,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 50.0,
+   "stmt_covered": 1,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/decorators/expectedVersion.decorator.ts",
+   "stmts": 93.33,
+   "branches": 91.67,
+   "functions": 100.0,
+   "lines": 93.33,
+   "stmt_covered": 14,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/decorators/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/decorators/noOptimisticConcurrency.decorator.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/decorators/requiresIfMatch.decorator.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/decorators/requiresIfMatch.guard.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/decorators/tenant-lock-exempt.decorator.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/filters/all-exceptions.filter.ts",
+   "stmts": 89.47,
+   "branches": 86.67,
+   "functions": 100.0,
+   "lines": 89.47,
+   "stmt_covered": 17,
+   "stmt_total": 19
+  },
+  {
+   "path": "src/filters/consent.filter.ts",
+   "stmts": 100.0,
+   "branches": 70.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 19,
+   "stmt_total": 19
+  },
+  {
+   "path": "src/filters/data-not-found.filter.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/filters/downstream-error.ts",
+   "stmts": 86.75,
+   "branches": 82.72,
+   "functions": 93.33,
+   "lines": 86.75,
+   "stmt_covered": 72,
+   "stmt_total": 83
+  },
+  {
+   "path": "src/filters/error-envelope.ts",
+   "stmts": 92.31,
+   "branches": 81.25,
+   "functions": 100.0,
+   "lines": 92.31,
+   "stmt_covered": 12,
+   "stmt_total": 13
+  },
+  {
+   "path": "src/filters/failure-log.ts",
+   "stmts": 85.25,
+   "branches": 80.0,
+   "functions": 100.0,
+   "lines": 85.25,
+   "stmt_covered": 52,
+   "stmt_total": 61
+  },
+  {
+   "path": "src/filters/global-filters.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/filters/http-exception-envelope.filter.ts",
+   "stmts": 95.0,
+   "branches": 80.0,
+   "functions": 100.0,
+   "lines": 95.0,
+   "stmt_covered": 19,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/filters/validation-violations.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 13,
+   "stmt_total": 13
+  },
+  {
+   "path": "src/guards/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/guards/internal-path.ts",
+   "stmts": 87.5,
+   "branches": 55.56,
+   "functions": 100.0,
+   "lines": 87.5,
+   "stmt_covered": 7,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/guards/internal-tenant-lock.guard.ts",
+   "stmts": 96.67,
+   "branches": 86.36,
+   "functions": 100.0,
+   "lines": 96.67,
+   "stmt_covered": 29,
+   "stmt_total": 30
+  },
+  {
+   "path": "src/guards/jwtauth.guard.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 49,
+   "stmt_total": 49
+  },
+  {
+   "path": "src/guards/oidcauth.guard.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 13,
+   "stmt_total": 13
+  },
+  {
+   "path": "src/guards/origin-tenant-binding.guard.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 34,
+   "stmt_total": 34
+  },
+  {
+   "path": "src/guards/patient-consent.guard.ts",
+   "stmts": 95.0,
+   "branches": 81.82,
+   "functions": 100.0,
+   "lines": 95.0,
+   "stmt_covered": 38,
+   "stmt_total": 40
+  },
+  {
+   "path": "src/guards/tenant-lock.guard.ts",
+   "stmts": 97.22,
+   "branches": 83.33,
+   "functions": 100.0,
+   "lines": 97.22,
+   "stmt_covered": 35,
+   "stmt_total": 36
+  },
+  {
+   "path": "src/interceptors/context.interceptor.ts",
+   "stmts": 100.0,
+   "branches": 95.83,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 51,
+   "stmt_total": 51
+  },
+  {
+   "path": "src/interceptors/etag.interceptor.ts",
+   "stmts": 97.78,
+   "branches": 93.33,
+   "functions": 100.0,
+   "lines": 97.78,
+   "stmt_covered": 44,
+   "stmt_total": 45
+  },
+  {
+   "path": "src/interceptors/exception.interceptor.ts",
+   "stmts": 98.31,
+   "branches": 91.74,
+   "functions": 100.0,
+   "lines": 98.31,
+   "stmt_covered": 116,
+   "stmt_total": 118
+  },
+  {
+   "path": "src/interceptors/impersonation-audit.interceptor.ts",
+   "stmts": 100.0,
+   "branches": 66.67,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 20,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/interceptors/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/interceptors/maintenance.interceptor.ts",
+   "stmts": 28.57,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 28.57,
+   "stmt_covered": 2,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/interceptors/metrics.interceptor.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 12,
+   "stmt_total": 12
+  },
+  {
+   "path": "src/interceptors/resolve-active-tenant.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/model-publisher/model-publisher-worker.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/admin-rate-limit/rate-limit-admin.controller.ts",
+   "stmts": 5.56,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 5.56,
+   "stmt_covered": 1,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/admin-rate-limit/rate-limit-admin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/admin-rate-limit/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/admin-rate-limit/dto/rate-limit.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 59,
+   "stmt_total": 59
+  },
+  {
+   "path": "src/modules/admin-usage/admin-usage.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/admin-usage/admin-usage.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/admin-usage/my-usage.controller.ts",
+   "stmts": 100.0,
+   "branches": 83.33,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/agent/agent-run.events.ts",
+   "stmts": 83.93,
+   "branches": 61.11,
+   "functions": 91.67,
+   "lines": 83.93,
+   "stmt_covered": 47,
+   "stmt_total": 56
+  },
+  {
+   "path": "src/modules/agent/agent-run.service.ts",
+   "stmts": 87.98,
+   "branches": 73.8,
+   "functions": 89.47,
+   "lines": 87.98,
+   "stmt_covered": 183,
+   "stmt_total": 208
+  },
+  {
+   "path": "src/modules/agent/agent.controller.ts",
+   "stmts": 86.35,
+   "branches": 74.85,
+   "functions": 80.0,
+   "lines": 86.35,
+   "stmt_covered": 367,
+   "stmt_total": 425
+  },
+  {
+   "path": "src/modules/agent/agent.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/agent/tts-blob-delivery.ts",
+   "stmts": 88.89,
+   "branches": 86.05,
+   "functions": 100.0,
+   "lines": 88.89,
+   "stmt_covered": 40,
+   "stmt_total": 45
+  },
+  {
+   "path": "src/modules/agent-admin/agent-admin.controller.ts",
+   "stmts": 87.5,
+   "branches": 81.82,
+   "functions": 85.71,
+   "lines": 87.5,
+   "stmt_covered": 28,
+   "stmt_total": 32
+  },
+  {
+   "path": "src/modules/agent-admin/agent-admin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/agent-admin/agent-assignment-admin.controller.ts",
+   "stmts": 83.33,
+   "branches": 70.0,
+   "functions": 71.43,
+   "lines": 83.33,
+   "stmt_covered": 10,
+   "stmt_total": 12
+  },
+  {
+   "path": "src/modules/agent-promotion/agent-promote-to-system.controller.ts",
+   "stmts": 33.33,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 33.33,
+   "stmt_covered": 1,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/agent-promotion/agent-promotion.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/agent-promotion/agent-promotion.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/agent-trajectory/agent-trajectory.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/agent-trajectory/agent-trajectory.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/agent/__tests__/fake-agent-run-redis.ts",
+   "stmts": 75.41,
+   "branches": 67.5,
+   "functions": 50.0,
+   "lines": 75.41,
+   "stmt_covered": 46,
+   "stmt_total": 61
+  },
+  {
+   "path": "src/modules/agent/__tests__/fake-workflow-run-repository.ts",
+   "stmts": 89.58,
+   "branches": 75.68,
+   "functions": 92.31,
+   "lines": 89.58,
+   "stmt_covered": 43,
+   "stmt_total": 48
+  },
+  {
+   "path": "src/modules/agent/dto/agent-transcription.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/agentic-admin/agentic-admin.controller.ts",
+   "stmts": 94.12,
+   "branches": 93.33,
+   "functions": 100.0,
+   "lines": 94.12,
+   "stmt_covered": 16,
+   "stmt_total": 17
+  },
+  {
+   "path": "src/modules/agentic-admin/agentic-admin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/ai-inference/ai-inference.client.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 31,
+   "stmt_total": 31
+  },
+  {
+   "path": "src/modules/ai-inference/ai-inference.controller.ts",
+   "stmts": 90.55,
+   "branches": 73.85,
+   "functions": 95.0,
+   "lines": 90.55,
+   "stmt_covered": 115,
+   "stmt_total": 127
+  },
+  {
+   "path": "src/modules/ai-inference/ai-inference.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/ai-inference/nlp-classify-usage.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/ai-inference/safety-check.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/ai-inference/dto/analyze-guardrail.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/ai-inference/dto/extract-entities.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/ai-inference/dto/suggest-diagnosis.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/ai-model/ai-model-admin.controller.ts",
+   "stmts": 90.0,
+   "branches": 75.0,
+   "functions": 94.44,
+   "lines": 90.0,
+   "stmt_covered": 27,
+   "stmt_total": 30
+  },
+  {
+   "path": "src/modules/ai-model/ai-model-catalogue.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/ai-model/ai-model-discovery.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/ai-model/ai-model-discovery.service.ts",
+   "stmts": 95.8,
+   "branches": 80.0,
+   "functions": 94.74,
+   "lines": 95.8,
+   "stmt_covered": 114,
+   "stmt_total": 119
+  },
+  {
+   "path": "src/modules/ai-model/ai-model-jobs.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/ai-model/ai-model-registration.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/ai-model/ai-model.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/ai-provider-connection/ai-provider-connection.controller.ts",
+   "stmts": 76.47,
+   "branches": 50.0,
+   "functions": 72.73,
+   "lines": 76.47,
+   "stmt_covered": 13,
+   "stmt_total": 17
+  },
+  {
+   "path": "src/modules/ai-provider-connection/ai-provider-connection.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts",
+   "stmts": 60.0,
+   "branches": 84.62,
+   "functions": 50.0,
+   "lines": 60.0,
+   "stmt_covered": 18,
+   "stmt_total": 30
+  },
+  {
+   "path": "src/modules/ai-routing-policy/ai-routing-policy.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/ai-service-admin/ai-service-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 13,
+   "stmt_total": 13
+  },
+  {
+   "path": "src/modules/ai-service-admin/ai-service-admin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/ai-service-admin/ai-service-proxy.client.ts",
+   "stmts": 100.0,
+   "branches": 91.67,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 27,
+   "stmt_total": 27
+  },
+  {
+   "path": "src/modules/ai-service-admin/mlflow-proxy.client.ts",
+   "stmts": 95.95,
+   "branches": 85.71,
+   "functions": 100.0,
+   "lines": 95.95,
+   "stmt_covered": 71,
+   "stmt_total": 74
+  },
+  {
+   "path": "src/modules/ai-service-admin/dto/mlflow-search.query.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/api-key/api-key.controller.ts",
+   "stmts": 53.33,
+   "branches": 61.11,
+   "functions": 45.45,
+   "lines": 53.33,
+   "stmt_covered": 16,
+   "stmt_total": 30
+  },
+  {
+   "path": "src/modules/api-key/api-key.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/api-key/dto/api-key-extra.dto.ts",
+   "stmts": 83.33,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 83.33,
+   "stmt_covered": 5,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/api-key/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/audit-log/audit-log.controller.ts",
+   "stmts": 89.47,
+   "branches": 92.86,
+   "functions": 71.43,
+   "lines": 89.47,
+   "stmt_covered": 34,
+   "stmt_total": 38
+  },
+  {
+   "path": "src/modules/audit-log/audit-log.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/auth/admin-impersonation.controller.ts",
+   "stmts": 98.77,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 98.77,
+   "stmt_covered": 80,
+   "stmt_total": 81
+  },
+  {
+   "path": "src/modules/auth/auth-sso.controller.ts",
+   "stmts": 97.22,
+   "branches": 83.33,
+   "functions": 100.0,
+   "lines": 97.22,
+   "stmt_covered": 35,
+   "stmt_total": 36
+  },
+  {
+   "path": "src/modules/auth/auth.controller.ts",
+   "stmts": 94.92,
+   "branches": 86.54,
+   "functions": 100.0,
+   "lines": 94.92,
+   "stmt_covered": 355,
+   "stmt_total": 374
+  },
+  {
+   "path": "src/modules/auth/auth.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/auth/impersonation-events.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/auth/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/auth/register.controller.ts",
+   "stmts": 93.33,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 93.33,
+   "stmt_covered": 14,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/modules/auth/stream-ticket.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/auth/stream-ticket.service.ts",
+   "stmts": 96.77,
+   "branches": 92.59,
+   "functions": 100.0,
+   "lines": 96.77,
+   "stmt_covered": 30,
+   "stmt_total": 31
+  },
+  {
+   "path": "src/modules/auth/decorators/stream-scope.decorator.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/auth/dto/impersonate.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 19,
+   "stmt_total": 19
+  },
+  {
+   "path": "src/modules/auth/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/auth/dto/login.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/auth/dto/login.response.ts",
+   "stmts": 100.0,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 13,
+   "stmt_total": 13
+  },
+  {
+   "path": "src/modules/auth/dto/logout.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/auth/dto/me.response.ts",
+   "stmts": 100.0,
+   "branches": 50.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/auth/dto/refresh.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/auth/dto/refresh.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/auth/dto/revoke-impersonation.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/auth/dto/saml-acs.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/auth/dto/sso-start.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/auth/dto/sso-start.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/auth/dto/stream-ticket.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/auth/dto/stream-ticket.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/billing/billing-admin.controller.ts",
+   "stmts": 90.91,
+   "branches": 100.0,
+   "functions": 88.89,
+   "lines": 90.91,
+   "stmt_covered": 10,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/billing/billing.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/billing/my-billing.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/billing/rate-card-admin.controller.ts",
+   "stmts": 80.0,
+   "branches": 100.0,
+   "functions": 75.0,
+   "lines": 80.0,
+   "stmt_covered": 4,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/changelog/changelog-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/changelog/changelog.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/changelog/changelog.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/consent/consent.controller.ts",
+   "stmts": 16.67,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 16.67,
+   "stmt_covered": 1,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/consent/consent.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/consultation/admin-consultation.controller.ts",
+   "stmts": 77.78,
+   "branches": 63.64,
+   "functions": 80.0,
+   "lines": 77.78,
+   "stmt_covered": 14,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/consultation/admin-feedback-rollup.controller.ts",
+   "stmts": 100.0,
+   "branches": 50.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/consultation/consent-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 14,
+   "stmt_total": 14
+  },
+  {
+   "path": "src/modules/consultation/consultation-access.helper.ts",
+   "stmts": 83.05,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 83.05,
+   "stmt_covered": 49,
+   "stmt_total": 59
+  },
+  {
+   "path": "src/modules/consultation/consultation-attachment.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 19,
+   "stmt_total": 19
+  },
+  {
+   "path": "src/modules/consultation/consultation-feedback.controller.ts",
+   "stmts": 100.0,
+   "branches": 25.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/consultation/consultation-job.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/consultation/consultation-lifecycle-events.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/consultation/consultation-lifecycle-vocabulary.interceptor.ts",
+   "stmts": 96.15,
+   "branches": 91.53,
+   "functions": 100.0,
+   "lines": 96.15,
+   "stmt_covered": 50,
+   "stmt_total": 52
+  },
+  {
+   "path": "src/modules/consultation/consultation-read-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/consultation/consultation-telemetry.controller.ts",
+   "stmts": 33.33,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 33.33,
+   "stmt_covered": 1,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/consultation/consultation.controller.ts",
+   "stmts": 87.15,
+   "branches": 75.13,
+   "functions": 92.55,
+   "lines": 87.15,
+   "stmt_covered": 312,
+   "stmt_total": 358
+  },
+  {
+   "path": "src/modules/consultation/consultation.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/consultation/harness-internal.controller.ts",
+   "stmts": 79.89,
+   "branches": 79.83,
+   "functions": 69.81,
+   "lines": 79.89,
+   "stmt_covered": 143,
+   "stmt_total": 179
+  },
+  {
+   "path": "src/modules/consultation/harness-service-token.guard.ts",
+   "stmts": 100.0,
+   "branches": 91.67,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 23,
+   "stmt_total": 23
+  },
+  {
+   "path": "src/modules/consultation-context-schema/consultation-context-schema.controller.ts",
+   "stmts": 27.78,
+   "branches": 0.0,
+   "functions": 16.67,
+   "lines": 27.78,
+   "stmt_covered": 5,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/consultation-context-schema/consultation-context-schema.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/consultation-history/admin-consultation-history.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 12,
+   "stmt_total": 12
+  },
+  {
+   "path": "src/modules/consultation-history/consultation-history.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/consultation-history/consultation-history.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/consultation/dto/close-consultation.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/consultation/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/consultation/dto/lifecycle-command.request.ts",
+   "stmts": 0.0,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 0.0,
+   "stmt_covered": 0,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/consultation/dto/lifecycle.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 31,
+   "stmt_total": 31
+  },
+  {
+   "path": "src/modules/department/department.controller.ts",
+   "stmts": 65.0,
+   "branches": 100.0,
+   "functions": 36.36,
+   "lines": 65.0,
+   "stmt_covered": 13,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/modules/department/department.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/dna-writing-style/dna-writing-style-admin.controller.ts",
+   "stmts": 94.44,
+   "branches": 90.0,
+   "functions": 90.91,
+   "lines": 94.44,
+   "stmt_covered": 17,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts",
+   "stmts": 100.0,
+   "branches": 88.89,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 21,
+   "stmt_total": 21
+  },
+  {
+   "path": "src/modules/dna-writing-style/dna-writing-style-job-stream.ts",
+   "stmts": 95.59,
+   "branches": 89.06,
+   "functions": 90.91,
+   "lines": 95.59,
+   "stmt_covered": 65,
+   "stmt_total": 68
+  },
+  {
+   "path": "src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/dna-writing-style/dna-writing-style.controller.ts",
+   "stmts": 98.04,
+   "branches": 95.24,
+   "functions": 95.0,
+   "lines": 98.04,
+   "stmt_covered": 50,
+   "stmt_total": 51
+  },
+  {
+   "path": "src/modules/dna-writing-style/dna-writing-style.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/dna-writing-style/dna-writing-style.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/document-template/document-template.controller.ts",
+   "stmts": 17.65,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 17.65,
+   "stmt_covered": 3,
+   "stmt_total": 17
+  },
+  {
+   "path": "src/modules/document-template/document-template.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/entitlements/entitlements-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 19,
+   "stmt_total": 19
+  },
+  {
+   "path": "src/modules/entitlements/entitlements.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/entitlements/my-entitlements.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/entitlements/dto/entitlements-enabled.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/entitlements/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/entitlements/dto/set-enforcement-enabled.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/entitlements/dto/trigger-downgrade.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/global-setting/global-setting.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 22,
+   "stmt_total": 22
+  },
+  {
+   "path": "src/modules/global-setting/global-setting.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/governed-prompt/governed-prompt-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 15,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/modules/governed-prompt/governed-prompt.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/guardrail-availability/guardrail-availability.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/guardrail-availability/guardrail-availability.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/guardrail-notice/guardrail-notice.controller.ts",
+   "stmts": 100.0,
+   "branches": 66.67,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 16,
+   "stmt_total": 16
+  },
+  {
+   "path": "src/modules/guardrail-policy/guardrail-metrics.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/guardrail-policy/guardrail-policy.controller.ts",
+   "stmts": 100.0,
+   "branches": 50.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 20,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/modules/guardrail-policy/guardrail-policy.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/guardrail-tenant-policy/guardrail-rule-test.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/guardrail-tenant-policy/guardrail-tenant-policy.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/guardrail-tenant-policy/guardrail-tenant-policy.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/harness-admin/harness-admin.controller.ts",
+   "stmts": 88.54,
+   "branches": 76.56,
+   "functions": 86.11,
+   "lines": 88.54,
+   "stmt_covered": 85,
+   "stmt_total": 96
+  },
+  {
+   "path": "src/modules/harness-admin/harness-admin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/harness-admin/harness-ops.client.ts",
+   "stmts": 100.0,
+   "branches": 94.74,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 32,
+   "stmt_total": 32
+  },
+  {
+   "path": "src/modules/harness-admin/dto/edit-burden.query.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/health/admin-health-services.controller.ts",
+   "stmts": 97.3,
+   "branches": 66.67,
+   "functions": 100.0,
+   "lines": 97.3,
+   "stmt_covered": 36,
+   "stmt_total": 37
+  },
+  {
+   "path": "src/modules/health/health.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 19,
+   "stmt_total": 19
+  },
+  {
+   "path": "src/modules/health/health.module.ts",
+   "stmts": 66.67,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 66.67,
+   "stmt_covered": 2,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/inference-engines/inference-engines.controller.ts",
+   "stmts": 60.0,
+   "branches": 100.0,
+   "functions": 50.0,
+   "lines": 60.0,
+   "stmt_covered": 3,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/inference-engines/inference-engines.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/internal/agent-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 93.1,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 33,
+   "stmt_total": 33
+  },
+  {
+   "path": "src/modules/internal/agent-version-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 23,
+   "stmt_total": 23
+  },
+  {
+   "path": "src/modules/internal/composed-prompt-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/internal/effective-config.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/internal/internal-service-token.guard.ts",
+   "stmts": 97.87,
+   "branches": 86.67,
+   "functions": 100.0,
+   "lines": 97.87,
+   "stmt_covered": 46,
+   "stmt_total": 47
+  },
+  {
+   "path": "src/modules/internal/internal.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/internal/model-registry-credential.util.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/internal/model-registry-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/internal/model-serving-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 12,
+   "stmt_total": 12
+  },
+  {
+   "path": "src/modules/internal/stt-internal.controller.ts",
+   "stmts": 87.5,
+   "branches": 89.29,
+   "functions": 88.46,
+   "lines": 87.5,
+   "stmt_covered": 70,
+   "stmt_total": 80
+  },
+  {
+   "path": "src/modules/internal/stt-session-transcript-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 12,
+   "stmt_total": 12
+  },
+  {
+   "path": "src/modules/internal/dto/stt-streaming-usage.request.ts",
+   "stmts": 87.5,
+   "branches": 100.0,
+   "functions": 50.0,
+   "lines": 87.5,
+   "stmt_covered": 7,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/knowledge/knowledge.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/knowledge/knowledge.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/mcp-admin/mcp-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/mcp-admin/mcp-admin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/media/media.controller.ts",
+   "stmts": 100.0,
+   "branches": 91.67,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 16,
+   "stmt_total": 16
+  },
+  {
+   "path": "src/modules/media/media.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/model-residency/model-residency.controller.ts",
+   "stmts": 69.57,
+   "branches": 75.0,
+   "functions": 53.33,
+   "lines": 69.57,
+   "stmt_covered": 16,
+   "stmt_total": 23
+  },
+  {
+   "path": "src/modules/model-residency/model-residency.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/monitoring/monitoring.controller.ts",
+   "stmts": 7.14,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 7.14,
+   "stmt_covered": 1,
+   "stmt_total": 14
+  },
+  {
+   "path": "src/modules/monitoring/monitoring.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/monitoring/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/monitoring/dto/monitoring.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 14,
+   "stmt_total": 14
+  },
+  {
+   "path": "src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/nlp-task-instructions/nlp-task-instructions.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/notification/notification.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 12,
+   "stmt_total": 12
+  },
+  {
+   "path": "src/modules/notification/notification.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/platform-knobs/platform-knobs.binder.ts",
+   "stmts": 82.61,
+   "branches": 68.18,
+   "functions": 100.0,
+   "lines": 82.61,
+   "stmt_covered": 38,
+   "stmt_total": 46
+  },
+  {
+   "path": "src/modules/platform-knobs/platform-knobs.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/platform-metrics/platform-metrics.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/platform-metrics/platform-metrics.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/prompt-inspector/composed-prompt-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/prompt-inspector/prompt-inspector.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/prompt-inspector/prompt-preview.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/prompt-management/prompt-management.controller.ts",
+   "stmts": 100.0,
+   "branches": 94.44,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 45,
+   "stmt_total": 45
+  },
+  {
+   "path": "src/modules/prompt-management/prompt-management.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/prompt-management/prompt-template.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/prompt-management/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/prompt-management/dto/prompt-extra.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/pstudio/pstudio-status.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/pstudio/pstudio-status.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/pstudio/pstudio.controller.ts",
+   "stmts": 95.0,
+   "branches": 87.5,
+   "functions": 100.0,
+   "lines": 95.0,
+   "stmt_covered": 19,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/modules/pstudio/pstudio.html.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/pstudio/pstudio.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/queue-admin/queue-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 21,
+   "stmt_total": 21
+  },
+  {
+   "path": "src/modules/queue-admin/queue-admin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/queue-admin/scheduler-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/queue-admin/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/queue-admin/dto/queue-admin.dto.ts",
+   "stmts": 96.55,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 96.55,
+   "stmt_covered": 56,
+   "stmt_total": 58
+  },
+  {
+   "path": "src/modules/queue-admin/dto/scheduler-admin.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/queue-admin/pipes/queue-name.pipe.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/rbac/permission-check.controller.ts",
+   "stmts": 90.0,
+   "branches": 65.79,
+   "functions": 100.0,
+   "lines": 90.0,
+   "stmt_covered": 45,
+   "stmt_total": 50
+  },
+  {
+   "path": "src/modules/rbac/policies.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 18,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/rbac/rbac.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/rbac/roles.controller.ts",
+   "stmts": 54.05,
+   "branches": 57.14,
+   "functions": 60.0,
+   "lines": 54.05,
+   "stmt_covered": 20,
+   "stmt_total": 37
+  },
+  {
+   "path": "src/modules/rbac/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/rbac/dto/permission-check.dto.ts",
+   "stmts": 95.45,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 95.45,
+   "stmt_covered": 21,
+   "stmt_total": 22
+  },
+  {
+   "path": "src/modules/rbac/dto/permission-extra.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/rbac/dto/policy.dto.ts",
+   "stmts": 85.71,
+   "branches": 100.0,
+   "functions": 20.0,
+   "lines": 85.71,
+   "stmt_covered": 24,
+   "stmt_total": 28
+  },
+  {
+   "path": "src/modules/rbac/dto/role.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 36,
+   "stmt_total": 36
+  },
+  {
+   "path": "src/modules/rbac/dto/user-role.dto.ts",
+   "stmts": 94.44,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 94.44,
+   "stmt_covered": 17,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/resource-subscription/resource-subscription.controller.ts",
+   "stmts": 85.71,
+   "branches": 100.0,
+   "functions": 85.71,
+   "lines": 85.71,
+   "stmt_covered": 12,
+   "stmt_total": 14
+  },
+  {
+   "path": "src/modules/resource-subscription/resource-subscription.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/security-policy/security-policy.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/security-policy/security-policy.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/service-account/service-account-token.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/service-account/service-account-token.guard.ts",
+   "stmts": 12.5,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 12.5,
+   "stmt_covered": 2,
+   "stmt_total": 16
+  },
+  {
+   "path": "src/modules/service-account/service-account.controller.ts",
+   "stmts": 88.89,
+   "branches": 100.0,
+   "functions": 87.5,
+   "lines": 88.89,
+   "stmt_covered": 8,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/service-account/service-account.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/service-release/service-release-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/service-release/service-release-internal.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/service-release/service-release-token.guard.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 22,
+   "stmt_total": 22
+  },
+  {
+   "path": "src/modules/service-release/service-release.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/settings-catalog/settings-action-confirmations.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/settings-catalog/settings-catalog.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 24,
+   "stmt_total": 24
+  },
+  {
+   "path": "src/modules/settings-catalog/settings-catalog.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/settings-catalog/settings-features.controller.ts",
+   "stmts": 91.67,
+   "branches": 64.71,
+   "functions": 83.33,
+   "lines": 91.67,
+   "stmt_covered": 11,
+   "stmt_total": 12
+  },
+  {
+   "path": "src/modules/settings-catalog/settings-registry-write.controller.ts",
+   "stmts": 100.0,
+   "branches": 80.56,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 25,
+   "stmt_total": 25
+  },
+  {
+   "path": "src/modules/settings-catalog/settings-scope.ts",
+   "stmts": 88.24,
+   "branches": 77.27,
+   "functions": 100.0,
+   "lines": 88.24,
+   "stmt_covered": 15,
+   "stmt_total": 17
+  },
+  {
+   "path": "src/modules/settings-catalog/dto/action-confirmations.dto.ts",
+   "stmts": 96.97,
+   "branches": 100.0,
+   "functions": 50.0,
+   "lines": 96.97,
+   "stmt_covered": 32,
+   "stmt_total": 33
+  },
+  {
+   "path": "src/modules/settings-catalog/dto/feature-availability.dto.ts",
+   "stmts": 96.67,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 96.67,
+   "stmt_covered": 29,
+   "stmt_total": 30
+  },
+  {
+   "path": "src/modules/settings-catalog/dto/registry-setting.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/settings-catalog/dto/setting-catalog.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 37,
+   "stmt_total": 37
+  },
+  {
+   "path": "src/modules/speech/harness-tts-internal.controller.ts",
+   "stmts": 89.25,
+   "branches": 73.63,
+   "functions": 100.0,
+   "lines": 89.25,
+   "stmt_covered": 83,
+   "stmt_total": 93
+  },
+  {
+   "path": "src/modules/speech/speech-proxy.controller.ts",
+   "stmts": 93.51,
+   "branches": 83.47,
+   "functions": 91.3,
+   "lines": 93.51,
+   "stmt_covered": 144,
+   "stmt_total": 154
+  },
+  {
+   "path": "src/modules/speech/speech.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/speech/tts-provider-classification.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 23,
+   "stmt_total": 23
+  },
+  {
+   "path": "src/modules/speech/tts-tenant-config.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/speech/tts-ws.gateway.ts",
+   "stmts": 86.75,
+   "branches": 78.8,
+   "functions": 84.85,
+   "lines": 86.75,
+   "stmt_covered": 203,
+   "stmt_total": 234
+  },
+  {
+   "path": "src/modules/storage/object-key.guard.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/storage/storage.controller.ts",
+   "stmts": 73.44,
+   "branches": 43.33,
+   "functions": 61.54,
+   "lines": 73.44,
+   "stmt_covered": 47,
+   "stmt_total": 64
+  },
+  {
+   "path": "src/modules/storage/storage.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/storage-access-key/storage-access-key.controller.ts",
+   "stmts": 20.0,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 20.0,
+   "stmt_covered": 1,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/storage-access-key/storage-access-key.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/storage/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/storage/dto/storage.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 24,
+   "stmt_total": 24
+  },
+  {
+   "path": "src/modules/streaming/admin-transcription-job.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/streaming/audio-duration.ts",
+   "stmts": 73.85,
+   "branches": 62.11,
+   "functions": 94.44,
+   "lines": 73.85,
+   "stmt_covered": 192,
+   "stmt_total": 260
+  },
+  {
+   "path": "src/modules/streaming/run-stream-orphan-sweeper.ts",
+   "stmts": 92.86,
+   "branches": 88.57,
+   "functions": 62.5,
+   "lines": 92.86,
+   "stmt_covered": 52,
+   "stmt_total": 56
+  },
+  {
+   "path": "src/modules/streaming/session-removal-retry.service.ts",
+   "stmts": 93.02,
+   "branches": 66.67,
+   "functions": 87.5,
+   "lines": 93.02,
+   "stmt_covered": 40,
+   "stmt_total": 43
+  },
+  {
+   "path": "src/modules/streaming/streaming.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/streaming/stt-run-transcript-mirror.ts",
+   "stmts": 91.86,
+   "branches": 88.66,
+   "functions": 86.67,
+   "lines": 91.86,
+   "stmt_covered": 79,
+   "stmt_total": 86
+  },
+  {
+   "path": "src/modules/streaming/stt-ws.gateway.ts",
+   "stmts": 91.0,
+   "branches": 80.86,
+   "functions": 88.89,
+   "lines": 91.0,
+   "stmt_covered": 566,
+   "stmt_total": 622
+  },
+  {
+   "path": "src/modules/streaming/system-prompt-deprecation.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 15,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/modules/streaming/text-generation-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/streaming/text-proxy.controller.ts",
+   "stmts": 93.97,
+   "branches": 84.46,
+   "functions": 96.67,
+   "lines": 93.97,
+   "stmt_covered": 436,
+   "stmt_total": 464
+  },
+  {
+   "path": "src/modules/streaming/text-proxy.guardrail-relay.ts",
+   "stmts": 87.12,
+   "branches": 77.91,
+   "functions": 91.3,
+   "lines": 87.12,
+   "stmt_covered": 115,
+   "stmt_total": 132
+  },
+  {
+   "path": "src/modules/streaming/transcription-job.controller.ts",
+   "stmts": 88.77,
+   "branches": 81.17,
+   "functions": 96.15,
+   "lines": 88.77,
+   "stmt_covered": 253,
+   "stmt_total": 285
+  },
+  {
+   "path": "src/modules/streaming/workflow-ws.gateway.ts",
+   "stmts": 87.83,
+   "branches": 71.83,
+   "functions": 88.89,
+   "lines": 87.83,
+   "stmt_covered": 101,
+   "stmt_total": 115
+  },
+  {
+   "path": "src/modules/streaming/ws-failure-log.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/streaming/__tests__/wav-fixture.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 18,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/streaming/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/streaming/dto/transcription-job.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 31,
+   "stmt_total": 31
+  },
+  {
+   "path": "src/modules/tenant/my-tenant.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 24,
+   "stmt_total": 24
+  },
+  {
+   "path": "src/modules/tenant/tenant-provision.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/tenant/tenant-reference-set.controller.ts",
+   "stmts": 33.33,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 33.33,
+   "stmt_covered": 1,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/tenant/tenant.controller.ts",
+   "stmts": 67.74,
+   "branches": 77.78,
+   "functions": 63.16,
+   "lines": 67.74,
+   "stmt_covered": 42,
+   "stmt_total": 62
+  },
+  {
+   "path": "src/modules/tenant/tenant.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/tenant-allowed-origin/tenant-allowed-origin.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/tenant-bucket/tenant-bucket.controller.ts",
+   "stmts": 81.25,
+   "branches": 83.33,
+   "functions": 78.57,
+   "lines": 81.25,
+   "stmt_covered": 13,
+   "stmt_total": 16
+  },
+  {
+   "path": "src/modules/tenant-bucket/tenant-bucket.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 29,
+   "stmt_total": 29
+  },
+  {
+   "path": "src/modules/tenant-checkpoint/tenant-checkpoint.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/tenant-frontend-config/tenant-frontend-config.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts",
+   "stmts": 86.67,
+   "branches": 100.0,
+   "functions": 80.0,
+   "lines": 86.67,
+   "stmt_covered": 13,
+   "stmt_total": 15
+  },
+  {
+   "path": "src/modules/tenant-idp-config/tenant-idp-config.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/tenant-storage-config/tenant-storage-config.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/tenant/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/tenant/dto/tenant-usage.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/throttle/client-ip.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/throttle/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/throttle/principal.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/throttle/rate-limit-config.service.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/throttle/rate-limit-headers.interceptor.ts",
+   "stmts": 87.5,
+   "branches": 70.0,
+   "functions": 100.0,
+   "lines": 87.5,
+   "stmt_covered": 14,
+   "stmt_total": 16
+  },
+  {
+   "path": "src/modules/throttle/route-catalog.service.ts",
+   "stmts": 7.81,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 7.81,
+   "stmt_covered": 5,
+   "stmt_total": 64
+  },
+  {
+   "path": "src/modules/throttle/throttle.module.ts",
+   "stmts": 50.0,
+   "branches": 21.43,
+   "functions": 75.0,
+   "lines": 50.0,
+   "stmt_covered": 10,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/modules/throttle/tiered-throttler.guard.ts",
+   "stmts": 92.66,
+   "branches": 80.75,
+   "functions": 100.0,
+   "lines": 92.66,
+   "stmt_covered": 164,
+   "stmt_total": 177
+  },
+  {
+   "path": "src/modules/throttle/window-only-storage.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/user/user-export.service.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/user/user.controller.ts",
+   "stmts": 90.85,
+   "branches": 88.57,
+   "functions": 91.18,
+   "lines": 90.85,
+   "stmt_covered": 149,
+   "stmt_total": 164
+  },
+  {
+   "path": "src/modules/user/user.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/user/controllers/forgot-password.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/user/controllers/password-reset.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/user/controllers/user-departments-me.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/modules/user/controllers/user-departments.controller.ts",
+   "stmts": 80.0,
+   "branches": 70.0,
+   "functions": 50.0,
+   "lines": 80.0,
+   "stmt_covered": 20,
+   "stmt_total": 25
+  },
+  {
+   "path": "src/modules/user/controllers/user-preferences.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 5,
+   "stmt_total": 5
+  },
+  {
+   "path": "src/modules/user/controllers/user-roles.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/user/controllers/user-settings.controller.ts",
+   "stmts": 88.89,
+   "branches": 100.0,
+   "functions": 83.33,
+   "lines": 88.89,
+   "stmt_covered": 16,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/user/dto/bulk-action.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/user/dto/bulk-action.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/user/dto/bulk-delete.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/user/dto/bulk-delete.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/user/dto/export-users.query.ts",
+   "stmts": 87.5,
+   "branches": 62.5,
+   "functions": 100.0,
+   "lines": 87.5,
+   "stmt_covered": 7,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/user/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/user/dto/update-status.request.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/voice-profile/audio-upload-type.validator.ts",
+   "stmts": 100.0,
+   "branches": 87.5,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 9,
+   "stmt_total": 9
+  },
+  {
+   "path": "src/modules/voice-profile/voice-profile.controller.ts",
+   "stmts": 89.29,
+   "branches": 66.67,
+   "functions": 88.89,
+   "lines": 89.29,
+   "stmt_covered": 25,
+   "stmt_total": 28
+  },
+  {
+   "path": "src/modules/voice-profile/voice-profile.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/voice-profile/dto/enroll-body.dto.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/voice-profile/dto/enrollment-target.response.ts",
+   "stmts": 37.5,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 37.5,
+   "stmt_covered": 3,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/voice-profile/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/voice-profile/dto/voice-profile.response.ts",
+   "stmts": 100.0,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 16,
+   "stmt_total": 16
+  },
+  {
+   "path": "src/modules/webhook/webhook.controller.ts",
+   "stmts": 90.0,
+   "branches": 100.0,
+   "functions": 87.5,
+   "lines": 90.0,
+   "stmt_covered": 18,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/modules/webhook/webhook.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/webhook/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/webhook/dto/webhook-extra.dto.ts",
+   "stmts": 66.67,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 66.67,
+   "stmt_covered": 2,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/workflow-assignment/workflow-assignment.controller.ts",
+   "stmts": 71.43,
+   "branches": 75.0,
+   "functions": 66.67,
+   "lines": 71.43,
+   "stmt_covered": 5,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/workflow-assignment/workflow-assignment.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflow-definition/workflow-definition.controller.ts",
+   "stmts": 89.19,
+   "branches": 85.71,
+   "functions": 86.96,
+   "lines": 89.19,
+   "stmt_covered": 33,
+   "stmt_total": 37
+  },
+  {
+   "path": "src/modules/workflow-definition/workflow-definition.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts",
+   "stmts": 12.5,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 12.5,
+   "stmt_covered": 1,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/workflow-invariant-rule/workflow-invariant-rule.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflow-node/workflow-node.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/modules/workflow-node/workflow-node.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflow-run/workflow-run.controller.ts",
+   "stmts": 82.61,
+   "branches": 75.0,
+   "functions": 71.43,
+   "lines": 82.61,
+   "stmt_covered": 19,
+   "stmt_total": 23
+  },
+  {
+   "path": "src/modules/workflow-run/workflow-run.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflow-run/dto/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/modules/workflow-run/dto/list-workflow-runs.query.ts",
+   "stmts": 0.0,
+   "branches": 100.0,
+   "functions": 0.0,
+   "lines": 0.0,
+   "stmt_covered": 0,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflow-run/dto/workflow-run-detail.response.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 1,
+   "stmt_total": 1
+  },
+  {
+   "path": "src/modules/workflow-sandbox-run/workflow-sandbox-run-event.ts",
+   "stmts": 25.0,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 25.0,
+   "stmt_covered": 1,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/modules/workflow-sandbox-run/workflow-sandbox-run.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflow-sandbox-run/workflow-sandbox-stream.service.ts",
+   "stmts": 8.51,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 8.51,
+   "stmt_covered": 4,
+   "stmt_total": 47
+  },
+  {
+   "path": "src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 8,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/workflow-test-fixture/workflow-test-fixture.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflows/consultation-workflow-runs.controller.ts",
+   "stmts": 87.5,
+   "branches": 50.0,
+   "functions": 100.0,
+   "lines": 87.5,
+   "stmt_covered": 7,
+   "stmt_total": 8
+  },
+  {
+   "path": "src/modules/workflows/deliver-run.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/modules/workflows/run-completed-counts.ts",
+   "stmts": 94.44,
+   "branches": 70.0,
+   "functions": 100.0,
+   "lines": 94.44,
+   "stmt_covered": 17,
+   "stmt_total": 18
+  },
+  {
+   "path": "src/modules/workflows/run-event-stream-hub.ts",
+   "stmts": 85.04,
+   "branches": 70.5,
+   "functions": 91.3,
+   "lines": 85.04,
+   "stmt_covered": 199,
+   "stmt_total": 234
+  },
+  {
+   "path": "src/modules/workflows/run-protocol-delivery.ts",
+   "stmts": 81.82,
+   "branches": 74.55,
+   "functions": 87.18,
+   "lines": 81.82,
+   "stmt_covered": 288,
+   "stmt_total": 352
+  },
+  {
+   "path": "src/modules/workflows/run-stream-delivery.ts",
+   "stmts": 80.0,
+   "branches": 84.62,
+   "functions": 85.71,
+   "lines": 80.0,
+   "stmt_covered": 24,
+   "stmt_total": 30
+  },
+  {
+   "path": "src/modules/workflows/workflow-hooks.controller.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/modules/workflows/workflow-run-completion.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflows/workflow-run-completion.service.ts",
+   "stmts": 92.19,
+   "branches": 80.77,
+   "functions": 88.24,
+   "lines": 92.19,
+   "stmt_covered": 118,
+   "stmt_total": 128
+  },
+  {
+   "path": "src/modules/workflows/workflow-run-event.ts",
+   "stmts": 100.0,
+   "branches": 92.86,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 17,
+   "stmt_total": 17
+  },
+  {
+   "path": "src/modules/workflows/workflow-run-trace.controller.ts",
+   "stmts": 100.0,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 23,
+   "stmt_total": 23
+  },
+  {
+   "path": "src/modules/workflows/workflow-stream.service.ts",
+   "stmts": 88.89,
+   "branches": 72.41,
+   "functions": 75.0,
+   "lines": 88.89,
+   "stmt_covered": 72,
+   "stmt_total": 81
+  },
+  {
+   "path": "src/modules/workflows/workflows.controller.ts",
+   "stmts": 93.75,
+   "branches": 85.19,
+   "functions": 91.67,
+   "lines": 93.75,
+   "stmt_covered": 45,
+   "stmt_total": 48
+  },
+  {
+   "path": "src/modules/workflows/workflows.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/modules/workflows/__tests__/fake-redis-streams.ts",
+   "stmts": 96.58,
+   "branches": 88.31,
+   "functions": 94.87,
+   "lines": 96.58,
+   "stmt_covered": 141,
+   "stmt_total": 146
+  },
+  {
+   "path": "src/observability/deprecated-route-metrics.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 10,
+   "stmt_total": 10
+  },
+  {
+   "path": "src/observability/http-response-metrics.ts",
+   "stmts": 100.0,
+   "branches": 81.25,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 20,
+   "stmt_total": 20
+  },
+  {
+   "path": "src/observability/metric-naming.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 3,
+   "stmt_total": 3
+  },
+  {
+   "path": "src/observability/metrics.ts",
+   "stmts": 100.0,
+   "branches": 75.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/observability/prisma-pool-metrics.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 32,
+   "stmt_total": 32
+  },
+  {
+   "path": "src/observability/usage-emission-metric.ts",
+   "stmts": 100.0,
+   "branches": 83.33,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 7,
+   "stmt_total": 7
+  },
+  {
+   "path": "src/openapi/api-exclude-metadata.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 6,
+   "stmt_total": 6
+  },
+  {
+   "path": "src/openapi/operation-security.ts",
+   "stmts": 18.97,
+   "branches": 25.0,
+   "functions": 33.33,
+   "lines": 18.97,
+   "stmt_covered": 11,
+   "stmt_total": 58
+  },
+  {
+   "path": "src/openapi/tags.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 4,
+   "stmt_total": 4
+  },
+  {
+   "path": "src/scripts/offline-infrastructure.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 11,
+   "stmt_total": 11
+  },
+  {
+   "path": "src/services/graceful-shutdown.module.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 2,
+   "stmt_total": 2
+  },
+  {
+   "path": "src/services/graceful-shutdown.service.ts",
+   "stmts": 4.76,
+   "branches": 0.0,
+   "functions": 0.0,
+   "lines": 4.76,
+   "stmt_covered": 3,
+   "stmt_total": 63
+  },
+  {
+   "path": "src/services/index.ts",
+   "stmts": 100.0,
+   "branches": 100.0,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 0,
+   "stmt_total": 0
+  },
+  {
+   "path": "src/services/service-release-registration.ts",
+   "stmts": 100.0,
+   "branches": 92.31,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 27,
+   "stmt_total": 27
+  },
+  {
+   "path": "src/shared/base-proxy.controller.ts",
+   "stmts": 67.5,
+   "branches": 59.26,
+   "functions": 66.67,
+   "lines": 67.5,
+   "stmt_covered": 27,
+   "stmt_total": 40
+  },
+  {
+   "path": "src/shared/table-export.ts",
+   "stmts": 100.0,
+   "branches": 84.21,
+   "functions": 100.0,
+   "lines": 100.0,
+   "stmt_covered": 44,
+   "stmt_total": 44
+  },
+  {
+   "path": "src/shared/tenant-scope.ts",
+   "stmts": 95.83,
+   "branches": 92.31,
+   "functions": 100.0,
+   "lines": 95.83,
+   "stmt_covered": 23,
+   "stmt_total": 24
+  },
+  {
+   "path": "src/workers/scheduled-rotation.processor.ts",
+   "stmts": 96.15,
+   "branches": 75.0,
+   "functions": 80.0,
+   "lines": 96.15,
+   "stmt_covered": 25,
+   "stmt_total": 26
+  },
+  {
+   "path": "src/workers/vault-rotation.worker.module.ts",
+   "stmts": 43.4,
+   "branches": 31.03,
+   "functions": 30.77,
+   "lines": 43.4,
+   "stmt_covered": 46,
+   "stmt_total": 106
+  }
+ ],
+ "modules": {
+  "src/(root)": {
+   "files": 10,
+   "statements": 95.48,
+   "branches": 88.68,
+   "functions": 92.31
+  },
+  "bootstrap": {
+   "files": 15,
+   "statements": 84.79,
+   "branches": 68.43,
+   "functions": 98.28
+  },
+  "common": {
+   "files": 7,
+   "statements": 87.56,
+   "branches": 82.01,
+   "functions": 90.0
+  },
+  "config": {
+   "files": 3,
+   "statements": 95.18,
+   "branches": 94.55,
+   "functions": 84.62
+  },
+  "database": {
+   "files": 1,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "decorators": {
+   "files": 10,
+   "statements": 95.45,
+   "branches": 89.39,
+   "functions": 86.67
+  },
+  "filters": {
+   "files": 9,
+   "statements": 89.92,
+   "branches": 82.22,
+   "functions": 97.37
+  },
+  "guards": {
+   "files": 8,
+   "statements": 97.62,
+   "branches": 88.65,
+   "functions": 100.0
+  },
+  "interceptors": {
+   "files": 8,
+   "statements": 96.96,
+   "branches": 91.47,
+   "functions": 95.24
+  },
+  "model-publisher": {
+   "files": 1,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "admin-rate-limit": {
+   "files": 4,
+   "statements": 78.48,
+   "branches": 0.0,
+   "functions": 0.0
+  },
+  "admin-usage": {
+   "files": 3,
+   "statements": 100.0,
+   "branches": 92.86,
+   "functions": 100.0
+  },
+  "agent": {
+   "files": 8,
+   "statements": 86.15,
+   "branches": 74.15,
+   "functions": 83.7
+  },
+  "agent-admin": {
+   "files": 3,
+   "statements": 86.96,
+   "branches": 78.12,
+   "functions": 82.14
+  },
+  "agent-promotion": {
+   "files": 3,
+   "statements": 80.0,
+   "branches": 100.0,
+   "functions": 66.67
+  },
+  "agent-trajectory": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "agentic-admin": {
+   "files": 2,
+   "statements": 94.74,
+   "branches": 93.33,
+   "functions": 100.0
+  },
+  "ai-inference": {
+   "files": 8,
+   "statements": 92.94,
+   "branches": 77.03,
+   "functions": 97.06
+  },
+  "ai-model": {
+   "files": 7,
+   "statements": 95.27,
+   "branches": 79.59,
+   "functions": 96.0
+  },
+  "ai-provider-connection": {
+   "files": 2,
+   "statements": 78.95,
+   "branches": 50.0,
+   "functions": 72.73
+  },
+  "ai-routing-policy": {
+   "files": 2,
+   "statements": 62.5,
+   "branches": 84.62,
+   "functions": 50.0
+  },
+  "ai-service-admin": {
+   "files": 5,
+   "statements": 97.44,
+   "branches": 86.76,
+   "functions": 100.0
+  },
+  "api-key": {
+   "files": 4,
+   "statements": 60.53,
+   "branches": 61.11,
+   "functions": 41.67
+  },
+  "audit-log": {
+   "files": 2,
+   "statements": 90.0,
+   "branches": 92.86,
+   "functions": 71.43
+  },
+  "auth": {
+   "files": 24,
+   "statements": 96.15,
+   "branches": 84.28,
+   "functions": 100.0
+  },
+  "billing": {
+   "files": 4,
+   "statements": 93.1,
+   "branches": 100.0,
+   "functions": 88.89
+  },
+  "changelog": {
+   "files": 3,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "consent": {
+   "files": 2,
+   "statements": 37.5,
+   "branches": 0.0,
+   "functions": 0.0
+  },
+  "consultation": {
+   "files": 19,
+   "statements": 87.31,
+   "branches": 78.32,
+   "functions": 86.47
+  },
+  "consultation-context-schema": {
+   "files": 2,
+   "statements": 35.0,
+   "branches": 0.0,
+   "functions": 16.67
+  },
+  "consultation-history": {
+   "files": 3,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "department": {
+   "files": 2,
+   "statements": 68.18,
+   "branches": 100.0,
+   "functions": 36.36
+  },
+  "dna-writing-style": {
+   "files": 7,
+   "statements": 97.14,
+   "branches": 90.27,
+   "functions": 94.55
+  },
+  "document-template": {
+   "files": 2,
+   "statements": 26.32,
+   "branches": 0.0,
+   "functions": 0.0
+  },
+  "entitlements": {
+   "files": 7,
+   "statements": 100.0,
+   "branches": 83.33,
+   "functions": 100.0
+  },
+  "global-setting": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "governed-prompt": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "guardrail-availability": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "guardrail-evaluation-internal": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "guardrail-notice": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 66.67,
+   "functions": 100.0
+  },
+  "guardrail-policy": {
+   "files": 3,
+   "statements": 100.0,
+   "branches": 50.0,
+   "functions": 100.0
+  },
+  "guardrail-tenant-policy": {
+   "files": 3,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "harness-admin": {
+   "files": 4,
+   "statements": 91.54,
+   "branches": 80.72,
+   "functions": 89.13
+  },
+  "health": {
+   "files": 3,
+   "statements": 96.61,
+   "branches": 80.0,
+   "functions": 92.86
+  },
+  "inference-engines": {
+   "files": 2,
+   "statements": 71.43,
+   "branches": 100.0,
+   "functions": 50.0
+  },
+  "internal": {
+   "files": 12,
+   "statements": 95.16,
+   "branches": 92.91,
+   "functions": 93.33
+  },
+  "knowledge": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "mcp-admin": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "media": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 91.67,
+   "functions": 100.0
+  },
+  "model-residency": {
+   "files": 2,
+   "statements": 72.0,
+   "branches": 75.0,
+   "functions": 53.33
+  },
+  "monitoring": {
+   "files": 4,
+   "statements": 56.67,
+   "branches": 0.0,
+   "functions": 0.0
+  },
+  "nlp-task-instructions": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "notification": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "platform-knobs": {
+   "files": 2,
+   "statements": 83.33,
+   "branches": 68.18,
+   "functions": 100.0
+  },
+  "platform-metrics": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "prompt-inspector": {
+   "files": 3,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "prompt-management": {
+   "files": 5,
+   "statements": 100.0,
+   "branches": 94.74,
+   "functions": 100.0
+  },
+  "pstudio": {
+   "files": 5,
+   "statements": 96.67,
+   "branches": 87.5,
+   "functions": 100.0
+  },
+  "queue-admin": {
+   "files": 7,
+   "statements": 98.13,
+   "branches": 100.0,
+   "functions": 90.91
+  },
+  "rbac": {
+   "files": 10,
+   "statements": 87.16,
+   "branches": 65.28,
+   "functions": 72.09
+  },
+  "resource-subscription": {
+   "files": 2,
+   "statements": 87.5,
+   "branches": 100.0,
+   "functions": 85.71
+  },
+  "security-policy": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "service-account": {
+   "files": 4,
+   "statements": 50.0,
+   "branches": 19.05,
+   "functions": 81.82
+  },
+  "service-release": {
+   "files": 4,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "settings-catalog": {
+   "files": 10,
+   "statements": 97.46,
+   "branches": 84.07,
+   "functions": 89.29
+  },
+  "speech": {
+   "files": 6,
+   "statements": 89.96,
+   "branches": 80.38,
+   "functions": 90.41
+  },
+  "storage": {
+   "files": 5,
+   "statements": 82.29,
+   "branches": 56.41,
+   "functions": 66.67
+  },
+  "storage-access-key": {
+   "files": 2,
+   "statements": 42.86,
+   "branches": 100.0,
+   "functions": 0.0
+  },
+  "streaming": {
+   "files": 17,
+   "statements": 89.36,
+   "branches": 79.59,
+   "functions": 92.04
+  },
+  "tenant": {
+   "files": 7,
+   "statements": 79.25,
+   "branches": 85.71,
+   "functions": 70.0
+  },
+  "tenant-allowed-origin": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "tenant-bucket": {
+   "files": 2,
+   "statements": 83.33,
+   "branches": 83.33,
+   "functions": 78.57
+  },
+  "tenant-checkpoint": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "tenant-frontend-config": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "tenant-idp-config": {
+   "files": 2,
+   "statements": 88.24,
+   "branches": 100.0,
+   "functions": 80.0
+  },
+  "tenant-storage-config": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "throttle": {
+   "files": 9,
+   "statements": 72.09,
+   "branches": 62.93,
+   "functions": 72.34
+  },
+  "user": {
+   "files": 17,
+   "statements": 91.58,
+   "branches": 85.71,
+   "functions": 89.06
+  },
+  "voice-profile": {
+   "files": 7,
+   "statements": 87.3,
+   "branches": 77.78,
+   "functions": 92.86
+  },
+  "webhook": {
+   "files": 4,
+   "statements": 88.0,
+   "branches": 100.0,
+   "functions": 77.78
+  },
+  "workflow-assignment": {
+   "files": 2,
+   "statements": 77.78,
+   "branches": 75.0,
+   "functions": 66.67
+  },
+  "workflow-definition": {
+   "files": 2,
+   "statements": 89.74,
+   "branches": 85.71,
+   "functions": 86.96
+  },
+  "workflow-invariant-rule": {
+   "files": 2,
+   "statements": 30.0,
+   "branches": 0.0,
+   "functions": 0.0
+  },
+  "workflow-node": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "workflow-run": {
+   "files": 5,
+   "statements": 78.57,
+   "branches": 75.0,
+   "functions": 55.56
+  },
+  "workflow-sandbox-run": {
+   "files": 4,
+   "statements": 23.33,
+   "branches": 0.0,
+   "functions": 33.33
+  },
+  "workflow-test-fixture": {
+   "files": 2,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "workflows": {
+   "files": 15,
+   "statements": 87.88,
+   "branches": 77.22,
+   "functions": 90.5
+  },
+  "observability": {
+   "files": 6,
+   "statements": 100.0,
+   "branches": 85.71,
+   "functions": 100.0
+  },
+  "openapi": {
+   "files": 3,
+   "statements": 30.88,
+   "branches": 33.33,
+   "functions": 71.43
+  },
+  "scripts": {
+   "files": 1,
+   "statements": 100.0,
+   "branches": 100.0,
+   "functions": 100.0
+  },
+  "services": {
+   "files": 4,
+   "statements": 34.78,
+   "branches": 36.36,
+   "functions": 36.36
+  },
+  "shared": {
+   "files": 3,
+   "statements": 87.04,
+   "branches": 80.0,
+   "functions": 88.46
+  },
+  "workers": {
+   "files": 2,
+   "statements": 53.79,
+   "branches": 33.87,
+   "functions": 44.44
+  }
+ }
+}

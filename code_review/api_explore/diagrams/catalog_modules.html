@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Gateway Sequence Diagrams Catalog</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1, h2 { color: #2d3748; }
+        .status-completed { color: green; }
+        .status-pending { color: orange; }
+        .diagram-link { color: #42b983; text-decoration: none; }
+        .readme-link { color: #e53e3e; text-decoration: none; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        table th, table td { padding: 8px 12px; border: 1px solid #e2e8f0; }
+        table th { background: #edf2f7; }
+        .filter-btn { margin-right: 8px; padding: 4px 8px; border: 1px solid #cbd5e0; border-radius: 4px; cursor: pointer; }
+        .filter-btn.active { background: #42b983; color: white; border-color: #42b983; }
+        .category { margin: 30px 0; }
+        .category-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .category-title { font-size: 1.2em; font-weight: bold; }
+        .category-count { color: #718096; font-size: 0.9em; }
+        .api-list { }
+        .api-item { margin: 10px 0; padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px; }
+        .api-info { margin-bottom: 5px; }
+        .api-method { display: inline-block; padding: 2px 6px; background: #42b983; color: white; border-radius: 3px; font-size: 0.85em; }
+        .api-path { color: #3182ce; margin-left: 10px; }
+        .api-summary { font-size: 0.9em; color: #2d3748; line-height: 1.4; }
+        .api-diagram { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>API Gateway Sequence Diagrams Catalog</h1>
+        <p>Total APIs: 818 | Diagrams Generated: 39 | Coverage: 50.6%</p>
+    <h2>Module Summary</h2>
+    <table>
+      <tr>
+        <th>Module</th>
+        <th>Total APIs</th>
+        <th>Planned Flows</th>
+        <th>Status</th>
+        <th>Diagrams</th>
+        <th>README</th>
+      </tr>
+      <tr>
+        <td>agent-admin</td>
+        <td>25</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/agent-admin-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>agent-promotion</td>
+        <td>4</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/agent-promotion-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>agent-trajectory</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/agent-trajectory-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>agentic-admin</td>
+        <td>1</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/agentic-admin-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>ai-model</td>
+        <td>26</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/ai-model-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>ai-service-admin</td>
+        <td>9</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/ai-service-admin-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>tenant-allowed-origin</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/tenant-allowed-origin-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>api-key</td>
+        <td>9</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/api-key-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>streaming</td>
+        <td>31</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/streaming-transcribe-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>audit-log</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/audit-log-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>billing</td>
+        <td>13</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/placeholder.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>changelog</td>
+        <td>7</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/changelog-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>prompt-inspector</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/prompt-inspector-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>consent</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/placeholder.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>consultation-context-schema</td>
+        <td>10</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/consultation-context-schema-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>consultation</td>
+        <td>109</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/consultation-lifecycle-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>consultation-history</td>
+        <td>7</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/consultation-history-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>guardrail-notice</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/guardrail-notice-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>department</td>
+        <td>10</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/department-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>dna-writing-style</td>
+        <td>31</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/dna-writing-style-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>document-template</td>
+        <td>9</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/document-template-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>entitlements</td>
+        <td>12</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/entitlements-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>guardrail-availability</td>
+        <td>4</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/guardrail-availability-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>guardrail-policy</td>
+        <td>17</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/guardrail-policy-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>guardrail-tenant-policy</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/guardrail-tenant-policy-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>harness-admin</td>
+        <td>29</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/harness-admin-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>health</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/health-monitoring-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>inference-engines</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/inference-engines-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>knowledge</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/knowledge-base-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>mcp-admin</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/mcp-admin-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>model-residency</td>
+        <td>14</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/model-residency-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>monitoring</td>
+        <td>4</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/monitoring-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>nlp-task-instructions</td>
+        <td>2</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/nlp-task-instructions-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>notification</td>
+        <td>4</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/notification-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>platform-metrics</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/platform-metrics-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>prompt-management</td>
+        <td>22</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/prompt-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>ai-provider-connection</td>
+        <td>8</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/ai-provider-connection-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>pstudio</td>
+        <td>1</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/pstudio-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>queue-admin</td>
+        <td>17</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/queue-admin-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>admin-rate-limit</td>
+        <td>13</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/rate-limit-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>rbac</td>
+        <td>20</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/rbac-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>resource-subscription</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/resource-subscription-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>ai-routing-policy</td>
+        <td>11</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/ai-routing-policy-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>security-policy</td>
+        <td>2</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/security-policy-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>service-account</td>
+        <td>8</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/service-account-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>service-release</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/service-release-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>global-setting</td>
+        <td>8</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/global-setting-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>settings-catalog</td>
+        <td>11</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/settings-catalog-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>tenant-frontend-config</td>
+        <td>2</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/tenant-frontend-config-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>tenant-idp-config</td>
+        <td>8</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/tenant-idp-config-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>tenant</td>
+        <td>20</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/tenant-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>tenant-checkpoint</td>
+        <td>12</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/tenant-checkpoint-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>tenant-bucket</td>
+        <td>13</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/tenant-bucket-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>tenant-storage-config</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/tenant-storage-config-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>storage-access-key</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/storage-access-key-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>admin-usage</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/admin-usage-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>user</td>
+        <td>33</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/user-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>auth</td>
+        <td>15</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/auth-login-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>webhook</td>
+        <td>7</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/webhook-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>workflow-assignment</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-assignment-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>workflow-definition</td>
+        <td>22</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-definition-admin-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>workflow-sandbox-run</td>
+        <td>4</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-sandbox-run-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>workflow-invariant-rule</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-invariant-rule-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>workflow-node</td>
+        <td>1</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-node-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>workflow-run</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-execution-flow.html</td>
+        <td>./sequence/workflow-run.md</td>
+      </tr>
+      <tr>
+        <td>workflows</td>
+        <td>15</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-execution-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>workflow-test-fixture</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/workflow-test-fixture-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>agent</td>
+        <td>11</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/agent-promotion-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>internal</td>
+        <td>20</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/internal-services-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>governed-prompt</td>
+        <td>1</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/governed-prompt-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>guardrail-evaluation-internal</td>
+        <td>1</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/guardrail-evaluation-internal-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>speech</td>
+        <td>3</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/speech-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>media</td>
+        <td>2</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/media-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>ai-inference</td>
+        <td>5</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/ai-inference-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>storage</td>
+        <td>10</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/storage-management-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>voice-profile</td>
+        <td>6</td>
+        <td>1</td>
+        <td><span class="status-pending">PENDING</span></td>
+        <td>./sequence/voice-profile-flow.html</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>(root)</td>
+        <td>1</td>
+        <td>1</td>
+        <td><span class="status-completed">COMPLETED</span></td>
+        <td>./sequence/system-metrics-flow.html</td>
+        <td>—</td>
+      </tr>
+    </table>

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B01a Auth & Credentials",
+    "subtitle": "Core authn/credential flows: auth, api-key, service-account (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b01a-20261107-123000/api-gateway-b01a-auth-credentials.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope.git",
+      "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0",
+      "link_mode": "web"
+    },
+    "views": [
+      {"id": "flow", "label": "Endpoint to downstream", "focus": ["eg_auth", "eg_sso", "eg_apikey", "eg_svcacct", "ctl_auth", "ctl_sso", "ctl_apikey", "ctl_svcacct", "svc_auth", "svc_apikey", "svc_svcacct", "ext_idp", "data_token", "data_db"], "note": "B01a covers core credential issuance/management flows."},
+      {"id": "authz", "label": "AuthN/AuthZ posture", "focus": ["eg_auth", "ctl_auth", "svc_auth", "ctl_apikey", "svc_apikey", "ctl_svcacct", "svc_svcacct", "data_token"], "note": "JWT/session/stream-ticket, API-key scopes/ceiling, service-account opaque token."}
+    ]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id": "eg_auth", "type": "frontend", "label": "Auth session API group", "sublabel": "login/logout/refresh/me/register/impersonate", "tag": "endpoint group", "row": 0, "col": 0, "size": [330,116], "sources": [{"path":"apps/api/src/modules/auth/auth.controller.ts","line":98,"label":"AuthController /auth"},{"path":"apps/api/src/modules/auth/register.controller.ts","line":36,"label":"RegisterController /auth"}]},
+    {"id": "eg_sso", "type": "frontend", "label": "SSO/SAML + stream-ticket group", "sublabel": "OIDC/SAML start/callback/metadata + stream ticket", "tag": "endpoint group", "row": 1, "col": 0, "size": [330,116], "sources": [{"path":"apps/api/src/modules/auth/auth-sso.controller.ts","line":35,"label":"AuthSsoController /auth/sso"},{"path":"apps/api/src/modules/auth/auth.controller.ts","line":968,"label":"AuthController.streamTicket()"}]},
+    {"id": "eg_apikey", "type": "frontend", "label": "Admin API key group (9 routes)", "sublabel": "/admin/api-keys CRUD/revoke/rotate/usage/scopes", "tag": "endpoint group", "row": 2, "col": 0, "size": [330,116], "sources": [{"path":"apps/api/src/modules/api-key/api-key.controller.ts","line":96,"label":"ApiKeyController /admin/api-keys"}]},
+    {"id": "eg_svcacct", "type": "frontend", "label": "Service-account group (9 routes)", "sublabel": "admin CRUD/rotate + POST /auth/service-token", "tag": "endpoint group", "row": 3, "col": 0, "size": [330,116], "sources": [{"path":"apps/api/src/modules/service-account/service-account.controller.ts","line":53,"label":"ServiceAccountController"},{"path":"apps/api/src/modules/service-account/service-account-token.controller.ts","line":35,"label":"ServiceAccountTokenController"}]},
+
+    {"id": "ctl_auth", "type": "backend", "label": "Auth/Register controllers", "sublabel": "Session, registration, impersonation handlers", "tag": "controller", "row": 0, "col": 1, "size": [330,116], "sources": [{"path":"apps/api/src/modules/auth/auth.controller.ts","line":184,"label":"login/logout/refresh/me handlers"},{"path":"apps/api/src/modules/auth/register.controller.ts","line":63,"label":"register/verify handlers"}]},
+    {"id": "ctl_sso", "type": "backend", "label": "SSO/Stream-ticket controllers", "sublabel": "OIDC/SAML exchange + scoped stream tickets", "tag": "controller", "row": 1, "col": 1, "size": [330,116], "sources": [{"path":"apps/api/src/modules/auth/auth-sso.controller.ts","line":70,"label":"SSO start/callback/SAML handlers"},{"path":"apps/api/src/modules/auth/auth.controller.ts","line":968,"label":"POST /auth/stream-ticket"}]},
+    {"id": "ctl_apikey", "type": "backend", "label": "ApiKeyController", "sublabel": "Key mgmt + scope catalog; scope ceiling in svc", "tag": "controller", "row": 2, "col": 1, "size": [330,116], "sources": [{"path":"apps/api/src/modules/api-key/api-key.controller.ts","line":98,"label":"ApiKeyController class"},{"path":"apps/api/src/modules/api-key/api-key.controller.ts","line":118,"label":"scope ceiling AUTH-NOTE"}]},
+    {"id": "ctl_svcacct", "type": "backend", "label": "Service-account controllers", "sublabel": "Admin mgmt + public token exchange guard/rate", "tag": "controller", "row": 3, "col": 1, "size": [330,116], "sources": [{"path":"apps/api/src/modules/service-account/service-account.controller.ts","line":1,"label":"ServiceAccountController"},{"path":"apps/api/src/modules/service-account/service-account-token.controller.ts","line":39,"label":"POST /auth/service-token"}]},
+
+    {"id": "svc_auth", "type": "backend", "label": "AuthService", "sublabel": "Login/session/identity auth application logic", "tag": "service", "row": 0, "col": 2, "size": [330,116], "sources": [{"path":"packages/applications/src/services/auth/auth.service.ts","line":16,"label":"AuthService class"}]},
+    {"id": "svc_apikey", "type": "backend", "label": "ApiKeyService", "sublabel": "Create/revoke/rotate/usage; privilege ceiling", "tag": "service", "row": 2, "col": 2, "size": [330,116], "sources": [{"path":"packages/applications/src/services/apiKey/apikey.service.ts","line":76,"label":"ApiKeyService class"}]},
+    {"id": "svc_svcacct", "type": "backend", "label": "ServiceAccountService", "sublabel": "Client secret exchange, scopes, opaque token", "tag": "service", "row": 3, "col": 2, "size": [330,116], "sources": [{"path":"packages/applications/src/services/serviceAccount/service-account.service.ts","line":115,"label":"ServiceAccountService class"}]},
+
+    {"id": "ext_idp", "type": "external", "label": "External IdP (OIDC/SAML)", "sublabel": "SSO identity providers via configured tenant IdP", "tag": "external", "row": 1, "col": 3, "size": [330,116], "sources": [{"path":"apps/api/src/modules/auth/auth-sso.controller.ts","line":35,"label":"SSO/SAML routes"}]},
+    {"id": "data_token", "type": "database", "label": "Token/session/credential state", "sublabel": "JWT/refresh/stream-ticket/opaque token state", "tag": "data", "row": 2, "col": 3, "size": [330,116], "sources": [{"path":"apps/api/src/modules/service-account/service-account-token.controller.ts","line":30,"label":"Opaque token, revocation is Redis delete"},{"path":"apps/api/src/modules/auth/auth.controller.ts","line":968,"label":"Stream-ticket issuance path"}]},
+    {"id": "data_db", "type": "database", "label": "Identity data (Postgres/Prisma)", "sublabel": "Users, API keys, service accounts, tenant state", "tag": "data", "row": 0, "col": 3, "size": [330,116], "sources": [{"path":"packages/applications/src/services/auth/auth.service.ts","line":16,"label":"AuthService uses application/domain data"},{"path":"packages/applications/src/services/apiKey/apikey.service.ts","line":76,"label":"ApiKeyService persistence"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_auth","eg_sso","eg_apikey","eg_svcacct"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_auth","ctl_sso","ctl_apikey","ctl_svcacct"]},
+    {"kind":"region","label":"Application services","wraps":["svc_auth","svc_apikey","svc_svcacct"]},
+    {"kind":"region","label":"Identity providers & data stores","wraps":["ext_idp","data_token","data_db"]}
+  ],
+  "connections": [
+    {"id":"a1","from":"eg_auth","to":"ctl_auth","label":"HTTP"},
+    {"id":"a2","from":"eg_sso","to":"ctl_sso","label":"HTTP"},
+    {"id":"a3","from":"eg_apikey","to":"ctl_apikey","label":"HTTP"},
+    {"id":"a4","from":"eg_svcacct","to":"ctl_svcacct","label":"HTTP"},
+    {"id":"a5","from":"ctl_auth","to":"svc_auth","label":"delegate"},
+    {"id":"a6","from":"ctl_sso","to":"svc_auth","label":"SSO/ticket"},
+    {"id":"a7","from":"ctl_apikey","to":"svc_apikey","label":"delegate"},
+    {"id":"a8","from":"ctl_svcacct","to":"svc_svcacct","label":"delegate"},
+    {"id":"a9","from":"svc_auth","to":"data_db","label":"identity"},
+    {"id":"a10","from":"svc_auth","to":"data_token","label":"tokens"},
+    {"id":"a11","from":"ctl_sso","to":"ext_idp","label":"OIDC/SAML"},
+    {"id":"a12","from":"svc_apikey","to":"data_db","label":"keys"},
+    {"id":"a13","from":"svc_svcacct","to":"data_db","label":"accounts"},
+    {"id":"a14","from":"svc_svcacct","to":"data_token","label":"opaque token"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B01a scope (auth & credentials)","items":["Modules: auth, api-key, service-account (~32 routes est.). Grouped endpoint nodes for readability; route-level details and examples in this card.","Auth routes: POST /auth/login, logout, refresh, impersonate, revoke-impersonation, stream-ticket; GET /auth/me; register controller POST /auth/register, /auth/register/verify; admin impersonation POST /admin/users/:id/impersonate.","SSO/SAML routes: POST /auth/sso/start, GET /auth/sso/callback, GET /auth/sso/saml/:tenantKey/metadata, POST /auth/sso/saml/:tenantKey/start, POST /auth/sso/saml/:tenantKey/acs.","API keys: GET/POST /admin/api-keys, GET scopes, GET/PATCH/DELETE /:id, POST /:id/revoke, POST /:id/rotate, GET /:id/usage (9 routes). Service accounts: GET scopes, POST/GET /admin/service-accounts, GET/PATCH/DELETE /:id, POST /:id/rotate, plus POST /auth/service-token exchange."]},
+    {"dot":"violet","title":"Example input/output (key flows)","items":["Login (POST /auth/login): input credentials/tenant context per Auth DTO; output session/JWT/refresh tokens or auth challenge (verify DTO). Refresh/stream-ticket return new scoped credentials.","API key create (POST /admin/api-keys): input CreateApiKeyRequest (name/scopes/expiry etc.); output CreateApiKeyResponse {apiKey, rawKey} — raw key returned once. Update/revoke/rotate enforce ownership/scope-ceiling rules noted in controller.","Service-token exchange (POST /auth/service-token): input ServiceAccountTokenRequest (client id/secret); output ServiceAccountTokenResponse with opaque bearer token (default ~15 min), presented via X-Service-Account-Token. Unknown client/bad secret indistinguishable (401); rate limited.","SSO/SAML: start routes redirect/initiate provider flow; callback/ACS complete identity exchange and issue local session. Exact payloads depend on IdP config."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo: https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controller/service sources verified in local tree.","Downstreams are represented at architecture level: external IdP for SSO/SAML, token/session/credential state (service-token notes Redis delete for revocation; JWT/refresh/stream-ticket paths exist), Postgres/Prisma for identity records. Deepen internal service call chains in follow-up passes.","Limitations: endpoint-group nodes (not 1:1 endpoint boxes) for readability; example I/O summarized from controller contracts/DTO names; exact DTO schemas and all auth edge cases should be confirmed against OpenAPI/tests if strict per-endpoint examples are required."]}
+  ]
+}

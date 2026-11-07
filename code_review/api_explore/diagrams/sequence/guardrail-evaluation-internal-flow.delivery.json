@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "7ecba1f1-4b79-467f-b775-8884f548e413",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/tmp/guardrail-evaluation-internal-flow.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/guardrail-evaluation-internal-flow.html",
+  "specification": {
+    "sha256": "fc3a5a1b5dc15905a708ca8cb0b1a8f5a476caff0d4b3ac796eef20e2220ebbc",
+    "bytes": 3610
+  },
+  "artifact": {
+    "sha256": "45deba21c9d7c610aab63e68f74d0716e7ccd3f64a7e52a5738dd8b278436861",
+    "bytes": 754777
+  }
+}

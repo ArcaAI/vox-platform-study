@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ad2d775f-5cc3-4ae3-91cb-177381f6b85e",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore_3/diagrams/api-gateway-overview.candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore_3/api-gateway-overview.html",
+  "specification": {
+    "sha256": "19e3395564aaf3ee40bbdc470d73997e2ea93495752573f21360707e80ad85a5",
+    "bytes": 39621
+  },
+  "artifact": {
+    "sha256": "50a3d1c2367f1cd781da931419feaea41e5bbef9c82dbafa2b72d276d78977a0",
+    "bytes": 872405
+  }
+}

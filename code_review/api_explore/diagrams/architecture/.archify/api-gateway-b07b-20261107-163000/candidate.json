@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "API Gateway Architecture - B07b Observability & Queues",
+    "subtitle": "Health, metrics, audit, queues/schedulers, rate limits (project-hope @ 8cb2e5e8)",
+    "output": "review/api_explore/diagrams/.archify/api-gateway-b07b-20261107-163000/api-gateway-b07b-observability-queues.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/ArcaAI/project-hope.git", "revision": "8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0", "link_mode": "web"},
+    "views": [{"id":"flow","label":"Endpoint to downstream","focus":["eg_health","eg_audit","eg_queue","eg_rate","ctl_health","ctl_audit","ctl_queue","ctl_rate","svc_metrics","svc_rate","svc_ops","data_ops","ext_obs"],"note":"B07b: observability/health/metrics/audit, queue+scheduler admin, rate-limit admin."}]
+  },
+  "layout": {"mode": "grid", "origin": [40, 60], "cols": 4, "gapX": 90, "gapY": 48, "cellW": 340, "cellH": 128},
+  "components": [
+    {"id":"eg_health","type":"frontend","label":"Health/monitoring/metrics API","sublabel":"/health, admin health/services, monitoring, platform","tag":"endpoint group","row":0,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/health/health.controller.ts","line":31,"label":"ApiHealthController /health"},{"path":"apps/api/src/modules/monitoring/monitoring.controller.ts","line":19,"label":"MonitoringController"},{"path":"apps/api/src/modules/platform-metrics/platform-metrics.controller.ts","line":23,"label":"PlatformMetricsController"}]},
+    {"id":"eg_audit","type":"frontend","label":"Audit logs API (6 routes)","sublabel":"/admin/audit-logs read/search/export surfaces","tag":"endpoint group","row":1,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/audit-log/audit-log.controller.ts","line":40,"label":"AuditLogController"}]},
+    {"id":"eg_queue","type":"frontend","label":"Queue & scheduler admin API","sublabel":"/admin/queues (17) + /admin/schedulers","tag":"endpoint group","row":2,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/queue-admin/queue-admin.controller.ts","line":41,"label":"QueueAdminController"},{"path":"apps/api/src/modules/queue-admin/scheduler-admin.controller.ts","line":24,"label":"SchedulerAdminController"}]},
+    {"id":"eg_rate","type":"frontend","label":"Rate limit admin API (13)","sublabel":"/admin/rate-limit rules/settings/operations","tag":"endpoint group","row":3,"col":0,"size":[330,116],"sources":[{"path":"apps/api/src/modules/admin-rate-limit/rate-limit-admin.controller.ts","line":56,"label":"RateLimitAdminController"}]},
+
+    {"id":"ctl_health","type":"backend","label":"Health/metrics controllers","sublabel":"Public/admin health, monitoring, platform metrics","tag":"controller","row":0,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/health/admin-health-services.controller.ts","line":57,"label":"AdminHealthServicesController"},{"path":"apps/api/src/modules/monitoring/monitoring.controller.ts","line":41,"label":"MonitoringController"}]},
+    {"id":"ctl_audit","type":"backend","label":"AuditLogController","sublabel":"Audit log admin access","tag":"controller","row":1,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/audit-log/audit-log.controller.ts","line":43,"label":"class AuditLogController"}]},
+    {"id":"ctl_queue","type":"backend","label":"Queue/scheduler controllers","sublabel":"Queue admin and scheduler admin operations","tag":"controller","row":2,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/queue-admin/queue-admin.controller.ts","line":42,"label":"QueueAdminController"},{"path":"apps/api/src/modules/queue-admin/scheduler-admin.controller.ts","line":25,"label":"SchedulerAdminController"}]},
+    {"id":"ctl_rate","type":"backend","label":"RateLimitAdminController","sublabel":"Rate-limit rules/settings admin","tag":"controller","row":3,"col":1,"size":[330,116],"sources":[{"path":"apps/api/src/modules/admin-rate-limit/rate-limit-admin.controller.ts","line":57,"label":"class RateLimitAdminController"}]},
+
+    {"id":"svc_metrics","type":"backend","label":"Platform metrics services","sublabel":"Metrics aggregation, Prometheus query, socket registry","tag":"service","row":0,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/platform-metrics/platform-metrics.service.ts","line":58,"label":"PlatformMetricsService"},{"path":"packages/applications/src/services/platform-metrics/prometheus-query.service.ts","line":47,"label":"PrometheusQueryService"}]},
+    {"id":"svc_ops","type":"backend","label":"Ops admin services","sublabel":"Audit/health/monitoring/queue services (verify paths)","tag":"service","row":1,"col":2,"size":[330,116],"sources":[{"path":"apps/api/src/modules/audit-log/audit-log.controller.ts","line":40,"label":"AuditLogController wiring (verify)"},{"path":"apps/api/src/modules/queue-admin/queue-admin.controller.ts","line":41,"label":"QueueAdminController wiring (verify)"}]},
+    {"id":"svc_rate","type":"backend","label":"Rate limit services","sublabel":"Rule/settings/admin rate-limit management","tag":"service","row":3,"col":2,"size":[330,116],"sources":[{"path":"packages/applications/src/services/rate-limit/rate-limit-admin.service.ts","line":47,"label":"RateLimitAdminService"},{"path":"packages/applications/src/services/rate-limit/rate-limit-rule.service.ts","line":40,"label":"RateLimitRuleService"}]},
+
+    {"id":"data_ops","type":"database","label":"Ops/config data stores","sublabel":"Audit logs, rate-limit config, queue/scheduler metadata","tag":"data","row":1,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/rate-limit/rate-limit-admin.service.ts","line":47,"label":"Rate-limit config persistence"},{"path":"apps/api/src/modules/audit-log/audit-log.controller.ts","line":40,"label":"Audit log data (controller-verified)"}]},
+    {"id":"ext_obs","type":"external","label":"Infra observability/runtime","sublabel":"Prometheus/metrics, Redis/BullMQ queues, health deps","tag":"runtime","row":3,"col":3,"size":[330,116],"sources":[{"path":"packages/applications/src/services/platform-metrics/prometheus-query.service.ts","line":47,"label":"Prometheus query integration"},{"path":"apps/api/src/modules/queue-admin/queue-admin.controller.ts","line":41,"label":"Queue admin (BullMQ/runtime deps)"}]}
+  ],
+  "boundaries": [
+    {"kind":"region","label":"API endpoint groups (left)","wraps":["eg_health","eg_audit","eg_queue","eg_rate"]},
+    {"kind":"region","label":"Controllers","wraps":["ctl_health","ctl_audit","ctl_queue","ctl_rate"]},
+    {"kind":"region","label":"Application services","wraps":["svc_metrics","svc_ops","svc_rate"]},
+    {"kind":"region","label":"Data stores / infra runtime","wraps":["data_ops","ext_obs"]}
+  ],
+  "connections": [
+    {"id":"o1","from":"eg_health","to":"ctl_health","label":"HTTP"},
+    {"id":"o2","from":"eg_audit","to":"ctl_audit","label":"HTTP"},
+    {"id":"o3","from":"eg_queue","to":"ctl_queue","label":"HTTP"},
+    {"id":"o4","from":"eg_rate","to":"ctl_rate","label":"HTTP"},
+    {"id":"o5","from":"ctl_health","to":"svc_metrics","label":"metrics"},
+    {"id":"o6","from":"ctl_health","to":"svc_ops","label":"health/mon"},
+    {"id":"o7","from":"ctl_audit","to":"svc_ops","label":"audit"},
+    {"id":"o8","from":"ctl_queue","to":"svc_ops","label":"queues"},
+    {"id":"o9","from":"ctl_rate","to":"svc_rate","label":"delegate"},
+    {"id":"o10","from":"svc_metrics","to":"ext_obs","label":"query"},
+    {"id":"o11","from":"svc_ops","to":"data_ops","label":"read/write"},
+    {"id":"o12","from":"svc_ops","to":"ext_obs","label":"runtime"},
+    {"id":"o13","from":"svc_rate","to":"data_ops","label":"config"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"B07b scope (observability & queues)","items":["Part of B07-guardrails-ops split. Modules: health (6/2), monitoring (4/1), platform-metrics (3/1), audit-log (6/1), queue-admin (17/2), admin-rate-limit (13/1) = 49 routes / 8 controllers.","Health/metrics: public /health plus admin health services, monitoring, platform metrics. Audit: /admin/audit-logs. Queue admin: /admin/queues and /admin/schedulers. Rate limit: /admin/rate-limit.","Grouped endpoint nodes for readability."]},
+    {"dot":"violet","title":"Example input/output (representative)","items":["Health: GET /health and admin health/service endpoints -> liveness/readiness/service health status payloads.","Monitoring/platform metrics: admin metric/session/usage queries -> observability payloads; platform metrics may query Prometheus-backed data (implementation-dependent).","Queue/scheduler admin: list/inspect/retry/pause/resume/clean/drain style operations -> queue/scheduler/job state (BullMQ/runtime dependent). Verify destructive operation safeguards.","Audit/rate limit: audit log query/export -> audit records; rate-limit rule/settings CRUD -> effective rate-limit configuration. Verify sensitive-field redaction and access controls."]},
+    {"dot":"emerald","title":"Evidence and limitations","items":["Repo https://github.com/ArcaAI/project-hope.git @ 8cb2e5e8e6bbddf5ee7c676782ebb5ad683c23a0. Controllers verified; platform-metrics and rate-limit service classes verified.","Downstreams: ops/config data stores (Postgres/Prisma), observability infra (Prometheus/metrics), queue runtime (Redis/BullMQ) and health dependencies.","Limitations: grouped endpoint nodes (49 routes/8 controllers); audit-log, health, monitoring, and queue-admin application service implementation paths not all separately verified in this pass; reconcile exact route/DTO contracts and destructive queue/rate-limit operations with OpenAPI/implementation."]}
+  ]
+}

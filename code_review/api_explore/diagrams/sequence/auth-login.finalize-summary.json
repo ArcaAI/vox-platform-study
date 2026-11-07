@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/tmp/auth-login.sequence.json",
+    "sha256": "9e78ed15490b1555a3c60a237cc75b764c20b1dbbd65233727beb7effbd154a4",
+    "bytes": 3522
+  },
+  "artifact": {
+    "path": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-login.html",
+    "sha256": "f1e7a3e4ac9061537a7ff94e1799eb2b838d12d2e8d2068ecf840b1269b9fbcf",
+    "bytes": 759261
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/evidence-path-conflict",
+      "severity": "error",
+      "message": "browser-check will not replace the existing unowned evidence path \"/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-login.browser-check.json\".",
+      "subject": {
+        "artifact": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-login.html",
+        "evidencePath": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-login.browser-check.json"
+      },
+      "evidence": {
+        "reason": {
+          "code": "ownership-artifact-mismatch"
+        }
+      },
+      "supportedFixes": [
+        "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-login.finalize.json",
+    "summaryReceipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-login.finalize-summary.json",
+    "browserCheckReceipt": "/Users/apple/repos/VOX/review/api_explore/diagrams/sequence/auth-login.browser-check.json"
+  },
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-10-30T13:04:00.678Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-10-30T13:04:00.678Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 735
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d13161a6-78ad-478d-adf2-6a2d9917a1a9",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07a-20261107-161500/candidate.json",
+  "output": "/Users/apple/repos/VOX/review/api_explore/diagrams/.archify/api-gateway-b07a-20261107-161500/api-gateway-b07a-guardrails.html",
+  "specification": {
+    "sha256": "05205b0358b3bda357f25b8277a1ce5633d8154a2d643431c397aa5777262175",
+    "bytes": 10290
+  },
+  "artifact": {
+    "sha256": "059132e278590cf84603f6d5cdab63b7b3743dbd0dba65db02c3ed00c36ad807",
+    "bytes": 785907
+  }
+}
