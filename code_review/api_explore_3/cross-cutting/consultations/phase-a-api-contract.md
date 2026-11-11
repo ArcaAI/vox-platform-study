@@ -1,15 +1,16 @@
 # Phase A — Consultation Start Flow API Contract (Code File Walkthrough)
 
 **Scope:** `project-hope/apps/api/src/modules/consultation` (API gateway, consultation module)  
+**GitHub base:** `https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/`  
 **Focus:** “Doctor clicks **Start consultation**” — identify the API contract, request/response shapes, and controller-level behavior/sequencing relevant to opening and starting capture.
 
 **Primary files covered (Phase A):**
-- `consultation.controller.ts`
-- `consultation-lifecycle-events.controller.ts`
-- `dto/index.ts`
-- `dto/lifecycle-command.request.ts`
-- `dto/lifecycle.response.ts`
-- `dto/close-consultation.request.ts` (present in `dto/`; adjacent lifecycle command, included for completeness)
+- [`consultation.controller.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/consultation.controller.ts)
+- [`consultation-lifecycle-events.controller.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/consultation-lifecycle-events.controller.ts)
+- [`dto/index.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/index.ts)
+- [`dto/lifecycle-command.request.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/lifecycle-command.request.ts)
+- [`dto/lifecycle.response.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/lifecycle.response.ts)
+- [`dto/close-consultation.request.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/close-consultation.request.ts) (present in `dto/`; adjacent lifecycle command, included for completeness)
 
 > **Note:** `consultation.controller.ts` is large (~2610 lines). This document explains its structure and the parts most relevant to Phase A (open/select/start/pause/stop, recording aliases, access/validation helpers, lifecycle/event/stream-adjacent endpoints). Non-start-specific endpoints are summarized where useful for sequencing context.
 
@@ -17,7 +18,8 @@
 
 ## 1) `dto/index.ts`
 
-**Path:** `project-hope/apps/api/src/modules/consultation/dto/index.ts`
+**Path:** `project-hope/apps/api/src/modules/consultation/dto/index.ts`  
+**GitHub:** [src/modules/consultation/dto/index.ts](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/index.ts)
 
 ### What this file does
 - Acts as the DTO barrel/export file for consultation-module-local DTOs.
@@ -34,7 +36,8 @@
 
 ## 2) `dto/lifecycle-command.request.ts`
 
-**Path:** `project-hope/apps/api/src/modules/consultation/dto/lifecycle-command.request.ts`
+**Path:** `project-hope/apps/api/src/modules/consultation/dto/lifecycle-command.request.ts`  
+**GitHub:** [src/modules/consultation/dto/lifecycle-command.request.ts](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/lifecycle-command.request.ts)
 
 ### What this file does
 Defines request DTO classes (with `class-validator` rules and Swagger metadata) for consultation lifecycle commands.
@@ -82,7 +85,8 @@ Defines request DTO classes (with `class-validator` rules and Swagger metadata) 
 
 ## 3) `dto/lifecycle.response.ts`
 
-**Path:** `project-hope/apps/api/src/modules/consultation/dto/lifecycle.response.ts`
+**Path:** `project-hope/apps/api/src/modules/consultation/dto/lifecycle.response.ts`  
+**GitHub:** [src/modules/consultation/dto/lifecycle.response.ts](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/lifecycle.response.ts)
 
 ### What this file does
 Defines response DTO classes and enums-as-strings for consultation lifecycle commands and recording reads.
@@ -146,7 +150,8 @@ These reflect the **real lifecycle pair** vocabulary used by lifecycle responses
 
 ## 4) `dto/close-consultation.request.ts`
 
-**Path:** `project-hope/apps/api/src/modules/consultation/dto/close-consultation.request.ts`
+**Path:** `project-hope/apps/api/src/modules/consultation/dto/close-consultation.request.ts`  
+**GitHub:** [src/modules/consultation/dto/close-consultation.request.ts](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/close-consultation.request.ts)
 
 ### What this file does
 Defines the request body DTO for `POST /consultations/:id/close` (gateway-local DTO).
@@ -169,7 +174,8 @@ Defines the request body DTO for `POST /consultations/:id/close` (gateway-local 
 
 ## 5) `consultation-lifecycle-events.controller.ts`
 
-**Path:** `project-hope/apps/api/src/modules/consultation/consultation-lifecycle-events.controller.ts`
+**Path:** `project-hope/apps/api/src/modules/consultation/consultation-lifecycle-events.controller.ts`  
+**GitHub:** [src/modules/consultation/consultation-lifecycle-events.controller.ts](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/consultation-lifecycle-events.controller.ts)
 
 ### What this file does
 Exposes the consultation lifecycle event stream over SSE so clients can observe lifecycle transitions and processing changes after actions like `start`, `pause`, `stop`, `approve`, `close`, `reopen`.
@@ -216,6 +222,7 @@ Exposes the consultation lifecycle event stream over SSE so clients can observe 
 ## 6) `consultation.controller.ts`
 
 **Path:** `project-hope/apps/api/src/modules/consultation/consultation.controller.ts`  
+**GitHub:** [src/modules/consultation/consultation.controller.ts](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/consultation.controller.ts)  
 **Size/complexity:** Large controller (~2610 lines) with many endpoints and dependencies; this walkthrough focuses on Phase A-relevant structure and behavior.
 
 ### 6.1 File role and responsibilities
@@ -428,12 +435,12 @@ These matter when mapping the full consultation workflow after start (e.g. conte
 
 | File | Primary responsibility | Key Phase A takeaways |
 |---|---|---|
-| `consultation.controller.ts` | Main consultation HTTP API orchestration and endpoint definitions | Defines `open`, workflow discovery, lifecycle `start/pause/stop`, recording aliases, access/attribution helpers, and hooks into lifecycle/live-doc/streaming side effects |
-| `consultation-lifecycle-events.controller.ts` | SSE stream of consultation lifecycle events | Provides replayable (`since`) lifecycle/status/processing event feed used to observe start/pause/stop/finalization transitions |
-| `dto/lifecycle-command.request.ts` | Request DTOs for lifecycle commands | `start` takes optional `sessionId` (STT binding); `stop` controls final transcript wait/poll behavior |
-| `dto/lifecycle.response.ts` | Response DTOs for lifecycle/recording reads | Defines capture state, lifecycle/status-processing vocabulary, stop result/final transcript polling contract, recording manifest response |
-| `dto/close-consultation.request.ts` | Close command request DTO | Documents clinician attribution/body-validation constraints for machine vs human callers (adjacent lifecycle contract) |
-| `dto/index.ts` | DTO exports barrel | Aggregates local consultation DTOs for controller/module imports |
+| [`consultation.controller.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/consultation.controller.ts) | Main consultation HTTP API orchestration and endpoint definitions | Defines `open`, workflow discovery, lifecycle `start/pause/stop`, recording aliases, access/attribution helpers, and hooks into lifecycle/live-doc/streaming side effects |
+| [`consultation-lifecycle-events.controller.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/consultation-lifecycle-events.controller.ts) | SSE stream of consultation lifecycle events | Provides replayable (`since`) lifecycle/status/processing event feed used to observe start/pause/stop/finalization transitions |
+| [`dto/lifecycle-command.request.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/lifecycle-command.request.ts) | Request DTOs for lifecycle commands | `start` takes optional `sessionId` (STT binding); `stop` controls final transcript wait/poll behavior |
+| [`dto/lifecycle.response.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/lifecycle.response.ts) | Response DTOs for lifecycle/recording reads | Defines capture state, lifecycle/status-processing vocabulary, stop result/final transcript polling contract, recording manifest response |
+| [`dto/close-consultation.request.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/close-consultation.request.ts) | Close command request DTO | Documents clinician attribution/body-validation constraints for machine vs human callers (adjacent lifecycle contract) |
+| [`dto/index.ts`](https://github.com/ArcaAI/project-hope/blob/dev-2.2/apps/api/src/modules/consultation/dto/index.ts) | DTO exports barrel | Aggregates local consultation DTOs for controller/module imports |
 
 ---
 
