@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import pathlib, re
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 ROOT = pathlib.Path('/Users/apple/repos/VOX/project-hope/apps/api/src')
 OUT = pathlib.Path('/Users/apple/repos/VOX/vox-platform-study/code_review/api_explore_3/cross-cutting/controller-decorator-trace.md')
@@ -47,18 +47,28 @@ DECORATOR_PURPOSE = {
     'ApiConsumes': 'Swagger/OpenAPI metadata: declares accepted request content types.',
     'ApiProduces': 'Swagger/OpenAPI metadata: declares produced response content types.',
     'ApiDeprecated': 'Swagger/OpenAPI metadata: marks endpoint/controller as deprecated.',
-    'ApiProperty': 'Swagger/OpenAPI DTO schema metadata for a property.',
-    'ApiPropertyOptional': 'Swagger/OpenAPI DTO schema metadata for an optional property.',
     'ApiEndpoint': 'Project-specific API/documentation/behavior decorator (inspect implementation for exact request impact).',
     'StreamScope': 'Project-specific streaming scope/authorization metadata decorator (inspect implementation for exact request impact).',
+    'ForbidApiKey': 'Project-specific auth policy metadata: forbids API-key credential usage for the route/controller where enforced.',
     'Version': 'Nest versioning metadata; can route requests based on API version.',
     'SerializeOptions': 'Configures response serialization behavior for class-transformer/Nest serializer.',
     'Throttle': 'Overrides throttling metadata for route/controller (nestjs/throttler; actual enforcement depends on guard).',
     'SkipThrottle': 'Skips throttling for route/controller where honored by throttler guard.',
 }
 
+HTTP_METHOD_DECOS = {'Get','Post','Put','Patch','Delete','Options','Head','All','Sse'}
+REQUEST_AFFECTING = {'UseGuards','UseInterceptors','UsePipes','UseFilters','Public','Authorize','RequiredScopes','RequiredSvcScopes','RequiresConsent','RequiresIfMatch','TenantOwnedResource','TenantLockExempt','ForbidApiKey','HttpCode','Header','Redirect','Throttle','SkipThrottle','Version','ApiEndpoint','StreamScope'}
+
+
 def read_text(p):
     return p.read_text(encoding='utf-8', errors='replace')
+
+def slugify(text):
+    s = text.lower()
+    s = re.sub(r'[`*~\[\](){}<>:,."\'/\\|?!@#$%^&+=]', '', s)
+    s = re.sub(r'\s+', '-', s.strip())
+    s = re.sub(r'-+', '-', s)
+    return s.strip('-')
 
 def deco_name(d):
     m=re.match(r'@([A-Za-z0-9_]+)', d.strip())
@@ -71,20 +81,15 @@ def format_deco(d):
     return f"`{d}` — {purpose_for(deco_name(d))}"
 
 def normalize_deco_block(block_text):
-    # split into decorator entries by @ at depth 0
     parts=[]; cur=[]; depth=0
     for line in block_text.splitlines():
         s=line.strip()
         if s.startswith('@') and depth==0 and cur:
-            parts.append('\n'.join(cur))
-            cur=[line.rstrip()]
+            parts.append('\n'.join(cur)); cur=[line.rstrip()]
         elif cur:
             cur.append(line.rstrip())
         elif s.startswith('@'):
             cur=[line.rstrip()]
-        else:
-            # ignore stray
-            pass
         depth += line.count('(') - line.count(')')
         if depth < 0: depth = 0
     if cur: parts.append('\n'.join(cur))
@@ -93,25 +98,19 @@ def normalize_deco_block(block_text):
         t=re.sub(r'\s*\n\s*',' ',p.strip())
         t=re.sub(r'\s+',' ',t)
         out.append(t)
-    return out
+    return [d for d in out if d.lstrip().startswith('@')]
 
 def collect_decorators_above(lines, idx):
-    # idx is line index of target (class or method signature)
     j=idx-1
-    # skip blanks
     while j>=0 and lines[j].strip()=='':
         j-=1
     if j<0 or not lines[j].lstrip().startswith('@'):
-        # could still be part of multiline decorator block ending above? unlikely
         return []
-    end=j
-    start=end
+    end=j; start=end
     depth = lines[end].count('(')-lines[end].count(')')
     k=end-1
-    # walk up including @ lines and continuation lines
     while k>=0:
-        st=lines[k].strip()
-        raw=lines[k]
+        st=lines[k].strip(); raw=lines[k]
         if st=='':
             if depth!=0:
                 start=k; k-=1; continue
@@ -120,32 +119,24 @@ def collect_decorators_above(lines, idx):
         if st.startswith('@'):
             start=k
             depth += raw.count('(')-raw.count(')')
-            k-=1
-            continue
-        # continuation if unbalanced or clearly arg line (indented, not a code stmt boundary)
+            k-=1; continue
         if depth!=0:
             start=k
             depth += raw.count('(')-raw.count(')')
-            k-=1
-            continue
-        # heuristic: line ending with comma/paren/bracket often continuation in decorator args even if balanced miscount rare
+            k-=1; continue
         if st.endswith((',', '(', '[', '{')) or st.startswith((')',']','}','.')):
             start=k
             depth += raw.count('(')-raw.count(')')
-            k-=1
-            continue
+            k-=1; continue
         break
     block='\n'.join(lines[start:end+1])
-    decos=normalize_deco_block(block)
-    # ensure they look like decorators
-    return [d for d in decos if d.lstrip().startswith('@')]
+    return normalize_deco_block(block)
 
 def find_controller_classes(lines):
     classes=[]
     for i,l in enumerate(lines):
         m=re.match(r'^export\s+(?:default\s+)?class\s+(\w+)', l.strip())
-        if not m:
-            continue
+        if not m: continue
         decos=collect_decorators_above(lines,i)
         if any(deco_name(d)=='Controller' for d in decos):
             classes.append((i,m.group(1),decos))
@@ -153,82 +144,65 @@ def find_controller_classes(lines):
 
 def parse_methods(lines, class_idx):
     methods=[]
-    # determine class indent
     cls_indent=len(lines[class_idx]) - len(lines[class_idx].lstrip(' '))
-    i=class_idx+1
     n=len(lines)
-    # crude brace tracking to stay inside class
-    # find opening brace line at or after class decl
-    brace_depth=0
-    seen_open=False
-    # initialize from class line onward until first {
+    brace_depth=0; seen_open=False
     j=class_idx
     while j<n and not seen_open:
         brace_depth += lines[j].count('{') - lines[j].count('}')
         if '{' in lines[j]: seen_open=True
         j+=1
-    i=j
-    member_indent=cls_indent+2
+    i=j; member_indent=cls_indent+2
     while i<n and (seen_open and brace_depth>0):
-        line=lines[i]
-        s=line.strip()
-        # track braces but be mindful of strings? heuristic only
+        line=lines[i]; s=line.strip()
         if s=='':
-            brace_depth += line.count('{')-line.count('}')
-            i+=1; continue
+            brace_depth += line.count('{')-line.count('}'); i+=1; continue
         ind=len(line)-len(line.lstrip(' '))
-        # method decorator/signature at member indent inside class body
         if ind==member_indent and s.startswith('@'):
-            # find signature
             k=i
             while k<n:
-                st=lines[k].strip()
-                indk=len(lines[k])-len(lines[k].lstrip(' '))
-                if st=='':
-                    k+=1; continue
-                if indk==member_indent and st.startswith('@'):
-                    k+=1; continue
+                st=lines[k].strip(); indk=len(lines[k])-len(lines[k].lstrip(' '))
+                if st=='': k+=1; continue
+                if indk==member_indent and st.startswith('@'): k+=1; continue
                 break
             if k<n and (len(lines[k])-len(lines[k].lstrip(' '))==member_indent):
                 sig=lines[k].strip()
-                if not sig.startswith('constructor') and not sig.startswith('private constructor'):
+                if not sig.startswith('constructor'):
                     mm=re.match(r'(?:public\s+|private\s+|protected\s+|readonly\s+|async\s+|static\s+|get\s+|set\s+)*([A-Za-z0-9_]+)\s*[<(]', sig)
                     if mm and not re.match(r'^(if|for|while|switch|catch)\b', sig):
                         name=mm.group(1)
-                        if name not in ('constructor',):
+                        if name!='constructor':
                             decos=collect_decorators_above(lines,k)
-                            # but collect_decorators_above from signature will pick the block; good
-                            methods.append((name,decos,sig,k+1))
+                            # avoid including class-level block if parser over-captured: keep decorators that are adjacent to method signature only
+                            # heuristic: keep until we have seen a mapping/decorator that commonly appears on methods? easier: filter out @Controller class block duplicates
+                            m_decos=[]
+                            for d in decos:
+                                if deco_name(d)=='Controller':
+                                    continue
+                                # class-level common swagger/auth decorators may be duplicated if formatting odd; but keep
+                                m_decos.append(d)
+                            methods.append((name,m_decos,sig,k+1))
                 brace_depth += lines[k].count('{')-lines[k].count('}')
-                i=k+1
-                # advance through body of method by continuing brace tracking in outer loop
-                continue
+                i=k+1; continue
         elif ind==member_indent and re.match(r'(?:public\s+|private\s+|protected\s+|readonly\s+|async\s+|static\s+|get\s+|set\s+)*[A-Za-z0-9_]+\s*[<(]', s) and not s.startswith('constructor'):
             mm=re.match(r'(?:public\s+|private\s+|protected\s+|readonly\s+|async\s+|static\s+|get\s+|set\s+)*([A-Za-z0-9_]+)\s*[<(]', s)
             if mm and not re.match(r'^(if|for|while|switch|catch)\b', s):
-                methods.append((mm.group(1), collect_decorators_above(lines,i), s, i+1))
+                decos=[d for d in collect_decorators_above(lines,i) if deco_name(d)!='Controller']
+                methods.append((mm.group(1), decos, s, i+1))
         brace_depth += line.count('{')-line.count('}')
         i+=1
     return methods
 
-def is_real_controller_file(path, text):
-    # exclude user.module.ts style false positives and audit files mentioning @Controller in text only
-    if path.name.endswith('.module.ts'):
-        return False
-    return True
-
 files=[]
 for p in ROOT.rglob('*.ts'):
     if '__tests__' in p.parts: continue
+    if p.name.endswith('.module.ts'): continue
     txt=read_text(p)
     if '@Controller' not in txt: continue
-    if not is_real_controller_file(p, txt): continue
     lines=txt.splitlines()
     classes=find_controller_classes(lines)
-    if not classes:
-        continue
-    rel=p.relative_to(ROOT)
-    parts=rel.parts
+    if not classes: continue
+    rel=p.relative_to(ROOT); parts=rel.parts
     module = parts[1] if len(parts)>2 and parts[0]=='modules' else '(global)'
     for cidx,cname,cdecos in classes:
         methods=parse_methods(lines,cidx)
@@ -238,6 +212,49 @@ by_mod=defaultdict(list)
 for f in sorted(files, key=lambda x:(x['module'], x['path'], x['class'])):
     by_mod[f['module']].append(f)
 
+# stats
+module_count = len(by_mod)
+controller_count = len(files)
+method_count = sum(len(f['methods']) for f in files)
+controllers_with_methods = sum(1 for f in files if f['methods'])
+
+class_deco_counter=Counter(); method_deco_counter=Counter(); http_counter=Counter()
+mod_method_counts=[]; mod_controller_counts=[]
+for mod in sorted(by_mod.keys(), key=lambda m:(m!='(global)',m)):
+    mc=sum(len(f['methods']) for f in by_mod[mod])
+    mod_method_counts.append((mod, len(by_mod[mod]), mc))
+    mod_controller_counts.append((mod, len(by_mod[mod])))
+
+for f in files:
+    for d in f['class_decos']: class_deco_counter[deco_name(d)] += 1
+    for _, decos, _, _ in f['methods']:
+        names=[deco_name(d) for d in decos]
+        for n in names: method_deco_counter[n]+=1
+        for n in names:
+            if n in HTTP_METHOD_DECOS: http_counter[n]+=1
+
+def count_any(deco):
+    return class_deco_counter.get(deco,0)+method_deco_counter.get(deco,0)
+
+useguards = count_any('UseGuards')
+useinterceptors = count_any('UseInterceptors')
+usepipes = count_any('UsePipes')
+usefilters = count_any('UseFilters')
+public_n = count_any('Public')
+authorize_n = count_any('Authorize')
+req_scopes = count_any('RequiredScopes')
+req_svc_scopes = count_any('RequiredSvcScopes')
+consent_n = count_any('RequiresConsent')
+ifmatch_n = count_any('RequiresIfMatch')
+forbid_api = count_any('ForbidApiKey')
+tenant_owned = count_any('TenantOwnedResource')
+sse_n = http_counter.get('Sse',0)
+
+top_modules_by_handlers = sorted(mod_method_counts, key=lambda x:(-x[2], x[0]))[:10]
+top_modules_by_controllers = sorted(mod_method_counts, key=lambda x:(-x[1], x[0]))[:10]
+
+mods = sorted(by_mod.keys(), key=lambda m: (m!='(global)', m))
+
 out=[]
 out.append('# Controller Decorator Trace (Modules → Controllers → Methods)')
 out.append('')
@@ -245,7 +262,61 @@ out.append('**Scope:** `project-hope/apps/api/src` (non-test Nest controllers)  
 out.append('**Generated by:** `code_review/api_explore_3/tools/extract_controller_decorators.py` (heuristic AST-lite extraction)  ')
 out.append('**Companion docs:** `nestjs-request-pipeline.md`, `bootstrap-and-global-config.md`')
 out.append('')
-out.append('> This inventory lists decorators declared on controller classes and their route handler methods. Effective request behavior is the combination of global/bootstrap config, global guards/pipes/interceptors/filters, module wiring, controller-level decorators, method-level decorators, and parameter-level decorators/pipes. "Purpose and how it impacts the request" is provided from Nest semantics and project conventions observed in `apps/api`; verify custom decorator implementations in source for exact behavior.')
+out.append('## Executive summary (quick read)')
+out.append('')
+out.append('This document inventories **Nest controller and route-handler decorators** in the API gateway so you can trace request behavior from **module → controller → method** without reading every source file.')
+out.append('')
+out.append('### Snapshot counts')
+out.append('')
+out.append(f'- **Modules (groups):** {module_count} (controllers outside `apps/api/src/modules/` are grouped as `(global)`)')
+out.append(f'- **Controllers:** {controller_count}')
+out.append(f'- **Detected route handler methods:** {method_count} ({controllers_with_methods} controllers with detected methods; heuristic parse)')
+out.append(f'- **HTTP/SSE mapping decorators (method-level, detected):** {sum(http_counter.values())} total' + (f" — " + ', '.join(f"`@{k}` {v}" for k,v in sorted(http_counter.items(), key=lambda x:(-x[1],x[0])) ) if http_counter else ''))
+out.append('')
+out.append('### Request-pipeline/security signals (declared decorators, class + method)')
+out.append('')
+out.append(f'- **Scoped guards (`@UseGuards`) declarations:** {useguards} — explicit controller/method guard attachment in addition to global guards in `app.module.ts`.')
+out.append(f'- **Scoped interceptors (`@UseInterceptors`) declarations:** {useinterceptors} — explicit controller/method interceptors (e.g. upload/file and response-vocabulary interceptors).')
+out.append(f'- **Scoped pipes/filters (`@UsePipes` / `@UseFilters`) declarations:** {usepipes} / {usefilters} — rare in this snapshot (global pipe/filter strategy dominates).')
+out.append(f'- **Auth/policy metadata:** `@Public` {public_n}, `@Authorize` {authorize_n}, `@RequiredScopes` {req_scopes}, `@RequiredSvcScopes` {req_svc_scopes}, `@ForbidApiKey` {forbid_api}.')
+out.append(f'- **Domain/consistency metadata:** `@RequiresConsent` {consent_n}, `@RequiresIfMatch` {ifmatch_n}, `@TenantOwnedResource` {tenant_owned}, `@Sse` routes {sse_n}.')
+out.append('')
+out.append('### What this means (for non-readers)')
+out.append('')
+out.append('- **Most request enforcement is layered:** global bootstrap/middleware + global guards/interceptors/pipes/filters + controller/method decorators + parameter/DTO validation. A controller with few local decorators can still be heavily protected globally.')
+out.append('- **`@UseGuards` at controller/method scope is significant:** it usually marks internal/service-token boundaries, SSE/resource-specific checks, or endpoint-specific policy beyond the global chain.')
+out.append('- **`@UseInterceptors` at controller/method scope is targeted:** in this codebase it commonly appears for multipart/file upload handling and specific response/event vocabulary shaping.')
+out.append('- **Auth metadata is widespread:** decorators like `@Authorize`, `@RequiredScopes`, `@RequiredSvcScopes`, and `@Public` communicate intended access policy and are consumed by guards/audits (not all enforcement happens in the decorator itself).')
+out.append('- **Use this doc as an index:** start with the TOC/module summaries below, then jump to a controller to inspect class-level defaults and per-method overrides.')
+out.append('')
+out.append('### Largest modules by detected handlers (top 10)')
+out.append('')
+out.append('| Module | Controllers | Detected handlers |')
+out.append('|---|---:|---:|')
+for mod, c, m in top_modules_by_handlers:
+    out.append(f'| `{mod}` | {c} | {m} |')
+out.append('')
+out.append('## Table of contents')
+out.append('')
+out.append('- [Executive summary (quick read)](#executive-summary-quick-read)')
+out.append('  - [Snapshot counts](#snapshot-counts)')
+out.append('  - [Request-pipeline/security signals (declared decorators, class + method)](#request-pipelinesecurity-signals-declared-decorators-class--method)')
+out.append('  - [What this means (for non-readers)](#what-this-means-for-non-readers)')
+out.append('  - [Largest modules by detected handlers (top 10)](#largest-modules-by-detected-handlers-top-10)')
+out.append('- [Decorator purpose legend (common)](#decorator-purpose-legend-common)')
+out.append('- [Inventory](#inventory)')
+for mod in mods:
+    mod_title = f'Module: `{mod}`'
+    mod_anchor = slugify(mod_title)
+    mc=len(by_mod[mod]); mm=sum(len(f["methods"]) for f in by_mod[mod])
+    out.append(f'  - [{mod_title}](#{mod_anchor}) ({mc} controllers, {mm} handlers)')
+    for f in by_mod[mod]:
+        ctitle = f'Controller: `{f["class"]}`'
+        c_anchor = slugify(ctitle)
+        out.append(f'    - [{ctitle}](#{c_anchor}) — `{f["path"]}` ({len(f["methods"]) } handlers)')
+out.append('- [Extraction notes](#extraction-notes)')
+out.append('')
+out.append('> Note: GitHub-style heading anchors are used. If your renderer generates anchors differently, use the module/controller headings in the Inventory section as the source of truth.')
 out.append('')
 out.append('## Decorator purpose legend (common)')
 out.append('')
@@ -255,9 +326,12 @@ out.append('')
 out.append('## Inventory')
 out.append('')
 
-mods = sorted(by_mod.keys(), key=lambda m: (m!='(global)', m))
 for mod in mods:
-    out.append(f'### Module: `{mod}`')
+    mod_title = f'Module: `{mod}`'
+    out.append(f'### {mod_title}')
+    mod_handlers=sum(len(f['methods']) for f in by_mod[mod])
+    out.append('')
+    out.append(f'**Module summary:** {len(by_mod[mod])} controller(s), {mod_handlers} detected handler method(s)')
     out.append('')
     for f in by_mod[mod]:
         ctrl_route = next((d for d in f['class_decos'] if deco_name(d)=='Controller'), '')
@@ -274,7 +348,7 @@ for mod in mods:
         out.append('- **Methods / handlers:**')
         if f['methods']:
             for name, decos, sig, ln in f['methods']:
-                http = [deco_name(d) for d in decos if deco_name(d) in {'Get','Post','Put','Patch','Delete','Options','Head','All','Sse'}]
+                http = [deco_name(d) for d in decos if deco_name(d) in HTTP_METHOD_DECOS]
                 http_s = ', '.join(f'@{h}' for h in http) if http else '_(no HTTP/SSE mapping decorator detected)_'
                 out.append(f'  - **`{name}`** (line {ln}) — {http_s}')
                 out.append(f'    - Signature: `{sig}`')
@@ -296,4 +370,4 @@ out.append('- This report emphasizes class/method decorators. Parameter decorato
 out.append('- Global pipeline effects from `main.ts` and `app.module.ts` (middleware, global guards/interceptors/pipes/filters, ETag, validation, auth context) apply in addition to controller/method decorators; see `nestjs-request-pipeline.md`.')
 
 OUT.write_text('\n'.join(out), encoding='utf-8')
-print(f'wrote {OUT} with {len(files)} controllers in {len(by_mod)} groups')
+print(f'wrote {OUT} with {len(files)} controllers in {len(by_mod)} groups, {method_count} methods')
