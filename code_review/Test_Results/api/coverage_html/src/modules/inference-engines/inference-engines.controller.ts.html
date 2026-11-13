@@ -1,0 +1,451 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/modules/inference-engines/inference-engines.controller.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/modules/inference-engines</a> inference-engines.controller.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">60% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>3/5</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/0</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">50% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>2/4</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">60% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>3/5</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line medium'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import {
+  IInferenceEngineService,
+  LmStudioRuntimeResponse,
+  LoadLmStudioModelRequest,
+  LoadLmStudioModelResponse,
+  UnloadLmStudioModelResponse,
+} from '@arcaai/applications';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+&nbsp;
+/**
+ * TASK-996 Phase 3 — platform control over the shared LM Studio serving engine.
+ *
+ * A SEPARATE controller from `/admin/ai-models`, and deliberately so: the model
+ * catalogue describes what EXISTS, while this describes what is RUNNING. The
+ * two have different lifetimes (a row outlives every instance of it), different
+ * failure modes (an unreachable engine is a result here, not a 500) and
+ * different blast radius — a write here can take the text, guardrail and STT
+ * workloads down together, because the two cards are time-sliced and time
+ * slicing gives no memory isolation.
+ *
+ * `/ai-services/*` remains the READ-ONLY engine surface. This plane is the
+ * deliberate, owner-approved exception (D-1) and is confined to its own path
+ * so the read-only stance elsewhere is not quietly reversed.
+ */
+@ApiBearerAuth()
+@ApiTags('admin-inference-engines')
+@ForbidApiKey()
+@RequiredSvcScopes('svc:admin:ai-model:manage')
+@Controller('admin/inference-engines/lm-studio')
+@CanManage('AiModel')
+export class InferenceEnginesController {
+  constructor(
+    @Inject(IInferenceEngineService)
+    private readonly service: IInferenceEngineService,
+  ) {}
+&nbsp;
+  // AUTH-NOTE: the class-level `@CanManage('AiModel')` UNDERSTATES the real
+  // gate on every route here. A permission decorator expresses `action +
+  // subject`, and there is no "super admin" subject; tenant admins legitimately
+  // hold abilities on `AiModel` for other operations. The actual control —
+  // SUPER_ADMIN only — is enforced imperatively in
+  // `LmStudioServingService.assertPlatformAdmin` (owner decision D-6). That
+  // gate is ROW-INDEPENDENT: it answers identically for every model key,
+  // existing or not, so it may run FIRST and does, which is the
+  // `promote-to-system` ordering rather than the existence-then-privilege
+  // ordering a split gate needs — there is no id space to protect. It is a 403
+  // PRIVILEGE boundary, NOT the 404-over-403 cross-tenant posture: an unknown
+  // model key is still a 404. Never widen or "fix" this decorator without
+  // reading the service first.
+  @Get('runtime')
+  @ApiOperation({
+    summary: 'Read what the LM Studio engine is currently serving, and on what VRAM',
+    description:
+      'Engine reachability, every visible GPU with its used/free/total framebuffer, every loaded instance with the configuration the engine ' +
+      'ACTUALLY applied (read back from the instance, not from a stored profile), and the `lmStudio.serving.*` platform default a model with no ' +
+      '`_metadata.serving` block inherits. Two honesty notes the response repeats: per-device VRAM comes from DCGM and is aggregated `max by (gpu)` ' +
+      'because the exporter`s `pod` label is an arbitrary pick among the pods sharing a time-sliced card; and `kvCacheEstimateBytes` is DERIVED ' +
+      'from `contextLength x parallel`, never measured — nothing in CUDA, NVML or DCGM reports per-model memory.',
+  })
+  @ApiResponse({ status: 200, type: LmStudioRuntimeResponse })
+  @ApiResponse({ status: 403, description: 'The caller is not a platform administrator.' })
+  async <span class="fstat-no" title="function not covered" >runtime(): Promise&lt;LmStudioRuntimeResponse&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    return this.service.runtime();</span>
+  }
+&nbsp;
+  // AUTH-NOTE: super-admin only, imperatively — see the note on `runtime`.
+  @Post('models/:modelKey/load')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Load one model on the LM Studio engine (REST v1), or report the instance already holding it',
+    description:
+      'Resolves `contextLength` / `flashAttention` request -&gt; model row -&gt; platform default (widening only on absence), refuses an incoherent ' +
+      'profile with 400 and an over-budget load with 409 `VRAM_BUDGET_EXCEEDED` unless `force: true`, then loads over LM Studio REST v1 with ' +
+      'the DOCUMENTED keys only — the engine answers 400 `unrecognized_keys` to anything else (`ttl`, `identifier`, `gpu`), so this body accepts ' +
+      'nothing else either. REST load is NOT idempotent (a second load of a loaded key creates `&lt;key&gt;:2`, a second full copy in VRAM), so the ' +
+      'gateway lists first and answers `already_loaded` with the existing instance. Loads are serialised per engine: a concurrent one is 409 ' +
+      '`LOAD_IN_PROGRESS`. SYNCHRONOUS — the response is sent when the engine has finished (a 5 GB model took ~100 s), with the configuration ' +
+      'the engine reports it applied. Decode slots, KV-cache quantization and GPU placement have no REST key; they are the pod`s own boot values.',
+  })
+  @ApiParam({ name: 'modelKey', description: 'The EXACT engine model key — `AiModel.wireModelId`. No prefix matching.', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '`outcome` `loaded` or `already_loaded`, and the instance in the residency shape',
+    type: LoadLmStudioModelResponse,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '`{ problems: string[] }` — an incoherent resolved profile; or a body key outside the documented options',
+  })
+  @ApiResponse({ status: 403, description: 'The caller is not a platform administrator.' })
+  @ApiResponse({ status: 404, description: 'No platform catalogue row claims this key, or the engine carries no model with it (`MODEL_UNKNOWN`).' })
+  @ApiResponse({
+    status: 409,
+    description: '`VRAM_BUDGET_EXCEEDED` / `VRAM_BUDGET_UNREADABLE` (bypass with `force: true`), or `LOAD_IN_PROGRESS` (retry once it settles)',
+  })
+  @ApiResponse({ status: 502, description: '`LOAD_FAILED` — the engine refused or did not finish the load; its own reason is in `message`.' })
+  @ApiResponse({ status: 503, description: '`ENGINE_UNREACHABLE` / `ENGINE_NOT_CONFIGURED` — nothing was loaded.' })
+  async load(@Param('modelKey') modelKey: string, @Body() request: LoadLmStudioModelRequest): Promise&lt;LoadLmStudioModelResponse&gt; {
+    return this.service.load(modelKey, request);
+  }
+&nbsp;
+  // AUTH-NOTE: super-admin only, imperatively — see the note on `runtime`.
+  @Post('models/:identifier/unload')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Evict one loaded instance (ADVISORY — JIT reloads it)',
+    description:
+      'Unloads the named instance and returns its VRAM to the shared cards. `jitReloadPossible` is ALWAYS `true`, and it is a warning rather than ' +
+      'a capability: JIT loading cannot be disabled on this build — there is no CLI flag, no REST field and no settings key for it — so the next ' +
+      'inference request reloads the model, on the `lmStudio.jit.*` defaults rather than on the profile it was unloaded from. Use it to free ' +
+      'memory now, never to keep a model gone.',
+  })
+  @ApiParam({ name: 'identifier', description: 'The loaded instance handle, as `GET runtime` reports it.', type: String })
+  @ApiResponse({ status: 202, description: 'The engine accepted the unload', type: UnloadLmStudioModelResponse })
+  @ApiResponse({ status: 403, description: 'The caller is not a platform administrator.' })
+  @ApiResponse({ status: 404, description: 'No instance under that identifier is loaded.' })
+  async <span class="fstat-no" title="function not covered" >unload(@</span>Param('identifier') identifier: string): Promise&lt;UnloadLmStudioModelResponse&gt; {
+<span class="cstat-no" title="statement not covered" >    return this.service.unload(identifier);</span>
+  }
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-11-13T14:26:24.151Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

@@ -1,0 +1,1729 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/modules/workflow-definition/workflow-definition.controller.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/modules/workflow-definition</a> workflow-definition.controller.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">89.18% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>33/37</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">85.71% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>12/14</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">86.95% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>20/23</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">88.88% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>32/36</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line high'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a>
+<a name='L212'></a><a href='#L212'>212</a>
+<a name='L213'></a><a href='#L213'>213</a>
+<a name='L214'></a><a href='#L214'>214</a>
+<a name='L215'></a><a href='#L215'>215</a>
+<a name='L216'></a><a href='#L216'>216</a>
+<a name='L217'></a><a href='#L217'>217</a>
+<a name='L218'></a><a href='#L218'>218</a>
+<a name='L219'></a><a href='#L219'>219</a>
+<a name='L220'></a><a href='#L220'>220</a>
+<a name='L221'></a><a href='#L221'>221</a>
+<a name='L222'></a><a href='#L222'>222</a>
+<a name='L223'></a><a href='#L223'>223</a>
+<a name='L224'></a><a href='#L224'>224</a>
+<a name='L225'></a><a href='#L225'>225</a>
+<a name='L226'></a><a href='#L226'>226</a>
+<a name='L227'></a><a href='#L227'>227</a>
+<a name='L228'></a><a href='#L228'>228</a>
+<a name='L229'></a><a href='#L229'>229</a>
+<a name='L230'></a><a href='#L230'>230</a>
+<a name='L231'></a><a href='#L231'>231</a>
+<a name='L232'></a><a href='#L232'>232</a>
+<a name='L233'></a><a href='#L233'>233</a>
+<a name='L234'></a><a href='#L234'>234</a>
+<a name='L235'></a><a href='#L235'>235</a>
+<a name='L236'></a><a href='#L236'>236</a>
+<a name='L237'></a><a href='#L237'>237</a>
+<a name='L238'></a><a href='#L238'>238</a>
+<a name='L239'></a><a href='#L239'>239</a>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a>
+<a name='L247'></a><a href='#L247'>247</a>
+<a name='L248'></a><a href='#L248'>248</a>
+<a name='L249'></a><a href='#L249'>249</a>
+<a name='L250'></a><a href='#L250'>250</a>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a>
+<a name='L257'></a><a href='#L257'>257</a>
+<a name='L258'></a><a href='#L258'>258</a>
+<a name='L259'></a><a href='#L259'>259</a>
+<a name='L260'></a><a href='#L260'>260</a>
+<a name='L261'></a><a href='#L261'>261</a>
+<a name='L262'></a><a href='#L262'>262</a>
+<a name='L263'></a><a href='#L263'>263</a>
+<a name='L264'></a><a href='#L264'>264</a>
+<a name='L265'></a><a href='#L265'>265</a>
+<a name='L266'></a><a href='#L266'>266</a>
+<a name='L267'></a><a href='#L267'>267</a>
+<a name='L268'></a><a href='#L268'>268</a>
+<a name='L269'></a><a href='#L269'>269</a>
+<a name='L270'></a><a href='#L270'>270</a>
+<a name='L271'></a><a href='#L271'>271</a>
+<a name='L272'></a><a href='#L272'>272</a>
+<a name='L273'></a><a href='#L273'>273</a>
+<a name='L274'></a><a href='#L274'>274</a>
+<a name='L275'></a><a href='#L275'>275</a>
+<a name='L276'></a><a href='#L276'>276</a>
+<a name='L277'></a><a href='#L277'>277</a>
+<a name='L278'></a><a href='#L278'>278</a>
+<a name='L279'></a><a href='#L279'>279</a>
+<a name='L280'></a><a href='#L280'>280</a>
+<a name='L281'></a><a href='#L281'>281</a>
+<a name='L282'></a><a href='#L282'>282</a>
+<a name='L283'></a><a href='#L283'>283</a>
+<a name='L284'></a><a href='#L284'>284</a>
+<a name='L285'></a><a href='#L285'>285</a>
+<a name='L286'></a><a href='#L286'>286</a>
+<a name='L287'></a><a href='#L287'>287</a>
+<a name='L288'></a><a href='#L288'>288</a>
+<a name='L289'></a><a href='#L289'>289</a>
+<a name='L290'></a><a href='#L290'>290</a>
+<a name='L291'></a><a href='#L291'>291</a>
+<a name='L292'></a><a href='#L292'>292</a>
+<a name='L293'></a><a href='#L293'>293</a>
+<a name='L294'></a><a href='#L294'>294</a>
+<a name='L295'></a><a href='#L295'>295</a>
+<a name='L296'></a><a href='#L296'>296</a>
+<a name='L297'></a><a href='#L297'>297</a>
+<a name='L298'></a><a href='#L298'>298</a>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a>
+<a name='L302'></a><a href='#L302'>302</a>
+<a name='L303'></a><a href='#L303'>303</a>
+<a name='L304'></a><a href='#L304'>304</a>
+<a name='L305'></a><a href='#L305'>305</a>
+<a name='L306'></a><a href='#L306'>306</a>
+<a name='L307'></a><a href='#L307'>307</a>
+<a name='L308'></a><a href='#L308'>308</a>
+<a name='L309'></a><a href='#L309'>309</a>
+<a name='L310'></a><a href='#L310'>310</a>
+<a name='L311'></a><a href='#L311'>311</a>
+<a name='L312'></a><a href='#L312'>312</a>
+<a name='L313'></a><a href='#L313'>313</a>
+<a name='L314'></a><a href='#L314'>314</a>
+<a name='L315'></a><a href='#L315'>315</a>
+<a name='L316'></a><a href='#L316'>316</a>
+<a name='L317'></a><a href='#L317'>317</a>
+<a name='L318'></a><a href='#L318'>318</a>
+<a name='L319'></a><a href='#L319'>319</a>
+<a name='L320'></a><a href='#L320'>320</a>
+<a name='L321'></a><a href='#L321'>321</a>
+<a name='L322'></a><a href='#L322'>322</a>
+<a name='L323'></a><a href='#L323'>323</a>
+<a name='L324'></a><a href='#L324'>324</a>
+<a name='L325'></a><a href='#L325'>325</a>
+<a name='L326'></a><a href='#L326'>326</a>
+<a name='L327'></a><a href='#L327'>327</a>
+<a name='L328'></a><a href='#L328'>328</a>
+<a name='L329'></a><a href='#L329'>329</a>
+<a name='L330'></a><a href='#L330'>330</a>
+<a name='L331'></a><a href='#L331'>331</a>
+<a name='L332'></a><a href='#L332'>332</a>
+<a name='L333'></a><a href='#L333'>333</a>
+<a name='L334'></a><a href='#L334'>334</a>
+<a name='L335'></a><a href='#L335'>335</a>
+<a name='L336'></a><a href='#L336'>336</a>
+<a name='L337'></a><a href='#L337'>337</a>
+<a name='L338'></a><a href='#L338'>338</a>
+<a name='L339'></a><a href='#L339'>339</a>
+<a name='L340'></a><a href='#L340'>340</a>
+<a name='L341'></a><a href='#L341'>341</a>
+<a name='L342'></a><a href='#L342'>342</a>
+<a name='L343'></a><a href='#L343'>343</a>
+<a name='L344'></a><a href='#L344'>344</a>
+<a name='L345'></a><a href='#L345'>345</a>
+<a name='L346'></a><a href='#L346'>346</a>
+<a name='L347'></a><a href='#L347'>347</a>
+<a name='L348'></a><a href='#L348'>348</a>
+<a name='L349'></a><a href='#L349'>349</a>
+<a name='L350'></a><a href='#L350'>350</a>
+<a name='L351'></a><a href='#L351'>351</a>
+<a name='L352'></a><a href='#L352'>352</a>
+<a name='L353'></a><a href='#L353'>353</a>
+<a name='L354'></a><a href='#L354'>354</a>
+<a name='L355'></a><a href='#L355'>355</a>
+<a name='L356'></a><a href='#L356'>356</a>
+<a name='L357'></a><a href='#L357'>357</a>
+<a name='L358'></a><a href='#L358'>358</a>
+<a name='L359'></a><a href='#L359'>359</a>
+<a name='L360'></a><a href='#L360'>360</a>
+<a name='L361'></a><a href='#L361'>361</a>
+<a name='L362'></a><a href='#L362'>362</a>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a>
+<a name='L367'></a><a href='#L367'>367</a>
+<a name='L368'></a><a href='#L368'>368</a>
+<a name='L369'></a><a href='#L369'>369</a>
+<a name='L370'></a><a href='#L370'>370</a>
+<a name='L371'></a><a href='#L371'>371</a>
+<a name='L372'></a><a href='#L372'>372</a>
+<a name='L373'></a><a href='#L373'>373</a>
+<a name='L374'></a><a href='#L374'>374</a>
+<a name='L375'></a><a href='#L375'>375</a>
+<a name='L376'></a><a href='#L376'>376</a>
+<a name='L377'></a><a href='#L377'>377</a>
+<a name='L378'></a><a href='#L378'>378</a>
+<a name='L379'></a><a href='#L379'>379</a>
+<a name='L380'></a><a href='#L380'>380</a>
+<a name='L381'></a><a href='#L381'>381</a>
+<a name='L382'></a><a href='#L382'>382</a>
+<a name='L383'></a><a href='#L383'>383</a>
+<a name='L384'></a><a href='#L384'>384</a>
+<a name='L385'></a><a href='#L385'>385</a>
+<a name='L386'></a><a href='#L386'>386</a>
+<a name='L387'></a><a href='#L387'>387</a>
+<a name='L388'></a><a href='#L388'>388</a>
+<a name='L389'></a><a href='#L389'>389</a>
+<a name='L390'></a><a href='#L390'>390</a>
+<a name='L391'></a><a href='#L391'>391</a>
+<a name='L392'></a><a href='#L392'>392</a>
+<a name='L393'></a><a href='#L393'>393</a>
+<a name='L394'></a><a href='#L394'>394</a>
+<a name='L395'></a><a href='#L395'>395</a>
+<a name='L396'></a><a href='#L396'>396</a>
+<a name='L397'></a><a href='#L397'>397</a>
+<a name='L398'></a><a href='#L398'>398</a>
+<a name='L399'></a><a href='#L399'>399</a>
+<a name='L400'></a><a href='#L400'>400</a>
+<a name='L401'></a><a href='#L401'>401</a>
+<a name='L402'></a><a href='#L402'>402</a>
+<a name='L403'></a><a href='#L403'>403</a>
+<a name='L404'></a><a href='#L404'>404</a>
+<a name='L405'></a><a href='#L405'>405</a>
+<a name='L406'></a><a href='#L406'>406</a>
+<a name='L407'></a><a href='#L407'>407</a>
+<a name='L408'></a><a href='#L408'>408</a>
+<a name='L409'></a><a href='#L409'>409</a>
+<a name='L410'></a><a href='#L410'>410</a>
+<a name='L411'></a><a href='#L411'>411</a>
+<a name='L412'></a><a href='#L412'>412</a>
+<a name='L413'></a><a href='#L413'>413</a>
+<a name='L414'></a><a href='#L414'>414</a>
+<a name='L415'></a><a href='#L415'>415</a>
+<a name='L416'></a><a href='#L416'>416</a>
+<a name='L417'></a><a href='#L417'>417</a>
+<a name='L418'></a><a href='#L418'>418</a>
+<a name='L419'></a><a href='#L419'>419</a>
+<a name='L420'></a><a href='#L420'>420</a>
+<a name='L421'></a><a href='#L421'>421</a>
+<a name='L422'></a><a href='#L422'>422</a>
+<a name='L423'></a><a href='#L423'>423</a>
+<a name='L424'></a><a href='#L424'>424</a>
+<a name='L425'></a><a href='#L425'>425</a>
+<a name='L426'></a><a href='#L426'>426</a>
+<a name='L427'></a><a href='#L427'>427</a>
+<a name='L428'></a><a href='#L428'>428</a>
+<a name='L429'></a><a href='#L429'>429</a>
+<a name='L430'></a><a href='#L430'>430</a>
+<a name='L431'></a><a href='#L431'>431</a>
+<a name='L432'></a><a href='#L432'>432</a>
+<a name='L433'></a><a href='#L433'>433</a>
+<a name='L434'></a><a href='#L434'>434</a>
+<a name='L435'></a><a href='#L435'>435</a>
+<a name='L436'></a><a href='#L436'>436</a>
+<a name='L437'></a><a href='#L437'>437</a>
+<a name='L438'></a><a href='#L438'>438</a>
+<a name='L439'></a><a href='#L439'>439</a>
+<a name='L440'></a><a href='#L440'>440</a>
+<a name='L441'></a><a href='#L441'>441</a>
+<a name='L442'></a><a href='#L442'>442</a>
+<a name='L443'></a><a href='#L443'>443</a>
+<a name='L444'></a><a href='#L444'>444</a>
+<a name='L445'></a><a href='#L445'>445</a>
+<a name='L446'></a><a href='#L446'>446</a>
+<a name='L447'></a><a href='#L447'>447</a>
+<a name='L448'></a><a href='#L448'>448</a>
+<a name='L449'></a><a href='#L449'>449</a>
+<a name='L450'></a><a href='#L450'>450</a>
+<a name='L451'></a><a href='#L451'>451</a>
+<a name='L452'></a><a href='#L452'>452</a>
+<a name='L453'></a><a href='#L453'>453</a>
+<a name='L454'></a><a href='#L454'>454</a>
+<a name='L455'></a><a href='#L455'>455</a>
+<a name='L456'></a><a href='#L456'>456</a>
+<a name='L457'></a><a href='#L457'>457</a>
+<a name='L458'></a><a href='#L458'>458</a>
+<a name='L459'></a><a href='#L459'>459</a>
+<a name='L460'></a><a href='#L460'>460</a>
+<a name='L461'></a><a href='#L461'>461</a>
+<a name='L462'></a><a href='#L462'>462</a>
+<a name='L463'></a><a href='#L463'>463</a>
+<a name='L464'></a><a href='#L464'>464</a>
+<a name='L465'></a><a href='#L465'>465</a>
+<a name='L466'></a><a href='#L466'>466</a>
+<a name='L467'></a><a href='#L467'>467</a>
+<a name='L468'></a><a href='#L468'>468</a>
+<a name='L469'></a><a href='#L469'>469</a>
+<a name='L470'></a><a href='#L470'>470</a>
+<a name='L471'></a><a href='#L471'>471</a>
+<a name='L472'></a><a href='#L472'>472</a>
+<a name='L473'></a><a href='#L473'>473</a>
+<a name='L474'></a><a href='#L474'>474</a>
+<a name='L475'></a><a href='#L475'>475</a>
+<a name='L476'></a><a href='#L476'>476</a>
+<a name='L477'></a><a href='#L477'>477</a>
+<a name='L478'></a><a href='#L478'>478</a>
+<a name='L479'></a><a href='#L479'>479</a>
+<a name='L480'></a><a href='#L480'>480</a>
+<a name='L481'></a><a href='#L481'>481</a>
+<a name='L482'></a><a href='#L482'>482</a>
+<a name='L483'></a><a href='#L483'>483</a>
+<a name='L484'></a><a href='#L484'>484</a>
+<a name='L485'></a><a href='#L485'>485</a>
+<a name='L486'></a><a href='#L486'>486</a>
+<a name='L487'></a><a href='#L487'>487</a>
+<a name='L488'></a><a href='#L488'>488</a>
+<a name='L489'></a><a href='#L489'>489</a>
+<a name='L490'></a><a href='#L490'>490</a>
+<a name='L491'></a><a href='#L491'>491</a>
+<a name='L492'></a><a href='#L492'>492</a>
+<a name='L493'></a><a href='#L493'>493</a>
+<a name='L494'></a><a href='#L494'>494</a>
+<a name='L495'></a><a href='#L495'>495</a>
+<a name='L496'></a><a href='#L496'>496</a>
+<a name='L497'></a><a href='#L497'>497</a>
+<a name='L498'></a><a href='#L498'>498</a>
+<a name='L499'></a><a href='#L499'>499</a>
+<a name='L500'></a><a href='#L500'>500</a>
+<a name='L501'></a><a href='#L501'>501</a>
+<a name='L502'></a><a href='#L502'>502</a>
+<a name='L503'></a><a href='#L503'>503</a>
+<a name='L504'></a><a href='#L504'>504</a>
+<a name='L505'></a><a href='#L505'>505</a>
+<a name='L506'></a><a href='#L506'>506</a>
+<a name='L507'></a><a href='#L507'>507</a>
+<a name='L508'></a><a href='#L508'>508</a>
+<a name='L509'></a><a href='#L509'>509</a>
+<a name='L510'></a><a href='#L510'>510</a>
+<a name='L511'></a><a href='#L511'>511</a>
+<a name='L512'></a><a href='#L512'>512</a>
+<a name='L513'></a><a href='#L513'>513</a>
+<a name='L514'></a><a href='#L514'>514</a>
+<a name='L515'></a><a href='#L515'>515</a>
+<a name='L516'></a><a href='#L516'>516</a>
+<a name='L517'></a><a href='#L517'>517</a>
+<a name='L518'></a><a href='#L518'>518</a>
+<a name='L519'></a><a href='#L519'>519</a>
+<a name='L520'></a><a href='#L520'>520</a>
+<a name='L521'></a><a href='#L521'>521</a>
+<a name='L522'></a><a href='#L522'>522</a>
+<a name='L523'></a><a href='#L523'>523</a>
+<a name='L524'></a><a href='#L524'>524</a>
+<a name='L525'></a><a href='#L525'>525</a>
+<a name='L526'></a><a href='#L526'>526</a>
+<a name='L527'></a><a href='#L527'>527</a>
+<a name='L528'></a><a href='#L528'>528</a>
+<a name='L529'></a><a href='#L529'>529</a>
+<a name='L530'></a><a href='#L530'>530</a>
+<a name='L531'></a><a href='#L531'>531</a>
+<a name='L532'></a><a href='#L532'>532</a>
+<a name='L533'></a><a href='#L533'>533</a>
+<a name='L534'></a><a href='#L534'>534</a>
+<a name='L535'></a><a href='#L535'>535</a>
+<a name='L536'></a><a href='#L536'>536</a>
+<a name='L537'></a><a href='#L537'>537</a>
+<a name='L538'></a><a href='#L538'>538</a>
+<a name='L539'></a><a href='#L539'>539</a>
+<a name='L540'></a><a href='#L540'>540</a>
+<a name='L541'></a><a href='#L541'>541</a>
+<a name='L542'></a><a href='#L542'>542</a>
+<a name='L543'></a><a href='#L543'>543</a>
+<a name='L544'></a><a href='#L544'>544</a>
+<a name='L545'></a><a href='#L545'>545</a>
+<a name='L546'></a><a href='#L546'>546</a>
+<a name='L547'></a><a href='#L547'>547</a>
+<a name='L548'></a><a href='#L548'>548</a>
+<a name='L549'></a><a href='#L549'>549</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import {
+  CloneWorkflowDefinitionRequest,
+  CreateWorkflowDefinitionRequest,
+  ImportWorkflowDefinitionRequest,
+  IWorkflowDefinitionService,
+  ListWorkflowDefinitionsQuery,
+  ListWorkflowLineagesQuery,
+  NodePromptBindingResponse,
+  NodePromptUpdateResponse,
+  PaginatedWorkflowDefinitionResponse,
+  PaginatedWorkflowLineageResponse,
+  PromoteWorkflowToSystemRequest,
+  PromoteWorkflowToSystemResponse,
+  PublishWorkflowDefinitionRequest,
+  SyncWorkflowDefinitionRequest,
+  UpdateNodePromptRequest,
+  UpdateWorkflowDefinitionRequest,
+  WorkflowDefinitionBundle,
+  WorkflowDefinitionResponse,
+  WorkflowSyncResponse,
+  WorkflowTagSuggestionResponse,
+} from '@arcaai/applications';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Optional, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { ApiProperty } from '@nestjs/swagger';
+import { AsrLanguageCapabilityService, IWorkflowExposureService } from '@arcaai/applications';
+&nbsp;
+/** TASK-864 — the one-time secret payload (declared here: the exposure DTOs carry no class for it). */
+export class WorkflowWebhookSecretResponseDto {
+  @ApiProperty({ description: 'The workflow lineage the secret belongs to.' })
+  slug: string;
+&nbsp;
+  @ApiProperty({ description: 'The raw HMAC secret. Shown exactly once — store it now.' })
+  secret: string;
+&nbsp;
+  @ApiProperty({ description: 'ISO-8601 rotation instant.' })
+  rotatedAt: string;
+&nbsp;
+  @ApiProperty({ description: 'The relative URL external systems POST signed deliveries to.' })
+  hookUrl: string;
+}
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+&nbsp;
+/**
+ * WorkflowDefinitionController — admin CRUD + compile/validate/publish for the
+ * agentic-workflow-platform substrate, mounted at `/admin/workflow-definitions`
+ * (global prefix -&gt; `/api/v1/admin/workflow-definitions`). Mirrors
+ * `WorkflowTestFixtureController` (mapper-in-service, If-Match OCC fold on PATCH).
+ *
+ * Tenancy is service-enforced: the tenant-scope Prisma extension injects `tenantId` from CLS
+ * on every read/write of this model (rule 02), and the service additionally asserts tenant
+ * ownership on id-scoped operations (cross-tenant id -&gt; 404, never 403 — rule 04).
+ *
+ * `POST :id/validate` and `POST :id/publish` are NOT versioned PATCH routes — validate is
+ * idempotent re-computation (not a CAS: it can run any number of times) and publish is
+ * deliberately not a CAS either (`WorkflowDefinitionService.publish`'s doc comment — mirrors
+ * `ConsultationContextSchemaService.publish`), so neither carries `@RequiresIfMatch()`.
+ */
+@ApiBearerAuth()
+@ApiTags('admin-workflow-definitions')
+@ForbidApiKey()
+@RequiredSvcScopes('svc:admin:workflow-definition:manage')
+@Controller('admin/workflow-definitions')
+@CanManage('WorkflowDefinition')
+export class WorkflowDefinitionController {
+  constructor(
+    @Inject(IWorkflowDefinitionService)
+    private readonly workflowDefinitionService: IWorkflowDefinitionService,
+    // TASK-864 — the webhook secret lives on the exposure plane (it authenticates an invoke).
+    @Inject(IWorkflowExposureService)
+    private readonly workflowExposureService: IWorkflowExposureService,
+    // TASK-1004 §4.5 — advisory language warnings for the ASR agent a published graph names.
+    // Optional + trailing: absent, the publish response is exactly what it was.
+    @Optional() private readonly languageCapability?: AsrLanguageCapabilityService,
+  ) {}
+&nbsp;
+  @Post()
+  @ApiOperation({
+    summary: 'Create a new DRAFT workflow definition for the caller tenant',
+    description:
+      'A slug this tenant already uses is rejected 409 `WORKFLOW_SLUG_TAKEN` unless `parentVersionId` names a version of ' +
+      'that slug (prefer `POST :id/draft`, which copies the graph server-side). A graph with no nodes is created with ' +
+      'its `core.trigger` and `core.output` boundary nodes already placed and connected.',
+  })
+  @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'Bad request — invalid input, or the graph fails shape/engine validation.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'maxWorkflowDefinitions quota exceeded, or `WORKFLOW_SLUG_TAKEN` — the slug already has versions and no `parentVersionId` was given.',
+  })
+  async create(@Body() request: CreateWorkflowDefinitionRequest): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.create(request);
+  }
+&nbsp;
+  @Get()
+  @ApiOperation({
+    summary: 'List the caller tenant’s workflow definition versions',
+    description:
+      'Filter to one palette with `paletteKey` (validated — an unknown key is a 400 naming the known palettes). ' +
+      'The inherited `filters` grammar still composes on top: it is `field[op]:value`, `;`-separated ' +
+      '(`paletteKey[equals]:core`), and the two predicates are AND-ed.',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'paletteKey', required: false, type: String, description: 'Filter to one palette, e.g. `core`.' })
+  @ApiResponse({ status: 200, type: PaginatedWorkflowDefinitionResponse })
+  async fetchAll(@Query() query: ListWorkflowDefinitionsQuery): Promise&lt;PaginatedWorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.list(query);
+  }
+&nbsp;
+  // ⚠ DECLARATION ORDER IS LOAD-BEARING: Nest matches routes in declaration order, so this must
+  // stay ABOVE `@Get(':id')` — otherwise `:id` swallows `templates` and the library read becomes
+  // a 404 lookup of a definition literally named "templates".
+  @Get('templates')
+  @ApiOperation({
+    summary: 'List the platform workflow template library a tenant can clone from',
+    description:
+      'The SYSTEM tenant’s live published definitions — one row per slug. Read-only and cross-tenant BY DESIGN, ' +
+      'bounded to exactly the SYSTEM tenant: another customer tenant’s definitions can never appear here. This is ' +
+      'the discovery half of `POST :id/clone`; the two share one predicate, so everything listed here is clonable.',
+  })
+  @ApiResponse({ status: 200, type: [WorkflowDefinitionResponse] })
+  async fetchTemplates(): Promise&lt;WorkflowDefinitionResponse[]&gt; {
+    return this.workflowDefinitionService.listTemplates();
+  }
+&nbsp;
+  // TASK-1036 — tag autocomplete for the management screen's `TagsField`. Static path, so it is
+  // declared BEFORE the `:id` param routes. Inherits the class-level `manage:WorkflowDefinition`
+  // posture and reads ONLY the caller tenant's definitions (SYSTEM rows are never suggested).
+  @Get('tags')
+  @ApiOperation({
+    summary: 'Distinct workflow tags with usage counts (autocomplete)',
+    description:
+      "Distinct tags over the caller tenant's non-deleted workflow definitions, normalised to lower case and counted per " +
+      'workflow (slug), ranked by that count (descending) then alphabetically. `q` is a case-insensitive substring filter; ' +
+      '`limit` defaults to 20 and is capped at 100.',
+  })
+  @ApiQuery({ name: 'q', required: false, type: String, description: 'Case-insensitive substring filter' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max suggestions (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Tag suggestions', type: [WorkflowTagSuggestionResponse] })
+  @ApiResponse({ status: 400, description: 'No tenant context on the request' })
+  @ApiResponse({ status: 403, description: 'Caller lacks manage:WorkflowDefinition' })
+  async listTags(@Query() queryParams: { q?: string; limit?: string }): Promise&lt;WorkflowTagSuggestionResponse[]&gt; {
+    const limit = Number(queryParams.limit);
+    return this.workflowDefinitionService.listTagSuggestions({
+      q: queryParams.q,
+      limit: Number.isFinite(limit) &amp;&amp; limit &gt; 0 ? limit : undefined,
+    });
+  }
+&nbsp;
+  @Post('import')
+  @ApiOperation({
+    summary: 'Import a workflow bundle as a new DRAFT workflow',
+    description:
+      'The mirror of `GET :id/export`. Every reference the bundle makes — prompt templates by name, document templates, ' +
+      'agents and models by slug, routing by task key — is resolved against YOUR tenant’s catalogue. If any cannot be ' +
+      'resolved the whole bundle is refused with a 409 that names them, and nothing is written: a workflow with a missing ' +
+      'binding fails at run time, far from whoever could fix it. The graph is then recompiled and validated here, and lands ' +
+      'as version 1 of a NEW lineage — DRAFT and inactive, because an import has been reviewed by nobody. Consumes the ' +
+      '`maxWorkflowDefinitions` quota exactly as create does.',
+  })
+  @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
+  @ApiResponse({
+    status: 400,
+    description: 'Not a workflow bundle, an unimplemented schemaVersion, an unknown palette, or a graph that fails the shape/engine gate.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Unresolvable references (`WORKFLOW_IMPORT_UNRESOLVED_REFERENCES`), a targetSlug already in use, or the quota.',
+  })
+  async import(@Body() request: ImportWorkflowDefinitionRequest): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.importDefinition(request);
+  }
+&nbsp;
+  // AUTH-NOTE: the class-level `@CanManage('WorkflowDefinition')` UNDERSTATES the real gate here.
+  // Writing into SYSTEM is a PLATFORM-ADMIN privilege — "only the platform admin manages SYSTEM"
+  // (owner #4) — and there is no "super admin" CASL subject to express it with; tenant admins
+  // legitimately hold `manage:WorkflowDefinition` for every other operation on this controller.
+  // The real control is `isSuperAdmin` inside `WorkflowDefinitionService.promoteToSystem`, plus
+  // the elevated tenant-less context the cross-tenant read/write mechanically requires. That is a
+  // PRIVILEGE 403, not the 404-over-403 cross-tenant posture. Never widen this decorator without
+  // reading the service first.
+  @Post('promote-to-system')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Promote a workflow from the Global build tenant into the SYSTEM template library',
+    description:
+      'The platform-admin path of owner decision #4: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), ' +
+      'which is the template every customer tenant refers to and the tenant template for new tenants. The cross-tenant copy ' +
+      'is the existing promotion (`POST admin/agent-promotions`) — prompt templates deep-copied, `evalGate` stripped, a ' +
+      'tenant-owned document-template binding blocking, one WORM audit record — and this route adds the half promotion ' +
+      'deliberately omits: the SYSTEM row is recompiled against SYSTEM’s own catalogue and PUBLISHED. The previously active ' +
+      'SYSTEM version is demoted, never deleted, so the lineage keeps its history. The eval promotion gate runs against the ' +
+      'GLOBAL source and defaults to `warn` on this path (owner #7) — set `agentic.eval.promotionGate` to `block` for a ' +
+      'blocking gate. Requires a platform administrator and an elevated tenant-less context.',
+  })
+  @ApiResponse({ status: 200, type: PromoteWorkflowToSystemResponse })
+  @ApiResponse({ status: 403, description: 'Not a platform administrator, or the context is not elevated and tenant-less.' })
+  @ApiResponse({ status: 404, description: 'The Global build tenant has no such workflow version.' })
+  @ApiResponse({ status: 409, description: 'The eval promotion gate failed and is configured to block (`EVAL_GATE_FAILED`).' })
+  async promoteToSystem(@Body() request: PromoteWorkflowToSystemRequest): Promise&lt;PromoteWorkflowToSystemResponse&gt; {
+    return this.workflowDefinitionService.promoteToSystem(request);
+  }
+&nbsp;
+  // AUTH-NOTE: as above, the class-level decorator UNDERSTATES the gate. A sync writes into
+  // OTHER tenants, and the real control — the actor holds `manage:WorkflowDefinition` in the
+  // source AND in every named target — is enforced imperatively in
+  // `WorkflowDefinitionService.syncToTenants`, before any read. Note the deliberate asymmetry it
+  // implements: the SOURCE failing is a 403 (a privilege the caller claimed), a TARGET failing is
+  // a 404 (so a list of tenant ids can never be used to discover which tenants exist).
+  //
+  // TASK-889: this route does NOT require an elevated tenant-less context, and must not be made
+  // to. That gate belongs to `promote-to-system` — a PLATFORM action into the SYSTEM tier. A
+  // sync is a sequence of ordinary per-tenant steps a customer admin is separately entitled to,
+  // each one run under the tenant it names (`runInTenantContext`), so it is reachable by the
+  // multi-tenant customer admin owner decision #4 describes.
+  @Post('slug/:slug/sync')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Sync one workflow version into other tenants you manage',
+    description:
+      'Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a ' +
+      'DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another ' +
+      'tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: ' +
+      'copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a ' +
+      'reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. ' +
+      'No platform elevation is needed: each step runs under the tenant it acts on, and only after that tenant’s ' +
+      '`manage` check has passed.',
+  })
+  @ApiParam({ name: 'slug', description: 'WorkflowDefinition slug (the lineage key) in the source tenant' })
+  @ApiResponse({ status: 200, type: WorkflowSyncResponse })
+  @ApiResponse({ status: 400, description: 'A target equals the source, or the source graph references rows that no longer resolve.' })
+  @ApiResponse({ status: 403, description: 'No `manage:WorkflowDefinition` on the source tenant.' })
+  @ApiResponse({ status: 404, description: 'A target tenant the caller does not manage, or no such source version.' })
+  @ApiResponse({ status: 409, description: 'A target cannot resolve a reference (`WORKFLOW_SYNC_UNRESOLVED_REFERENCES`).' })
+  async sync(@Param('slug') slug: string, @Body() request: SyncWorkflowDefinitionRequest): Promise&lt;WorkflowSyncResponse&gt; {
+    return this.workflowDefinitionService.syncToTenants(slug, request);
+  }
+&nbsp;
+  // TASK-864 §3.4 — the inbound webhook trigger's secret, issued/rotated per LINEAGE (slug).
+  // Declared above `@Get(':id')` for the same declaration-order reason `templates` is.
+  @Post('slug/:slug/webhook-secret')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Issue or rotate the inbound webhook secret for a workflow lineage (returned exactly once)',
+    description:
+      'Mints the HMAC secret external systems sign `POST /hooks/workflows/{hookId}` deliveries with, and the `hookUrl` they POST to. ' +
+      'The raw secret is returned ONCE; only reversible ciphertext is persisted. Rotating invalidates the previous secret immediately. ' +
+      'The Trigger node must declare the `webhook` kind for deliveries to be accepted.',
+  })
+  @ApiParam({ name: 'slug', description: 'WorkflowDefinition slug (the lineage key)' })
+  @ApiResponse({ status: 200, type: WorkflowWebhookSecretResponseDto })
+  @ApiResponse({ status: 404, description: 'No published version of this slug in the caller`s tenant (or cross-tenant).' })
+  async <span class="fstat-no" title="function not covered" >rotateWebhookSecret(@</span>Param('slug') slug: string): Promise&lt;WorkflowWebhookSecretResponseDto&gt; {
+<span class="cstat-no" title="statement not covered" >    return this.workflowExposureService.rotateWebhookSecret(slug);</span>
+  }
+&nbsp;
+  /**
+   * TASK-965 (OD-965-3) — the REGISTER: one row per SLUG, paginated by slug.
+   *
+   * Declared above `@Get(':id')` for the same declaration-order reason `templates` is.
+   */
+  @Get('lineages')
+  @ApiOperation({
+    summary: 'List the caller tenant’s workflow LINEAGES (one row per slug)',
+    description:
+      'The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the ' +
+      'slug SERVES (tenant default / departments / tag selectors). `GET admin/workflow-definitions` stays the per-VERSION read — grouping ' +
+      'that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `paletteKey` ' +
+      'narrows to one palette and an unknown key is a 400 naming the known ones; the inherited `filters`/`search` grammar narrows the ' +
+      'VERSION rows, so a lineage is listed when any of its live versions match.',
+  })
+  @ApiResponse({ status: 200, type: PaginatedWorkflowLineageResponse })
+  @ApiResponse({ status: 400, description: 'Unknown `paletteKey`, or a malformed `filters` token.' })
+  async fetchLineages(@Query() query: ListWorkflowLineagesQuery): Promise&lt;PaginatedWorkflowLineageResponse&gt; {
+    return this.workflowDefinitionService.listLineages(query);
+  }
+&nbsp;
+  @Get(':id')
+  @ApiOperation({ summary: 'Get one workflow definition version' })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async fetchById(@Param('id') id: string): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.getById(id);
+  }
+&nbsp;
+  @Get(':id/versions')
+  @ApiOperation({ summary: 'List every version row in this definition’s (tenantId, slug) lineage, most recent first' })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: [WorkflowDefinitionResponse] })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async fetchVersions(@Param('id') id: string): Promise&lt;WorkflowDefinitionResponse[]&gt; {
+    return this.workflowDefinitionService.listVersions(id);
+  }
+&nbsp;
+  @Patch(':id')
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update a DRAFT workflow definition version (If-Match OCC)',
+    description:
+      'Sparse patch. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and ' +
+      "CAS'es against the row `_version`; drift → 412, missing header → 428. Rejected 400 if the row is " +
+      'PUBLISHED/DEPRECATED (branch a new draft instead), or if a replaced `graph` fails shape/engine validation.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async update(
+    @Param('id') id: string,
+    @Body() request: UpdateWorkflowDefinitionRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise&lt;WorkflowDefinitionResponse&gt; {
+    const effectiveRequest: UpdateWorkflowDefinitionRequest =
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.workflowDefinitionService.update(id, effectiveRequest);
+  }
+&nbsp;
+  @Delete(':id')
+  @ApiOperation({ summary: 'Soft-delete a workflow definition version (refused for the ACTIVE published version — deprecate it first)' })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  @ApiResponse({
+    status: 409,
+    description: 'The row is the ACTIVE published version of its slug; deleting it would orphan every assignment on the slug.',
+  })
+  async delete(@Param('id') id: string): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.deleteById(id);
+  }
+&nbsp;
+  @Post(':id/clone')
+  @ApiOperation({
+    summary: 'Clone an existing workflow (or a platform template) into a NEW draft workflow',
+    description:
+      'Seeds a NEW `(tenantId, slug)` lineage — `versionNumber` 1, DRAFT, inactive — from the source ' +
+      'definition’s graph. This is NOT `POST /` with a `parentVersionId`: that branches a new version INSIDE the ' +
+      'source’s slug. A `targetSlug` this tenant already uses is rejected 409 rather than silently becoming ' +
+      'version N+1 of that lineage.\n\n' +
+      'Clonable sources are the caller tenant’s own definitions (any status) and the SYSTEM tenant’s live ' +
+      'published templates (`GET /templates`). Any other tenant’s id is a 404, indistinguishable from a miss.\n\n' +
+      'The graph is copied verbatim; `compiledConfig` and its checksums, `publishedAt`, `isActive` and `tags` are ' +
+      'NOT carried over, and the validation report is recomputed for this tenant against the current node ' +
+      'registry. Consumes the `maxWorkflowDefinitions` quota exactly as create does.',
+  })
+  @ApiParam({ name: 'id', description: 'Source WorkflowDefinition id — the caller’s own row, or a SYSTEM template.' })
+  @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
+  @ApiResponse({
+    status: 400,
+    description: 'The source graph fails shape/engine validation, or a SYSTEM template pins prompt/document catalog rows this tenant cannot resolve.',
+  })
+  @ApiResponse({ status: 404, description: 'Source not found (or another tenant’s).' })
+  @ApiResponse({ status: 409, description: 'targetSlug is already in use by this tenant, or the maxWorkflowDefinitions quota is exceeded.' })
+  async clone(@Param('id') id: string, @Body() request: CloneWorkflowDefinitionRequest): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.clone(id, request);
+  }
+&nbsp;
+  @Post(':id/draft')
+  @ApiOperation({
+    summary: 'Edit a published (or deprecated) workflow version as a NEW draft version of the same workflow',
+    description:
+      'Branches the next version of the SAME `(tenantId, slug)` lineage: DRAFT, inactive, `versionNumber` = max + 1, ' +
+      '`parentVersionId` = the source. The graph is copied server-side from the stored source row (the body carries ' +
+      'nothing), the validation report is recomputed with the publish gate, and nothing publish-owned ' +
+      '(`compiledConfig`, checksums, `publishedAt`, `isActive`) is carried over. Consumes the `maxWorkflowDefinitions` ' +
+      'quota exactly as create does.\n\n' +
+      'The source must be PUBLISHED or DEPRECATED. A lineage holds at most one open draft: if a DRAFT or VALIDATED ' +
+      'version of the slug already exists the call is refused 409 `OPEN_DRAFT_EXISTS` with `{ draftId }`, and the caller ' +
+      'should open that draft instead.',
+  })
+  @ApiParam({ name: 'id', description: 'Source WorkflowDefinition id — a PUBLISHED or DEPRECATED version of the caller’s own.' })
+  @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'The source is a DRAFT or VALIDATED row (edit it in place), or its graph fails shape/engine validation.' })
+  @ApiResponse({ status: 404, description: 'Source not found (or another tenant’s).' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`OPEN_DRAFT_EXISTS` — the lineage already has a DRAFT or VALIDATED version (its id is in `draftId`) — or the maxWorkflowDefinitions quota is exceeded.',
+  })
+  async createDraft(@Param('id') id: string): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.createDraft(id);
+  }
+&nbsp;
+  @Get(':id/export')
+  @ApiOperation({
+    summary: 'Export one workflow version as a portable JSON bundle',
+    description:
+      'Owner decision #4 — tenant admins export/import workflows as JSON. The bundle carries VALUES ONLY: the authored ' +
+      'definition, its node configuration, and its catalogue bindings expressed as PORTABLE KEYS (prompt template by name, ' +
+      'document template / agent / model by slug, routing by task key). It carries NO row id (they are meaningless in ' +
+      'another tenant), NO credential, and NO `evalGate` — a `goldenSetId` names a corpus of encrypted PHI, so not even the ' +
+      'pointer leaves the tenant. The derived `compiledConfig` and validation report are not exported either: they are ' +
+      'recomputed on import against the importing tenant’s registry and rule set.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionBundle })
+  @ApiResponse({ status: 400, description: 'The graph references a row that no longer resolves, so the export would silently lose the binding.' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async export(@Param('id') id: string): Promise&lt;WorkflowDefinitionBundle&gt; {
+    return this.workflowDefinitionService.exportDefinition(id);
+  }
+&nbsp;
+  @Post(':id/validate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Re-run shape + engine + DRAFT rule-catalogue validation and persist the report',
+    description:
+      'Advances DRAFT -&gt; VALIDATED when the engine gate (shape + compile()) is clean. DRAFT rule-catalogue ' +
+      'findings (’s not-yet-clinically-reviewed rules) are recorded on the report but never block this.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'Row is PUBLISHED/DEPRECATED.' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async validate(@Param('id') id: string): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.validate(id);
+  }
+&nbsp;
+  @Post(':id/publish')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Compile the graph and publish this version',
+    description:
+      'Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — ' +
+      'the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` ' +
+      '(default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous ' +
+      'active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through ' +
+      'the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. ' +
+      '`smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this ' +
+      "tenant's data to that vendor. Public exposure does NOT restrict provider choice ( R-4 owner " +
+      'ruling, 2026-08-20): the tenant carries that risk.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'Row is PUBLISHED/DEPRECATED, or the graph cannot be compiled.' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async publish(@Param('id') id: string, @Body() request: PublishWorkflowDefinitionRequest): Promise&lt;WorkflowDefinitionResponse&gt; {
+    const published = await this.workflowDefinitionService.publish(id, request ?? {});
+    // TASK-1004 §4.5 — the node names only the agent; the warnings say what its engine serves.
+    if (!this.languageCapability) return published;
+    const warnings = await this.languageCapability.warningsForWorkflow(published.tenantId, published.compiledConfig);
+    return warnings.length &gt; 0 ? { ...published, warnings } : published;
+  }
+&nbsp;
+  @Post(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Make an already-PUBLISHED version the ACTIVE one for its slug (rollback)',
+    description:
+      'Moves the `isActive` pointer the dispatcher resolves and demotes the sibling that held it — the demoted version stays PUBLISHED and ' +
+      'can be activated again. The published bytes are never touched, which is why this is allowed on an immutable row where an edit is not. ' +
+      'Without it, publishing with `activate: false` created a permanently inactive version and the only way back to an older one was to ' +
+      'branch and republish it.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'The row is not PUBLISHED (a DRAFT must be published; a DEPRECATED version must be branched).' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async activate(@Param('id') id: string): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.activate(id);
+  }
+&nbsp;
+  @Post(':id/deprecate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable',
+    description:
+      'The workflow plane had no deprecate lifecycle before this — the status existed and nothing could write it. Deprecating the ACTIVE ' +
+      'version leaves the slug serving NOTHING, so every assignment naming it resolves to nothing until another version is activated: name ' +
+      'that consequence before calling this.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'The row is not PUBLISHED.' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async deprecate(@Param('id') id: string): Promise&lt;WorkflowDefinitionResponse&gt; {
+    return this.workflowDefinitionService.deprecate(id);
+  }
+&nbsp;
+  // ============================================================
+  // DD-11 — prompt binding
+  // ============================================================
+&nbsp;
+  @Get(':id/prompt-bindings')
+  @ApiOperation({
+    summary: 'Which prompt version each node is pinned to, and whether a newer one exists',
+    description:
+      'The "new version available" affordance. Editing a prompt template from the Prompt management screen ' +
+      'creates a new version and deliberately moves NO node’s pin — that is what stops a shared template from ' +
+      'silently changing every workflow that references it. This read is the other half of that guarantee: it ' +
+      'makes "this node is behind" visible so it can be re-pinned deliberately, per node. An UNPINNED node is ' +
+      'not reported as behind — following the template is a legitimate choice.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: NodePromptBindingResponse, isArray: true })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async <span class="fstat-no" title="function not covered" >listPromptBindings(@</span>Param('id') id: string): Promise&lt;NodePromptBindingResponse[]&gt; {
+<span class="cstat-no" title="statement not covered" >    return this.workflowDefinitionService.listPromptBindings(id);</span>
+  }
+&nbsp;
+  @Put(':id/nodes/:nodeId/prompt')
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin',
+    description:
+      'One of DD-11’s TWO update paths, and the only one that moves a pin. When `content` (and `variables`) ' +
+      'differ from the template’s latest version, both writes happen in a single transaction: a new immutable ' +
+      '`PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would ' +
+      'leave either a version nothing points at, or a pin naming a version that was never created. Other nodes ' +
+      'bound to the same template are untouched.\n\n' +
+      'ADOPTING is not authoring: when the submitted content is byte-identical to the template’s latest ' +
+      'version, NOTHING is minted — the pin simply moves to that existing version, and the shared template head ' +
+      'is left alone. Because an out-of-band template edit deliberately moves no pin, adoption is the COMMON ' +
+      'path, and minting a duplicate on each one made the version list unreadable exactly where an admin goes ' +
+      'to read it. Read `promptVersionMinted` on the response to tell the two outcomes apart.\n\n' +
+      'Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a ' +
+      'published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED, and is ' +
+      'checked on BOTH branches: an unchanged body never buys a stale client a silent 200.',
+  })
+  @ApiHeader({ name: 'If-Match', description: 'Strong validator carrying the workflow definition version the client read.', required: true })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiParam({ name: 'nodeId', description: 'Graph node id. Must carry `promptTemplateId`.' })
+  @ApiResponse({ status: 200, type: NodePromptUpdateResponse })
+  @ApiResponse({ status: 400, description: 'Row is PUBLISHED/DEPRECATED, or the node references no prompt template.' })
+  @ApiResponse({ status: 404, description: 'Definition or template not found (or cross-tenant).' })
+  @ApiResponse({ status: 412, description: 'If-Match is stale — the definition changed since the client read it.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required.' })
+  async <span class="fstat-no" title="function not covered" >updateNodePrompt(</span>
+    @Param('id') id: string,
+    @Param('nodeId') nodeId: string,
+    @Body() request: UpdateNodePromptRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise&lt;NodePromptUpdateResponse&gt; {
+    // Header takes precedence over the body when both are present — the house
+    // precedence (`department.controller.ts#update`).
+    const effective = <span class="cstat-no" title="statement not covered" >expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;</span>
+<span class="cstat-no" title="statement not covered" >    return this.workflowDefinitionService.updateNodePrompt(id, nodeId, effective);</span>
+  }
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-11-13T14:26:24.151Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

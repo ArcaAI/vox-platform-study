@@ -1,0 +1,2585 @@
+{
+  "component": "api",
+  "search_root": "/Users/apple/repos/VOX/project-hope/Test_Results",
+  "matches": [
+    "/Users/apple/repos/VOX/project-hope/Test_Results/api"
+  ],
+  "candidates": [
+    {
+      "path": "/Users/apple/repos/VOX/project-hope/Test_Results/api",
+      "artifact_mtime": 1794580034.0779345
+    }
+  ],
+  "ambiguous": false,
+  "selected": "/Users/apple/repos/VOX/project-hope/Test_Results/api",
+  "artifacts": {
+    "coverage_report.txt": {
+      "required": true,
+      "present": true,
+      "path": "/Users/apple/repos/VOX/project-hope/Test_Results/api/coverage_report.txt",
+      "bytes": 44510
+    },
+    "test_results.log": {
+      "required": true,
+      "present": true,
+      "path": "/Users/apple/repos/VOX/project-hope/Test_Results/api/test_results.log",
+      "bytes": 1054
+    },
+    "TEST_SUMMARY.md": {
+      "required": true,
+      "present": true,
+      "path": "/Users/apple/repos/VOX/project-hope/Test_Results/api/TEST_SUMMARY.md",
+      "bytes": 2160
+    },
+    "coverage_html/index.html": {
+      "required": true,
+      "present": true,
+      "path": "/Users/apple/repos/VOX/project-hope/Test_Results/api/coverage_html/index.html",
+      "bytes": 92616
+    },
+    "coverage.xml": {
+      "required": false,
+      "present": false,
+      "path": null,
+      "bytes": 0
+    }
+  },
+  "missing_required": [],
+  "warnings": [
+    "coverage.xml is absent (optional); line-level ranges come from the log only.",
+    "Log was produced on a different checkout/host (`/Users/apple/repos/VOX/project-hope`); regenerate before quoting numbers."
+  ],
+  "errors": [],
+  "coverage_report": {
+    "files": [
+      {
+        "path": "src/modules/consultation/dto/lifecycle-command.request.ts",
+        "statements": 2,
+        "missing": 2,
+        "cover_pct": 0.0
+      },
+      {
+        "path": "src/modules/workflow-run/dto/list-workflow-runs.query.ts",
+        "statements": 2,
+        "missing": 2,
+        "cover_pct": 0.0
+      },
+      {
+        "path": "src/services/graceful-shutdown.service.ts",
+        "statements": 63,
+        "missing": 60,
+        "cover_pct": 5.0
+      },
+      {
+        "path": "src/modules/admin-rate-limit/rate-limit-admin.controller.ts",
+        "statements": 18,
+        "missing": 17,
+        "cover_pct": 6.0
+      },
+      {
+        "path": "src/modules/monitoring/monitoring.controller.ts",
+        "statements": 14,
+        "missing": 13,
+        "cover_pct": 7.0
+      },
+      {
+        "path": "src/modules/throttle/route-catalog.service.ts",
+        "statements": 64,
+        "missing": 59,
+        "cover_pct": 8.0
+      },
+      {
+        "path": "src/modules/workflow-sandbox-run/workflow-sandbox-stream.service.ts",
+        "statements": 47,
+        "missing": 43,
+        "cover_pct": 9.0
+      },
+      {
+        "path": "src/modules/service-account/service-account-token.guard.ts",
+        "statements": 16,
+        "missing": 14,
+        "cover_pct": 12.0
+      },
+      {
+        "path": "src/modules/workflow-invariant-rule/workflow-invariant-rule.controller.ts",
+        "statements": 8,
+        "missing": 7,
+        "cover_pct": 12.0
+      },
+      {
+        "path": "src/modules/consent/consent.controller.ts",
+        "statements": 6,
+        "missing": 5,
+        "cover_pct": 17.0
+      },
+      {
+        "path": "src/modules/document-template/document-template.controller.ts",
+        "statements": 17,
+        "missing": 14,
+        "cover_pct": 18.0
+      },
+      {
+        "path": "src/openapi/operation-security.ts",
+        "statements": 58,
+        "missing": 47,
+        "cover_pct": 19.0
+      },
+      {
+        "path": "src/modules/storage-access-key/storage-access-key.controller.ts",
+        "statements": 5,
+        "missing": 4,
+        "cover_pct": 20.0
+      },
+      {
+        "path": "src/modules/workflow-sandbox-run/workflow-sandbox-run-event.ts",
+        "statements": 4,
+        "missing": 3,
+        "cover_pct": 25.0
+      },
+      {
+        "path": "src/modules/consultation-context-schema/consultation-context-schema.controller.ts",
+        "statements": 18,
+        "missing": 13,
+        "cover_pct": 28.0
+      },
+      {
+        "path": "src/interceptors/maintenance.interceptor.ts",
+        "statements": 7,
+        "missing": 5,
+        "cover_pct": 29.0
+      },
+      {
+        "path": "src/modules/agent-promotion/agent-promote-to-system.controller.ts",
+        "statements": 3,
+        "missing": 2,
+        "cover_pct": 33.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-telemetry.controller.ts",
+        "statements": 3,
+        "missing": 2,
+        "cover_pct": 33.0
+      },
+      {
+        "path": "src/modules/tenant/tenant-reference-set.controller.ts",
+        "statements": 3,
+        "missing": 2,
+        "cover_pct": 33.0
+      },
+      {
+        "path": "src/modules/voice-profile/dto/enrollment-target.response.ts",
+        "statements": 8,
+        "missing": 5,
+        "cover_pct": 38.0
+      },
+      {
+        "path": "src/workers/vault-rotation.worker.module.ts",
+        "statements": 106,
+        "missing": 60,
+        "cover_pct": 43.0
+      },
+      {
+        "path": "src/modules/throttle/throttle.module.ts",
+        "statements": 20,
+        "missing": 10,
+        "cover_pct": 50.0
+      },
+      {
+        "path": "src/decorators/apiPaginated.response.ts",
+        "statements": 2,
+        "missing": 1,
+        "cover_pct": 50.0
+      },
+      {
+        "path": "src/decorators/apiSingle.response.ts",
+        "statements": 2,
+        "missing": 1,
+        "cover_pct": 50.0
+      },
+      {
+        "path": "src/modules/api-key/api-key.controller.ts",
+        "statements": 30,
+        "missing": 14,
+        "cover_pct": 53.0
+      },
+      {
+        "path": "src/modules/rbac/roles.controller.ts",
+        "statements": 37,
+        "missing": 17,
+        "cover_pct": 54.0
+      },
+      {
+        "path": "src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts",
+        "statements": 30,
+        "missing": 12,
+        "cover_pct": 60.0
+      },
+      {
+        "path": "src/modules/inference-engines/inference-engines.controller.ts",
+        "statements": 5,
+        "missing": 2,
+        "cover_pct": 60.0
+      },
+      {
+        "path": "src/modules/department/department.controller.ts",
+        "statements": 20,
+        "missing": 7,
+        "cover_pct": 65.0
+      },
+      {
+        "path": "src/swagger.config.ts",
+        "statements": 9,
+        "missing": 3,
+        "cover_pct": 67.0
+      },
+      {
+        "path": "src/modules/health/health.module.ts",
+        "statements": 3,
+        "missing": 1,
+        "cover_pct": 67.0
+      },
+      {
+        "path": "src/modules/webhook/dto/webhook-extra.dto.ts",
+        "statements": 3,
+        "missing": 1,
+        "cover_pct": 67.0
+      },
+      {
+        "path": "src/modules/tenant/tenant.controller.ts",
+        "statements": 62,
+        "missing": 20,
+        "cover_pct": 68.0
+      },
+      {
+        "path": "src/shared/base-proxy.controller.ts",
+        "statements": 40,
+        "missing": 13,
+        "cover_pct": 68.0
+      },
+      {
+        "path": "src/modules/model-residency/model-residency.controller.ts",
+        "statements": 23,
+        "missing": 7,
+        "cover_pct": 70.0
+      },
+      {
+        "path": "src/modules/workflow-assignment/workflow-assignment.controller.ts",
+        "statements": 7,
+        "missing": 2,
+        "cover_pct": 71.0
+      },
+      {
+        "path": "src/modules/storage/storage.controller.ts",
+        "statements": 64,
+        "missing": 17,
+        "cover_pct": 73.0
+      },
+      {
+        "path": "src/modules/streaming/audio-duration.ts",
+        "statements": 260,
+        "missing": 68,
+        "cover_pct": 74.0
+      },
+      {
+        "path": "src/bootstrap/api-key-surface-audit.ts",
+        "statements": 68,
+        "missing": 18,
+        "cover_pct": 74.0
+      },
+      {
+        "path": "src/modules/agent/__tests__/fake-agent-run-redis.ts",
+        "statements": 61,
+        "missing": 15,
+        "cover_pct": 75.0
+      },
+      {
+        "path": "src/bootstrap/business-plane-apikey-exemptions-audit.ts",
+        "statements": 71,
+        "missing": 17,
+        "cover_pct": 76.0
+      },
+      {
+        "path": "src/modules/ai-provider-connection/ai-provider-connection.controller.ts",
+        "statements": 17,
+        "missing": 4,
+        "cover_pct": 76.0
+      },
+      {
+        "path": "src/bootstrap/admin-route-permission-audit.ts",
+        "statements": 69,
+        "missing": 16,
+        "cover_pct": 77.0
+      },
+      {
+        "path": "src/common/stream-session-tenant-binding.service.ts",
+        "statements": 71,
+        "missing": 16,
+        "cover_pct": 77.0
+      },
+      {
+        "path": "src/modules/consultation/admin-consultation.controller.ts",
+        "statements": 18,
+        "missing": 4,
+        "cover_pct": 78.0
+      },
+      {
+        "path": "src/modules/consultation/harness-internal.controller.ts",
+        "statements": 179,
+        "missing": 36,
+        "cover_pct": 80.0
+      },
+      {
+        "path": "src/modules/workflows/run-stream-delivery.ts",
+        "statements": 30,
+        "missing": 6,
+        "cover_pct": 80.0
+      },
+      {
+        "path": "src/modules/user/controllers/user-departments.controller.ts",
+        "statements": 25,
+        "missing": 5,
+        "cover_pct": 80.0
+      },
+      {
+        "path": "src/modules/billing/rate-card-admin.controller.ts",
+        "statements": 5,
+        "missing": 1,
+        "cover_pct": 80.0
+      },
+      {
+        "path": "src/bootstrap/consent-route-coverage-audit.ts",
+        "statements": 58,
+        "missing": 11,
+        "cover_pct": 81.0
+      },
+      {
+        "path": "src/bootstrap/casl-enforce-reachability-audit.ts",
+        "statements": 47,
+        "missing": 9,
+        "cover_pct": 81.0
+      },
+      {
+        "path": "src/modules/tenant-bucket/tenant-bucket.controller.ts",
+        "statements": 16,
+        "missing": 3,
+        "cover_pct": 81.0
+      },
+      {
+        "path": "src/modules/workflows/run-protocol-delivery.ts",
+        "statements": 352,
+        "missing": 64,
+        "cover_pct": 82.0
+      },
+      {
+        "path": "src/instrumentation.ts",
+        "statements": 17,
+        "missing": 3,
+        "cover_pct": 82.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-access.helper.ts",
+        "statements": 59,
+        "missing": 10,
+        "cover_pct": 83.0
+      },
+      {
+        "path": "src/modules/platform-knobs/platform-knobs.binder.ts",
+        "statements": 46,
+        "missing": 8,
+        "cover_pct": 83.0
+      },
+      {
+        "path": "src/modules/workflow-run/workflow-run.controller.ts",
+        "statements": 23,
+        "missing": 4,
+        "cover_pct": 83.0
+      },
+      {
+        "path": "src/modules/agent-admin/agent-assignment-admin.controller.ts",
+        "statements": 12,
+        "missing": 2,
+        "cover_pct": 83.0
+      },
+      {
+        "path": "src/modules/api-key/dto/api-key-extra.dto.ts",
+        "statements": 6,
+        "missing": 1,
+        "cover_pct": 83.0
+      },
+      {
+        "path": "src/modules/agent/agent-run.events.ts",
+        "statements": 56,
+        "missing": 9,
+        "cover_pct": 84.0
+      },
+      {
+        "path": "src/modules/workflows/run-event-stream-hub.ts",
+        "statements": 234,
+        "missing": 35,
+        "cover_pct": 85.0
+      },
+      {
+        "path": "src/filters/failure-log.ts",
+        "statements": 61,
+        "missing": 9,
+        "cover_pct": 85.0
+      },
+      {
+        "path": "src/modules/agent/agent.controller.ts",
+        "statements": 425,
+        "missing": 58,
+        "cover_pct": 86.0
+      },
+      {
+        "path": "src/bootstrap/api-key-scope-audit.ts",
+        "statements": 90,
+        "missing": 13,
+        "cover_pct": 86.0
+      },
+      {
+        "path": "src/bootstrap/admin-scope-audit.ts",
+        "statements": 71,
+        "missing": 10,
+        "cover_pct": 86.0
+      },
+      {
+        "path": "src/modules/rbac/dto/policy.dto.ts",
+        "statements": 28,
+        "missing": 4,
+        "cover_pct": 86.0
+      },
+      {
+        "path": "src/modules/resource-subscription/resource-subscription.controller.ts",
+        "statements": 14,
+        "missing": 2,
+        "cover_pct": 86.0
+      },
+      {
+        "path": "src/modules/consultation/consultation.controller.ts",
+        "statements": 358,
+        "missing": 46,
+        "cover_pct": 87.0
+      },
+      {
+        "path": "src/bootstrap/service-account-surface-audit.ts",
+        "statements": 254,
+        "missing": 32,
+        "cover_pct": 87.0
+      },
+      {
+        "path": "src/modules/speech/tts-ws.gateway.ts",
+        "statements": 234,
+        "missing": 31,
+        "cover_pct": 87.0
+      },
+      {
+        "path": "src/modules/streaming/text-proxy.guardrail-relay.ts",
+        "statements": 132,
+        "missing": 17,
+        "cover_pct": 87.0
+      },
+      {
+        "path": "src/filters/downstream-error.ts",
+        "statements": 83,
+        "missing": 11,
+        "cover_pct": 87.0
+      },
+      {
+        "path": "src/modules/tenant-idp-config/tenant-idp-config-admin.controller.ts",
+        "statements": 15,
+        "missing": 2,
+        "cover_pct": 87.0
+      },
+      {
+        "path": "src/modules/agent/agent-run.service.ts",
+        "statements": 208,
+        "missing": 25,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/streaming/workflow-ws.gateway.ts",
+        "statements": 115,
+        "missing": 14,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/internal/stt-internal.controller.ts",
+        "statements": 80,
+        "missing": 10,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/agent-admin/agent-admin.controller.ts",
+        "statements": 32,
+        "missing": 4,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/settings-catalog/settings-scope.ts",
+        "statements": 17,
+        "missing": 2,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/throttle/rate-limit-headers.interceptor.ts",
+        "statements": 16,
+        "missing": 2,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/guards/internal-path.ts",
+        "statements": 8,
+        "missing": 1,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/internal/dto/stt-streaming-usage.request.ts",
+        "statements": 8,
+        "missing": 1,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/user/dto/export-users.query.ts",
+        "statements": 8,
+        "missing": 1,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/workflows/consultation-workflow-runs.controller.ts",
+        "statements": 8,
+        "missing": 1,
+        "cover_pct": 88.0
+      },
+      {
+        "path": "src/modules/streaming/transcription-job.controller.ts",
+        "statements": 285,
+        "missing": 32,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/harness-admin/harness-admin.controller.ts",
+        "statements": 96,
+        "missing": 11,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/speech/harness-tts-internal.controller.ts",
+        "statements": 93,
+        "missing": 10,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/workflows/workflow-stream.service.ts",
+        "statements": 81,
+        "missing": 9,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/agent/tts-blob-delivery.ts",
+        "statements": 45,
+        "missing": 5,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/audit-log/audit-log.controller.ts",
+        "statements": 38,
+        "missing": 4,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/workflow-definition/workflow-definition.controller.ts",
+        "statements": 37,
+        "missing": 4,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/voice-profile/voice-profile.controller.ts",
+        "statements": 28,
+        "missing": 3,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/filters/all-exceptions.filter.ts",
+        "statements": 19,
+        "missing": 2,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/user/controllers/user-settings.controller.ts",
+        "statements": 18,
+        "missing": 2,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/service-account/service-account.controller.ts",
+        "statements": 9,
+        "missing": 1,
+        "cover_pct": 89.0
+      },
+      {
+        "path": "src/modules/agent/__tests__/fake-workflow-run-repository.ts",
+        "statements": 48,
+        "missing": 5,
+        "cover_pct": 90.0
+      },
+      {
+        "path": "src/modules/rbac/permission-check.controller.ts",
+        "statements": 50,
+        "missing": 5,
+        "cover_pct": 90.0
+      },
+      {
+        "path": "src/modules/ai-model/ai-model-admin.controller.ts",
+        "statements": 30,
+        "missing": 3,
+        "cover_pct": 90.0
+      },
+      {
+        "path": "src/bootstrap/ws-gateway-owner-audit.ts",
+        "statements": 21,
+        "missing": 2,
+        "cover_pct": 90.0
+      },
+      {
+        "path": "src/modules/webhook/webhook.controller.ts",
+        "statements": 20,
+        "missing": 2,
+        "cover_pct": 90.0
+      },
+      {
+        "path": "src/modules/streaming/stt-ws.gateway.ts",
+        "statements": 622,
+        "missing": 56,
+        "cover_pct": 91.0
+      },
+      {
+        "path": "src/modules/user/user.controller.ts",
+        "statements": 164,
+        "missing": 15,
+        "cover_pct": 91.0
+      },
+      {
+        "path": "src/modules/ai-inference/ai-inference.controller.ts",
+        "statements": 127,
+        "missing": 12,
+        "cover_pct": 91.0
+      },
+      {
+        "path": "src/common/tenant-owned-resource.interceptor.ts",
+        "statements": 100,
+        "missing": 9,
+        "cover_pct": 91.0
+      },
+      {
+        "path": "src/modules/billing/billing-admin.controller.ts",
+        "statements": 11,
+        "missing": 1,
+        "cover_pct": 91.0
+      },
+      {
+        "path": "src/modules/workflows/workflow-run-completion.service.ts",
+        "statements": 128,
+        "missing": 10,
+        "cover_pct": 92.0
+      },
+      {
+        "path": "src/modules/streaming/stt-run-transcript-mirror.ts",
+        "statements": 86,
+        "missing": 7,
+        "cover_pct": 92.0
+      },
+      {
+        "path": "src/filters/error-envelope.ts",
+        "statements": 13,
+        "missing": 1,
+        "cover_pct": 92.0
+      },
+      {
+        "path": "src/modules/settings-catalog/settings-features.controller.ts",
+        "statements": 12,
+        "missing": 1,
+        "cover_pct": 92.0
+      },
+      {
+        "path": "src/modules/throttle/tiered-throttler.guard.ts",
+        "statements": 177,
+        "missing": 13,
+        "cover_pct": 93.0
+      },
+      {
+        "path": "src/bootstrap/occ-coverage-audit.ts",
+        "statements": 121,
+        "missing": 8,
+        "cover_pct": 93.0
+      },
+      {
+        "path": "src/modules/streaming/run-stream-orphan-sweeper.ts",
+        "statements": 56,
+        "missing": 4,
+        "cover_pct": 93.0
+      },
+      {
+        "path": "src/modules/streaming/session-removal-retry.service.ts",
+        "statements": 43,
+        "missing": 3,
+        "cover_pct": 93.0
+      },
+      {
+        "path": "src/app.module.ts",
+        "statements": 15,
+        "missing": 1,
+        "cover_pct": 93.0
+      },
+      {
+        "path": "src/decorators/expectedVersion.decorator.ts",
+        "statements": 15,
+        "missing": 1,
+        "cover_pct": 93.0
+      },
+      {
+        "path": "src/modules/auth/register.controller.ts",
+        "statements": 15,
+        "missing": 1,
+        "cover_pct": 93.0
+      },
+      {
+        "path": "src/modules/streaming/text-proxy.controller.ts",
+        "statements": 464,
+        "missing": 28,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/modules/speech/speech-proxy.controller.ts",
+        "statements": 154,
+        "missing": 10,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/modules/workflows/workflows.controller.ts",
+        "statements": 48,
+        "missing": 3,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/common/tenant-owned-resource-sse.guard.ts",
+        "statements": 35,
+        "missing": 2,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/modules/agentic-admin/agentic-admin.controller.ts",
+        "statements": 17,
+        "missing": 1,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/modules/dna-writing-style/dna-writing-style-admin.controller.ts",
+        "statements": 18,
+        "missing": 1,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/modules/rbac/dto/user-role.dto.ts",
+        "statements": 18,
+        "missing": 1,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/modules/workflows/run-completed-counts.ts",
+        "statements": 18,
+        "missing": 1,
+        "cover_pct": 94.0
+      },
+      {
+        "path": "src/modules/auth/auth.controller.ts",
+        "statements": 374,
+        "missing": 19,
+        "cover_pct": 95.0
+      },
+      {
+        "path": "src/config/env.schema.ts",
+        "statements": 74,
+        "missing": 4,
+        "cover_pct": 95.0
+      },
+      {
+        "path": "src/guards/patient-consent.guard.ts",
+        "statements": 40,
+        "missing": 2,
+        "cover_pct": 95.0
+      },
+      {
+        "path": "src/filters/http-exception-envelope.filter.ts",
+        "statements": 20,
+        "missing": 1,
+        "cover_pct": 95.0
+      },
+      {
+        "path": "src/modules/pstudio/pstudio.controller.ts",
+        "statements": 20,
+        "missing": 1,
+        "cover_pct": 95.0
+      },
+      {
+        "path": "src/modules/rbac/dto/permission-check.dto.ts",
+        "statements": 22,
+        "missing": 1,
+        "cover_pct": 95.0
+      },
+      {
+        "path": "src/modules/ai-model/ai-model-discovery.service.ts",
+        "statements": 119,
+        "missing": 5,
+        "cover_pct": 96.0
+      },
+      {
+        "path": "src/modules/ai-service-admin/mlflow-proxy.client.ts",
+        "statements": 74,
+        "missing": 3,
+        "cover_pct": 96.0
+      },
+      {
+        "path": "src/modules/dna-writing-style/dna-writing-style-job-stream.ts",
+        "statements": 68,
+        "missing": 3,
+        "cover_pct": 96.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-lifecycle-vocabulary.interceptor.ts",
+        "statements": 52,
+        "missing": 2,
+        "cover_pct": 96.0
+      },
+      {
+        "path": "src/vault-prisma.module.ts",
+        "statements": 45,
+        "missing": 2,
+        "cover_pct": 96.0
+      },
+      {
+        "path": "src/shared/tenant-scope.ts",
+        "statements": 24,
+        "missing": 1,
+        "cover_pct": 96.0
+      },
+      {
+        "path": "src/workers/scheduled-rotation.processor.ts",
+        "statements": 26,
+        "missing": 1,
+        "cover_pct": 96.0
+      },
+      {
+        "path": "src/modules/workflows/__tests__/fake-redis-streams.ts",
+        "statements": 146,
+        "missing": 5,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/modules/queue-admin/dto/queue-admin.dto.ts",
+        "statements": 58,
+        "missing": 2,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/decorators/apiEndpoint.decorator.ts",
+        "statements": 38,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/guards/internal-tenant-lock.guard.ts",
+        "statements": 30,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/guards/tenant-lock.guard.ts",
+        "statements": 36,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/modules/auth/auth-sso.controller.ts",
+        "statements": 36,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/modules/auth/stream-ticket.service.ts",
+        "statements": 31,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/modules/health/admin-health-services.controller.ts",
+        "statements": 37,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/modules/settings-catalog/dto/action-confirmations.dto.ts",
+        "statements": 33,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/modules/settings-catalog/dto/feature-availability.dto.ts",
+        "statements": 30,
+        "missing": 1,
+        "cover_pct": 97.0
+      },
+      {
+        "path": "src/interceptors/exception.interceptor.ts",
+        "statements": 118,
+        "missing": 2,
+        "cover_pct": 98.0
+      },
+      {
+        "path": "src/interceptors/etag.interceptor.ts",
+        "statements": 45,
+        "missing": 1,
+        "cover_pct": 98.0
+      },
+      {
+        "path": "src/modules/dna-writing-style/dna-writing-style.controller.ts",
+        "statements": 51,
+        "missing": 1,
+        "cover_pct": 98.0
+      },
+      {
+        "path": "src/modules/internal/internal-service-token.guard.ts",
+        "statements": 47,
+        "missing": 1,
+        "cover_pct": 98.0
+      },
+      {
+        "path": "src/modules/auth/admin-impersonation.controller.ts",
+        "statements": 81,
+        "missing": 1,
+        "cover_pct": 99.0
+      },
+      {
+        "path": "src/bootstrap/genai-content-capture-audit.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/bootstrap/internal-body-limit.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/bootstrap/jwt-secret-placeholder-audit.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/bootstrap/task-773-admin-scope-map.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/bootstrap/third-party-public-routes.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/common/gateway-http-agent.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/common/tenant-owned-resource.decorator.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/common/tenant-owned-resource.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/config/env.descriptors.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/cors.config.ts",
+        "statements": 49,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/cors.headers.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/crash-handlers.ts",
+        "statements": 30,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/database/tenant-context.provider.ts",
+        "statements": 18,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/decorators/api-deprecated.decorator.ts",
+        "statements": 14,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/decorators/noOptimisticConcurrency.decorator.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/decorators/requiresIfMatch.decorator.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/decorators/requiresIfMatch.guard.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/decorators/tenant-lock-exempt.decorator.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/filters/consent.filter.ts",
+        "statements": 19,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/filters/data-not-found.filter.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/filters/global-filters.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/filters/validation-violations.ts",
+        "statements": 13,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/global-prefix.config.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/guards/jwtauth.guard.ts",
+        "statements": 49,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/guards/oidcauth.guard.ts",
+        "statements": 13,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/guards/origin-tenant-binding.guard.ts",
+        "statements": 34,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/instrumentation.flags.ts",
+        "statements": 15,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/interceptors/context.interceptor.ts",
+        "statements": 51,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/interceptors/impersonation-audit.interceptor.ts",
+        "statements": 20,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/interceptors/metrics.interceptor.ts",
+        "statements": 12,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/interceptors/resolve-active-tenant.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/model-publisher/model-publisher-worker.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/admin-rate-limit/dto/rate-limit.dto.ts",
+        "statements": 59,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/admin-rate-limit/rate-limit-admin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/admin-usage/admin-usage.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/admin-usage/admin-usage.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/admin-usage/my-usage.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/agent-admin/agent-admin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/agent-promotion/agent-promotion.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/agent-promotion/agent-promotion.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/agent-trajectory/agent-trajectory.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/agent-trajectory/agent-trajectory.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/agent/agent.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/agentic-admin/agentic-admin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-inference/ai-inference.client.ts",
+        "statements": 31,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-inference/ai-inference.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-inference/dto/analyze-guardrail.request.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-inference/nlp-classify-usage.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-inference/safety-check.controller.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-model/ai-model-catalogue.controller.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-model/ai-model-discovery.controller.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-model/ai-model-jobs.controller.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-model/ai-model-registration.controller.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-model/ai-model.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-provider-connection/ai-provider-connection.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-routing-policy/ai-routing-policy.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-service-admin/ai-service-admin.controller.ts",
+        "statements": 13,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-service-admin/ai-service-admin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-service-admin/ai-service-proxy.client.ts",
+        "statements": 27,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/ai-service-admin/dto/mlflow-search.query.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/api-key/api-key.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/audit-log/audit-log.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/auth.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/decorators/stream-scope.decorator.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/impersonate.dto.ts",
+        "statements": 19,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/login.response.ts",
+        "statements": 13,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/logout.response.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/me.response.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/refresh.response.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/revoke-impersonation.response.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/sso-start.response.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/dto/stream-ticket.response.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/impersonation-events.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/auth/stream-ticket.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/billing/billing.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/billing/my-billing.controller.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/changelog/changelog-admin.controller.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/changelog/changelog.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/changelog/changelog.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consent/consent.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation-context-schema/consultation-context-schema.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation-history/admin-consultation-history.controller.ts",
+        "statements": 12,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation-history/consultation-history.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation-history/consultation-history.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/admin-feedback-rollup.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/consent-internal.controller.ts",
+        "statements": 14,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-attachment.controller.ts",
+        "statements": 19,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-feedback.controller.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-job.controller.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-lifecycle-events.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/consultation-read-internal.controller.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/consultation.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/dto/lifecycle.response.ts",
+        "statements": 31,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/consultation/harness-service-token.guard.ts",
+        "statements": 23,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/department/department.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/dna-writing-style/dna-writing-style-ingest.controller.ts",
+        "statements": 21,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/dna-writing-style/dna-writing-style-memory-admin.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/dna-writing-style/dna-writing-style.dto.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/dna-writing-style/dna-writing-style.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/document-template/document-template.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/entitlements/dto/entitlements-enabled.response.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/entitlements/dto/set-enforcement-enabled.request.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/entitlements/dto/trigger-downgrade.request.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/entitlements/entitlements-admin.controller.ts",
+        "statements": 19,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/entitlements/entitlements.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/entitlements/my-entitlements.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/global-setting/global-setting.controller.ts",
+        "statements": 22,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/global-setting/global-setting.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/governed-prompt/governed-prompt-internal.controller.ts",
+        "statements": 15,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/governed-prompt/governed-prompt.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-availability/guardrail-availability.controller.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-availability/guardrail-availability.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-evaluation-internal/guardrail-evaluation-internal.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-notice/admin-guardrail-evaluation.controller.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-notice/guardrail-notice.controller.ts",
+        "statements": 16,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-policy/guardrail-metrics.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-policy/guardrail-policy.controller.ts",
+        "statements": 20,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-policy/guardrail-policy.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-tenant-policy/guardrail-rule-test.controller.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-tenant-policy/guardrail-tenant-policy.controller.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/guardrail-tenant-policy/guardrail-tenant-policy.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/harness-admin/harness-admin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/harness-admin/harness-ops.client.ts",
+        "statements": 32,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/health/health.controller.ts",
+        "statements": 19,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/inference-engines/inference-engines.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/agent-internal.controller.ts",
+        "statements": 33,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/agent-version-internal.controller.ts",
+        "statements": 23,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/composed-prompt-internal.controller.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/effective-config.controller.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/internal.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/model-registry-credential.util.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/model-registry-internal.controller.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/model-serving-internal.controller.ts",
+        "statements": 12,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/internal/stt-session-transcript-internal.controller.ts",
+        "statements": 12,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/knowledge/knowledge.controller.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/knowledge/knowledge.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/mcp-admin/mcp-admin.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/mcp-admin/mcp-admin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/media/media.controller.ts",
+        "statements": 16,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/media/media.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/model-residency/model-residency.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/monitoring/dto/monitoring.dto.ts",
+        "statements": 14,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/monitoring/monitoring.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/nlp-task-instructions/nlp-task-instructions-admin.controller.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/nlp-task-instructions/nlp-task-instructions.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/notification/notification.controller.ts",
+        "statements": 12,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/notification/notification.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/platform-knobs/platform-knobs.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/platform-metrics/platform-metrics.controller.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/platform-metrics/platform-metrics.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/prompt-inspector/composed-prompt-admin.controller.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/prompt-inspector/prompt-inspector.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/prompt-inspector/prompt-preview.controller.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/prompt-management/dto/prompt-extra.dto.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/prompt-management/prompt-management.controller.ts",
+        "statements": 45,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/prompt-management/prompt-management.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/prompt-management/prompt-template.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/pstudio/pstudio-status.controller.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/pstudio/pstudio-status.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/pstudio/pstudio.html.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/pstudio/pstudio.module.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/queue-admin/dto/scheduler-admin.dto.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/queue-admin/pipes/queue-name.pipe.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/queue-admin/queue-admin.controller.ts",
+        "statements": 21,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/queue-admin/queue-admin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/queue-admin/scheduler-admin.controller.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/rbac/dto/permission-extra.dto.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/rbac/dto/role.dto.ts",
+        "statements": 36,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/rbac/policies.controller.ts",
+        "statements": 18,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/rbac/rbac.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/resource-subscription/resource-subscription.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/security-policy/security-policy.controller.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/security-policy/security-policy.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/service-account/service-account-token.controller.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/service-account/service-account.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/service-release/service-release-admin.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/service-release/service-release-internal.controller.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/service-release/service-release-token.guard.ts",
+        "statements": 22,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/service-release/service-release.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/settings-catalog/dto/registry-setting.dto.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/settings-catalog/dto/setting-catalog.response.ts",
+        "statements": 37,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/settings-catalog/settings-action-confirmations.controller.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/settings-catalog/settings-catalog.controller.ts",
+        "statements": 24,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/settings-catalog/settings-catalog.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/settings-catalog/settings-registry-write.controller.ts",
+        "statements": 25,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/speech/speech.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/speech/tts-provider-classification.ts",
+        "statements": 23,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/speech/tts-tenant-config.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/storage-access-key/storage-access-key.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/storage/dto/storage.dto.ts",
+        "statements": 24,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/storage/object-key.guard.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/storage/storage.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/streaming/__tests__/wav-fixture.ts",
+        "statements": 18,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/streaming/admin-transcription-job.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/streaming/dto/transcription-job.dto.ts",
+        "statements": 31,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/streaming/streaming.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/streaming/system-prompt-deprecation.ts",
+        "statements": 15,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/streaming/text-generation-admin.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/streaming/ws-failure-log.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-allowed-origin/tenant-allowed-origin.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-allowed-origin/tenant-allowed-origin.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-bucket/tenant-bucket.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-checkpoint/tenant-checkpoint.controller.ts",
+        "statements": 29,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-checkpoint/tenant-checkpoint.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-frontend-config/tenant-frontend-config.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-idp-config/tenant-idp-config.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant-storage-config/tenant-storage-config.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant/dto/tenant-usage.response.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant/my-tenant.controller.ts",
+        "statements": 24,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant/tenant-provision.controller.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/tenant/tenant.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/throttle/principal.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/throttle/rate-limit-config.service.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/throttle/window-only-storage.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/controllers/forgot-password.controller.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/controllers/password-reset.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/controllers/user-departments-me.controller.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/controllers/user-preferences.controller.ts",
+        "statements": 5,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/controllers/user-roles.controller.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/dto/bulk-action.request.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/dto/bulk-action.response.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/dto/bulk-delete.response.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/user-export.service.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/user/user.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/voice-profile/audio-upload-type.validator.ts",
+        "statements": 9,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/voice-profile/dto/voice-profile.response.ts",
+        "statements": 16,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/voice-profile/voice-profile.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/webhook/webhook.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-assignment/workflow-assignment.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-definition/workflow-definition.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-invariant-rule/workflow-invariant-rule.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-node/workflow-node.controller.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-node/workflow-node.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-run/dto/workflow-run-detail.response.ts",
+        "statements": 1,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-run/workflow-run.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-sandbox-run/workflow-sandbox-run.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-test-fixture/workflow-test-fixture.controller.ts",
+        "statements": 8,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflow-test-fixture/workflow-test-fixture.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflows/deliver-run.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflows/workflow-hooks.controller.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflows/workflow-run-completion.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflows/workflow-run-event.ts",
+        "statements": 17,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflows/workflow-run-trace.controller.ts",
+        "statements": 23,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/modules/workflows/workflows.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/observability/deprecated-route-metrics.ts",
+        "statements": 10,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/observability/http-response-metrics.ts",
+        "statements": 20,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/observability/metric-naming.ts",
+        "statements": 3,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/observability/metrics.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/observability/prisma-pool-metrics.ts",
+        "statements": 32,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/observability/usage-emission-metric.ts",
+        "statements": 7,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/openapi/api-exclude-metadata.ts",
+        "statements": 6,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/openapi/tags.ts",
+        "statements": 4,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/request-id.ts",
+        "statements": 15,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/scripts/offline-infrastructure.ts",
+        "statements": 11,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/services/graceful-shutdown.module.ts",
+        "statements": 2,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/services/service-release-registration.ts",
+        "statements": 27,
+        "missing": 0,
+        "cover_pct": 100.0
+      },
+      {
+        "path": "src/shared/table-export.ts",
+        "statements": 44,
+        "missing": 0,
+        "cover_pct": 100.0
+      }
+    ],
+    "total": {
+      "path": "TOTAL",
+      "statements": 12407,
+      "missing": 1524,
+      "cover_pct": 88.0
+    },
+    "file_count": 412
+  },
+  "log": {
+    "platform": "darwin",
+    "python": "3.",
+    "rootdir": "/Users/apple/repos/VOX/project-hope",
+    "configfile": "apps/api/vitest.config.ts",
+    "collected": 5347,
+    "deselected": 2,
+    "passed": 5338,
+    "failed": 0,
+    "skipped": 9,
+    "errors": 0,
+    "warnings": 0,
+    "duration_s": 492.86,
+    "coverage_warning": null,
+    "skipped_details": [],
+    "missing_lines": {},
+    "test_paths_inventory": []
+  },
+  "coverage_xml": null,
+  "summary": {
+    "claimed": {
+      "total_tests": "5347",
+      "passed": "5338",
+      "failed": "0",
+      "skipped": "9",
+      "deselected": "2",
+      "overall_coverage": "87.71",
+      "statements": "12407",
+      "covered": "10883"
+    },
+    "module_rows": [],
+    "execution_date": null,
+    "referenced_paths": []
+  },
+  "source": {
+    "repo_root": "/Users/apple/repos/VOX/project-hope",
+    "source_probe": "apps/api/src/modules/consultation/dto/lifecycle-command.request.ts"
+  },
+  "repo_test_inventory": {
+    "root": "/Users/apple/repos/VOX/project-hope/apps/api/tests",
+    "test_files": [],
+    "count": 0
+  },
+  "drift": {
+    "summary_module_count": 0,
+    "repo_test_file_count": 0,
+    "test_files_not_in_summary": [],
+    "summary_count_mismatch": null
+  }
+}
