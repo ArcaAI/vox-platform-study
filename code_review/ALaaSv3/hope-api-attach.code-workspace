@@ -1,0 +1,35 @@
+{
+  // VS Code workspace for debugging HOPE API Gateway without modifying the project-hope repo.
+  // Open with: open /Users/apple/repos/VOX/review/alaaSv3/hope-api-attach.code-workspace
+  // Then Run & Debug (Cmd+Shift+D) -> "Attach: HOPE API (9229)" -> F5.
+  // Requires `pnpm api:dev` running in /Users/apple/repos/VOX/project-hope (inspector 127.0.0.1:9229).
+  "folders": [
+    {
+      "name": "project-hope",
+      "path": "/Users/apple/repos/VOX/project-hope"
+    }
+  ],
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Attach: HOPE API (9229)",
+        "type": "node",
+        "request": "attach",
+        "address": "127.0.0.1",
+        "port": 9229,
+        "localRoot": "${workspaceFolder:project-hope}",
+        "remoteRoot": "${workspaceFolder:project-hope}",
+        "sourceMaps": true,
+        "skipFiles": ["<node_internals>/**"],
+        "restart": false
+      }
+    ]
+  },
+  "settings": {
+    "search.exclude": {
+      "**/dist": true,
+      "**/node_modules": true
+    }
+  }
+}

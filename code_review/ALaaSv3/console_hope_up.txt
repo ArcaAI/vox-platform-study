@@ -1,0 +1,103 @@
+apple@Apples-MacBook-Pro project-hope % docker exec hope-vault vault status
+
+Key             Value
+---             -----
+Seal Type       shamir
+Initialized     true
+Sealed          false
+Total Shares    1
+Threshold       1
+Version         1.21.4
+Build Date      2026-03-04T17:40:05Z
+Storage Type    inmem
+Cluster Name    vault-cluster-96625294
+Cluster ID      448f2728-f675-7541-b1c5-b2482f4560ab
+HA Enabled      false
+apple@Apples-MacBook-Pro project-hope % pnpm infra:dev:up
+
+$ ./scripts/dev-infra.sh up
+Compose env: /Users/apple/repos/VOX/project-hope/infrastructure/docker/.env (5/65 interpolated vars sourced from .env.dev)
+WARN[0000] volume "hope-postgres-data-pg18" already exists but was created for project "hope-infra" (expected "hope-infra-dev"). Use `external: true` to use an existing volume 
+[+] up 13/13
+ ✔ Container hope-redis                Running                                                                                                                                            0.0s
+ ✔ Container hope-temporal-ui          Running                                                                                                                                            0.0s
+ ✔ Container hope-minio                Healthy                                                                                                                                            0.6s
+ ✔ Container hope-reranker             Running                                                                                                                                            0.0s
+ ✔ Container hope-qdrant               Running                                                                                                                                            0.0s
+ ✔ Container hope-vault                Healthy                                                                                                                                            0.5s
+ ✔ Container hope-temporal             Healthy                                                                                                                                            4.7s
+ ✔ Container hope-postgres             Healthy                                                                                                                                            2.1s
+ ✔ Container hope-qdrant-init          Started                                                                                                                                            0.2s
+ ✔ Container hope-vault-init           Started                                                                                                                                            0.3s
+ ✔ Container hope-temporal-admin-tools Exited                                                                                                                                             2.4s
+ ✔ Container hope-minio-setup          Started                                                                                                                                            1.6s
+ ✔ Container hope-temporal-namespace   Exited                                                                                                                                             3.3s
+
+NAME               IMAGE                                                                                                             COMMAND                   SERVICE         CREATED             STATUS                       PORTS
+hope-minio         pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46   "/usr/bin/docker-ent…"    minio           About an hour ago   Up About an hour (healthy)   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+hope-minio-setup   pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46   "/bin/sh -c '\necho '…"   minio-setup     About an hour ago   Up 5 seconds                 9000/tcp
+hope-postgres      timescale/timescaledb-ha:pg18-all                                                                                 "/docker-entrypoint.…"    postgres        3 hours ago         Up 3 hours (healthy)         0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+hope-qdrant        qdrant/qdrant:v1.19.0                                                                                             "./entrypoint.sh"         qdrant          3 hours ago         Up 3 hours                   0.0.0.0:6333-6334->6333-6334/tcp, [::]:6333-6334->6333-6334/tcp
+hope-qdrant-init   python:3.11-slim-trixie                                                                                           "sh -c 'pip install …"    qdrant-init     3 hours ago         Up 7 seconds                 
+hope-redis         redis:8-alpine                                                                                                    "docker-entrypoint.s…"    redis           3 hours ago         Up 3 hours (healthy)         0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+hope-reranker      ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-latest                                                    "text-embeddings-rou…"    hope-reranker   3 hours ago         Up 9 seconds                 0.0.0.0:8870->80/tcp, [::]:8870->80/tcp
+hope-temporal      temporalio/server:1.31.2                                                                                          "/etc/temporal/entry…"    temporal        3 hours ago         Up 3 hours (healthy)         0.0.0.0:7233->7233/tcp, [::]:7233->7233/tcp
+hope-temporal-ui   temporalio/ui:2.53.1                                                                                              "./start-ui-server.sh"    temporal-ui     3 hours ago         Up 3 hours                   0.0.0.0:8233->8080/tcp, [::]:8233->8080/tcp
+hope-vault         hashicorp/vault:1.21.4                                                                                            "docker-entrypoint.s…"    vault           3 hours ago         Up 3 hours (healthy)         0.0.0.0:8200->8200/tcp, [::]:8200->8200/tcp
+hope-vault-init    hashicorp/vault:1.21.4                                                                                            "/vault/init/dev-ini…"    vault-init      About an hour ago   Up 6 seconds                 8200/tcp
+
+Reconciling Vault with .env.dev (AppRole creds + kv-v2 secrets)...
+-> Reading role_id from Vault
+-> Minting raw secret_id (reusable; secret_id_ttl=720h, num_uses=0)
+-> Updating /Users/apple/repos/VOX/project-hope/.env.dev
+
+[OK] .env.dev refreshed
+    VAULT_ROLE_ID            = 5ec152b0-acdb-bd3f-79b3-510b9baddd36
+    VAULT_SECRET_ID          = 7948fdc0...  (raw, reusable ~30 days)
+    VAULT_WRAPPED_SECRET_ID  = (blanked; raw path active)
+
+Next step:  pnpm api:dev
+  - The raw secret_id is reusable across UNLIMITED restarts (incl. watch reloads).
+  - Re-run this script only when you reset Docker volumes or recreate Vault,
+    or once the 30-day secret_id_ttl lapses.
+-> Sourcing /Users/apple/repos/VOX/project-hope/.env.dev
+-> Vault kv-v2 seeding
+     transport   : docker (hope-vault)
+     path        : secret/data/hope/<NAME>
+     instance    : dev (storage=inmem)
+     secrets     : 22 (from the settings registry)
+     mode        : APPLY
+
+  JWT_SECRET_KEY                         update     (len=64)
+  SESSION_SECRET_KEY                     update     (len=64)
+  API_KEY_PEPPER                         update     (len=64)
+  INTERNAL_ACCESS_TOKEN                  unchanged (len=64)
+  GUARDRAIL_WINDOW_CACHE_KEY             unchanged (len=64)
+  GUARDRAIL_SERVICE_TOKEN                update     (len=64)
+  HARNESS_SERVICE_TOKEN                  update     (len=64)
+  HARNESS_INTERNAL_SERVICE_TOKEN         unchanged (len=64)
+  API_GATEWAY_KEY                        update     (len=64)
+  LM_STUDIO_API_TOKEN                    SKIP      (not set in environment)
+  REDIS_PASS                             update     (len=64)
+  MQTT_PASS                              update     (len=64)
+  MINIO_ACCESS_KEY                       update     (len=20)
+  MINIO_SECRET_KEY                       update     (len=40)
+  S3_ACCESS_KEY                          update     (len=20)
+  S3_SECRET_KEY                          update     (len=40)
+  AZURE_STORAGE_CONNECTION_STRING        SKIP      (not set in environment)
+  AZURE_STORAGE_ACCOUNT_KEY              SKIP      (not set in environment)
+  STORAGE_ACCESS_KEY_PEPPER              unchanged (len=64)
+  WEBHOOK_SECRET_PEPPER                  unchanged (len=64)
+  HARNESS_CLAIM_CHECK_ACCESS_KEY         update     (len=20)
+  HARNESS_CLAIM_CHECK_SECRET_KEY         update     (len=40)
+
+[OK] 14 written · 5 already current · 3 not set in environment
+
+NOTE: skipped secrets were left ABSENT, not written as empty strings.
+      Every one is failMode 'closed', so its consumer fails closed on absence —
+      which is the correct, visible signal. Set the variable and re-run.
+
+Temporal UI:  http://localhost:8233   gRPC: localhost:7233
+Vault UI:     http://localhost:8200
+Reranker:     http://localhost:8870
+apple@Apples-MacBook-Pro project-hope % 

@@ -1,0 +1,93 @@
+apple@Apples-MacBook-Pro project-hope % pnpm infra:dev:up  
+$ ./scripts/dev-infra.sh up
+Compose env: /Users/apple/repos/VOX/project-hope/infrastructure/docker/.env (3/65 interpolated vars sourced from .env.dev)
+[+] up 52/52
+[+] up 66/66hicorp/vault:1.21.4                                         Pulled                                                                                                           24.2s
+ ✔ Image hashicorp/vault:1.21.4                                         Pulled                                                                                                           24.2s
+ ✔ Image temporalio/ui:2.53.1                                           Pulled                                                                                                           43.6s
+ ✔ Image python:3.11-slim-trixie                                        Pulled                                                                                                           43.1s
+ ✔ Image ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-latest Pulled                                                                                                           32.8s
+ ✔ Image qdrant/qdrant:v1.19.0                                          Pulled                                                                                                           35.1s
+ ✔ Image temporalio/admin-tools:1.31.2                                  Pulled                                                                                                           31.4s
+ ✔ Image temporalio/server:1.31.2                                       Pulled                                                                                                           30.1s
+ ✔ Image timescale/timescaledb-ha:pg18-all                              Pulled                                                                                                          209.0s
+ ✔ Network hope-network                                                 Created                                                                                                           0.1s
+ ✔ Container hope-reranker                                              Started                                                                                                           2.5s
+ ✔ Container hope-vault                                                 Healthy                                                                                                           8.8s
+ ✔ Container hope-qdrant                                                Started                                                                                                           2.7s
+ ✔ Container hope-postgres                                              Healthy                                                                                                           8.6s
+ ✔ Container hope-redis                                                 Started                                                                                                           2.2s
+ ✔ Container hope-minio                                                 Healthy                                                                                                           7.4s
+ ✔ Container hope-temporal-admin-tools                                  Exited                                                                                                           10.2s
+ ✔ Container hope-qdrant-init                                           Started                                                                                                           1.9s
+ ✔ Container hope-vault-init                                            Started                                                                                                           8.2s
+ ✔ Container hope-minio-setup                                           Started                                                                                                           6.6s
+ ✔ Container hope-temporal                                              Healthy                                                                                                          16.8s
+ ✔ Container hope-temporal-namespace                                    Exited                                                                                                           54.7s
+ ✔ Container hope-temporal-ui                                           Started                                                                                                          54.9s
+
+NAME               IMAGE                                                                                                             COMMAND                  SERVICE         CREATED          STATUS                    PORTS
+hope-minio         pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46   "/usr/bin/docker-ent…"   minio           56 seconds ago   Up 55 seconds (healthy)   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+hope-postgres      timescale/timescaledb-ha:pg18-all                                                                                 "/docker-entrypoint.…"   postgres        56 seconds ago   Up 54 seconds (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+hope-qdrant        qdrant/qdrant:v1.19.0                                                                                             "./entrypoint.sh"        qdrant          56 seconds ago   Up 53 seconds             0.0.0.0:6333-6334->6333-6334/tcp, [::]:6333-6334->6333-6334/tcp
+hope-qdrant-init   python:3.11-slim-trixie                                                                                           "sh -c 'pip install …"   qdrant-init     55 seconds ago   Up 53 seconds             
+hope-redis         redis:8-alpine                                                                                                    "docker-entrypoint.s…"   redis           56 seconds ago   Up 54 seconds (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+hope-reranker      ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-latest                                                    "text-embeddings-rou…"   hope-reranker   56 seconds ago   Up Less than a second     0.0.0.0:8870->80/tcp, [::]:8870->80/tcp
+hope-temporal      temporalio/server:1.31.2                                                                                          "/etc/temporal/entry…"   temporal        55 seconds ago   Up 45 seconds (healthy)   0.0.0.0:7233->7233/tcp, [::]:7233->7233/tcp
+hope-temporal-ui   temporalio/ui:2.53.1                                                                                              "./start-ui-server.sh"   temporal-ui     55 seconds ago   Up Less than a second     0.0.0.0:8233->8080/tcp, [::]:8233->8080/tcp
+hope-vault         hashicorp/vault:1.21.4                                                                                            "docker-entrypoint.s…"   vault           56 seconds ago   Up 53 seconds (healthy)   0.0.0.0:8200->8200/tcp, [::]:8200->8200/tcp
+
+Reconciling Vault with .env.dev (AppRole creds + kv-v2 secrets)...
+-> Reading role_id from Vault
+-> Minting raw secret_id (reusable; secret_id_ttl=720h, num_uses=0)
+-> Updating /Users/apple/repos/VOX/project-hope/.env.dev
+
+[OK] .env.dev refreshed
+    VAULT_ROLE_ID            = 5ec152b0-acdb-bd3f-79b3-510b9baddd36
+    VAULT_SECRET_ID          = ce6d93d9...  (raw, reusable ~30 days)
+    VAULT_WRAPPED_SECRET_ID  = (blanked; raw path active)
+
+Next step:  pnpm api:dev
+  - The raw secret_id is reusable across UNLIMITED restarts (incl. watch reloads).
+  - Re-run this script only when you reset Docker volumes or recreate Vault,
+    or once the 30-day secret_id_ttl lapses.
+-> Sourcing /Users/apple/repos/VOX/project-hope/.env.dev
+-> Vault kv-v2 seeding
+     transport   : docker (hope-vault)
+     path        : secret/data/hope/<NAME>
+     instance    : dev (storage=inmem)
+     secrets     : 22 (from the settings registry)
+     mode        : APPLY
+
+  JWT_SECRET_KEY                         SKIP      (not set in environment)
+  SESSION_SECRET_KEY                     SKIP      (not set in environment)
+  API_KEY_PEPPER                         SKIP      (not set in environment)
+  INTERNAL_ACCESS_TOKEN                  SKIP      (not set in environment)
+  GUARDRAIL_WINDOW_CACHE_KEY             SKIP      (not set in environment)
+  GUARDRAIL_SERVICE_TOKEN                SKIP      (not set in environment)
+  HARNESS_SERVICE_TOKEN                  SKIP      (not set in environment)
+  HARNESS_INTERNAL_SERVICE_TOKEN         SKIP      (not set in environment)
+  API_GATEWAY_KEY                        SKIP      (not set in environment)
+  LM_STUDIO_API_TOKEN                    SKIP      (not set in environment)
+  REDIS_PASS                             SKIP      (not set in environment)
+  MQTT_PASS                              SKIP      (not set in environment)
+  MINIO_ACCESS_KEY                       SKIP      (not set in environment)
+  MINIO_SECRET_KEY                       SKIP      (not set in environment)
+  S3_ACCESS_KEY                          SKIP      (not set in environment)
+  S3_SECRET_KEY                          SKIP      (not set in environment)
+  AZURE_STORAGE_CONNECTION_STRING        SKIP      (not set in environment)
+  AZURE_STORAGE_ACCOUNT_KEY              SKIP      (not set in environment)
+  STORAGE_ACCESS_KEY_PEPPER              SKIP      (not set in environment)
+  WEBHOOK_SECRET_PEPPER                  SKIP      (not set in environment)
+  HARNESS_CLAIM_CHECK_ACCESS_KEY         SKIP      (not set in environment)
+  HARNESS_CLAIM_CHECK_SECRET_KEY         SKIP      (not set in environment)
+
+[OK] 0 written · 0 already current · 22 not set in environment
+
+NOTE: skipped secrets were left ABSENT, not written as empty strings.
+      Every one is failMode 'closed', so its consumer fails closed on absence —
+      which is the correct, visible signal. Set the variable and re-run.
+
+Temporal UI:  http://localhost:8233   gRPC: localhost:7233
+Vault UI:     http://localhost:8200
+Reranker:     http://localhost:8870
