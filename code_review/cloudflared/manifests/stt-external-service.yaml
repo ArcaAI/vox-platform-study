@@ -1,0 +1,41 @@
+# Selector-less Service + manual Endpoints for the off-cluster STT runtime.
+#
+# STT runs in Docker on the GPU lab server 192.168.112.2:8862 (see
+# ../current-setup.md §7). It is NOT a Kubernetes workload, so there is no pod
+# to select. A Service with no `selector` plus a hand-written `Endpoints`
+# object gives Traefik a normal in-cluster backend, keeping all HTTP routing in
+# one place (Option A).
+#
+# Apply BEFORE the hope-stt Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-stt
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+    app.kubernetes.io/component: stt-external
+spec:
+  ports:
+    - name: http
+      port: 8862
+      targetPort: 8862
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: hope-stt
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+    app.kubernetes.io/component: stt-external
+subsets:
+  - addresses:
+      - ip: 192.168.112.2
+        # The STT container is currently "unhealthy" (see current-setup.md §7).
+        # Traffic still routes here; verify app-level health before exposing.
+    ports:
+      - name: http
+        port: 8862
+        protocol: TCP

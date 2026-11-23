@@ -1,0 +1,56 @@
+# Grafana provisioning — namespace project-hope-vox-infra
+#
+# Grafana has NO init container. Its own entrypoint reads this ConfigMap on every
+# start: the volume is mapped with `items` paths so the files land where Grafana
+# expects them (see 09-grafana.yaml):
+#
+#   datasources.yaml -> /etc/grafana/provisioning/datasources/datasources.yaml
+#   dashboards.yaml  -> /etc/grafana/provisioning/dashboards/dashboards.yaml
+#
+# Prometheus (Core-3) + Loki (log phase — see ../LOGGING.md). Jaeger stays
+# dropped: it is not part of the Core-3 deployment.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: project-hope-vox-infra
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: project-hope
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        uid: prometheus
+        isDefault: true
+        editable: false
+        jsonData:
+          httpMethod: POST
+          manageAlerts: true
+          prometheusType: Prometheus
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        uid: loki
+        editable: false
+        jsonData:
+          maxLines: 1000
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: hope
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: false

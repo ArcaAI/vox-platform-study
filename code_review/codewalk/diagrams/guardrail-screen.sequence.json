@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail Bidirectional Screening",
+    "subtitle": "POST /api/guardrail/screen/inbound|outbound — containment envelope + PII/leakage checks",
+    "output": "guardrail-screen.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "nlp", "type": "backend", "label": "NLP Svc", "sublabel": "GLiNER2 Safety" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Tenant Config" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /guardrail/screen/inbound", "variant": "default", "note": "text + kind + wrap + X-Tenant-Id" },
+    { "from": "gateway", "to": "guardrail", "y": 210, "label": "POST /api/guardrail/screen/inbound", "variant": "default", "note": "X-Service-Token + X-Tenant-Id" },
+    { "from": "guardrail", "to": "postgres", "y": 260, "label": "resolve guardrail.safety model", "variant": "default", "note": "AiRoutingPolicy → taxonomy" },
+    { "from": "postgres", "to": "guardrail", "y": 310, "label": "SafetyPolicy (tasks + thresholds)", "variant": "return" },
+    { "from": "guardrail", "to": "nlp", "y": 360, "label": "POST /classify/tokens (multi-task)", "variant": "default", "note": "prompt_safety + adversarial tasks" },
+    { "from": "nlp", "to": "guardrail", "y": 410, "label": "per-task labels + confidences", "variant": "return" },
+    { "from": "guardrail", "to": "gateway", "y": 510, "label": "ScreenResponse", "variant": "return", "note": "decision + reasons + checks + envelope + nonce (wrap_untrusted)" },
+    { "from": "gateway", "to": "client", "y": 560, "label": "200 response", "variant": "return" },
+    { "from": "client", "to": "gateway", "y": 610, "label": "POST /guardrail/screen/outbound", "variant": "default", "note": "response + source_context + nonce" },
+    { "from": "gateway", "to": "guardrail", "y": 660, "label": "POST /api/guardrail/screen/outbound", "variant": "default" },
+    { "from": "guardrail", "to": "nlp", "y": 710, "label": "POST /classify/tokens (outbound)", "variant": "default", "note": "PII-leakage + echo detection" },
+    { "from": "nlp", "to": "guardrail", "y": 760, "label": "PII + echo verdicts", "variant": "return" },
+    { "from": "guardrail", "to": "gateway", "y": 810, "label": "ScreenResponse", "variant": "return", "note": "decision + PII-leakage + echo check" },
+    { "from": "gateway", "to": "client", "y": 860, "label": "200 response", "variant": "return" }
+  ]
+}

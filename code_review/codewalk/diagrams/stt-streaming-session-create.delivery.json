@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "521ef8f0-f344-4205-82ad-062388677165",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-streaming-session-create.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-streaming-session-create.html",
+  "specification": {
+    "sha256": "00b211f2e16775e17dbd2dacb4a996a1d04bd07e7e86a5b4ce9baf3440856e00",
+    "bytes": 3702
+  },
+  "artifact": {
+    "sha256": "f449d7e5361ed6e6fec449d35e983591b5677287cd43a90969c6acc2ec06c456",
+    "bytes": 757335
+  }
+}

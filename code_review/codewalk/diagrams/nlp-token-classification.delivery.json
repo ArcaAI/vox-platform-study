@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "100c5d4c-fa85-4f07-99bb-7e42c90467d7",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-token-classification.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-token-classification.html",
+  "specification": {
+    "sha256": "6c12d60215f713f6121cc29a0524fbaaaf3857ee48e196308aad4daa31ad6460",
+    "bytes": 2641
+  },
+  "artifact": {
+    "sha256": "21efd1f4ff8121c4f4371deb661dd8f7f9f4122e9967779c780b3db9cf851ad8",
+    "bytes": 756584
+  }
+}

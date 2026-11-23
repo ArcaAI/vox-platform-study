@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STT Batch Transcription",
+    "subtitle": "File-based transcription via REST API",
+    "output": "stt-batch-transcribe.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "stt_http", "type": "backend", "label": "STT", "sublabel": "FastAPI" },
+    { "id": "pipeline_rdr", "type": "backend", "label": "PipelineRdr", "sublabel": "PostgreSQL" },
+    { "id": "batch_svc", "type": "backend", "label": "BatchSvc", "sublabel": "Python" },
+    { "id": "model_cache", "type": "backend", "label": "ModelCache", "sublabel": "LRU+TTL" },
+    { "id": "minio", "type": "database", "label": "MinIO", "sublabel": "S3" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /api/v1/transcribe + file", "variant": "default" },
+    { "from": "gateway", "to": "stt_http", "y": 210, "label": "POST /api/v1/transcribe", "variant": "default" },
+    { "from": "stt_http", "to": "pipeline_rdr", "y": 260, "label": "get_pipeline(pipeline_id)", "variant": "default" },
+    { "from": "pipeline_rdr", "to": "stt_http", "y": 310, "label": "PipelineConfig", "variant": "return" },
+    { "from": "stt_http", "to": "batch_svc", "y": 360, "label": "transcribe(job_id, audio, pipeline)", "variant": "default" },
+    { "from": "batch_svc", "to": "model_cache", "y": 410, "label": "get_or_load(ASR/VAD/Diarization)", "variant": "default", "note": "decode_audio: libsndfile/ffmpeg fallback" },
+    { "from": "model_cache", "to": "batch_svc", "y": 460, "label": "LoadedModels", "variant": "return" },
+    { "from": "batch_svc", "to": "minio", "y": 510, "label": "ASR + diarize + postprocess → PUT results", "variant": "emphasis", "note": "Full file: audio, transcript, timestamps" },
+    { "from": "minio", "to": "batch_svc", "y": 560, "label": "object URLs", "variant": "return" },
+    { "from": "batch_svc", "to": "gateway", "y": 610, "label": "POST /internal/transcriptions/batch", "variant": "default" },
+    { "from": "gateway", "to": "client", "y": 660, "label": "200 TranscriptionResponse", "variant": "return" }
+  ]
+}

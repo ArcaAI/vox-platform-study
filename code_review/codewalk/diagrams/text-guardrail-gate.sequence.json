@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Text Guardrail Gates",
+    "subtitle": "Input gate (pre-generation) + Output gate (post-receive) via Guardrail service",
+    "output": "text-guardrail-gate.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "FastAPI" },
+    { "id": "provider", "type": "backend", "label": "Provider", "sublabel": "LLM" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "External" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /generate", "variant": "default", "note": "prompt + tenant_policy + provider_overrides" },
+    { "from": "gateway", "to": "text", "y": 210, "label": "POST /api/v1/generate", "variant": "default" },
+    { "from": "text", "to": "guardrail", "y": 260, "label": "POST /guard/llm (input gate)", "variant": "default", "note": "prompt + system_prompt + tenant_policy" },
+    { "from": "guardrail", "to": "text", "y": 310, "label": "verdict + guardrail_usage", "variant": "return", "note": "allowed/denied + tokens" },
+    { "from": "text", "to": "provider", "y": 360, "label": "provider.generate()", "variant": "default", "note": "denied? → 422/503 fail-closed" },
+    { "from": "provider", "to": "text", "y": 410, "label": "completion", "variant": "return" },
+    { "from": "text", "to": "guardrail", "y": 460, "label": "POST /guard/llm (output gate)", "variant": "default", "note": "completion + source_context" },
+    { "from": "guardrail", "to": "text", "y": 510, "label": "allowed / rejected", "variant": "return", "note": "rejected? → 422/503 fail-closed" },
+    { "from": "text", "to": "client", "y": 560, "label": "GenerateResponse + guardrail_usage", "variant": "return" }
+  ]
+}

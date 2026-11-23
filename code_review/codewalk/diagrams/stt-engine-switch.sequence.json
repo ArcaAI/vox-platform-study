@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STT Engine Switch (Failover)",
+    "subtitle": "Mid-session ASR engine failover",
+    "output": "stt-engine-switch.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "stt_http", "type": "backend", "label": "STT", "sublabel": "FastAPI" },
+    { "id": "session_mgr", "type": "backend", "label": "SessionMgr", "sublabel": "Python" },
+    { "id": "switch_ctrl", "type": "backend", "label": "SwitchCtrl", "sublabel": "EngineSwitch" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "Streams" },
+    { "id": "model_cache", "type": "backend", "label": "ModelCache", "sublabel": "LRU+TTL" }
+  ],
+  "messages": [
+    { "from": "gateway", "to": "stt_http", "y": 160, "label": "POST /sessions/{sid}/switch", "variant": "default", "note": "target=fallback" },
+    { "from": "stt_http", "to": "session_mgr", "y": 210, "label": "request_switch(sid, fallback)", "variant": "default" },
+    { "from": "session_mgr", "to": "switch_ctrl", "y": 260, "label": "get_switch_controller(sid)", "variant": "default" },
+    { "from": "switch_ctrl", "to": "session_mgr", "y": 310, "label": "EngineSwitchController", "variant": "return" },
+    { "from": "session_mgr", "to": "model_cache", "y": 360, "label": "get_or_load(fallback model)", "variant": "default", "note": "Lazy load fallback ASR model" },
+    { "from": "model_cache", "to": "session_mgr", "y": 410, "label": "LoadedModel", "variant": "return" },
+    { "from": "session_mgr", "to": "redis", "y": 460, "label": "XADD control:{sid} SWITCH_TO_FALLBACK", "variant": "default" },
+    { "from": "redis", "to": "session_mgr", "y": 510, "label": "InferenceWorker reads control", "variant": "return" },
+    { "from": "session_mgr", "to": "switch_ctrl", "y": 560, "label": "At utterance boundary: swap ASR callable", "variant": "emphasis", "note": "Seamless: partial window, language, prompt preserved" },
+    { "from": "session_mgr", "to": "redis", "y": 610, "label": "XADD result:{sid} provider_switched", "variant": "default" },
+    { "from": "redis", "to": "gateway", "y": 660, "label": "XREAD result:{sid}", "variant": "default" },
+    { "from": "gateway", "to": "stt_http", "y": 710, "label": "200 SwitchProviderResponse", "variant": "return", "note": "switched=true, active=fallback" }
+  ]
+}

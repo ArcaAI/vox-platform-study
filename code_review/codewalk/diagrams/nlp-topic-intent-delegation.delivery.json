@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ae3ccb55-fa3b-48ea-8428-dfebf9b7068e",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-topic-intent-delegation.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-topic-intent-delegation.html",
+  "specification": {
+    "sha256": "76ae839ea7ad5fdd71bedf6d5a22fe8082e221ea486e341291b10762e50c5d45",
+    "bytes": 2532
+  },
+  "artifact": {
+    "sha256": "da73516198143dee32ceca3a77b397f55b5de84c4354294ce5cf961fb8ddede3",
+    "bytes": 755287
+  }
+}

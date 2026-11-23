@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "NLP Health & Readiness Probes",
+    "subtitle": "K8s probes: /live, /startup, /ready (lazy-model aware)",
+    "output": "nlp-health-readiness.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "kubelet", "type": "external", "label": "Kubelet", "sublabel": "Probes" },
+    { "id": "nlp_http", "type": "backend", "label": "NLP", "sublabel": "FastAPI" },
+    { "id": "cache", "type": "backend", "label": "ModelCache", "sublabel": "snapshot" },
+    { "id": "corrector", "type": "backend", "label": "TextCorrector", "sublabel": "SymSpell" },
+    { "id": "config", "type": "backend", "label": "ConfigClient", "sublabel": "Control Plane" }
+  ],
+  "messages": [
+    { "from": "kubelet", "to": "nlp_http", "y": 160, "label": "GET /health/live", "variant": "default" },
+    { "from": "nlp_http", "to": "kubelet", "y": 210, "label": "200 healthy", "variant": "return" },
+    { "from": "kubelet", "to": "nlp_http", "y": 260, "label": "GET /health/startup", "variant": "default" },
+    { "from": "nlp_http", "to": "kubelet", "y": 310, "label": "200/503", "variant": "return", "note": "checks app.state.service_release_task" },
+    { "from": "kubelet", "to": "nlp_http", "y": 360, "label": "GET /health/ready", "variant": "default" },
+    { "from": "nlp_http", "to": "kubelet", "y": 410, "label": "200 healthy / 503 starting", "variant": "return", "note": "ready if effective_config_client exists" },
+    { "from": "kubelet", "to": "nlp_http", "y": 460, "label": "GET /health", "variant": "default" },
+    { "from": "nlp_http", "to": "cache", "y": 510, "label": "model_cache_snapshot()", "variant": "default" },
+    { "from": "cache", "to": "nlp_http", "y": 560, "label": "loaded_models per component", "variant": "return" },
+    { "from": "nlp_http", "to": "corrector", "y": 610, "label": "get_text_corrector().is_initialized", "variant": "default" },
+    { "from": "corrector", "to": "nlp_http", "y": 660, "label": "lazy status", "variant": "return" },
+    { "from": "nlp_http", "to": "config", "y": 710, "label": "effective_config.diagnostics()", "variant": "default" },
+    { "from": "config", "to": "nlp_http", "y": 760, "label": "config source + timestamps", "variant": "return" },
+    { "from": "nlp_http", "to": "kubelet", "y": 810, "label": "200 detailed health JSON", "variant": "return", "note": "components: lazy (never unhealthy)" }
+  ]
+}

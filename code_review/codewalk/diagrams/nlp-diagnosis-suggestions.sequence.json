@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "NLP Diagnosis Suggestions",
+    "subtitle": "POST /api/v1/diagnosis/suggestions — NER + disease classifier",
+    "output": "nlp-diagnosis-suggestions.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "nlp_http", "type": "backend", "label": "NLP", "sublabel": "FastAPI" },
+    { "id": "cache", "type": "backend", "label": "ModelCache", "sublabel": "MedicalSuggester" },
+    { "id": "service", "type": "backend", "label": "Suggester", "sublabel": "Disease + NER" },
+    { "id": "semaphore", "type": "backend", "label": "Semaphore", "sublabel": "inference_bound" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /diagnosis/suggestions", "variant": "default", "note": "symptoms + disease_model + ner_model + tenant_id" },
+    { "from": "gateway", "to": "nlp_http", "y": 210, "label": "POST /diagnosis/suggestions", "variant": "default" },
+    { "from": "nlp_http", "to": "cache", "y": 260, "label": "validate BOTH model_name + ner_model_name", "variant": "emphasis", "note": "fail-closed: 503 if either missing" },
+    { "from": "cache", "to": "nlp_http", "y": 310, "label": "MedicalSuggester (pinned)", "variant": "return", "note": "dedicated NER instance (not shared)" },
+    { "from": "nlp_http", "to": "semaphore", "y": 360, "label": "acquire inference_bound", "variant": "default" },
+    { "from": "semaphore", "to": "nlp_http", "y": 410, "label": "granted", "variant": "return" },
+    { "from": "nlp_http", "to": "service", "y": 460, "label": "service.suggest(request)", "variant": "default" },
+    { "from": "service", "to": "nlp_http", "y": 510, "label": "DiagnosisSuggestionResponse", "variant": "return", "note": "NER extracts symptoms -> disease classifier" },
+    { "from": "nlp_http", "to": "semaphore", "y": 560, "label": "release inference_bound", "variant": "default" },
+    { "from": "nlp_http", "to": "cache", "y": 610, "label": "unpin(key)", "variant": "default" },
+    { "from": "nlp_http", "to": "gateway", "y": 660, "label": "200 response", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 710, "label": "200 response", "variant": "return" }
+  ]
+}

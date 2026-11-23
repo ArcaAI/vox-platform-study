@@ -1,0 +1,311 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "5"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"grafana","app.kubernetes.io/part-of":"project-hope"},"name":"grafana","namespace":"project-hope-vox-infra"},"spec":{"replicas":1,"revisionHistoryLimit":2,"selector":{"matchLabels":{"app":"grafana"}},"strategy":{"type":"Recreate"},"template":{"metadata":{"labels":{"app":"grafana","app.kubernetes.io/part-of":"project-hope"}},"spec":{"containers":[{"env":[{"name":"GF_SECURITY_ADMIN_USER","valueFrom":{"secretKeyRef":{"key":"GF_SECURITY_ADMIN_USER","name":"grafana-admin"}}},{"name":"GF_SECURITY_ADMIN_PASSWORD","valueFrom":{"secretKeyRef":{"key":"GF_SECURITY_ADMIN_PASSWORD","name":"grafana-admin"}}},{"name":"GF_SERVER_DOMAIN","value":"grafana-vox2.arcaai.com"},{"name":"GF_SERVER_ROOT_URL","value":"https://grafana-vox2.arcaai.com"},{"name":"GF_AUTH_ANONYMOUS_ENABLED","value":"false"},{"name":"GF_USERS_ALLOW_SIGN_UP","value":"false"},{"name":"GF_USERS_VIEWERS_CAN_EDIT","value":"false"},{"name":"GF_SECURITY_COOKIE_SAMESITE","value":"strict"},{"name":"GF_SECURITY_COOKIE_SECURE","value":"false"},{"name":"GF_SECURITY_DISABLE_GRAVATAR","value":"true"},{"name":"GF_ANALYTICS_REPORTING_ENABLED","value":"false"},{"name":"GF_ANALYTICS_CHECK_FOR_UPDATES","value":"false"},{"name":"GF_USERS_DEFAULT_THEME","value":"dark"}],"image":"grafana/grafana:13.1.2","livenessProbe":{"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":30,"periodSeconds":30},"name":"grafana","ports":[{"containerPort":3000,"name":"http"}],"readinessProbe":{"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":15,"periodSeconds":10},"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"256Mi"}},"volumeMounts":[{"mountPath":"/etc/grafana/provisioning","name":"provisioning"},{"mountPath":"/var/lib/grafana/dashboards","name":"dashboards"},{"mountPath":"/var/lib/grafana","name":"data"}]}],"securityContext":{"fsGroup":472},"volumes":[{"configMap":{"items":[{"key":"datasources.yaml","path":"datasources/datasources.yaml"},{"key":"dashboards.yaml","path":"dashboards/dashboards.yaml"}],"name":"grafana-provisioning"},"name":"provisioning"},{"configMap":{"name":"grafana-dashboards"},"name":"dashboards"},{"name":"data","persistentVolumeClaim":{"claimName":"grafana-data"}}]}}}}
+  creationTimestamp: "2026-10-15T10:30:03Z"
+  generation: 5
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: project-hope
+  name: grafana
+  namespace: project-hope-vox-infra
+  resourceVersion: "38623741"
+  uid: 9a9e90f7-5b73-414b-93e5-ea3aad522a54
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: grafana
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-10-16T02:11:20+05:30"
+      creationTimestamp: null
+      labels:
+        app: grafana
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      containers:
+      - env:
+        - name: GF_SECURITY_ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              key: GF_SECURITY_ADMIN_USER
+              name: grafana-admin
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: GF_SECURITY_ADMIN_PASSWORD
+              name: grafana-admin
+        - name: GF_SERVER_DOMAIN
+          value: grafana-vox2.arcaai.com
+        - name: GF_SERVER_ROOT_URL
+          value: https://grafana-vox2.arcaai.com
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "false"
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: "false"
+        - name: GF_USERS_VIEWERS_CAN_EDIT
+          value: "false"
+        - name: GF_SECURITY_COOKIE_SAMESITE
+          value: strict
+        - name: GF_SECURITY_COOKIE_SECURE
+          value: "false"
+        - name: GF_SECURITY_DISABLE_GRAVATAR
+          value: "true"
+        - name: GF_ANALYTICS_REPORTING_ENABLED
+          value: "false"
+        - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+          value: "false"
+        - name: GF_USERS_DEFAULT_THEME
+          value: dark
+        image: grafana/grafana:13.1.2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: grafana
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/grafana/provisioning
+          name: provisioning
+        - mountPath: /var/lib/grafana/dashboards
+          name: dashboards
+        - mountPath: /var/lib/grafana
+          name: data
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 472
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          items:
+          - key: datasources.yaml
+            path: datasources/datasources.yaml
+          - key: dashboards.yaml
+            path: dashboards/dashboards.yaml
+          name: grafana-provisioning
+        name: provisioning
+      - configMap:
+          defaultMode: 420
+          name: grafana-dashboards
+        name: dashboards
+      - name: data
+        persistentVolumeClaim:
+          claimName: grafana-data
+		  
+		  
+		  
+		  
+kubectl patch svc prometheus -p '{"spec": {"type": "NodePort"}}'  -n project-hope-vox-infra
+
+
+--------------------------------------------------------------
+# Harness — deployed in cluster (hope-harness-svc). Included here.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-harness
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: harness-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-harness-svc
+                port:
+                  number: 8866
+--------------------------------------------------------------
+# Gatway-Test — deployed in cluster (gatway-test-svc). Included here.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway-test-ingress
+  namespace: nitik
+  labels:
+    app.kubernetes.io/part-of: gateway-test
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: gateway-test.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gatway-test-svc
+                port:
+                  number: 8868
+--------------------------------------------------------------
+
+kubectl get svc -A | grep 30450
+nitik                       gatway-test-svc                           NodePort       10.96.77.170     <none>        80:30450/TCP                    3d22h				  
+				  
+kubectl get svc <service-name> -n <namespace> -o jsonpath='{.spec.selector}'
+
+
+kubectl get svc gatway-test-svc -n nitik -o jsonpath='{.spec.selector}'
+{"app":"gatway-test"}
+
+------------------------------------------------------------------
+kubectl get deploy gatway-test -n nitik -o yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "12"
+  creationTimestamp: "2026-10-30T09:38:34Z"
+  generation: 16
+  labels:
+    app: gatway-test
+    deployed-by: nitik
+    managed-by: rubix
+  name: gatway-test
+  namespace: nitik
+  resourceVersion: "42751086"
+  uid: 8593264b-e00e-4639-937b-0e6a92e053e4
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 3
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: gatway-test
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: gatway-test
+        deployed-by: nitik
+        managed-by: rubix
+    spec:
+      containers:
+      - env:
+        - name: URL
+          value: http://192.168.112.6:30450
+        - name: PORT
+          value: "8868"
+        - name: NLP_URL
+          value: http://hope-nlp-svc.project-hope-vox.svc.cluster.local:8864
+        - name: STT_URL
+          value: http://192.168.112.2:8862
+        - name: TTS_URL
+          value: http://hope-tts-svc.project-hope-vox.svc.cluster.local:8865
+        - name: NODE_ENV
+          value: production
+        - name: TEXT_URL
+          value: http://hope-text-svc.project-hope-vox.svc.cluster.local:8862
+        - name: REDIS_URL
+          value: redis://:5GX3kEti7iZHt69ZOUnUavkfEjsWGwgfD+GAcBK74Xc=@redis-store-svc.project-hope-vox-infra.svc.cluster.local:6379/0?max_connections=500
+        - name: REDIS_HOST
+          value: redis-store-svc.project-hope-vox-infra.svc.cluster.local
+        - name: REDIS_PASS
+          value: 5GX3kEti7iZHt69ZOUnUavkfEjsWGwgfD+GAcBK74Xc=
+        - name: REDIS_PORT
+          value: "6379"
+        - name: VAULT_ADDR
+          value: http://vault-store-svc.project-hope-vox-infra.svc.cluster.local:8200
+        - name: HARNESS_URL
+          value: http://hope-harness-svc.project-hope-vox.svc.cluster.local:8866
+        - name: DATABASE_URL
+          value: postgresql://postgres:postgres@postgres-pgvector-db-svc.project-hope-vox-infra.svc.cluster.local:5432/hope
+        - name: MINIO_REGION
+          value: us-east-1
+        - name: GUARDRAIL_URL
+          value: http://hope-guardrail-svc.project-hope-vox.svc.cluster.local:8863
+        - name: MINIO_USE_SSL
+          value: "false"
+        - name: PRISMA_PG_MAX
+          value: "250"
+        - name: VAULT_ROLE_ID
+          value: 62ce8e7d-8835-0170-2f2b-c2621ffc7c89
+        - name: ENABLE_SWAGGER
+          value: "true"
+        - name: MINIO_ENDPOINT
+          value: silo-object-store-svc.project-hope-vox-infra.svc.cluster.local:9000
+        - name: VAULT_SECRET_ID
+          value: 7e97891c-4d43-a9db-f6ff-9b906e702719
+        - name: SECRETS_PROVIDER
+          value: vault
+        - name: ADMIN_CONSOLE_URL
+          value: http://192.168.112.6:32540
+        - name: STT_WS_PING_MISSES
+          value: "20"
+        - name: DB_CONNECTION_STRING
+          value: postgresql://postgres:postgres@postgres-pgvector-db-svc.project-hope-vox-infra.svc.cluster.local:5432/hope
+        - name: STT_WS_PING_INTERVAL_MS
+          value: "50000"
+        - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+          value: NO_CONTENT
+        image: 192.168.112.13:5000/hope-v2/api:v6
+        imagePullPolicy: IfNotPresent
+        name: gatway-test
+        ports:
+        - containerPort: 8868
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "1"
+            memory: 2Gi
+          requests:
+            cpu: "1"
+            memory: 2Gi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30

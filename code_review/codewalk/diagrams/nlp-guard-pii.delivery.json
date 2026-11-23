@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d9e28e1a-4547-4d7c-bdef-1dddf24c5845",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-guard-pii.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-guard-pii.html",
+  "specification": {
+    "sha256": "89dae3d4e95f52d1050dbc7e8c138062615c784f6a14ad5970ed045bc2d95fda",
+    "bytes": 2672
+  },
+  "artifact": {
+    "sha256": "924255e8e654dcd7dd5231ce008b8a3cb4415a650e3b612dd5e6b61a45e53e67",
+    "bytes": 756566
+  }
+}

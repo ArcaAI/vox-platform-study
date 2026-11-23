@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "NLP Token Classification (NER)",
+    "subtitle": "POST /api/v1/classify/tokens — medical entity extraction",
+    "output": "nlp-token-classification.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "nlp_http", "type": "backend", "label": "NLP", "sublabel": "FastAPI" },
+    { "id": "cache", "type": "backend", "label": "ModelCache", "sublabel": "TokenClassifier" },
+    { "id": "service", "type": "backend", "label": "Service", "sublabel": "GLiNER2/Transformer" },
+    { "id": "hf_cache", "type": "database", "label": "HF Cache", "sublabel": "weights" },
+    { "id": "semaphore", "type": "backend", "label": "Semaphore", "sublabel": "inference_bound" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /classify/tokens", "variant": "default", "note": "text + model_name + model_path + tenant_id" },
+    { "from": "gateway", "to": "nlp_http", "y": 210, "label": "POST /classify/tokens", "variant": "default" },
+    { "from": "nlp_http", "to": "cache", "y": 260, "label": "pinned_token_classifier(model, path)", "variant": "default" },
+    { "from": "cache", "to": "hf_cache", "y": 310, "label": "load weights (first use)", "variant": "default", "note": "staged path > HF Hub" },
+    { "from": "hf_cache", "to": "cache", "y": 360, "label": "weights loaded", "variant": "return" },
+    { "from": "cache", "to": "nlp_http", "y": 410, "label": "TokenClassifier (pinned)", "variant": "return" },
+    { "from": "nlp_http", "to": "semaphore", "y": 460, "label": "acquire inference_bound", "variant": "default" },
+    { "from": "semaphore", "to": "nlp_http", "y": 510, "label": "granted", "variant": "return" },
+    { "from": "nlp_http", "to": "service", "y": 560, "label": "service.process(request)", "variant": "default" },
+    { "from": "service", "to": "nlp_http", "y": 610, "label": "TokenClassificationResponse", "variant": "return", "note": "entities[] {label, start, end, confidence}" },
+    { "from": "nlp_http", "to": "semaphore", "y": 660, "label": "release inference_bound", "variant": "default" },
+    { "from": "nlp_http", "to": "cache", "y": 710, "label": "unpin(key)", "variant": "default" },
+    { "from": "nlp_http", "to": "gateway", "y": 760, "label": "200 TokenClassificationResponse", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 810, "label": "200 response", "variant": "return" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "98d60ca3-3267-49e4-8935-8e755c4957f5",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/admin-console-impersonation.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/admin-console-impersonation.html",
+  "specification": {
+    "sha256": "c24cf154140b70390b5e5bbec5b4084554596c06968db8149ef34d0b6285eba9",
+    "bytes": 1865
+  },
+  "artifact": {
+    "sha256": "3593e6a7792e07e16164b9e46655ceb1531f02c6d2ca06776cb6c4371aa69acc",
+    "bytes": 749209
+  }
+}

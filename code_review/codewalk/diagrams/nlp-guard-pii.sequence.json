@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "NLP Guardrail PII Extraction",
+    "subtitle": "POST /api/v1/guard/pii — GLiNER2 with micro-batching",
+    "output": "nlp-guard-pii.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "nlp_http", "type": "backend", "label": "NLP", "sublabel": "FastAPI" },
+    { "id": "cache", "type": "backend", "label": "ModelCache", "sublabel": "GLiNER2 Guard" },
+    { "id": "service", "type": "backend", "label": "GLiNER2", "sublabel": "Guard Service" },
+    { "id": "batcher", "type": "backend", "label": "Batcher", "sublabel": "micro-batch" },
+    { "id": "semaphore", "type": "backend", "label": "Semaphore", "sublabel": "inference_bound" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /guard/pii", "variant": "default", "note": "text + labels[] + threshold + tenant_id" },
+    { "from": "gateway", "to": "nlp_http", "y": 210, "label": "POST /guard/pii", "variant": "default" },
+    { "from": "nlp_http", "to": "cache", "y": 260, "label": "pinned_gliner2_guard(model, path)", "variant": "default" },
+    { "from": "cache", "to": "nlp_http", "y": 310, "label": "GLiNER2 Guard (pinned)", "variant": "return", "note": "FAIL CLOSED on missing staged path" },
+    { "from": "nlp_http", "to": "semaphore", "y": 360, "label": "acquire inference_bound", "variant": "default" },
+    { "from": "semaphore", "to": "nlp_http", "y": 410, "label": "granted", "variant": "return" },
+    { "from": "nlp_http", "to": "batcher", "y": 460, "label": "submit(text, group_key=labels+threshold)", "variant": "default" },
+    { "from": "batcher", "to": "service", "y": 510, "label": "batch_extract_entities(batch)", "variant": "default", "note": "grouped by labels+threshold+lane" },
+    { "from": "service", "to": "batcher", "y": 560, "label": "spans[] per text", "variant": "return" },
+    { "from": "batcher", "to": "nlp_http", "y": 610, "label": "spans + per-item inference_ms", "variant": "return" },
+    { "from": "nlp_http", "to": "semaphore", "y": 660, "label": "release inference_bound", "variant": "default" },
+    { "from": "nlp_http", "to": "cache", "y": 710, "label": "unpin(key)", "variant": "default" },
+    { "from": "nlp_http", "to": "gateway", "y": 760, "label": "GuardPiiResponse", "variant": "return", "note": "entities[], model_version, inference_ms, device" },
+    { "from": "gateway", "to": "client", "y": 810, "label": "200 response", "variant": "return" }
+  ]
+}

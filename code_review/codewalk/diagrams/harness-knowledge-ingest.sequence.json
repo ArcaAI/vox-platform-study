@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Harness Knowledge Ingest",
+    "subtitle": "POST /api/v1/internal/knowledge/ingest — chunk + embed + Qdrant upsert",
+    "output": "harness-knowledge-ingest.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "harness", "type": "backend", "label": "Harness", "sublabel": "FastAPI" },
+    { "id": "qdrant", "type": "database", "label": "Qdrant", "sublabel": "Vector DB" },
+    { "id": "embeddings", "type": "backend", "label": "Embeddings", "sublabel": "LM Studio" }
+  ],
+  "messages": [
+    { "from": "gateway", "to": "harness", "y": 160, "label": "/knowledge/ingest", "variant": "default", "note": "X-Service-Token + text + tenant_id" },
+    { "from": "harness", "to": "embeddings", "y": 210, "label": "chunk_text() + embed(chunks)", "variant": "default", "note": "chunk + dense + sparse (BM25)" },
+    { "from": "embeddings", "to": "harness", "y": 260, "label": "dense + sparse vectors", "variant": "return" },
+    { "from": "harness", "to": "qdrant", "y": 310, "label": "upsert_chunks(dense+sparse)", "variant": "default", "note": "resolve creds + stable uuid5 per chunk" },
+    { "from": "qdrant", "to": "harness", "y": 360, "label": "OK", "variant": "return" },
+    { "from": "harness", "to": "gateway", "y": 410, "label": "{chunkCount, chunks[]}", "variant": "return" }
+  ]
+}

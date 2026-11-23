@@ -1,0 +1,142 @@
+# Grafana — namespace project-hope-vox-infra
+#
+# Image grafana/grafana:13.1.2 (the "fresh" version requested). Config is
+# entirely mounted: provisioning (06) + dashboards (07). Grafana's own entrypoint
+# applies provisioning on every start, so upgrading the image is a one-line
+# `image:` change — see the README ("Deploying fresh images").
+#
+# Prerequisite: Secret `grafana-admin` (created out-of-band, NOT committed — see
+# grafana-secret.yaml.example).
+#
+# Data lives on PVC `grafana-data`, owned to 472:0 by 08-grafana-permissions.yaml.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: project-hope-vox-infra
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  # Single-writer store (grafana.db) on a ReadWriteOnce PVC: never allow a new
+  # pod to start before the old one exits.
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      # uid 472 = the Grafana image's default user; fsGroup is a best-effort
+      # complement to the permissions Job. See README "NFS permissions".
+      securityContext:
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:13.1.2
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: GF_SECURITY_ADMIN_USER
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: GF_SECURITY_ADMIN_PASSWORD
+            - name: GF_SERVER_DOMAIN
+              value: grafana-vox2.arcaai.com
+            - name: GF_SERVER_ROOT_URL
+              value: https://grafana-vox2.arcaai.com
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_USERS_VIEWERS_CAN_EDIT
+              value: "false"
+            - name: GF_SECURITY_COOKIE_SAMESITE
+              value: "strict"
+            # TLS terminates at the Cloudflare edge, so the browser sees HTTPS
+            # and a Secure cookie is returned. Set "false" if you reach Grafana
+            # directly over plain HTTP (port-forward / ClusterIP) and login fails.
+            - name: GF_SECURITY_COOKIE_SECURE
+              value: "false"
+            # No outbound calls from a healthcare console.
+            - name: GF_SECURITY_DISABLE_GRAVATAR
+              value: "true"
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+            - name: GF_USERS_DEFAULT_THEME
+              value: dark
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            # Whole provisioning tree from one ConfigMap, mapped via items paths
+            # (datasources/… and dashboards/… under /etc/grafana/provisioning).
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+            - name: data
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: provisioning
+          configMap:
+            name: grafana-provisioning
+            items:
+              - key: datasources.yaml
+                path: datasources/datasources.yaml
+              - key: dashboards.yaml
+                path: dashboards/dashboards.yaml
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: project-hope-vox-infra
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: project-hope
+spec:
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

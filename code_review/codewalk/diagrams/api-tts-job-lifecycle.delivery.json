@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "29d7cd0c-c819-41eb-9d4b-41c28043af88",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-tts-job-lifecycle.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-tts-job-lifecycle.html",
+  "specification": {
+    "sha256": "cbcc715d825ff6a50befd238e3b995ec1a499960151c5b2fffd185701358f678",
+    "bytes": 2650
+  },
+  "artifact": {
+    "sha256": "704cad1c6da7dcf23deba640bd5f1836f4c3b3cb9e5ef3287ee66ec5f8d86796",
+    "bytes": 755808
+  }
+}

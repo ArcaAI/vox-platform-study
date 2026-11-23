@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-knowledge-ingest.sequence.json",
+    "sha256": "33ac42a3b519f6be5e4f029bf0815bb60a546fcfd5821c0a539ec0faa61a440a",
+    "bytes": 1475
+  },
+  "artifact": {
+    "path": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-knowledge-ingest.html",
+    "sha256": "ca2f39073f131b8c328dfe3e6e1ffb213bde4479eeaaf0251ee0898240c3ce51",
+    "bytes": 748032
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-knowledge-ingest.finalize.json",
+    "summaryReceipt": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-knowledge-ingest.finalize-summary.json",
+    "browserCheckReceipt": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-knowledge-ingest.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-07T00:56:58.745Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2238,
+  "layoutReviewRecommendation": {
+    "action": "inspect-sequence-width",
+    "evidence": {
+      "measured": true,
+      "columnFit": "fixed",
+      "participantCount": 4,
+      "occupiedRight": 429,
+      "viewBoxLeft": 0,
+      "canvasWidth": 920,
+      "emptyRightPx": 491,
+      "emptyRightRatio": 0.534,
+      "typicalParticipantWidth": 86,
+      "reviewSuggested": true
+    },
+    "reason": "Fixed participant columns leave substantial unused space on the right, after accounting for message labels and notes. This is a layout suggestion, not a failed gate.",
+    "repair": "For a newly authored Sequence with omitted meta.column_fit and no user-fixed column geometry, set meta.column_fit to \"spread\" and rerun finalize once. Preserve participant order, every message, its y position, labels, notes and sources. Retain explicit fixed layouts and legacy inputs; report the suggestion instead of changing them automatically."
+  }
+}

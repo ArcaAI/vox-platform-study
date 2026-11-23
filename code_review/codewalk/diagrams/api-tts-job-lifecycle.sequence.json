@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Gateway - STT Batch Job Lifecycle",
+    "subtitle": "Internal STT job callbacks: start/progress/complete/fail",
+    "output": "api-tts-job-lifecycle.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "stt_worker", "type": "frontend", "label": "STT Worker", "sublabel": "Python" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "auth", "type": "backend", "label": "Auth", "sublabel": "stt:worker scope" },
+    { "id": "job_svc", "type": "backend", "label": "JobService", "sublabel": "TranscriptionJob" },
+    { "id": "db", "type": "database", "label": "PostgreSQL", "sublabel": "Prisma" }
+  ],
+  "messages": [
+    { "from": "stt_worker", "to": "gateway", "y": 160, "label": "PATCH /internal/stt/jobs/start", "variant": "default", "note": "X-Internal-Service-Key" },
+    { "from": "gateway", "to": "auth", "y": 210, "label": "UnifiedAuthGuard", "variant": "default", "note": "@RequiredScopes(internal:stt:worker)" },
+    { "from": "auth", "to": "gateway", "y": 260, "label": "OK + tenantId from header", "variant": "return" },
+    { "from": "gateway", "to": "job_svc", "y": 310, "label": "assertPlatformInternalCredential", "variant": "emphasis", "note": "const-time X-Internal-Service-Key" },
+    { "from": "gateway", "to": "job_svc", "y": 360, "label": "startJob(id, dto)\nCLAIM: QUEUED→PROCESSING", "variant": "default" },
+    { "from": "job_svc", "to": "db", "y": 410, "label": "UPDATE job SET status=PROCESSING", "variant": "default" },
+    { "from": "db", "to": "job_svc", "y": 460, "label": "OK", "variant": "return" },
+    { "from": "job_svc", "to": "gateway", "y": 510, "label": "job", "variant": "return" },
+    { "from": "gateway", "to": "stt_worker", "y": 560, "label": "200 job", "variant": "return" },
+    { "from": "stt_worker", "to": "gateway", "y": 610, "label": "PATCH /.../progress (repeat)", "variant": "default" },
+    { "from": "stt_worker", "to": "gateway", "y": 660, "label": "PATCH /.../complete", "variant": "default" },
+    { "from": "gateway", "to": "job_svc", "y": 710, "label": "completeJob(id, dto)\nContextItem + Media", "variant": "default" },
+    { "from": "job_svc", "to": "db", "y": 760, "label": "CREATE ContextItem + Media\nUPDATE job=COMPLETED", "variant": "default" },
+    { "from": "db", "to": "job_svc", "y": 810, "label": "OK", "variant": "return" },
+    { "from": "job_svc", "to": "gateway", "y": 860, "label": "job", "variant": "return" },
+    { "from": "gateway", "to": "stt_worker", "y": 910, "label": "200 job", "variant": "return" }
+  ]
+}

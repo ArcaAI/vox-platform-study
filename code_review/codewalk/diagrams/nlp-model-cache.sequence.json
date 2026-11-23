@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "NLP Model Cache (Pin-While-Active + TTL Sweep)",
+    "subtitle": "Lazy load, idle-TTL eviction, pin during request, periodic sweep",
+    "output": "nlp-model-cache.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "request", "type": "frontend", "label": "Request", "sublabel": "HTTP/WS" },
+    { "id": "cache", "type": "backend", "label": "ModelCache", "sublabel": "Token/Text/Guard/..." },
+    { "id": "factory", "type": "backend", "label": "Factory", "sublabel": "create_*_classifier" },
+    { "id": "hf_cache", "type": "database", "label": "HF Cache", "sublabel": "weights" },
+    { "id": "sweep", "type": "backend", "label": "Sweep Task", "sublabel": "periodic" }
+  ],
+  "messages": [
+    { "from": "request", "to": "cache", "y": 160, "label": "pin(key) — ModelCache.pin()", "variant": "default" },
+    { "from": "cache", "to": "factory", "y": 210, "label": "cache miss → factory(key)", "variant": "default", "note": "hit: return pinned service" },
+    { "from": "factory", "to": "hf_cache", "y": 260, "label": "load weights (staged path / HF Hub)", "variant": "default" },
+    { "from": "hf_cache", "to": "factory", "y": 310, "label": "weights loaded", "variant": "return" },
+    { "from": "factory", "to": "cache", "y": 360, "label": "initialized service", "variant": "return" },
+    { "from": "cache", "to": "request", "y": 410, "label": "service (pinned)", "variant": "return" },
+    { "from": "request", "to": "cache", "y": 460, "label": "unpin(key) — after request", "variant": "default" },
+    { "from": "sweep", "to": "cache", "y": 510, "label": "periodic sweep()", "variant": "default" },
+    { "from": "cache", "to": "sweep", "y": 560, "label": "evict idle-expired (TTL)", "variant": "emphasis", "note": "returns count evicted" }
+  ]
+}

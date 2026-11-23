@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail Content Analysis",
+    "subtitle": "POST /api/guardrail/analyze — delegation to NLP service",
+    "output": "guardrail-analyze.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "nlp", "type": "backend", "label": "NLP Svc", "sublabel": "FastAPI" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Tenant Config" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /guardrail/analyze", "variant": "default", "note": "text + guardrail_type + X-Tenant-Id" },
+    { "from": "gateway", "to": "guardrail", "y": 210, "label": "POST /api/guardrail/analyze", "variant": "default", "note": "X-Service-Token + X-Tenant-Id" },
+    { "from": "guardrail", "to": "postgres", "y": 260, "label": "TenantConfigResolver.resolve()", "variant": "default", "note": "AiRoutingPolicy → AiModel (guardrail.safety, guardrail.pii)" },
+    { "from": "postgres", "to": "guardrail", "y": 310, "label": "model_id + source_uri + taxonomy", "variant": "return" },
+    { "from": "guardrail", "to": "nlp", "y": 360, "label": "POST /classify/tokens", "variant": "default", "note": "tasks: prompt_safety, pii_detection + labels + threshold" },
+    { "from": "nlp", "to": "guardrail", "y": 410, "label": "per-task labels + confidences", "variant": "return" },
+    { "from": "guardrail", "to": "nlp", "y": 460, "label": "POST /classify/tokens (PII)", "variant": "default", "note": "if comprehensive/pii_detection" },
+    { "from": "nlp", "to": "guardrail", "y": 510, "label": "PII entities", "variant": "return" },
+    { "from": "guardrail", "to": "gateway", "y": 560, "label": "GuardrailResponse", "variant": "return", "note": "safe/issues/confidence + usage_detail" },
+    { "from": "gateway", "to": "client", "y": 610, "label": "200 response", "variant": "return" }
+  ]
+}

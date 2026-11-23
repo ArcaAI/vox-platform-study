@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "TTS Router Failover Chain",
+    "subtitle": "Before-first-byte failover across provider candidates",
+    "output": "tts-routing-failover.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "router", "type": "backend", "label": "TTSRouter", "sublabel": "Python" },
+    { "id": "breaker", "type": "backend", "label": "Breaker", "sublabel": "per-provider" },
+    { "id": "engine1", "type": "backend", "label": "Engine 1", "sublabel": "Primary" },
+    { "id": "engine2", "type": "backend", "label": "Engine 2", "sublabel": "Fallback" },
+    { "id": "metrics", "type": "backend", "label": "Prometheus", "sublabel": "Metrics" }
+  ],
+  "messages": [
+    { "from": "router", "to": "engine1", "y": 160, "label": "candidates() - filter by breaker", "variant": "emphasis", "note": "skip if breaker.is_open()" },
+    { "from": "router", "to": "engine1", "y": 210, "label": "_engine_for(candidate1)", "variant": "default", "note": "build/cache spec engine" },
+    { "from": "engine1", "to": "router", "y": 260, "label": "Engine instance", "variant": "return" },
+    { "from": "router", "to": "engine1", "y": 310, "label": "synthesize(req)", "variant": "default" },
+    { "from": "engine1", "to": "router", "y": 360, "label": "first AudioChunk", "variant": "return", "note": "Success: stamp provider/conn/device" },
+    { "from": "router", "to": "metrics", "y": 410, "label": "TTFA, RTF, REQUESTS ok", "variant": "default" },
+    { "from": "router", "to": "engine1", "y": 460, "label": "FAIL before first byte", "variant": "default" },
+    { "from": "engine1", "to": "router", "y": 510, "label": "Exception", "variant": "return" },
+    { "from": "router", "to": "breaker", "y": 560, "label": "record_failure()", "variant": "default" },
+    { "from": "router", "to": "metrics", "y": 610, "label": "PROVIDER_ERRORS + FAILOVER", "variant": "default" },
+    { "from": "router", "to": "engine2", "y": 660, "label": "_engine_for(candidate2)", "variant": "default", "note": "build/cache spec engine" },
+    { "from": "engine2", "to": "router", "y": 710, "label": "Engine instance", "variant": "return" },
+    { "from": "router", "to": "engine2", "y": 760, "label": "synthesize(req)", "variant": "default" },
+    { "from": "engine2", "to": "router", "y": 810, "label": "first AudioChunk", "variant": "return", "note": "Winner = engine2" },
+    { "from": "router", "to": "metrics", "y": 860, "label": "TTFA, RTF, REQUESTS ok", "variant": "default" },
+    { "from": "router", "to": "metrics", "y": 910, "label": "FAILOVER engine1 to engine2", "variant": "default" }
+  ]
+}

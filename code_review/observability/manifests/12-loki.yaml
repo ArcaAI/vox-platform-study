@@ -1,0 +1,119 @@
+# Loki — namespace project-hope-vox-infra
+#
+# Single-binary Loki, replicas 1, filesystem storage on a PVC (nfs-client).
+# Image grafana/loki:3.7.8 (fresh; the old raw stack used the long-EOL 2.9.2).
+# Config comes from ConfigMap `loki-config` (11-loki-config.yaml) — bumping the
+# image tag later is a one-line change, see README "Deploying fresh images".
+#
+# Permissions: Loki runs as uid 10001. `nfs-client` often ignores the pod's
+# fsGroup, so an initContainer chowns the volume first — the same belt-and-braces
+# fix the Grafana Job (08) applies, but as an initContainer because the PVC is
+# created by this StatefulSet (a standalone Job cannot reference it reliably).
+# If the export root-squashes root (so even this chown fails), use the
+# `runAsUser: 0` fallback documented in README §8.
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: loki
+  namespace: project-hope-vox-infra
+  labels:
+    app: loki
+    app.kubernetes.io/part-of: project-hope
+spec:
+  serviceName: loki
+  replicas: 1
+  # Keep the log store when the StatefulSet is deleted — same policy as the
+  # Prometheus/Alertmanager StatefulSets in 03/05.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      securityContext:
+        fsGroup: 10001
+      initContainers:
+        - name: loki-permissions-fix
+          image: busybox:1.36.1
+          command: ["sh", "-c", "chown -R 10001:10001 /loki && chmod -R u+rwX /loki"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: data
+              mountPath: /loki
+      containers:
+        - name: loki
+          image: grafana/loki:3.7.8
+          args:
+            - -config.file=/etc/loki/loki.yml
+          ports:
+            - name: http
+              containerPort: 3100
+            - name: grpc
+              containerPort: 9096
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki
+            - name: data
+              mountPath: /loki
+      volumes:
+        - name: config
+          configMap:
+            name: loki-config
+            items:
+              - key: loki.yml
+                path: loki.yml
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-client
+        resources:
+          requests:
+            storage: 50Gi
+---
+# ClusterIP only — deliberately NO Ingress. Loki has no authentication; Grafana
+# (same namespace) reaches it in-cluster and operators use `kubectl port-forward`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: project-hope-vox-infra
+  labels:
+    app: loki
+    app.kubernetes.io/part-of: project-hope
+spec:
+  selector:
+    app: loki
+  ports:
+    - name: http
+      port: 3100
+      targetPort: 3100

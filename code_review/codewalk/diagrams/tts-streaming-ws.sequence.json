@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "TTS WebSocket Streaming Synthesis",
+    "subtitle": "WS /api/v1/audio/stream - duplex incremental text to PCM audio",
+    "output": "tts-streaming-ws.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "WS" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "tts_http", "type": "backend", "label": "TTS", "sublabel": "FastAPI" },
+    { "id": "router", "type": "backend", "label": "TTSRouter", "sublabel": "Python" },
+    { "id": "engine", "type": "backend", "label": "Engine", "sublabel": "Azure/Kokoro/..." },
+    { "id": "metrics", "type": "backend", "label": "Prometheus", "sublabel": "Metrics" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "WS connect /audio/stream", "variant": "default", "note": "X-Service-Token" },
+    { "from": "gateway", "to": "tts_http", "y": 210, "label": "WS upgrade + X-Service-Token", "variant": "default" },
+    { "from": "tts_http", "to": "client", "y": 260, "label": "WS accepted", "variant": "return" },
+    { "from": "client", "to": "tts_http", "y": 310, "label": "init frame (voice, spec, BYOK)", "variant": "default" },
+    { "from": "tts_http", "to": "router", "y": 360, "label": "candidate_chain(spec, voice)", "variant": "default" },
+    { "from": "router", "to": "tts_http", "y": 410, "label": "candidates[] (eager buildability)", "variant": "return" },
+    { "from": "tts_http", "to": "router", "y": 460, "label": "stream(spec, voice, PCM, speed)", "variant": "default" },
+    { "from": "router", "to": "engine", "y": 510, "label": "_engine_for() - prefer Duplex (Azure)", "variant": "default", "note": "Else: _ChainSynthesizer + SentenceAdapter" },
+    { "from": "engine", "to": "router", "y": 560, "label": "SynthesisStream", "variant": "return" },
+    { "from": "router", "to": "tts_http", "y": 610, "label": "SynthesisStream", "variant": "return" },
+    { "from": "tts_http", "to": "client", "y": 660, "label": "ready frame (sample_rate, pcm)", "variant": "return" },
+    { "from": "client", "to": "tts_http", "y": 710, "label": "text frames (xN)", "variant": "default" },
+    { "from": "tts_http", "to": "engine", "y": 760, "label": "push_text() / flush()", "variant": "default" },
+    { "from": "engine", "to": "tts_http", "y": 810, "label": "binary PCM frames", "variant": "return" },
+    { "from": "tts_http", "to": "client", "y": 860, "label": "binary PCM s16le mono", "variant": "return" },
+    { "from": "client", "to": "tts_http", "y": 910, "label": "end frame", "variant": "default" },
+    { "from": "tts_http", "to": "engine", "y": 960, "label": "end_input()", "variant": "default" },
+    { "from": "engine", "to": "tts_http", "y": 1010, "label": "final PCM + done", "variant": "return" },
+    { "from": "tts_http", "to": "client", "y": 1060, "label": "done + usage frame", "variant": "return" },
+    { "from": "tts_http", "to": "metrics", "y": 1110, "label": "record_usage_metrics", "variant": "default" }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Gateway - Health Probes",
+    "subtitle": "K8s probes: /live, /startup, /ready, /health",
+    "output": "api-health-probes.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "kubelet", "type": "external", "label": "Kubelet", "sublabel": "Probes" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "shutdown", "type": "backend", "label": "ShutdownSvc", "sublabel": "GracefulShutdown" },
+    { "id": "buildinfo", "type": "backend", "label": "BuildInfo", "sublabel": "version" }
+  ],
+  "messages": [
+    { "from": "kubelet", "to": "gateway", "y": 160, "label": "GET /health/live", "variant": "default" },
+    { "from": "gateway", "to": "kubelet", "y": 210, "label": "200 {status: healthy}", "variant": "return" },
+    { "from": "kubelet", "to": "gateway", "y": 260, "label": "GET /health/startup", "variant": "default" },
+    { "from": "gateway", "to": "shutdown", "y": 310, "label": "isReady ?", "variant": "default" },
+    { "from": "shutdown", "to": "gateway", "y": 360, "label": "true/false", "variant": "return" },
+    { "from": "gateway", "to": "kubelet", "y": 410, "label": "200 healthy / 503 starting", "variant": "return" },
+    { "from": "kubelet", "to": "gateway", "y": 460, "label": "GET /health/ready", "variant": "default" },
+    { "from": "gateway", "to": "shutdown", "y": 510, "label": "isReady ?", "variant": "default" },
+    { "from": "shutdown", "to": "gateway", "y": 560, "label": "true/false", "variant": "return" },
+    { "from": "gateway", "to": "kubelet", "y": 610, "label": "200 healthy / 503 draining", "variant": "return" },
+    { "from": "kubelet", "to": "gateway", "y": 660, "label": "GET /health", "variant": "default" },
+    { "from": "gateway", "to": "buildinfo", "y": 710, "label": "getBuildInfo()", "variant": "default" },
+    { "from": "buildinfo", "to": "gateway", "y": 760, "label": "version", "variant": "return" },
+    { "from": "gateway", "to": "kubelet", "y": 810, "label": "200 detailed health", "variant": "return", "note": "Always 200; status in body" }
+  ]
+}

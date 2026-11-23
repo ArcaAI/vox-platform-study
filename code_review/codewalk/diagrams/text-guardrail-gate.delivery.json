@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "96fb2c6e-dd90-4c82-9e3c-e1a7b92b7672",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-guardrail-gate.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-guardrail-gate.html",
+  "specification": {
+    "sha256": "00c4f36aa7a04a3b329a5302c93633bc0b5f6b67c1d9f286eafaefe8eb0f4641",
+    "bytes": 2003
+  },
+  "artifact": {
+    "sha256": "11cd875646fa7a8718c1628a2a83b3cef8edfca4b5f7619fd8d8d8486a8ac170",
+    "bytes": 751388
+  }
+}

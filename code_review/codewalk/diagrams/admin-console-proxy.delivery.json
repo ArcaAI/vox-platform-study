@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "5f130e26-639d-4a00-b462-7cf1c4ddf419",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/admin-console-proxy.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/admin-console-proxy.html",
+  "specification": {
+    "sha256": "10a6914e7a42a1d111ddc3a25c364d7ac0f29ed9befe671a8c8136e240c3b8a3",
+    "bytes": 1828
+  },
+  "artifact": {
+    "sha256": "958c0d7224cc33d41211bf089495a29c5b2ed4dcf8d528ef985c2c72c6823064",
+    "bytes": 749172
+  }
+}

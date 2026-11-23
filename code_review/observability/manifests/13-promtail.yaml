@@ -1,0 +1,184 @@
+# Promtail log collector — namespace project-hope-vox-infra
+#
+# DaemonSet: one Promtail per node tails the container logs under /var/log/pods
+# (containerd writes CRI logs there) and pushes them to `loki:3100`. This is what
+# lets Grafana query logs from project-hope-vox AND project-hope-vox-infra.
+#
+# Why a static glob instead of kubernetes_sd_configs:
+#   Verified on THIS cluster that `kubernetes_sd_configs: role: pod` starts its
+#   provider but yields ZERO targets (promtail_targets_active_total stays 0, no
+#   target updates even at -log.level=debug) — so no logs ship. The static-glob
+#   form below is the one proven to work here: it tails /var/log/pods/*/*/*.log
+#   and extracts namespace/pod/container from the file path (each node's
+#   /var/log/pods only contains its own pods, so no node filter is needed).
+#   `node` is added via the downward API (NODE_NAME -> spec.nodeName).
+#
+# SCOPING = OPTION A (collect everything, filter in Grafana). Queries constrain
+# to the two namespaces:
+#     {namespace=~"project-hope-vox|project-hope-vox-infra"}
+# For OPTION B (restrict at the collector), enable the commented `match`/drop
+# stage in promtail.yml.
+#
+# Image grafana/promtail:3.6.11 — Promtail is in maintenance (Loki 3.x deprecates
+# it in favour of Grafana Alloy); migrate when convenient.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: project-hope-vox-infra
+  labels:
+    app: promtail
+    app.kubernetes.io/part-of: project-hope
+data:
+  promtail.yml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+
+    positions:
+      # MUST stay on a per-node hostPath (mounted below) — a shared/NFS file
+      # causes duplicate shipping or lost positions.
+      filename: /run/promtail/positions.yaml
+
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+
+    scrape_configs:
+      - job_name: kubernetes-pods
+        static_configs:
+          - targets: [localhost]
+            labels:
+              job: kubernetes-pods
+              # ${NODE_NAME} is expanded by `-config.expand-env=true` from the
+              # downward-API env var set in the DaemonSet (spec.nodeName).
+              node: ${NODE_NAME}
+              __path__: /var/log/pods/*/*/*.log
+        pipeline_stages:
+          # Strip the containerd CRI prefix ("<ts> stdout F ..."); without this
+          # every line keeps its timestamp/stream prefix and parsing is off.
+          - cri: {}
+          # Derive labels from the file path:
+          #   /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log
+          - regex:
+              source: filename
+              expression: '/var/log/pods/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_[^/]+/(?P<container>[^/]+)/.*\.log'
+          - labels:
+              namespace:
+              pod:
+              container:
+          # ── OPTION B (restricted scope) — uncomment to ship ONLY the two
+          #    namespaces and drop everything else (kube-system included):
+          # - match:
+          #     selector: '{namespace!~"project-hope-vox|project-hope-vox-infra"}'
+          #     action: drop
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promtail
+  namespace: project-hope-vox-infra
+  labels:
+    app: promtail
+    app.kubernetes.io/part-of: project-hope
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail
+  namespace: project-hope-vox-infra
+  labels:
+    app: promtail
+    app.kubernetes.io/part-of: project-hope
+spec:
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      labels:
+        app: promtail
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      serviceAccountName: promtail
+      # Read only the node's log files — no privileged, no API access needed
+      # (the static config reads files directly, so no ClusterRole is required).
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: promtail
+          image: grafana/promtail:3.6.11
+          args:
+            - -config.file=/etc/promtail/promtail.yml
+            - -config.expand-env=true
+          env:
+            # Used for the `node` label above.
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: http
+              containerPort: 9080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/promtail
+            - name: positions
+              mountPath: /run/promtail
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: podlogs
+              mountPath: /var/log/pods
+              readOnly: true
+      # Also collect logs from the control-plane node (6 nodes total: this plus
+      # worker-node-1..5 → expect 6/6 Running).
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+      volumes:
+        - name: config
+          configMap:
+            name: promtail-config
+            items:
+              - key: promtail.yml
+                path: promtail.yml
+        - name: positions
+          hostPath:
+            path: /var/lib/promtail
+            type: DirectoryOrCreate
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: podlogs
+          hostPath:
+            path: /var/log/pods
+---
+# Exposed only for debugging (`port-forward` / scrapeable targets page).
+apiVersion: v1
+kind: Service
+metadata:
+  name: promtail
+  namespace: project-hope-vox-infra
+  labels:
+    app: promtail
+    app.kubernetes.io/part-of: project-hope
+spec:
+  selector:
+    app: promtail
+  ports:
+    - name: http
+      port: 9080
+      targetPort: 9080

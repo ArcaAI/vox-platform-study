@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "5e599f35-30f2-45ec-a5fa-dc564ab84721",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-agent-resolve.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-agent-resolve.html",
+  "specification": {
+    "sha256": "12d963a2470b0c06be12279bfc03f57dfd72c3b70c7e33349bf61f40fea32b03",
+    "bytes": 2229
+  },
+  "artifact": {
+    "sha256": "9a071a11956b49b378ff87489f62de432b8812bfe1cb339a3caa9dc57f30607c",
+    "bytes": 753211
+  }
+}

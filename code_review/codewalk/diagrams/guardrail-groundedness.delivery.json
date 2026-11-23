@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "73c20f67-74a2-4035-8164-f1419cdc541f",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-groundedness.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-groundedness.html",
+  "specification": {
+    "sha256": "f41891223d849bb0a8e4e51af06b903691041aa5c1a910ff88ba96ea3e1c59f7",
+    "bytes": 2277
+  },
+  "artifact": {
+    "sha256": "c5494cf8b05c35acd5f065f06a3642d0eb903ab143947a7b232db502727dcec9",
+    "bytes": 752482
+  }
+}

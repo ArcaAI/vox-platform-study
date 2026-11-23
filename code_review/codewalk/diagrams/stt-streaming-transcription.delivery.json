@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2da980e3-d5d4-4aca-bcfd-f9a96f7e1fd4",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-streaming-transcription.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-streaming-transcription.html",
+  "specification": {
+    "sha256": "58ba391d8acacd57a7bee838d4140141d7c5245f98dad9b78edbb4494b8b5e66",
+    "bytes": 2044
+  },
+  "artifact": {
+    "sha256": "03796a232a3f35e8de08556b9f49c6a520a88e45f72195a26a64dcb34451b5ab",
+    "bytes": 752740
+  }
+}

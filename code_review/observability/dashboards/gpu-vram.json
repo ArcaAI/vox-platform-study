@@ -1,0 +1,483 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "schemaVersion": 39,
+  "title": "HOPE — GPU VRAM & Model Residency",
+  "uid": "hope-gpu-vram",
+  "tags": ["hope", "gpu", "vram", "lmstudio", "task-996"],
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "graphTooltip": 1,
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 100,
+      "type": "text",
+      "title": "How to read this dashboard",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Two RTX 2000 Ada cards, 16,380 MiB each, time-sliced ×3 (6 allocatable `nvidia.com/gpu`).** Time-slicing gives **no memory isolation** — a CUDA OOM in one pod can take down its card-mates, so headroom is a shared budget, not a per-pod one.\n\n### Never group DCGM series by `pod`\n`DCGM_FI_DEV_*` is **per DEVICE**. dcgm-exporter decorates it with a `pod` label taken from the kubelet's *device → pod* map, and under time-slicing that label is an arbitrary pick from the pods sharing the card. Measured 2026-09-21: GPU 1 read 8,917 MiB labelled `hope-stt-worker`, while `nvidia-smi` inside `hope-lmstudio` showed its `llama-server` holding **8,908 of those MiB**. Over 6 h each device carried **five** different `pod` labels while the device count stayed at 2.\n\nEvery panel here therefore aggregates with **`max by (gpu)`**. `sum` over the raw metric would double-count the moment the exporter emits more than one series per device, and `rate()` breaks across a pod rollover because the series identity changes with the label.\n\n> ⚠️ **These aggregations are correct for dcgm-exporter `4.4.2-4.7.0`, the version this cluster runs.** Release `4.5.3-4.8.2` (2026-05-07) added genuine per-POD attribution for `DCGM_FI_DEV_FB_USED` / `DCGM_FI_DEV_GPU_UTIL` behind `--kubernetes-virtual-gpus`, which changes what a series *means*. **Re-verify every `max by (gpu)` here before or immediately after any dcgm-exporter upgrade** — if the metric starts carrying per-pod shares, `max` silently becomes \"the largest pod\" instead of \"the device\".\n\n### What is measured and what is not\n| Granularity | Status |\n|---|---|\n| **Per device** | ✅ measured — `DCGM_FI_DEV_FB_USED/FREE/RESERVED`, live |\n| **Per process** | ⏳ needs `infrastructure/gpu-process-exporter` (TASK-996 Phase 4). Panels below are **empty until it is deployed** |\n| **Per model — weights** | ⏳ needs `GET admin/inference-engines/lm-studio/runtime` (Phase 3) |\n| **Per model — KV cache** | ⚠️ **ESTIMATE, never measured.** Derived from `context × parallel`. LM Studio gives every parallel slot the full context window |\n| **Per thread** | ❌ **impossible.** CUDA attributes memory to a process/context; neither NVML nor DCGM exposes thread-level accounting. Struck from scope (TASK-996 D-5) |\n\n### The pathology this dashboard exists to show\n**One model resident on BOTH cards.** `--split-mode layer` spreads layers across devices when the model plus its KV cache does not fit on one, and every token then pays a PCIe hop. \"Cards holding model memory\" reading **2** with a single model loaded is the fault condition; **1** is healthy. Ticket: `docs/implementation/TASK-996-LM-Studio-Serving-Control-And-VRAM-Observability/README.md`."
+      }
+    },
+
+    {
+      "id": 1,
+      "type": "bargauge",
+      "title": "VRAM used per card (ceiling 16,380 MiB)",
+      "description": "max by (gpu) (DCGM_FI_DEV_FB_USED), MiB → bytes. Aggregated with max, NOT sum: the pod label on this metric is unreliable under time-slicing. The ceiling is the physical card, so the gap to full is the real load budget — see 'Best single-card headroom'.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_FB_USED) * 1024 * 1024",
+          "legendFormat": "GPU {{gpu}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "max": 17175674880,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12884901888 },
+              { "color": "red", "value": 15032385536 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Best single-card headroom",
+      "description": "max(max by (gpu) (DCGM_FI_DEV_FB_FREE)) — the largest free block on ANY one card. This is the number the Phase-3 load precheck (TASK-996 D-6) must compare a model's --estimate-only against: a model larger than this cannot be loaded onto a single device and will be split across both.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 5, "x": 9, "y": 9 },
+      "targets": [
+        {
+          "expr": "max(max by (gpu) (DCGM_FI_DEV_FB_FREE)) * 1024 * 1024",
+          "legendFormat": "free",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 2147483648 },
+              { "color": "green", "value": 6442450944 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Per-card framebuffer: used / free / reserved",
+      "description": "The three DCGM framebuffer fields per device. used + free + reserved reconciles to 16,379 MiB, so 'reserved' (~430 MiB of driver overhead per card) is visible rather than silently eating headroom.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 9 },
+      "targets": [
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_FB_USED) * 1024 * 1024",
+          "legendFormat": "GPU {{gpu}} used",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_FB_FREE) * 1024 * 1024",
+          "legendFormat": "GPU {{gpu}} free",
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_FB_RESERVED) * 1024 * 1024",
+          "legendFormat": "GPU {{gpu}} reserved",
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Cards holding model memory  (1 = healthy · 2 = SPLIT)",
+      "description": "count(max by (gpu) (DCGM_FI_DEV_FB_USED) > 512) — how many devices currently hold more than 512 MiB. With one model server loaded, 2 means llama.cpp spread the model across both cards (--split-mode layer) and every token is paying a PCIe hop. This is the fault TASK-996 R-6 / gpuSplitConfig exists to fix. NOTE: with several independent GPU workloads resident, 2 is expected — read this panel together with the per-process panels below, which is what makes it unambiguous.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "count(max by (gpu) (DCGM_FI_DEV_FB_USED) > 512)",
+          "legendFormat": "cards",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 2 }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Card occupancy (% of physical framebuffer)",
+      "description": "100 * used / (used + free + reserved), per device. Two lines both well above zero with a single model loaded is the cross-GPU split; the healthy shape is one card carrying the model and the other near its idle floor.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 6, "y": 16 },
+      "targets": [
+        {
+          "expr": "100 * max by (gpu) (DCGM_FI_DEV_FB_USED) / max by (gpu) (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE + DCGM_FI_DEV_FB_RESERVED)",
+          "legendFormat": "GPU {{gpu}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 92 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "PCIe traffic per card — the cost of a split model",
+      "description": "DCGM_FI_PROF_PCIE_TX/RX_BYTES is a GAUGE of bytes moved per DCGM sample interval, NOT a counter — it is read raw here, never through rate(), because the series is non-monotonic (observed 25,632 → 25,462 between scrapes) and rate() would also break across a pod-label rollover. Treat it as a relative indicator: a model split across both cards moves activations over PCIe on every token, so this rises and stays risen. A load event shows as a large transient spike (weights being pushed to the device).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 15, "y": 16 },
+      "targets": [
+        {
+          "expr": "max by (gpu) (DCGM_FI_PROF_PCIE_TX_BYTES)",
+          "legendFormat": "GPU {{gpu}} tx",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "expr": "max by (gpu) (DCGM_FI_PROF_PCIE_RX_BYTES)",
+          "legendFormat": "GPU {{gpu}} rx",
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 6, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "GPU utilisation",
+      "description": "max by (gpu) (DCGM_FI_DEV_GPU_UTIL). With time-slicing ×3 this is the DEVICE's busy fraction across every sharing pod — it cannot be attributed to one workload.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 23 },
+      "targets": [
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_GPU_UTIL)",
+          "legendFormat": "GPU {{gpu}} sm",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_MEM_COPY_UTIL)",
+          "legendFormat": "GPU {{gpu}} mem-copy",
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Board power draw",
+      "description": "max by (gpu) (DCGM_FI_DEV_POWER_USAGE), watts. An idle RTX 2000 Ada with weights resident sits near 19 W; sustained decode pulls it up. Useful as a cheap 'is this card actually working or just holding memory' signal.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 23 },
+      "targets": [
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_POWER_USAGE)",
+          "legendFormat": "GPU {{gpu}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "GPU temperature",
+      "description": "max by (gpu) (DCGM_FI_DEV_GPU_TEMP), °C. Both cards are passed through to one node, so a rise on both at once is chassis airflow, not one workload.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 23 },
+      "targets": [
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_GPU_TEMP)",
+          "legendFormat": "GPU {{gpu}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 88 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Per-process VRAM by pod  —  NO DATA until the Phase-4 exporter is deployed",
+      "description": "MEASURED per-process memory, joined to pod names through kube-state-metrics. Requires `infrastructure/gpu-process-exporter` (a hostPID DaemonSet running nvidia-smi --query-compute-apps). dcgm-exporter can NEVER supply per-PID data — DCGM's PID fields are binary blobs its value converter discards, and NVIDIA closed the request as out of scope (dcgm-exporter#521). Try the cheaper path FIRST: upgrading dcgm-exporter past 4.5.3-4.8.2 and enabling --kubernetes-virtual-gpus gives correctly-attributed per-POD VRAM with no new component, which may be all this cluster needs. See infrastructure/gpu-process-exporter/README.md §1. Until one of the two lands this panel is deliberately empty rather than approximated. A process appearing on TWO gpu rows with the same pid IS the cross-GPU split, named at last.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 13, "x": 0, "y": 29 },
+      "targets": [
+        {
+          "expr": "hope_gpu_process_memory_bytes * on (pod_uid) group_left (pod, namespace) label_replace(kube_pod_info, \"pod_uid\", \"$1\", \"uid\", \"(.*)\")",
+          "legendFormat": "",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "uuid": true, "container_id": true, "pod_uid": true, "__name__": true },
+            "renameByName": { "Value": "VRAM", "gpu": "GPU", "pid": "PID", "process_name": "process", "pod": "pod", "namespace": "ns" }
+          }
+        },
+        { "id": "sortBy", "options": { "sort": [{ "field": "VRAM", "desc": true }] } }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "noValue": "No per-process exporter deployed — see infrastructure/gpu-process-exporter/README.md" },
+        "overrides": []
+      },
+      "options": { "showHeader": true, "cellHeight": "sm" }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Per-process VRAM over time  —  NO DATA until the Phase-4 exporter is deployed",
+      "description": "Same source as the table, unjoined so that a GPU process belonging to NO pod (a host process, pod_uid=\"\") is still visible — the kube_pod_info join would silently drop it. Series are per (pid, gpu): one process on two cards draws two lines.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 11, "x": 13, "y": 29 },
+      "targets": [
+        {
+          "expr": "hope_gpu_process_memory_bytes",
+          "legendFormat": "{{process_name}} (pid {{pid}}) on GPU {{gpu}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "noValue": "No per-process exporter deployed — see infrastructure/gpu-process-exporter/README.md",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "stacking": { "mode": "none" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Models each service reports running (measured)",
+      "description": "sum by (exported_service, model) (model_running_instances) — what the text and guardrail services say is loaded. This is the only per-MODEL signal that exists today and it is a count, not memory: LM Studio publishes no Prometheus metrics of its own. It is here so the per-device panels above can be read against a named model rather than an anonymous card.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 10, "x": 0, "y": 37 },
+      "targets": [
+        {
+          "expr": "sum by (exported_service, model) (model_running_instances)",
+          "legendFormat": "",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": { "Value": "instances", "exported_service": "service", "model": "model" }
+          }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "showHeader": true, "cellHeight": "sm" }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Per-model residency: weights (measured) vs KV cache (ESTIMATE)  —  NO DATA until Phase 3",
+      "description": "WEIGHTS are measured — `lms ps` SIZE, surfaced by the Phase-3 route GET admin/inference-engines/lm-studio/runtime. KV CACHE IS NOT MEASURED. It is derived as context × parallel × per-token KV bytes, because LM Studio allocates every parallel slot the FULL context window. Observed 2026-09-21: a 3.35 GB model held 13.9 GiB across both cards at context 131072 × parallel 10 — the ~10.5 GiB delta was f16 KV. Never present the estimate as a measurement; when the estimate and (device used − weights) diverge, the estimate is what is wrong.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 14, "x": 10, "y": 37 },
+      "targets": [
+        {
+          "expr": "hope_lmstudio_model_weights_bytes",
+          "legendFormat": "{{model}} — weights (measured)",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "expr": "hope_lmstudio_model_kv_cache_bytes_estimate",
+          "legendFormat": "{{model}} — KV cache (ESTIMATE)",
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "noValue": "No LM Studio runtime exporter — TASK-996 Phase 3 (GET admin/inference-engines/lm-studio/runtime) is not built",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*ESTIMATE.*" },
+            "properties": [{ "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 6] } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "TTS Model Resolvability Check",
+    "subtitle": "Gateway readiness sweep: can this process load these weights?",
+    "output": "tts-model-resolvable.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "tts_http", "type": "backend", "label": "TTS", "sublabel": "FastAPI" },
+    { "id": "resolver", "type": "backend", "label": "Resolver", "sublabel": "hope_runtime_models" },
+    { "id": "hf_cache", "type": "database", "label": "HF Cache", "sublabel": "HF_HOME/hub" },
+    { "id": "warmup", "type": "backend", "label": "Warmup", "sublabel": "Task" }
+  ],
+  "messages": [
+    { "from": "gateway", "to": "tts_http", "y": 160, "label": "POST /internal/models/resolvable", "variant": "default", "note": "models[] {id, sourceUri, library, revision, localPath}" },
+    { "from": "tts_http", "to": "resolver", "y": 210, "label": "check_resolvable_many(queries)", "variant": "default", "note": "off event loop, 60s budget" },
+    { "from": "resolver", "to": "hf_cache", "y": 260, "label": "filesystem check: HF_HOME/hub", "variant": "default" },
+    { "from": "hf_cache", "to": "resolver", "y": 310, "label": "exists / not found", "variant": "return" },
+    { "from": "resolver", "to": "warmup", "y": 360, "label": "warmup_state()", "variant": "default" },
+    { "from": "warmup", "to": "resolver", "y": 410, "label": "pending / true / false", "variant": "return", "note": "boot warmup verdict" },
+    { "from": "resolver", "to": "tts_http", "y": 460, "label": "results[] {resolvable, reason}", "variant": "return" },
+    { "from": "tts_http", "to": "gateway", "y": 510, "label": "200 resolvable response", "variant": "return", "note": "service, checkedAt, warm, results[]" }
+  ]
+}

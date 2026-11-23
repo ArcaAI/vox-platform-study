@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Admin Console Impersonation",
+    "subtitle": "POST /api/auth/impersonate — super admin acts as tenant user",
+    "output": "admin-console-impersonation.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "browser", "type": "frontend", "label": "Browser", "sublabel": "React" },
+    { "id": "admin_console", "type": "backend", "label": "Admin Console", "sublabel": "Next.js" },
+    { "id": "gateway", "type": "backend", "label": "API Gateway", "sublabel": "NestJS" }
+  ],
+  "messages": [
+    { "from": "browser", "to": "admin_console", "y": 160, "label": "POST /api/auth/impersonate", "variant": "default", "note": "targetUserId + X-Service-Token" },
+    { "from": "admin_console", "to": "gateway", "y": 210, "label": "POST /api/v1/auth/impersonate", "variant": "default", "note": "super admin token + targetUserId" },
+    { "from": "gateway", "to": "admin_console", "y": 260, "label": "{impersonationToken, targetUser}", "variant": "return" },
+    { "from": "admin_console", "to": "browser", "y": 310, "label": "Set-Cookie: SESSION", "variant": "return", "note": "15m impersonation token + originals saved" },
+    { "from": "browser", "to": "admin_console", "y": 360, "label": "GET /api/hope/... (401)", "variant": "default", "note": "impersonation token expired" },
+    { "from": "admin_console", "to": "gateway", "y": 410, "label": "Request → 401", "variant": "default" },
+    { "from": "admin_console", "to": "gateway", "y": 510, "label": "Retry with original token", "variant": "default", "note": "401 on impersonation → restore originals" },
+    { "from": "gateway", "to": "admin_console", "y": 560, "label": "200 OK", "variant": "return" },
+    { "from": "admin_console", "to": "browser", "y": 610, "label": "200 OK", "variant": "return" }
+  ]
+}

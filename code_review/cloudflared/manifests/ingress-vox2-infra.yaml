@@ -1,0 +1,48 @@
+# Traefik Ingresses for vox2.arcaai.com — infrastructure namespace
+# Namespace: project-hope-vox-infra
+#
+# vault and temporal live in the infra namespace. A Kubernetes Ingress backend
+# must reference a Service in the SAME namespace as the Ingress, so these are
+# declared here (Traefik's ClusterRole watches all namespaces).
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-vault
+  namespace: project-hope-vox-infra
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: vault-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vault-store-svc
+                port:
+                  number: 8200
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-temporal-ui
+  namespace: project-hope-vox-infra
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: temporal-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: temporal-ui-svc
+                port:
+                  number: 8080

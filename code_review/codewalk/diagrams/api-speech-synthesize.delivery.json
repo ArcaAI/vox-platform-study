@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d8c0dba7-c226-4672-94aa-48b1f8c51596",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-speech-synthesize.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-speech-synthesize.html",
+  "specification": {
+    "sha256": "f895a08973d5fbb816cec64a5304fb689cd297c6476908b50cc9690ddde5b369",
+    "bytes": 2491
+  },
+  "artifact": {
+    "sha256": "81ae4455b789d5e3f9c468542a57420f9f0127ef7fa24e5479e449d466eff970",
+    "bytes": 755108
+  }
+}

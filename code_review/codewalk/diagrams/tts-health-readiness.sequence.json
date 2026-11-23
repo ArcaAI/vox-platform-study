@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "TTS Health & Readiness Probes",
+    "subtitle": "K8s probes: /live, /startup, /ready (4-state readiness)",
+    "output": "tts-health-readiness.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "kubelet", "type": "external", "label": "Kubelet", "sublabel": "Probes" },
+    { "id": "tts_http", "type": "backend", "label": "TTS", "sublabel": "FastAPI" },
+    { "id": "registry", "type": "backend", "label": "ProviderReg", "sublabel": "Python" },
+    { "id": "provider", "type": "backend", "label": "Provider", "sublabel": "Engine" },
+    { "id": "breaker", "type": "backend", "label": "Breaker", "sublabel": "Circuit" }
+  ],
+  "messages": [
+    { "from": "kubelet", "to": "tts_http", "y": 160, "label": "GET /health/live", "variant": "default" },
+    { "from": "tts_http", "to": "kubelet", "y": 210, "label": "200 healthy", "variant": "return" },
+    { "from": "kubelet", "to": "tts_http", "y": 260, "label": "GET /health/startup", "variant": "default" },
+    { "from": "tts_http", "to": "kubelet", "y": 310, "label": "200/503", "variant": "return", "note": "checks app.state.service_release_task" },
+    { "from": "kubelet", "to": "tts_http", "y": 360, "label": "GET /health/ready", "variant": "default" },
+    { "from": "tts_http", "to": "registry", "y": 410, "label": "list_providers()", "variant": "default" },
+    { "from": "registry", "to": "tts_http", "y": 460, "label": "provider names[]", "variant": "return" },
+    { "from": "tts_http", "to": "provider", "y": 510, "label": "await provider.health()", "variant": "default" },
+    { "from": "provider", "to": "tts_http", "y": 560, "label": "True", "variant": "return", "note": "healthy -> 200 healthy" },
+    { "from": "tts_http", "to": "provider", "y": 610, "label": "await provider.health()", "variant": "default" },
+    { "from": "provider", "to": "tts_http", "y": 660, "label": "False + is_configured=False", "variant": "return", "note": "BYOK no cred -> degraded (awaiting_credentials)" },
+    { "from": "provider", "to": "tts_http", "y": 710, "label": "False + loads_on_demand=True", "variant": "return", "note": "Local not loaded -> degraded (awaiting_warm_load)" },
+    { "from": "provider", "to": "tts_http", "y": 760, "label": "Exception / False (credentialled)", "variant": "return", "note": "unhealthy -> 503" },
+    { "from": "tts_http", "to": "kubelet", "y": 810, "label": "200/503 + degraded details", "variant": "return" }
+  ]
+}

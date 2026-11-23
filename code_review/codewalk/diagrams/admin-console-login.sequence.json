@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Admin Console Login",
+    "subtitle": "POST /api/auth/login — credentials exchange for JWE session cookie",
+    "output": "admin-console-login.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "browser", "type": "frontend", "label": "Browser", "sublabel": "React" },
+    { "id": "admin_console", "type": "backend", "label": "Admin Console", "sublabel": "Next.js" },
+    { "id": "gateway", "type": "backend", "label": "API Gateway", "sublabel": "NestJS" }
+  ],
+  "messages": [
+    { "from": "browser", "to": "admin_console", "y": 160, "label": "POST /api/auth/login", "variant": "default", "note": "username + password" },
+    { "from": "admin_console", "to": "gateway", "y": 210, "label": "POST /api/v1/auth/login", "variant": "default", "note": "credentials + user-agent" },
+    { "from": "gateway", "to": "admin_console", "y": 260, "label": "{user, token, refreshToken}", "variant": "return" },
+    { "from": "admin_console", "to": "browser", "y": 310, "label": "Set-Cookie: SESSION=JWE", "variant": "return", "note": "sealSession() A256GCM, toSafeSession() strips tokens" }
+  ]
+}

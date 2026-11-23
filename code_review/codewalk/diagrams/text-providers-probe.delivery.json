@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b5534fa4-2acc-4896-b379-c2a9e5e26cc2",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-providers-probe.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-providers-probe.html",
+  "specification": {
+    "sha256": "7eb4a3d14abdc7a291b79172caf289ef9928355164676e54adc436a7797fa96a",
+    "bytes": 2669
+  },
+  "artifact": {
+    "sha256": "f4fcf14e7fd8bfc85838a860fb7ce0f8192b329d56965305866438fcbc3d2e7d",
+    "bytes": 756067
+  }
+}

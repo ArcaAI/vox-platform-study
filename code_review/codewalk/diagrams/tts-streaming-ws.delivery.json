@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "69336995-1190-4ec9-a7bf-ab621a9cf6f4",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-streaming-ws.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-streaming-ws.html",
+  "specification": {
+    "sha256": "c6b5e510f1529212c11c5a6b5760069bacdad287db54d36f8faaacfd6dd52c2a",
+    "bytes": 3124
+  },
+  "artifact": {
+    "sha256": "0b6bbbae33577d17e2e90906ac703d37822ea40ca9cd3e82d0e8ec1b22b262b7",
+    "bytes": 758824
+  }
+}

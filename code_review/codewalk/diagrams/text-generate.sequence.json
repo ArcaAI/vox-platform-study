@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Text Generation - Blocking",
+    "subtitle": "POST /api/v1/generate — guardrail, retries, idempotency, usage",
+    "output": "text-generate.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "FastAPI" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "External" },
+    { "id": "provider", "type": "backend", "label": "Provider", "sublabel": "OpenAI/Anthropic/..." },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "Idempotency + State" },
+    { "id": "usage", "type": "backend", "label": "UsageLedger", "sublabel": "Gateway" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /generate", "variant": "default", "note": "prompt + model + provider + stream=false" },
+    { "from": "gateway", "to": "text", "y": 210, "label": "POST /api/v1/generate", "variant": "default", "note": "X-Service-Token + X-Tenant-Id" },
+    { "from": "text", "to": "redis", "y": 260, "label": "GET text:idem:{key}", "variant": "default" },
+    { "from": "redis", "to": "text", "y": 310, "label": "cached / miss", "variant": "return" },
+    { "from": "text", "to": "guardrail", "y": 360, "label": "POST /guard/llm (input gate)", "variant": "default", "note": "prompt + system_prompt + tenant_policy" },
+    { "from": "guardrail", "to": "text", "y": 410, "label": "verdict + guardrail_usage", "variant": "return", "note": "allowed/denied + tokens" },
+    { "from": "text", "to": "provider", "y": 460, "label": "resolve_pool_route → RateLimiter → Queue → CB", "variant": "emphasis", "note": "degrade-away-from-unhealthy" },
+    { "from": "provider", "to": "text", "y": 510, "label": "provider.generate()", "variant": "default", "note": "Retry loop with backoff" },
+    { "from": "text", "to": "guardrail", "y": 560, "label": "POST /guard/llm (output gate)", "variant": "default", "note": "completion screening" },
+    { "from": "guardrail", "to": "text", "y": 610, "label": "allowed / rejected", "variant": "return" },
+    { "from": "text", "to": "redis", "y": 660, "label": "SET text:idem:{key} (24h TTL)", "variant": "default" },
+    { "from": "text", "to": "usage", "y": 710, "label": "usage_detail (via gateway)", "variant": "default", "note": "tokens + provider + conn_id + bytes" },
+    { "from": "text", "to": "gateway", "y": 760, "label": "GenerateResponse", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 810, "label": "200 response", "variant": "return" }
+  ]
+}

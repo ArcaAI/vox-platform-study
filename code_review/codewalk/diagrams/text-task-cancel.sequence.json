@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Text Task Cancellation",
+    "subtitle": "POST /tasks/{id}/cancel — persisted flag + in-memory signal",
+    "output": "text-task-cancel.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "FastAPI" },
+    { "id": "task_mgr", "type": "backend", "label": "TaskManager", "sublabel": "Redis" },
+    { "id": "hub", "type": "backend", "label": "GenHub", "sublabel": "Producer" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /tasks/{id}/cancel", "variant": "default" },
+    { "from": "gateway", "to": "text", "y": 210, "label": "POST /api/v1/tasks/{id}/cancel", "variant": "default" },
+    { "from": "text", "to": "task_mgr", "y": 260, "label": "request_cancel(id)", "variant": "default", "note": "persisted flag in Redis" },
+    { "from": "task_mgr", "to": "text", "y": 310, "label": "OK", "variant": "return" },
+    { "from": "text", "to": "hub", "y": 360, "label": "get(id) → producer", "variant": "default" },
+    { "from": "hub", "to": "text", "y": 410, "label": "producer (if local)", "variant": "return" },
+    { "from": "text", "to": "hub", "y": 460, "label": "producer.request_cancel()", "variant": "default", "note": "in-memory event" },
+    { "from": "text", "to": "task_mgr", "y": 510, "label": "cancel_task(id)", "variant": "default", "note": "marks CANCELLED in Redis" },
+    { "from": "task_mgr", "to": "text", "y": 560, "label": "TaskState", "variant": "return" },
+    { "from": "text", "to": "gateway", "y": 610, "label": "TaskResponse", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 660, "label": "200 TaskResponse", "variant": "return" }
+  ]
+}

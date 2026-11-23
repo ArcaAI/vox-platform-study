@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "0eab3dbf-1fb8-48b0-bda0-abcd01c4391f",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-signal-approve.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-signal-approve.html",
+  "specification": {
+    "sha256": "0d9b88b28c888898eb406556cc075c8b47cc28e8ac4cb7be219835b60bde7130",
+    "bytes": 1357
+  },
+  "artifact": {
+    "sha256": "c02862837adb183c29e9ffa7c1a67111653dc419f3db612524b88d7922569747",
+    "bytes": 746680
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "6def7988-8b79-4a22-aeaa-89f625787987",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-realtime.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-realtime.html",
+  "specification": {
+    "sha256": "670a3ee7b162456471e3a0f9c7f7ed4bc17b9cf6721654109d7a37ee38127d56",
+    "bytes": 2307
+  },
+  "artifact": {
+    "sha256": "4edfc34ba6e7dc130b29ec93364d01391c4f47a5348fd67f2e7cfcb87544e04c",
+    "bytes": 753606
+  }
+}

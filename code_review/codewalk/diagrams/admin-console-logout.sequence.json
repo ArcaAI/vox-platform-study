@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Admin Console Logout",
+    "subtitle": "POST /api/auth/logout — gateway revocation + cookie clear",
+    "output": "admin-console-logout.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "browser", "type": "frontend", "label": "Browser", "sublabel": "React" },
+    { "id": "admin_console", "type": "backend", "label": "Admin Console", "sublabel": "Next.js" },
+    { "id": "gateway", "type": "backend", "label": "API Gateway", "sublabel": "NestJS" }
+  ],
+  "messages": [
+    { "from": "browser", "to": "admin_console", "y": 160, "label": "POST /api/auth/logout", "variant": "default", "note": "SESSION cookie" },
+    { "from": "admin_console", "to": "gateway", "y": 210, "label": "POST /api/v1/auth/logout", "variant": "default", "note": "Bearer accessToken (best effort)" },
+    { "from": "gateway", "to": "admin_console", "y": 260, "label": "200 OK", "variant": "return", "note": "revokes jti server-side" },
+    { "from": "admin_console", "to": "browser", "y": 310, "label": "Clear Cookie + {success:true}", "variant": "return", "note": "clearSession() deletes SESSION cookie" }
+  ]
+}

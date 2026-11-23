@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail Groundedness Verification",
+    "subtitle": "POST /api/guardrail/ground — MiniCheck NLI via NLP service",
+    "output": "guardrail-groundedness.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "nlp", "type": "backend", "label": "NLP Svc", "sublabel": "MiniCheck NLI" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Tenant Config" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /guardrail/ground", "variant": "default", "note": "summary + transcript + X-Tenant-Id" },
+    { "from": "gateway", "to": "guardrail", "y": 210, "label": "POST /api/guardrail/ground", "variant": "default", "note": "X-Service-Token + X-Tenant-Id" },
+    { "from": "guardrail", "to": "postgres", "y": 260, "label": "resolve guardrail.groundedness model", "variant": "default", "note": "AiRoutingPolicy → AiModel" },
+    { "from": "postgres", "to": "guardrail", "y": 310, "label": "model_id + model_path + calibration", "variant": "return" },
+    { "from": "guardrail", "to": "nlp", "y": 360, "label": "acquire_groundedness_verifier()", "variant": "default", "note": "MiniCheckLoadSpec (model_id, path, calibration)" },
+    { "from": "nlp", "to": "guardrail", "y": 410, "label": "MiniCheck verifier", "variant": "return", "note": "GGUF via llama.cpp" },
+    { "from": "guardrail", "to": "nlp", "y": 460, "label": "verifier.verify(summary, transcript)", "variant": "default", "note": "split segments + MiniCheck score each" },
+    { "from": "nlp", "to": "guardrail", "y": 510, "label": "per-segment verdicts + flagged spans", "variant": "return", "note": "GROUNDED/UNGROUNDED/UNVERIFIED" },
+    { "from": "guardrail", "to": "gateway", "y": 560, "label": "GroundResponse", "variant": "return", "note": "segments + flagged_spans + model_id" },
+    { "from": "gateway", "to": "client", "y": 610, "label": "200 response", "variant": "return" }
+  ]
+}

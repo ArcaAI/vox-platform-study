@@ -1,0 +1,59 @@
+# Grafana volume-permissions fix — namespace project-hope-vox-infra
+#
+# Grafana runs as uid 472 and writes its database to the `grafana-data` PVC. The
+# nfs-client provisioner generally does NOT apply the pod's fsGroup to the export,
+# so a freshly provisioned volume can be owned by root and Grafana CrashLoops on
+# `permission denied` writing /var/lib/grafana.
+#
+# This one-shot Job chowns the volume to 472:0 before/around Grafana's start —
+# the same fix the old raw manifests used. If the NFS export root-squashes root
+# (so this Job cannot chown either), use the `runAsUser: 0` fallback documented
+# in the README instead.
+#
+# Apply this and wait for completion BEFORE/with 09-grafana.yaml. A race is
+# self-healing: Grafana retries with backoff until the ownership lands.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: project-hope-vox-infra
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: project-hope
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: grafana-permissions-fix
+  namespace: project-hope-vox-infra
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: project-hope
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app: grafana
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: chown
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 472:0 /var/lib/grafana"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana-data

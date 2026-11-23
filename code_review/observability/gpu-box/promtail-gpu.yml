@@ -1,0 +1,66 @@
+# Promtail config for the GPU host (192.168.112.2).
+#
+# Collects logs from the vLLM and STT containers (Docker) and pushes them to the
+# in-cluster Loki NodePort. Streams are labelled job="vllm" / job="stt" so the
+# dashboards can select them with `{job="vllm"}` / `{job="stt"}`.
+#
+# Adjust the `keep` regex if your container names differ (see README).
+# If the services do NOT run under Docker, see the README "non-Docker" section —
+# switch this file to a file-based scrape of the service log paths.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+clients:
+  - url: ${LOKI_URL}/loki/api/v1/push
+
+scrape_configs:
+  - job_name: gpu-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+    relabel_configs:
+      # Keep only inference-serving containers (vLLM / Whisper / STT / TTS).
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/.*(vllm|whisper|stt|tts|triton|embed|inference).*'
+        action: keep
+      # Map container name -> stable `job` label used by the dashboards. Order
+      # matters: the vllm rule runs LAST so `vllm-whisper` lands under job=vllm
+      # (its name also matches "whisper", which would otherwise route it to stt).
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/.*(stt|tts|triton|embed|inference).*'
+        target_label: job
+        replacement: stt
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/.*(vllm|whisper).*'
+        target_label: job
+        replacement: vllm
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: stream
+      - target_label: host
+        replacement: gpu-server
+    pipeline_stages:
+      # Docker logs are JSON: {"log":..,"stream":..,"time":..}. Parse it, set the
+      # entry timestamp, then drop anything older than the retention window so the
+      # first run does not backfill weeks of historical container logs (Loki rejects
+      # out-of-window samples with HTTP 400).
+      - json:
+          expressions:
+            log: log
+            time: time
+            stream: stream
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+      - output:
+          source: log
+      - drop:
+          older_than: 6h
+          drop_counter_reason: too_old_for_loki

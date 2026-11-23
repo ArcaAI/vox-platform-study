@@ -1,0 +1,140 @@
+# Prometheus — namespace project-hope-vox-infra
+#
+# Image is the "fresh" version requested (v3.13.2). The config is supplied
+# entirely by the initContainer + ConfigMap mounts below, so upgrading the image
+# later is a one-line change to `image:` — see the README ("Deploying fresh
+# images").
+#
+# The initContainer is the "init config" step: it renders
+# prometheus-config/prometheus.yml.tpl -> /etc/prometheus/prometheus.yml on an
+# emptyDir, substituting ${DOMAIN}. With the Core-3 job set there is currently no
+# ${DOMAIN} placeholder in the template; the step is kept because it is the
+# extension point (any domain-based scrape target — e.g. blackbox probes — goes
+# in the template and is rendered here).
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: project-hope-vox-infra
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+spec:
+  serviceName: prometheus
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      serviceAccountName: prometheus
+      # fsGroup lets the non-root Prometheus process (uid 65534) write its TSDB
+      # on the volume. See the README "NFS permissions" caveat if the nfs-client
+      # provisioner ignores fsGroup.
+      securityContext:
+        fsGroup: 65534
+      initContainers:
+        - name: render-prometheus-config
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              sed "s|\${DOMAIN}|${DOMAIN}|g" /tpl/prometheus.yml.tpl > /etc/prometheus/prometheus.yml
+              echo "rendered /etc/prometheus/prometheus.yml"
+          env:
+            - name: DOMAIN
+              value: "vox2.arcaai.com"
+          volumeMounts:
+            - name: tpl
+              mountPath: /tpl
+              readOnly: true
+            - name: config
+              mountPath: /etc/prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.13.2
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=15d"
+            - "--storage.tsdb.retention.size=10GB"
+            - "--web.enable-lifecycle"
+            - "--web.enable-admin-api"
+            - "--log.level=info"
+          ports:
+            - name: http
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: tpl
+          configMap:
+            name: prometheus-config
+            items:
+              - key: prometheus.yml.tpl
+                path: prometheus.yml.tpl
+        # The rendered config lands here (emptyDir), then Prometheus mounts it.
+        - name: config
+          emptyDir: {}
+        - name: rules
+          configMap:
+            name: prometheus-alert-rules
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-client
+        resources:
+          requests:
+            storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: project-hope-vox-infra
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090

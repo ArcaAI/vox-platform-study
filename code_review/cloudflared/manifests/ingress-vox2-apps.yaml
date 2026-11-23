@@ -1,0 +1,282 @@
+# Traefik Ingresses for vox2.arcaai.com — application namespace
+# Namespace: project-hope-vox
+# IngressClass: traefik (Helm release "traefik" in this namespace)
+#
+# One host per backend. Hostnames map to the ACTUAL services in the cluster
+# (see ../current-setup.md). Services confirmed deployed are active; services
+# that are not deployed yet are commented out.
+---
+# Streaming support for the API gateway (WS /ws/stt/stream, ticketed SSE).
+# Without no-buffer + long timeouts, live transcription streams 502/504.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: hope-no-buffer
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  buffering:
+    maxRequestBodyBytes: 0
+    memRequestBodyBytes: 0
+    retryExpression: ""
+---
+# OPTIONAL long-stream timeouts. Traefik's default responseHeaderTimeout is
+# already 0s, so this is only needed if you observe idle SSE drops. To actually
+# use it, annotate the BACKEND Service (not the Ingress), because Traefik reads
+# service.* annotations off the Service:
+#   kubectl -n project-hope-vox annotate svc hope-api-gateway-svc \
+#     traefik.ingress.kubernetes.io/service.serverstransport=project-hope-vox-hope-long-streams@kubernetescrd
+# Without that annotation the object below is defined but unused.
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: hope-long-streams
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  forwardingTimeouts:
+    dialTimeout: 30s
+    responseHeaderTimeout: 0s   # 0 = no timeout (long-lived streams)
+    idleConnTimeout: 0s
+---
+# Admin console — root host
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-admin-console
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-admin-console-svc
+                port:
+                  number: 3000
+---
+# API gateway — needs the no-buffer middleware for WS/SSE
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-api-gateway
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+  annotations:
+    # NB: reference format is <namespace>-<name>@kubernetescrd (DASH, no slash).
+    # Traefik resolves the string verbatim against the CRD key
+    # Normalize("<namespace>-<name>")+"@kubernetescrd". A bad reference makes
+    # Traefik drop the whole router (404), so this must be exact.
+    traefik.ingress.kubernetes.io/router.middlewares: project-hope-vox-hope-no-buffer@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-api-gateway-svc
+                port:
+                  number: 8866
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-text
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: text-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-text-svc
+                port:
+                  number: 8862
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-tts
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: tts-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-tts-svc
+                port:
+                  number: 8865
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-guardrail
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: guardrail-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-guardrail-svc
+                port:
+                  number: 8863
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-nlp
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: nlp-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-nlp-svc
+                port:
+                  number: 8864
+---
+# Harness — deployed in cluster (hope-harness-svc). Included here.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-harness
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: harness-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-harness-svc
+                port:
+                  number: 8866
+---
+# STT — off-cluster GPU server, exposed via a selector-less Service + Endpoints
+# (see stt-external-service.yaml). Backend name is hope-stt, port 8862.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-stt
+  namespace: project-hope-vox
+  labels:
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: stt-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-stt
+                port:
+                  number: 8862
+---
+# ── NOT DEPLOYED YET — enable when the Service exists ────────────────────────
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: hope-vllm
+#   namespace: project-hope-vox
+# spec:
+#   ingressClassName: traefik
+#   rules:
+#     - host: vllm-vox2.arcaai.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: hope-vllm
+#                 port:
+#                   number: 8000
+#
+# ---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: hope-lmstudio
+#   namespace: project-hope-vox
+# spec:
+#   ingressClassName: traefik
+#   rules:
+#     - host: lmstudio-vox2.arcaai.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: hope-lmstudio
+#                 port:
+#                   number: 1234
+#
+# ---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: hope-grafana
+#   namespace: project-hope-vox
+# spec:
+#   ingressClassName: traefik
+#   rules:
+#     - host: grafana-vox2.arcaai.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: grafana
+#                 port:
+#                   number: 3000

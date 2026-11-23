@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail Health Probes",
+    "subtitle": "K8s probes: /live, /startup, /ready, /health (delegated model reporting)",
+    "output": "guardrail-health.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "kubelet", "type": "external", "label": "Kubelet", "sublabel": "Probes" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "asyncio" },
+    { "id": "nlp", "type": "backend", "label": "NLP Svc", "sublabel": "Delegated" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "Delegated" }
+  ],
+  "messages": [
+    { "from": "kubelet", "to": "guardrail", "y": 160, "label": "GET /health/live", "variant": "default" },
+    { "from": "guardrail", "to": "kubelet", "y": 210, "label": "200 {alive: true}", "variant": "return" },
+    { "from": "kubelet", "to": "guardrail", "y": 260, "label": "GET /health/startup", "variant": "default" },
+    { "from": "guardrail", "to": "kubelet", "y": 310, "label": "200/503", "variant": "return", "note": "checks service_release_task" },
+    { "from": "kubelet", "to": "guardrail", "y": 360, "label": "GET /health/ready", "variant": "default" },
+    { "from": "guardrail", "to": "redis", "y": 410, "label": "ping()", "variant": "default" },
+    { "from": "redis", "to": "guardrail", "y": 460, "label": "PONG", "variant": "return" },
+    { "from": "guardrail", "to": "kubelet", "y": 510, "label": "200 ready / 503 Redis down", "variant": "return" },
+    { "from": "kubelet", "to": "guardrail", "y": 560, "label": "GET /health", "variant": "default" },
+    { "from": "guardrail", "to": "kubelet", "y": 610, "label": "200 detailed health", "variant": "return", "note": "llm_judge: delegated→text, classification: delegated→nlp" }
+  ]
+}

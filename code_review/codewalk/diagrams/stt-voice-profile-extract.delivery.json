@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "0e03c74c-2da6-4722-97d2-4ea59060333d",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-voice-profile-extract.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-voice-profile-extract.html",
+  "specification": {
+    "sha256": "de3133dfd95b5673e59c8f2d01d815f5369f18df9a6421f9e8f8eb692214a924",
+    "bytes": 2425
+  },
+  "artifact": {
+    "sha256": "718ff36b74b11f9bc6fb400bb135383802f8436368550d67e8707ff5056899cd",
+    "bytes": 754477
+  }
+}

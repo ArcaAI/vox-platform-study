@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Text Health Probes",
+    "subtitle": "K8s probes: /live, /startup, /ready, /health",
+    "output": "text-health-probes.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "kubelet", "type": "external", "label": "Kubelet", "sublabel": "Probes" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "FastAPI" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "asyncio" },
+    { "id": "registry", "type": "backend", "label": "ProviderReg", "sublabel": "Registry" },
+    { "id": "provider", "type": "backend", "label": "Provider", "sublabel": "LLM" },
+    { "id": "config", "type": "backend", "label": "ConfigClient", "sublabel": "Control Plane" }
+  ],
+  "messages": [
+    { "from": "kubelet", "to": "text", "y": 160, "label": "GET /health/live", "variant": "default" },
+    { "from": "text", "to": "kubelet", "y": 210, "label": "200 healthy", "variant": "return" },
+    { "from": "kubelet", "to": "text", "y": 260, "label": "GET /health/startup", "variant": "default" },
+    { "from": "text", "to": "kubelet", "y": 310, "label": "200/503", "variant": "return", "note": "checks service_release_task" },
+    { "from": "kubelet", "to": "text", "y": 360, "label": "GET /health/ready", "variant": "default" },
+    { "from": "text", "to": "redis", "y": 410, "label": "ping()", "variant": "default" },
+    { "from": "redis", "to": "text", "y": 460, "label": "PONG", "variant": "return" },
+    { "from": "text", "to": "registry", "y": 510, "label": "list_providers()", "variant": "default" },
+    { "from": "registry", "to": "text", "y": 560, "label": "provider names[]", "variant": "return" },
+    { "from": "text", "to": "provider", "y": 610, "label": "health_check()", "variant": "default" },
+    { "from": "provider", "to": "text", "y": 660, "label": "true (first healthy)", "variant": "return" },
+    { "from": "text", "to": "kubelet", "y": 710, "label": "200 healthy / 503 no healthy", "variant": "return" },
+    { "from": "kubelet", "to": "text", "y": 760, "label": "GET /health", "variant": "default" },
+    { "from": "text", "to": "config", "y": 810, "label": "diagnostics()", "variant": "default" },
+    { "from": "config", "to": "text", "y": 860, "label": "config source + timestamps", "variant": "return" },
+    { "from": "text", "to": "kubelet", "y": 910, "label": "200 detailed health", "variant": "return", "note": "Always 200; status in body" }
+  ]
+}

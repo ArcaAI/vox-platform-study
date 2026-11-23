@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "9110cb11-fd6d-4b61-9ca5-f15dfb5c5722",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-task-cancel.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-task-cancel.html",
+  "specification": {
+    "sha256": "9372da1195e4e113007de927cdafc67089cff64e300c1a88114134c581932a12",
+    "bytes": 1959
+  },
+  "artifact": {
+    "sha256": "76e86d2a724a7ef8256e630e18e08101ef20bca3de7c00392b56a430a813090b",
+    "bytes": 751997
+  }
+}

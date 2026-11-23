@@ -1,0 +1,228 @@
+# ══════════════════════════════════════════════════════════════
+# ⚠️ SNAPSHOT — REFERENCE ESTATE ONLY (arca-deployment-template@main).
+# Verbatim copy of base/cloudflared.yaml (taphuynh.dev / k3s, `hope-v2-dev`
+# tunnel, config-map + TCP routes + catch-all to traefik.kube-system).
+#
+# It is NOT what the lab cluster deploys: ../manifests/cloudflared-hope-vox2.yaml
+# is TOKEN-ONLY (dashboard-managed, no config.yaml at all) and runs under the
+# new dedicated `hope-vox2` tunnel. The Host-header rule and the no-trailing-
+# http_status:404 rule below are still the reasoning to keep in mind.
+# ══════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  labels:
+    app: cloudflared
+data:
+  config.yaml: |
+    # The tunnel this cloudflared instance runs. The token in the Secret
+    # already identifies it; naming it here makes the manifest self-describing
+    # and makes a token/config mismatch fail loudly at startup instead of
+    # connecting something unexpected.
+    tunnel: be60e97a-e5d3-43ea-9ab0-3d23bcc9981c
+
+    # Metrics + readiness server. `/ready` (used by the readiness probe below)
+    # and `/metrics` (scraped by Prometheus) are both served here. 0.0.0.0 is
+    # required — a 127.0.0.1 bind is unreachable from the kubelet and from the
+    # Prometheus pod, so the probe would fail and every scrape would time out.
+    metrics: 0.0.0.0:2000
+
+    # The image is immutable and promoted by digest. A connector that updates
+    # itself would silently replace the artifact this repo pins.
+    no-autoupdate: true
+
+    ingress:
+      # ── TCP: PostgreSQL ─────────────────────────────────────────────────
+      # These cannot go through Traefik. A Kubernetes Ingress is an HTTP object;
+      # the Postgres wire protocol is not HTTP, so there is no Host header to
+      # route on and no Ingress that could express it. cloudflared streams the
+      # raw TCP over the tunnel instead, and the client end is
+      # `cloudflared access tcp` (see docs/cloudflare-tunnel.md).
+      #
+      # Read/write primary and read-only replica are separate hostnames on
+      # purpose: a hostname is the only thing the client picks, so it is the
+      # only place the read/write split can be expressed.
+      #
+      # ⚠️ DEPENDENCY, VERIFIED 2026-09-01: both Services are created by
+      # `components/data-tier`, which TODAY is enabled only by
+      # `overlays/standalone` — a `kustomize build overlays/dev` contains no
+      # `hope-postgres-rw` and no `hope-postgres-ro`. Until the dev overlay
+      # enables that component, these two hostnames resolve to nothing and
+      # every connection through them fails. That is contained: cloudflared
+      # resolves origins per connection, so an unresolvable tcp:// origin fails
+      # only its own hostname — the connector still starts and the entire HTTP
+      # plane below is unaffected. Do not "fix" it by deleting these rules.
+      # Short Service names, NOT `<svc>.hope-v2-dev.svc.cluster.local`: the
+      # FQDN pinned this base to one namespace, so a staging connector would
+      # have tunnelled staging's `db-staging` hostname into the DEV database.
+      # cloudflared resolves through the pod's own resolv.conf, whose search
+      # path starts with its namespace, so the short name follows the
+      # deployment. The public `hostname:` values below remain environment
+      # identity and are patched per overlay.
+      - hostname: db.taphuynh.dev
+        service: tcp://hope-postgres-rw:5432
+      - hostname: db-ro.taphuynh.dev
+        service: tcp://hope-postgres-ro:5432
+
+      # ── HTTP: everything else, via Traefik ──────────────────────────────
+      #
+      # ⚠️ THIS IS THE CRUX OF THE WHOLE DESIGN. READ BEFORE EDITING.
+      #
+      # There is deliberately NO per-hostname HTTP rule here, and there is
+      # deliberately NO `originRequest.httpHostHeader`. Both absences are
+      # load-bearing:
+      #
+      #   * cloudflared's DEFAULT is to forward the client's ORIGINAL `Host`
+      #     header to the origin (Cloudflare's origin-parameters reference gives
+      #     httpHostHeader a default of `""` and describes setting it as "Sets
+      #     the HTTP `Host` header on requests sent to the local service").
+      #     Traefik routes on that header. So the original Host arriving intact
+      #     at :80 is precisely what makes `spec.rules[].host` in ingress.yaml
+      #     work at all.
+      #
+      #   * Setting `httpHostHeader: traefik.kube-system...` — the "tidy-up" a
+      #     reader reaches for when an origin 404s — would OVERWRITE the Host on
+      #     every request with one fixed value. Traefik would then see the same
+      #     hostname for all twelve services, match no Ingress rule, and return
+      #     404 for the entire platform. It would look like an Ingress bug.
+      #
+      # The consequence worth stating: a new PUBLIC HOSTNAME does not belong in
+      # this file. It belongs in ingress.yaml plus a DNS CNAME. This catch-all
+      # already routes it. The only edits this file should ever see are new
+      # non-HTTP (tcp://, ssh://, …) services — and they go ABOVE this line,
+      # because rules are matched top to bottom and this one matches everything.
+      #
+      # ⚠️ THIS IS THE LAST RULE, AND THERE IS DELIBERATELY NO `http_status:404`
+      # AFTER IT. Cloudflare's config examples end every ingress list with a
+      # `- service: http_status:404` catch-all, so adding one here looks like
+      # correcting an omission. It is not: a rule with no `hostname` IS the
+      # catch-all, and cloudflared refuses a config where anything follows one.
+      # Verified against this exact image digest, 2026-09-01:
+      #
+      #   $ cloudflared tunnel --config config.yaml ingress validate
+      #   Validation failed: Rule #3 is matching the hostname '', but this will
+      #   match every hostname, meaning the rules which follow it will never be
+      #   triggered.
+      #
+      # cloudflared exits non-zero on that, so the mistake would CrashLoop both
+      # connectors — every public hostname down at once. maxUnavailable: 0 below
+      # keeps the incumbent pods serving while the new ones fail, which is what
+      # turns this from an outage into a stuck rollout, but do not rely on it:
+      # run `ingress validate` (docs/cloudflare-tunnel.md §4b) before merging.
+      - service: http://traefik.kube-system.svc.cluster.local:80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  labels:
+    app: cloudflared
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2000"
+        prometheus.io/path: "/metrics"
+        cloudflared.hope/config-revision: "1"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: cloudflared
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.8.3@sha256:51c9cefcb4569df44e1ad403ab1d3d8065aa8e84339bcfc6aee75502e1140339
+          imagePullPolicy: IfNotPresent
+          command:
+            - cloudflared
+            - tunnel
+            - --config
+            - /etc/cloudflared/config.yaml
+            - --loglevel
+            - info
+            - run
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-tunnel-token
+                  key: token
+          ports:
+            - name: metrics
+              containerPort: 2000
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "1"
+              memory: "256Mi"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflared-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudflared-metrics
+  labels:
+    app: cloudflared
+spec:
+  type: ClusterIP
+  selector:
+    app: cloudflared
+  ports:
+    - name: metrics
+      port: 2000
+      targetPort: metrics

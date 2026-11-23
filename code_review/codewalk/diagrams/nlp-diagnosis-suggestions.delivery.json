@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "cdb5c8b6-80cc-4a5d-b0bc-222045608cbb",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-diagnosis-suggestions.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-diagnosis-suggestions.html",
+  "specification": {
+    "sha256": "1c120a0e9b4634c0cc45eeaae9837e43eb09133b478a6eb38124283a75e63a59",
+    "bytes": 2404
+  },
+  "artifact": {
+    "sha256": "5aa59cf3067d5f4d3d13dcd3a559b578c59695cdaf1541f1aa0b12fbc0316cff",
+    "bytes": 754661
+  }
+}

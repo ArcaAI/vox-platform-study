@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail Realtime Guardrails",
+    "subtitle": "Segment validation + Consumption gate + Output checks",
+    "output": "guardrail-realtime.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "nlp", "type": "backend", "label": "NLP Svc", "sublabel": "GLiNER2 Safety" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "Segment Store" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /realtime/segments", "variant": "default", "note": "session_id + segment_id + text" },
+    { "from": "gateway", "to": "guardrail", "y": 210, "label": "POST /realtime/segments", "variant": "default" },
+    { "from": "guardrail", "to": "nlp", "y": 260, "label": "build_realtime_validator()", "variant": "default", "note": "resolve policy + safety client" },
+    { "from": "nlp", "to": "guardrail", "y": 310, "label": "RealtimeValidator", "variant": "return" },
+    { "from": "guardrail", "to": "redis", "y": 360, "label": "validate_segment + HSET verdict", "variant": "emphasis", "note": "classify_tasks_scored + policy + store" },
+    { "from": "redis", "to": "guardrail", "y": 410, "label": "OK", "variant": "return" },
+    { "from": "guardrail", "to": "gateway", "y": 460, "label": "200 verdict (3-axis)", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 510, "label": "200 verdict", "variant": "return" },
+    { "from": "client", "to": "gateway", "y": 560, "label": "POST /realtime/consumption", "variant": "default", "note": "cumulative text + capabilities" },
+    { "from": "gateway", "to": "guardrail", "y": 610, "label": "POST /realtime/consumption", "variant": "default" },
+    { "from": "guardrail", "to": "gateway", "y": 710, "label": "decision + verdict", "variant": "return", "note": "validate_cumulative + ConsumptionGate: window + capabilities + composite" },
+    { "from": "gateway", "to": "client", "y": 760, "label": "200 decision", "variant": "return" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "71a6ab9e-8fed-42bc-a2f6-cb698975e2ba",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-model-cache.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-model-cache.html",
+  "specification": {
+    "sha256": "fa336a71c05403ed32953d7fc3eb14f2c2f65c67080cb0a613057ad2ff8fec78",
+    "bytes": 1864
+  },
+  "artifact": {
+    "sha256": "7e9d0fd2158332ca83c4f9ddd3fbdcaba18e4693d88717d6e12d786adb0f2620",
+    "bytes": 751545
+  }
+}

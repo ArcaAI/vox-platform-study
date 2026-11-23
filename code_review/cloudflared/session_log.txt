@@ -1,0 +1,93 @@
+
+hope=# kubectl get ingressclass traefik
+hope-# \q
+apple@192 ~ % kubectl get ingressclass traefik
+NAME      CONTROLLER                      PARAMETERS   AGE
+traefik   traefik.io/ingress-controller   <none>       22h
+apple@192 ~ % kubectl -n project-hope-vox get deploy,svc traefik
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/traefik   1/1     1            1           22h
+
+NAME              TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+service/traefik   LoadBalancer   10.101.164.88   <pending>     80:32067/TCP,443:31815/TCP   22h
+apple@192 ~ % kubectl -n project-hope-vox create secret generic cloudflared-tunnel-token \
+  --from-literal=token='eyJhIjoiNzI2OTczYjFiZTNkMmE5OTRhMmExZGRlYTZmNjY3NjciLCJ0IjoiODZlZGUyOWEtOGNiNi00ZjNiLTk5NGUtNjk3M2RmMTY2MzdkIiwicyI6Ill6QXlNV1l4TWpFdE9EWmtZUzAwTlRVd0xUazJNMll0WW1ZeFpqQTBOVGt6TkRWayJ9'
+secret/cloudflared-tunnel-token created
+apple@192 ~ % kubectl -n project-hope-vox get secret cloudflared-tunnel-token
+NAME                       TYPE     DATA   AGE
+cloudflared-tunnel-token   Opaque   1      27s
+apple@192 ~ % cd repos\VOX\review
+cd: no such file or directory: reposVOXreview
+apple@192 ~ % cd repos
+apple@192 repos % cd VOX 
+apple@192 VOX % cd review 
+apple@192 review % cd cloudflared 
+apple@192 cloudflared % cd manifests 
+apple@192 manifests % ll
+total 56
+-rw-r--r--@  1 apple  staff  1192 13 Oct 09:52 stt-external-service.yaml
+-rw-r--r--@  1 apple  staff  1253 13 Oct 09:53 ingress-vox2-infra.yaml
+drwxr-xr-x@  7 apple  staff   224 13 Oct 09:59 .
+-rw-r--r--@  1 apple  staff  3326 13 Oct 09:59 cloudflared-hope-vox2.yaml
+drwxr-xr-x@ 10 apple  staff   320 13 Oct 10:00 ..
+-rw-r--r--@  1 apple  staff  7687 13 Oct 10:14 ingress-vox2-apps.yaml
+-rw-r--r--@  1 apple  staff  6574 13 Oct 10:21 README.md
+apple@192 manifests % kubectl apply -f manifests/cloudflared-hope-vox2.yaml
+error: the path "manifests/cloudflared-hope-vox2.yaml" does not exist
+apple@192 manifests % kubectl apply -f cloudflared-hope-vox2.yaml 
+deployment.apps/cloudflared created
+service/cloudflared-metrics created
+apple@192 manifests % kubectl -n project-hope-vox rollout status deploy/cloudflared
+
+deployment "cloudflared" successfully rolled out
+apple@192 manifests % kubectl -n project-hope-vox get pods -l app=cloudflared -o wide
+
+NAME                           READY   STATUS    RESTARTS   AGE   IP               NODE            NOMINATED NODE   READINESS GATES
+cloudflared-5cfb9b6bf9-8mf7s   1/1     Running   0          24s   172.16.212.101   worker-node-1   <none>           <none>
+cloudflared-5cfb9b6bf9-gqctk   1/1     Running   0          24s   172.16.181.203   worker-node-5   <none>           <none>
+apple@192 manifests % ll
+total 56
+-rw-r--r--@  1 apple  staff  1192 13 Oct 09:52 stt-external-service.yaml
+-rw-r--r--@  1 apple  staff  1253 13 Oct 09:53 ingress-vox2-infra.yaml
+drwxr-xr-x@  7 apple  staff   224 13 Oct 09:59 .
+-rw-r--r--@  1 apple  staff  3326 13 Oct 09:59 cloudflared-hope-vox2.yaml
+drwxr-xr-x@ 10 apple  staff   320 13 Oct 10:00 ..
+-rw-r--r--@  1 apple  staff  7687 13 Oct 10:14 ingress-vox2-apps.yaml
+-rw-r--r--@  1 apple  staff  6574 13 Oct 10:21 README.md
+apple@192 manifests % kubectl apply -f stt-external-service.yaml 
+service/hope-stt created
+endpoints/hope-stt created
+apple@192 manifests % kubectl -n project-hope-vox get svc,endpoints hope-stt
+
+NAME               TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
+service/hope-stt   ClusterIP   10.96.118.90   <none>        8862/TCP   10s
+
+NAME                 ENDPOINTS            AGE
+endpoints/hope-stt   192.168.112.2:8862   9s
+apple@192 manifests % kubectl apply -f ingress-vox2-infra.yaml 
+ingress.networking.k8s.io/hope-vault created
+ingress.networking.k8s.io/hope-temporal-ui created
+apple@192 manifests % kubectl apply -f ingress-vox2-apps.yaml 
+middleware.traefik.io/hope-no-buffer created
+serverstransport.traefik.io/hope-long-streams created
+ingress.networking.k8s.io/hope-admin-console created
+ingress.networking.k8s.io/hope-api-gateway created
+ingress.networking.k8s.io/hope-text created
+ingress.networking.k8s.io/hope-tts created
+ingress.networking.k8s.io/hope-guardrail created
+ingress.networking.k8s.io/hope-nlp created
+ingress.networking.k8s.io/hope-harness created
+ingress.networking.k8s.io/hope-stt created
+apple@192 manifests % kubectl get ingress -A | grep vox2
+
+project-hope-vox-infra   hope-temporal-ui            traefik   temporal.vox2.arcaai.com                          80      19s
+project-hope-vox-infra   hope-vault                  traefik   vault.vox2.arcaai.com                             80      19s
+project-hope-vox         hope-admin-console          traefik   vox2.arcaai.com,admin.vox2.arcaai.com             80      11s
+project-hope-vox         hope-api-gateway            traefik   api.vox2.arcaai.com                               80      11s
+project-hope-vox         hope-guardrail              traefik   guardrail.vox2.arcaai.com                         80      10s
+project-hope-vox         hope-harness                traefik   harness.vox2.arcaai.com                           80      10s
+project-hope-vox         hope-nlp                    traefik   nlp.vox2.arcaai.com                               80      10s
+project-hope-vox         hope-stt                    traefik   stt.vox2.arcaai.com                               80      10s
+project-hope-vox         hope-text                   traefik   text.vox2.arcaai.com                              80      11s
+project-hope-vox         hope-tts                    traefik   tts.vox2.arcaai.com                               80      11s
+apple@192 manifests % 

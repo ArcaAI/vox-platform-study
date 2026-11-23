@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "073bcb09-8301-43a9-b31b-d248607d5b82",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-batch-speech.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-batch-speech.html",
+  "specification": {
+    "sha256": "b503dd46032aad2a82506c9ad2e79eb1303a46d18bdf58d6a77436c3c49ab081",
+    "bytes": 2473
+  },
+  "artifact": {
+    "sha256": "10fff9b98a1a57f181fba5067dc45fdabe53d2dff31926aceb299afd506f0312",
+    "bytes": 755379
+  }
+}

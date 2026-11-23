@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STT Streaming Session Creation",
+    "subtitle": "API Gateway creates a streaming session in STT service via internal API",
+    "output": "stt-streaming-session-create.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API Gateway",
+      "sublabel": "NestJS"
+    },
+    {
+      "id": "stt_http",
+      "type": "backend",
+      "label": "STT Service",
+      "sublabel": "FastAPI"
+    },
+    {
+      "id": "session_mgr",
+      "type": "backend",
+      "label": "SessionMgr",
+      "sublabel": "Python"
+    },
+    {
+      "id": "capacity_guard",
+      "type": "backend",
+      "label": "CapacityGrd",
+      "sublabel": "Python"
+    },
+    {
+      "id": "model_cache",
+      "type": "backend",
+      "label": "ModelCache",
+      "sublabel": "LRU+TTL"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "Streams"
+    },
+    {
+      "id": "minio",
+      "type": "database",
+      "label": "MinIO",
+      "sublabel": "S3"
+    },
+    {
+      "id": "huggingface",
+      "type": "external",
+      "label": "HF Hub",
+      "sublabel": "Model weights"
+    }
+  ],
+  "messages": [
+    {
+      "from": "gateway",
+      "to": "stt_http",
+      "y": 160,
+      "label": "POST /internal/streaming/sessions",
+      "variant": "default"
+    },
+    {
+      "from": "stt_http",
+      "to": "session_mgr",
+      "y": 210,
+      "label": "create_streaming_session()",
+      "variant": "default"
+    },
+    {
+      "from": "session_mgr",
+      "to": "capacity_guard",
+      "y": 260,
+      "label": "acquire()",
+      "variant": "default"
+    },
+    {
+      "from": "capacity_guard",
+      "to": "session_mgr",
+      "y": 310,
+      "label": "slot acquired",
+      "variant": "return",
+      "note": "Assemble runtime: VAD, Preprocessor, ASR, Diarization, InferenceWorker"
+    },
+    {
+      "from": "session_mgr",
+      "to": "model_cache",
+      "y": 360,
+      "label": "get_or_load(model_config)",
+      "variant": "default",
+      "note": "Load ASR model (faster-whisper/whisper.cpp/Parakeet/Cloud)"
+    },
+    {
+      "from": "model_cache",
+      "to": "huggingface",
+      "y": 410,
+      "label": "download model weights",
+      "variant": "default",
+      "note": "Cache miss: lazy load on first session"
+    },
+    {
+      "from": "huggingface",
+      "to": "model_cache",
+      "y": 460,
+      "label": "model weights",
+      "variant": "return",
+      "note": "Cache miss"
+    },
+    {
+      "from": "model_cache",
+      "to": "session_mgr",
+      "y": 510,
+      "label": "LoadedModel",
+      "variant": "return"
+    },
+    {
+      "from": "session_mgr",
+      "to": "redis",
+      "y": 560,
+      "label": "XADD session metadata\ncreate 3 Redis Streams",
+      "variant": "default",
+      "note": "audio, control, result streams per session"
+    },
+    {
+      "from": "redis",
+      "to": "session_mgr",
+      "y": 610,
+      "label": "streams created",
+      "variant": "return"
+    },
+    {
+      "from": "session_mgr",
+      "to": "stt_http",
+      "y": 660,
+      "label": "StreamSession",
+      "variant": "return"
+    },
+    {
+      "from": "stt_http",
+      "to": "gateway",
+      "y": 710,
+      "label": "201 StreamingSessionResponse",
+      "variant": "return",
+      "note": "session_id, pipeline_id, active_engine, capacity info"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "session_mgr",
+      "from": 210,
+      "to": 660,
+      "type": "backend"
+    },
+    {
+      "participant": "model_cache",
+      "from": 360,
+      "to": 510,
+      "type": "backend"
+    }
+  ]
+}

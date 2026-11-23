@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Harness Admin Workflow List",
+    "subtitle": "GET /api/v1/internal/harness/workflows — Temporal visibility query + SA degrade",
+    "output": "harness-admin-list.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "harness", "type": "backend", "label": "Harness", "sublabel": "FastAPI" },
+    { "id": "temporal", "type": "backend", "label": "Temporal", "sublabel": "Visibility API" }
+  ],
+  "messages": [
+    { "from": "gateway", "to": "harness", "y": 160, "label": "/internal/harness/workflows", "variant": "default", "note": "X-Service-Token + tenantId + status" },
+    { "from": "harness", "to": "temporal", "y": 210, "label": "list_workflows(query, page_size)", "variant": "default", "note": "visibility query + SA tenant filter" },
+    { "from": "temporal", "to": "harness", "y": 260, "label": "executions[] + next_token", "variant": "return" },
+    { "from": "harness", "to": "temporal", "y": 310, "label": "RPCError (SA unregistered)", "variant": "return", "note": "degrade: re-query without SA" },
+    { "from": "harness", "to": "temporal", "y": 360, "label": "list_workflows(no SA) + memo filter", "variant": "default", "note": "client-side tenant filter" },
+    { "from": "temporal", "to": "harness", "y": 410, "label": "executions[] + next_token", "variant": "return" },
+    { "from": "harness", "to": "gateway", "y": 460, "label": "{items[], nextPageToken}", "variant": "return", "note": "tenant-resolved summaries" }
+  ]
+}

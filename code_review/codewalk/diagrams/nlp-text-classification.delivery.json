@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "4a4e3473-21a2-480f-a41a-a7454166f56d",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-text-classification.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-text-classification.html",
+  "specification": {
+    "sha256": "4f2351eecfa2ea068d0979edffac05f343c457fc12b09ff8220ff074224f382c",
+    "bytes": 2295
+  },
+  "artifact": {
+    "sha256": "f0902e641b1efc44ce77bc1167e8c8c7b594133d4bf9c6fbeacd3fb30af800cc",
+    "bytes": 754081
+  }
+}

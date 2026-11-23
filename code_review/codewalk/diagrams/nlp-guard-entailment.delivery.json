@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "03fc3edb-78aa-46a5-9a7b-3626ff8f34c0",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-guard-entailment.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-guard-entailment.html",
+  "specification": {
+    "sha256": "14859adcea8854105817000b71d427fbef7628ef954654878dd97ca96511ae80",
+    "bytes": 2365
+  },
+  "artifact": {
+    "sha256": "9b82070886cec146b392031d4b3cb301cc88ef295b6b6a0b3533b344b8aeca47",
+    "bytes": 754126
+  }
+}

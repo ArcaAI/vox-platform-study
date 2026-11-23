@@ -1,0 +1,49 @@
+# GPU-server telemetry bundle — runs ON the GPU host (192.168.112.2)
+#
+#   node-exporter : host CPU / memory / disk / network  -> Prometheus job node-exporter-gpu
+#   promtail      : vLLM + STT container logs           -> Loki (NodePort 31100)
+#
+# Start:   LOKI_URL=http://192.168.112.6:31100 docker compose up -d
+# Stop:    docker compose down
+#
+# Requires Docker + docker compose on the host. `network_mode: host` is used so
+# node-exporter binds :9100 directly and promtail can reach the Loki NodePort.
+name: hope-gpu-telemetry
+
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: hope-node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host
+      - --web.listen-address=:9100
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+
+  promtail:
+    image: grafana/promtail:3.6.11
+    container_name: hope-promtail
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -config.file=/etc/promtail/promtail.yml
+      - -config.expand-env=true
+    environment:
+      LOKI_URL: ${LOKI_URL:-http://192.168.112.6:31100}
+    volumes:
+      - ./promtail-gpu.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log:/var/log:ro
+      - promtail-positions:/var/lib/promtail
+
+volumes:
+  promtail-positions:

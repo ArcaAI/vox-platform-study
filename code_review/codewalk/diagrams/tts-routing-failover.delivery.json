@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "1d592787-9b58-45f4-9252-9a4334181260",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-routing-failover.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-routing-failover.html",
+  "specification": {
+    "sha256": "32f017f1c0eaaf8e85919fd8292271043b18724e9da7e94523ee3494bfd0c156",
+    "bytes": 2654
+  },
+  "artifact": {
+    "sha256": "9fe257b9f67737afef824b966f677f3e07b73829fb776668b42e3a20e5581da6",
+    "bytes": 755551
+  }
+}

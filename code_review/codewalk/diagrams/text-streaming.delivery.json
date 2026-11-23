@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d933f100-142f-4cb9-9458-e17a42f0972d",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-streaming.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-streaming.html",
+  "specification": {
+    "sha256": "9cfd09ad19e255b81da07204bcc9652cc1e13533efb92842909c4e9905a88e44",
+    "bytes": 2830
+  },
+  "artifact": {
+    "sha256": "2b73ef91e243420dd3ebae385bedbb2c98230b9f75f113edb5a0e54c1f496971",
+    "bytes": 757733
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "86c8877c-bd60-4332-ad28-b5253379a4d2",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-health-readiness.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/nlp-health-readiness.html",
+  "specification": {
+    "sha256": "ad04f3c933db56178970fa5061e7a0cef3a8dfa9bbf45e88b6b9c8845cdfeedf",
+    "bytes": 2445
+  },
+  "artifact": {
+    "sha256": "66793b8b262fdfe5b39b1c51fe8541c9dc1be6ea97667b2a2986238b2992613f",
+    "bytes": 754092
+  }
+}

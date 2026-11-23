@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e621bbf0-48a8-49d0-bd34-a1bf97a2712e",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-health-probes.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-health-probes.html",
+  "specification": {
+    "sha256": "23f507ed185c0037b66e4659a212b4b27be73bf05553f5b00b38d2b43fd557f8",
+    "bytes": 2507
+  },
+  "artifact": {
+    "sha256": "e0341750b372aa0f4cef44543ff09f005fd1e5684adbd5592126f88754336ff0",
+    "bytes": 756046
+  }
+}

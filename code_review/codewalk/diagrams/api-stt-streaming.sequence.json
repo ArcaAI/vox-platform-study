@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Gateway - STT WebSocket Streaming",
+    "subtitle": "WS /api/v1/streaming/ws — real-time transcription",
+    "output": "api-stt-streaming.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "browser", "type": "frontend", "label": "Browser", "sublabel": "WS" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "origin", "type": "backend", "label": "OriginReg", "sublabel": "allow-list" },
+    { "id": "stt_internal", "type": "backend", "label": "STT Internal", "sublabel": "sessions API" },
+    { "id": "stt", "type": "backend", "label": "STT Svc", "sublabel": "FastAPI :8861" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "Streams" }
+  ],
+  "messages": [
+    { "from": "browser", "to": "gateway", "y": 160, "label": "WS connect /streaming/ws", "variant": "default", "note": "Origin header" },
+    { "from": "gateway", "to": "origin", "y": 210, "label": "isOriginAllowed(origin)", "variant": "default" },
+    { "from": "origin", "to": "gateway", "y": 260, "label": "tenantId / deny", "variant": "return" },
+    { "from": "gateway", "to": "stt_internal", "y": 310, "label": "POST /internal/stt/sessions", "variant": "default", "note": "X-Service-Token" },
+    { "from": "stt_internal", "to": "stt", "y": 360, "label": "create session\n(session_id, pipeline)", "variant": "default" },
+    { "from": "stt", "to": "stt_internal", "y": 410, "label": "session_id + ws endpoint", "variant": "return" },
+    { "from": "gateway", "to": "browser", "y": 460, "label": "WS accepted\nsession_id", "variant": "return" },
+    { "from": "browser", "to": "gateway", "y": 510, "label": "binary audio frames", "variant": "default" },
+    { "from": "gateway", "to": "redis", "y": 560, "label": "XADD stt:audio:{sid}", "variant": "default" },
+    { "from": "stt", "to": "redis", "y": 610, "label": "XREAD audio / XADD result", "variant": "default" },
+    { "from": "redis", "to": "gateway", "y": 660, "label": "XREAD stt:result:{sid}", "variant": "default" },
+    { "from": "gateway", "to": "browser", "y": 710, "label": "JSON transcript", "variant": "return" }
+  ]
+}

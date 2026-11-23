@@ -1,0 +1,238 @@
+# Prometheus configuration + alerting rules — namespace project-hope-vox-infra
+#
+# `prometheus-config` holds the config TEMPLATE. It is NOT mounted directly into
+# Prometheus; the busybox initContainer in 03-prometheus.yaml renders it (sed
+# substitution of ${DOMAIN}) into /etc/prometheus/prometheus.yml on an emptyDir.
+# This is the "init config" step and it is independent of the Prometheus image
+# version — bumping the tag in 03-prometheus.yaml does not change it.
+#
+# Config changes therefore need a pod restart (the emptyDir is re-rendered by the
+# initContainer on every start):
+#   kubectl -n project-hope-vox-infra rollout restart sts/prometheus
+#
+# `prometheus-alert-rules` is the ConfigMap that was MISSING in the old raw stack
+# (review finding H-30): its file name matches the `/etc/prometheus/rules/*.yml`
+# glob in `rule_files`, and 03-prometheus.yaml mounts it at /etc/prometheus/rules.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: project-hope-vox-infra
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+data:
+  prometheus.yml.tpl: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        monitor: 'project-hope-vox'
+        environment: 'vox2-infra'
+
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - alertmanager:9093
+
+    scrape_configs:
+      # Prometheus scraping itself — the baseline "is it alive" target.
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Alertmanager itself, so `AlertmanagerDown` (see prometheus-alert-rules)
+      # has a series to fire on.
+      - job_name: 'alertmanager'
+        static_configs:
+          - targets: ['alertmanager:9093']
+
+      # Generic, namespace-agnostic pod scrape. Any pod anywhere on the cluster
+      # carrying the annotation `prometheus.io/scrape: "true"` is discovered
+      # (optional `prometheus.io/port` and `prometheus.io/path`).
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: 'true'
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: ${1}:${2}
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+
+      # node-exporter (cluster) — our own DaemonSet (15-node-exporter.yaml).
+      # Scoped to this namespace so the legacy monitoring/node-exporter is not
+      # double-scraped, and labelled with the node name for per-host panels.
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [project-hope-vox-infra]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: node-exporter
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9100
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: instance
+
+      # kube-state-metrics (cluster-wide objects: pods, deployments, nodes…).
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['kube-state-metrics.kube-system.svc:8080']
+
+      # kubelet cAdvisor via the API proxy — container CPU/memory/network per pod
+      # (needs the `nodes/proxy` rule added to 01-rbac.yaml).
+      - job_name: 'kubernetes-cadvisor'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+
+      # HOPE application services (namespace project-hope-vox). Discovered via
+      # their Service endpoints, so no pod annotations are required. Endpoint SD
+      # uses the real container port (the Service port can differ, e.g. the
+      # gateway is published on 8866 but listens on 8868).
+      - job_name: 'hope-apps'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: [project-hope-vox]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: hope-(api-gateway|guardrail|harness|harness-worker|nlp|text|tts)-svc
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # GPU server (192.168.112.2) — an off-cluster host wired into the cluster
+      # via the selector-less `hope-stt` / `hope-vllm` Services. Scraped directly.
+      - job_name: 'vllm'
+        static_configs:
+          - targets: ['192.168.112.2:9000']
+            labels:
+              host: gpu-server
+              environment: gpu
+
+      - job_name: 'stt-gpu'
+        static_configs:
+          - targets: ['192.168.112.2:8862']
+            labels:
+              host: gpu-server
+              environment: gpu
+
+      # node-exporter on the GPU host (installed via review/observability/gpu-box).
+      # Supplies host CPU/memory/disk for the STT/GPU dashboard.
+      - job_name: 'node-exporter-gpu'
+        static_configs:
+          - targets: ['192.168.112.2:9100']
+            labels:
+              node: gpu-server
+              host: gpu-server
+              environment: gpu
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alert-rules
+  namespace: project-hope-vox-infra
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+data:
+  prometheus.rules.yml: |
+    groups:
+      - name: project-hope-vox
+        rules:
+          - alert: PrometheusTargetDown
+            expr: up == 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Prometheus target {{ $labels.job }}/{{ $labels.instance }} is down"
+              description: "{{ $labels.instance }} of job {{ $labels.job }} has been unreachable for more than 5 minutes."
+
+          - alert: AlertmanagerDown
+            expr: up{job="alertmanager"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Alertmanager is down"
+              description: "Prometheus cannot reach Alertmanager, so alerts will not be delivered."
+
+          - alert: PrometheusConfigReloadFailed
+            expr: prometheus_config_last_reload_successful == 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Prometheus config reload failed"
+              description: "Prometheus has failed to reload its configuration; the last known-good config is still active."
+
+          # The GPU host serves both STT and vLLM; if node-exporter there is down,
+          # per-host CPU/memory panels go blank.
+          - alert: GpuServerNodeExporterDown
+            expr: up{job="node-exporter-gpu"} == 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "node-exporter on the GPU server is down"
+              description: "The GPU host (192.168.112.2) node-exporter has not been scraped for 10m; CPU/memory history for STT is lost."
+
+          - alert: GpuServerHighCpu
+            expr: 100 * (1 - avg by (node) (rate(node_cpu_seconds_total{job="node-exporter-gpu",mode="idle"}[5m]))) > 90
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "GPU server CPU > 90% for 15m"
+              description: "Host CPU on {{ $labels.node }} is under sustained load."
+
+          - alert: GpuServerHighMemory
+            expr: 100 * (1 - node_memory_MemAvailable_bytes{job="node-exporter-gpu"} / node_memory_MemTotal_bytes{job="node-exporter-gpu"}) > 90
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "GPU server memory > 90% for 15m"
+              description: "Host memory on {{ $labels.node }} is under sustained pressure."

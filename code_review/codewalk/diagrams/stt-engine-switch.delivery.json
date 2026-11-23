@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b1b407e9-e485-4a08-af01-92afaca5b844",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-engine-switch.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-engine-switch.html",
+  "specification": {
+    "sha256": "17e3f30fe6683af08073cbaaede990f25c81d0626d5d887bc16d2b1b622c424d",
+    "bytes": 2441
+  },
+  "artifact": {
+    "sha256": "7451a9298f8532c80bf04c4f789a07dea0a8a3f9bc308af55acc676836a984dc",
+    "bytes": 754589
+  }
+}

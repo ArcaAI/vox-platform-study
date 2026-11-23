@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Harness Health Probes",
+    "subtitle": "K8s probes: /live, /startup, /ready, /health (Temporal config only)",
+    "output": "harness-health.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "kubelet", "type": "external", "label": "Kubelet", "sublabel": "Probes" },
+    { "id": "harness", "type": "backend", "label": "Harness", "sublabel": "FastAPI" },
+    { "id": "temporal", "type": "backend", "label": "Temporal", "sublabel": "Frontend" }
+  ],
+  "messages": [
+    { "from": "kubelet", "to": "harness", "y": 160, "label": "GET /health/live", "variant": "default" },
+    { "from": "harness", "to": "kubelet", "y": 210, "label": "200 {alive: true}", "variant": "return" },
+    { "from": "kubelet", "to": "harness", "y": 260, "label": "GET /health/startup", "variant": "default" },
+    { "from": "harness", "to": "kubelet", "y": 310, "label": "200/503", "variant": "return", "note": "checks service_release_task" },
+    { "from": "kubelet", "to": "harness", "y": 360, "label": "GET /health/ready", "variant": "default" },
+    { "from": "harness", "to": "temporal", "y": 410, "label": "get_temporal_client + check_health()", "variant": "default" },
+    { "from": "temporal", "to": "harness", "y": 460, "label": "healthy / error", "variant": "return" },
+    { "from": "harness", "to": "kubelet", "y": 510, "label": "200 healthy / 503 Temporal down", "variant": "return" },
+    { "from": "kubelet", "to": "harness", "y": 560, "label": "GET /health", "variant": "default" },
+    { "from": "harness", "to": "kubelet", "y": 610, "label": "200 detailed health", "variant": "return", "note": "Always 200; no Temporal dial" }
+  ]
+}

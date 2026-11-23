@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Gateway - Internal Agent Resolution",
+    "subtitle": "GET /api/v1/internal/agents/resolve - harness core.agent entry",
+    "output": "api-agent-resolve.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "harness", "type": "frontend", "label": "Harness", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "svc_token", "type": "backend", "label": "SvcToken", "sublabel": "SvcTokenGuard" },
+    { "id": "resolver", "type": "backend", "label": "AgentResolver", "sublabel": "AgentService" },
+    { "id": "text_resolver", "type": "backend", "label": "TextResolver", "sublabel": "TextAgentResolv" },
+    { "id": "entitlements", "type": "backend", "label": "Entitlements", "sublabel": "LLM quota" }
+  ],
+  "messages": [
+    { "from": "harness", "to": "gateway", "y": 160, "label": "GET /internal/agents/resolve", "variant": "default", "note": "X-Service-Token + X-Tenant-Id + task" },
+    { "from": "gateway", "to": "svc_token", "y": 210, "label": "InternalServiceTokenGuard", "variant": "default" },
+    { "from": "svc_token", "to": "gateway", "y": 260, "label": "OK", "variant": "return" },
+    { "from": "gateway", "to": "resolver", "y": 310, "label": "resolve({tenantId, task, agentSlug})", "variant": "default", "note": "tenantId from header/query" },
+    { "from": "resolver", "to": "gateway", "y": 360, "label": "ResolvedAgent", "variant": "return", "note": "primary + fallback chain" },
+    { "from": "gateway", "to": "entitlements", "y": 410, "label": "assertMeterQuota", "variant": "default", "note": "monthlyLlmTokens (TEXT_GEN only)" },
+    { "from": "entitlements", "to": "gateway", "y": 460, "label": "OK / 429", "variant": "return" },
+    { "from": "gateway", "to": "text_resolver", "y": 510, "label": "resolveFromAgent(resolved, tenantId)", "variant": "default" },
+    { "from": "text_resolver", "to": "gateway", "y": 560, "label": "ResolvedTextGenAgent", "variant": "return", "note": "textPrimary + textFallback" },
+    { "from": "gateway", "to": "harness", "y": 610, "label": "200 ResolvedAgent/TextGenAgent", "variant": "return" }
+  ]
+}

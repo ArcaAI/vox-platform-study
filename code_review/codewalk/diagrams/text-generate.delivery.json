@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "62a5ab70-502f-41c1-8753-7ea2d86e8d16",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-generate.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/text-generate.html",
+  "specification": {
+    "sha256": "cf1fea37a73a25895f5d532cfc4c8a1fe357ad0f14761f66293b0fc5c10d1631",
+    "bytes": 2802
+  },
+  "artifact": {
+    "sha256": "d9968dcbf86c9a79f512c48d895f84104b65dd364a00de136ef6711d8ca4ef96",
+    "bytes": 757466
+  }
+}

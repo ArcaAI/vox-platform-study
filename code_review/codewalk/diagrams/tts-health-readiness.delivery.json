@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f334571b-96c9-482c-9490-4ef87501a7a8",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-health-readiness.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-health-readiness.html",
+  "specification": {
+    "sha256": "817d17aca9d0fc33414d3f0792d3b9f60eef244c31a67aa7edbab21e32645b15",
+    "bytes": 2508
+  },
+  "artifact": {
+    "sha256": "a95fbf83be7bc71cb68ab8b967427cc96afe76103f144f238da614c0c098ba60",
+    "bytes": 754369
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Gateway - TTS Speech Synthesis",
+    "subtitle": "POST /api/v1/speech/synthesize - agent resolution + proxy to TTS",
+    "output": "api-speech-synthesize.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "auth", "type": "backend", "label": "Auth", "sublabel": "UnifiedAuth" },
+    { "id": "entitlements", "type": "backend", "label": "Entitlements", "sublabel": "Quota" },
+    { "id": "agent_resolver", "type": "backend", "label": "AgentResolver", "sublabel": "TTS agent" },
+    { "id": "tts", "type": "backend", "label": "TTS Svc", "sublabel": "FastAPI" },
+    { "id": "usage", "type": "backend", "label": "UsageLedger", "sublabel": "BullMQ" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /speech/synthesize", "variant": "default", "note": "input + voice + stream_format" },
+    { "from": "gateway", "to": "auth", "y": 210, "label": "UnifiedAuthGuard", "variant": "default", "note": "JWT / API key / Service Account" },
+    { "from": "auth", "to": "gateway", "y": 260, "label": "authenticated tenantId", "variant": "return" },
+    { "from": "gateway", "to": "entitlements", "y": 310, "label": "assertMeterQuota", "variant": "default", "note": "monthlyTtsCharacters" },
+    { "from": "entitlements", "to": "gateway", "y": 360, "label": "OK / 429 QuotaExceeded", "variant": "return" },
+    { "from": "gateway", "to": "agent_resolver", "y": 410, "label": "resolve TTS agent", "variant": "default", "note": "tenant → dept → SYSTEM cascade" },
+    { "from": "agent_resolver", "to": "gateway", "y": 460, "label": "ResolvedTtsSpec", "variant": "return", "note": "engine chain, models, connections" },
+    { "from": "gateway", "to": "tts", "y": 510, "label": "POST /api/v1/audio/speech", "variant": "default", "note": "resolved_spec + provider_overrides (decrypted)" },
+    { "from": "tts", "to": "gateway", "y": 560, "label": "Stream: audio / SSE / batch", "variant": "return", "note": "X-Tts-* headers" },
+    { "from": "gateway", "to": "client", "y": 610, "label": "Stream proxy → client", "variant": "return" },
+    { "from": "gateway", "to": "usage", "y": 660, "label": "recordUsage()", "variant": "default", "note": "chars + audio_sec + provider + conn_id" }
+  ]
+}

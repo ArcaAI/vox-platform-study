@@ -1,0 +1,82 @@
+# Traefik Ingresses — namespace project-hope-vox-infra
+#
+# Fronted by the Helm-installed Traefik in project-hope-vox (IngressClass
+# `traefik` is the cluster default). TLS terminates at the Cloudflare edge, so
+# these are plain HTTP and carry no `tls:` section — same style as
+# review/cloudflared/manifests/ingress-vox2-infra.yaml.
+#
+# Deliberately NO `router.middlewares` annotations: the raw observability stack
+# referenced `secure-headers@file`, `ip-whitelist-cloudflared@file`,
+# `gzip-compress@file`, `rl-prod@file`, none of which exist on this cluster.
+#
+# ⚠️ The Prometheus and Alertmanager web UIs have NO authentication. Anyone who
+# can resolve the hostname reaches them (and can silence alerts / delete series
+# via the Prometheus admin API). Until Traefik auth middleware exists on this
+# cluster, restrict these via Cloudflare Access, or drop the Prometheus /
+# Alertmanager Ingresses and reach them with `kubectl port-forward` instead.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-grafana
+  namespace: project-hope-vox-infra
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: grafana-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-prometheus
+  namespace: project-hope-vox-infra
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: prometheus-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-alertmanager
+  namespace: project-hope-vox-infra
+  labels:
+    app: alertmanager
+    app.kubernetes.io/part-of: project-hope
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: alertmanager-vox2.arcaai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: alertmanager
+                port:
+                  name: http

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail Async Jobs",
+    "subtitle": "POST /api/guardrail/analyze/async + GET /jobs/status/{id} — Redis-backed job queue",
+    "output": "guardrail-jobs.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "Job Queue + State" },
+    { "id": "nlp", "type": "backend", "label": "NLP Svc", "sublabel": "Worker" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /guardrail/analyze/async", "variant": "default", "note": "text + guardrail_type + priority + X-Tenant-Id" },
+    { "from": "gateway", "to": "guardrail", "y": 210, "label": "POST /api/guardrail/analyze/async", "variant": "default" },
+    { "from": "guardrail", "to": "redis", "y": 260, "label": "require_tenant_id + admitted + LPUSH job:{id}", "variant": "default", "note": "tenant stamped on job" },
+    { "from": "redis", "to": "guardrail", "y": 360, "label": "job_id", "variant": "return" },
+    { "from": "guardrail", "to": "gateway", "y": 410, "label": "202 {job_id, status: submitted}", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 460, "label": "202 job_id", "variant": "return" },
+    { "from": "guardrail", "to": "nlp", "y": 510, "label": "Worker: LPOP job:{id} + analyze", "variant": "default", "note": "pinned_safety_analyzer(tenant_id)" },
+    { "from": "nlp", "to": "guardrail", "y": 560, "label": "verdict", "variant": "return" },
+    { "from": "guardrail", "to": "redis", "y": 610, "label": "HSET job:{id} completed + result", "variant": "default" },
+    { "from": "client", "to": "gateway", "y": 660, "label": "GET /jobs/status/{job_id}", "variant": "default" },
+    { "from": "gateway", "to": "guardrail", "y": 710, "label": "GET /api/jobs/status/{id}", "variant": "default" },
+    { "from": "guardrail", "to": "redis", "y": 760, "label": "HGET job:{id} (tenant-scoped)", "variant": "default", "note": "404 if cross-tenant" },
+    { "from": "redis", "to": "guardrail", "y": 810, "label": "job state", "variant": "return" },
+    { "from": "guardrail", "to": "gateway", "y": 860, "label": "JobStatus", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 910, "label": "200 JobStatus", "variant": "return" }
+  ]
+}

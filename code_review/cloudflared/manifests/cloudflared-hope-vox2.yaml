@@ -1,0 +1,117 @@
+# Dedicated cloudflared for vox2.arcaai.com
+# Namespace: project-hope-vox
+#
+# Runs a NEW, dedicated Cloudflare Tunnel ("hope-vox2") — independent of the
+# existing arcafabric tunnel. Ingress is dashboard-managed (token mode), so no
+# config.yaml is required; every *.vox2.arcaai.com public hostname is added in
+# the Cloudflare dashboard and points at Traefik.
+#
+# The tunnel token is NOT stored here — create the Secret out of band first:
+#   kubectl -n project-hope-vox create secret generic cloudflared-tunnel-token \
+#     --from-literal=token='<TUNNEL_TOKEN>'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: project-hope-vox
+  labels:
+    app: cloudflared
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2000"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: cloudflared
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: cloudflared
+          # Pinned by digest (2026.8.3). Upgrade to 2026.10.0+ when ready.
+          image: cloudflare/cloudflared:2026.8.3@sha256:51c9cefcb4569df44e1ad403ab1d3d8065aa8e84339bcfc6aee75502e1140339
+          imagePullPolicy: IfNotPresent
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --metrics
+            - "0.0.0.0:2000"
+            - run
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-tunnel-token
+                  key: token
+          ports:
+            - name: metrics
+              containerPort: 2000
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "1"
+              memory: "256Mi"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudflared-metrics
+  namespace: project-hope-vox
+  labels:
+    app: cloudflared
+    app.kubernetes.io/part-of: project-hope
+spec:
+  type: ClusterIP
+  selector:
+    app: cloudflared
+  ports:
+    - name: metrics
+      port: 2000
+      targetPort: metrics

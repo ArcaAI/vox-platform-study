@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "3719d8da-5af8-4a60-8885-00e3473b5fb4",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/admin-console-logout.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/admin-console-logout.html",
+  "specification": {
+    "sha256": "f9177c2a2dea9e9a966b51a3ecdcc823d8e891b4a3f44c551c99ad8c801fcd69",
+    "bytes": 1196
+  },
+  "artifact": {
+    "sha256": "a3edae0a7a335f679049fb1a243cc7518027c094bb6aeaa2082194571352192d",
+    "bytes": 745888
+  }
+}

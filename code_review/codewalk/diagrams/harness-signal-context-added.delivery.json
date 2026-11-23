@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "73c7d91e-5dc7-4d82-86d5-f2aeda44a874",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-signal-context-added.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-signal-context-added.html",
+  "specification": {
+    "sha256": "f96cbe346f9e5011e7ca8b7b281a13b3e242a4d90217646b7b2122a887a42f7b",
+    "bytes": 1198
+  },
+  "artifact": {
+    "sha256": "ea146520437d97e770e2f00beb900e6d9f26a2692ddd0ab78336b4476b7a6d6b",
+    "bytes": 745601
+  }
+}

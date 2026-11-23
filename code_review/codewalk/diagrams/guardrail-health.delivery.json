@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "21641053-d6a6-464e-a025-2ffad2a9ad8a",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-health.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-health.html",
+  "specification": {
+    "sha256": "5bb7a813197b6033b9b8d7a491c2b22f1fcfdf4c7d17fa133d07f806b030f5b5",
+    "bytes": 1909
+  },
+  "artifact": {
+    "sha256": "b2250276a77e66dd67fb76efff7873f4a3dd95de3237a51fb769068c7bc16421",
+    "bytes": 751516
+  }
+}

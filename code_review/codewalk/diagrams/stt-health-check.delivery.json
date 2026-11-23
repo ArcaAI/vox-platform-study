@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "3722b9b8-f4cf-44d0-9618-e5acacdc0487",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-health-check.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-health-check.html",
+  "specification": {
+    "sha256": "fa714c3fb3322fcdf54b33c52c459959e17063aa14bd86e951e8196fd130df36",
+    "bytes": 3191
+  },
+  "artifact": {
+    "sha256": "98e2bab15e8e6fd1bd6e0f2eb66f119b6075ec9e6a9bbb0d2bdf42b12e805cc0",
+    "bytes": 761097
+  }
+}

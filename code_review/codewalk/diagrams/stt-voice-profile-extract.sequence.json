@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STT Voice Profile Extraction",
+    "subtitle": "Speaker embedding extraction for enrollment",
+    "output": "stt-voice-profile-extract.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "stt_http", "type": "backend", "label": "STT", "sublabel": "FastAPI" },
+    { "id": "embedding_svc", "type": "backend", "label": "EmbeddingSvc", "sublabel": "ECAPA-TDNN" },
+    { "id": "vad_svc", "type": "backend", "label": "VAD Service", "sublabel": "Silero" },
+    { "id": "extraction_svc", "type": "backend", "label": "ExtractionSvc", "sublabel": "Python" },
+    { "id": "model_cache", "type": "backend", "label": "ModelCache", "sublabel": "LRU+TTL" }
+  ],
+  "messages": [
+    { "from": "gateway", "to": "stt_http", "y": 160, "label": "POST /voice-profile/extract", "variant": "default", "note": "files + model_slug + model_source_uri" },
+    { "from": "stt_http", "to": "model_cache", "y": 210, "label": "get_or_load(embedding model)", "variant": "default", "note": "Per-agent model from model_source_uri" },
+    { "from": "model_cache", "to": "embedding_svc", "y": 260, "label": "LoadedModel", "variant": "return" },
+    { "from": "stt_http", "to": "vad_svc", "y": 310, "label": "initialize()", "variant": "default" },
+    { "from": "vad_svc", "to": "stt_http", "y": 360, "label": "ready", "variant": "return" },
+    { "from": "stt_http", "to": "extraction_svc", "y": 410, "label": "extract(samples, sample_rate)", "variant": "default" },
+    { "from": "extraction_svc", "to": "vad_svc", "y": 460, "label": "VAD: find speech segments", "variant": "default" },
+    { "from": "vad_svc", "to": "extraction_svc", "y": 510, "label": "speech segments", "variant": "return" },
+    { "from": "extraction_svc", "to": "embedding_svc", "y": 560, "label": "embed(segment) per segment", "variant": "default" },
+    { "from": "embedding_svc", "to": "extraction_svc", "y": 610, "label": "embeddings", "variant": "return" },
+    { "from": "extraction_svc", "to": "stt_http", "y": 660, "label": "avg embedding + similarity check", "variant": "emphasis", "note": "min_cross_sample_similarity gate" },
+    { "from": "stt_http", "to": "gateway", "y": 710, "label": "200 ExtractionResponse", "variant": "return", "note": "embedding, model_id, model_slug" }
+  ]
+}

@@ -1,0 +1,100 @@
+# Alertmanager — namespace project-hope-vox-infra
+#
+# Image prom/alertmanager:v0.28.1 (the newest version referenced anywhere in this
+# repo). Config comes from the mounted `alertmanager-config` ConfigMap; bumping
+# the image only requires the config to stay valid for that version (see
+# 04-alertmanager-config.yaml for the v0.28 matcher syntax note).
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alertmanager
+  namespace: project-hope-vox-infra
+  labels:
+    app: alertmanager
+    app.kubernetes.io/part-of: project-hope
+spec:
+  serviceName: alertmanager
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      # uid 65534 = the alertmanager image's default user.
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.28.1
+          args:
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--storage.path=/alertmanager"
+            # Single replica: disable HA clustering.
+            - "--cluster.listen-address="
+          ports:
+            - name: http
+              containerPort: 9093
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: data
+              mountPath: /alertmanager
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+            items:
+              - key: alertmanager.yml
+                path: alertmanager.yml
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-client
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: project-hope-vox-infra
+  labels:
+    app: alertmanager
+    app.kubernetes.io/part-of: project-hope
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093

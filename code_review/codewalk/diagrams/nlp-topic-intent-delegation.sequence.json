@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "NLP Topic/Intent Classification (Delegated to Text Service)",
+    "subtitle": "POST /api/v1/classify/topic|intent — LLM delegation to text service",
+    "output": "nlp-topic-intent-delegation.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "nlp_http", "type": "backend", "label": "NLP", "sublabel": "FastAPI" },
+    { "id": "text_client", "type": "backend", "label": "ExtTextClient", "sublabel": "HTTP" },
+    { "id": "text_svc", "type": "backend", "label": "Text Svc", "sublabel": "LLM" },
+    { "id": "semaphore", "type": "backend", "label": "Semaphore", "sublabel": "peer_call_bound" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /classify/topic", "variant": "default", "note": "text + instructions[] + tenant_id" },
+    { "from": "gateway", "to": "nlp_http", "y": 210, "label": "POST /classify/topic", "variant": "default" },
+    { "from": "nlp_http", "to": "text_client", "y": 260, "label": "validate instructions + tenant_id", "variant": "emphasis", "note": "fail-closed: 503 if missing" },
+    { "from": "text_client", "to": "nlp_http", "y": 310, "label": "ExternalTextClient", "variant": "return" },
+    { "from": "nlp_http", "to": "semaphore", "y": 360, "label": "acquire peer_call_bound", "variant": "default" },
+    { "from": "semaphore", "to": "nlp_http", "y": 410, "label": "granted", "variant": "return" },
+    { "from": "nlp_http", "to": "text_client", "y": 460, "label": "generate_label_with_usage(prompt, tenant_id)", "variant": "default" },
+    { "from": "text_client", "to": "text_svc", "y": 510, "label": "POST /api/v1/generate", "variant": "default" },
+    { "from": "text_svc", "to": "text_client", "y": 560, "label": "label + llm_usage + guardrail_usage", "variant": "return" },
+    { "from": "text_client", "to": "nlp_http", "y": 610, "label": "generated label + usage", "variant": "return" },
+    { "from": "nlp_http", "to": "semaphore", "y": 660, "label": "release peer_call_bound", "variant": "default" },
+    { "from": "nlp_http", "to": "gateway", "y": 710, "label": "TopicClassificationResponse", "variant": "return", "note": "predicted_topic, available_topics, llm_usage" },
+    { "from": "gateway", "to": "client", "y": 760, "label": "200 response", "variant": "return" }
+  ]
+}

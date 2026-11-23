@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "7b561965-ab28-492f-b0f0-a7f5b44e5b27",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-knowledge-ingest.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-knowledge-ingest.html",
+  "specification": {
+    "sha256": "33ac42a3b519f6be5e4f029bf0815bb60a546fcfd5821c0a539ec0faa61a440a",
+    "bytes": 1475
+  },
+  "artifact": {
+    "sha256": "ca2f39073f131b8c328dfe3e6e1ffb213bde4479eeaaf0251ee0898240c3ce51",
+    "bytes": 748032
+  }
+}

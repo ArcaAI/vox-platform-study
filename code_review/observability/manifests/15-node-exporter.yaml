@@ -1,0 +1,75 @@
+# node-exporter (cluster) — namespace project-hope-vox-infra
+#
+# A self-contained node-exporter DaemonSet so the infrastructure dashboards do
+# not depend on the legacy `monitoring/node-exporter` (quay.io/.../latest) and
+# so the control-plane node is covered too (the legacy DaemonSet has no
+# control-plane toleration, hence only 5 of 6 nodes).
+#
+# Prometheus discovers these pods by label via the `node-exporter` job in
+# 02-prometheus-config.yaml. Host metrics (CPU/memory/disk/network) come from the
+# bind-mounted host /proc, /sys and /; hostNetwork is deliberately NOT used so
+# this does not collide with the legacy monitoring/node-exporter that already
+# owns host port 9100 on the worker nodes.
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: project-hope-vox-infra
+  labels:
+    app: node-exporter
+    app.kubernetes.io/part-of: project-hope
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsUser: 65534
+        runAsNonRoot: true
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.9.1
+          args:
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host
+            - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+            - --web.listen-address=:9100
+          ports:
+            - name: metrics
+              containerPort: 9100
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host
+              readOnly: true
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /

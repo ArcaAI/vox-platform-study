@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail PII Redaction",
+    "subtitle": "POST /api/guardrail/redact — chunked GLiNER2 extraction + masking",
+    "output": "guardrail-redact.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "nlp", "type": "backend", "label": "NLP Svc", "sublabel": "GLiNER2 PII" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Tenant Config" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /guardrail/redact", "variant": "default", "note": "text + mode(pseudonymize/full) + X-Tenant-Id" },
+    { "from": "gateway", "to": "guardrail", "y": 210, "label": "POST /api/guardrail/redact", "variant": "default", "note": "X-Service-Token + X-Tenant-Id" },
+    { "from": "guardrail", "to": "postgres", "y": 260, "label": "resolve guardrail.pii model", "variant": "default", "note": "AiRoutingPolicy → AiModel" },
+    { "from": "postgres", "to": "guardrail", "y": 310, "label": "model_id + source_uri", "variant": "return" },
+    { "from": "guardrail", "to": "nlp", "y": 360, "label": "POST /classify/tokens (PII)", "variant": "default", "note": "chunk 1: extract_pii_entities()" },
+    { "from": "nlp", "to": "guardrail", "y": 410, "label": "PII spans (label, start, end, score)", "variant": "return" },
+    { "from": "guardrail", "to": "nlp", "y": 460, "label": "repeat for all chunks", "variant": "default", "note": "sequential to bound memory" },
+    { "from": "nlp", "to": "guardrail", "y": 510, "label": "all PII spans", "variant": "return" },
+    { "from": "guardrail", "to": "gateway", "y": 560, "label": "RedactResponse", "variant": "return", "note": "_apply_mask: pseudonymize [PERSON_1] / full [REDACTED]" },
+    { "from": "gateway", "to": "client", "y": 610, "label": "200 response", "variant": "return" }
+  ]
+}

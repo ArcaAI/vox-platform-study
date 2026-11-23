@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "28f0a4b5-7555-46e3-af33-ff5895c1f5d5",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-batch-transcribe.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/stt-batch-transcribe.html",
+  "specification": {
+    "sha256": "4dd8a77f95f5c8c950ea7ad1373621971f2a7b00e97dffbe81fabbcb912083fe",
+    "bytes": 2296
+  },
+  "artifact": {
+    "sha256": "a86b239fff30d348badc0a1a68f628757ef34ca53c1c3ae071aa51df24b04451",
+    "bytes": 754947
+  }
+}

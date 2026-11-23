@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "69832c74-9ca2-4fe2-9011-737b4359cbe1",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-text-proxy.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/api-text-proxy.html",
+  "specification": {
+    "sha256": "2cd5b623a8314fd8da0d51d362ce9fb5af8817bd0f65d968224e4a498d3c84b0",
+    "bytes": 2076
+  },
+  "artifact": {
+    "sha256": "e59c18b8f8c659c32596272863abcd3c7991274efe40ca348c63862f59e36c3f",
+    "bytes": 752539
+  }
+}

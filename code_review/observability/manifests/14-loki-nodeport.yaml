@@ -1,0 +1,30 @@
+# Loki NodePort — for the GPU-server log shipper only.
+#
+# Loki itself is ClusterIP-only (12-loki.yaml) and has NO authentication
+# (`auth_enabled: false`). The GPU host (192.168.112.2) is outside the pod
+# network, so its Promtail cannot reach the ClusterIP. This NodePort is the
+# agreed trade-off: reachable only on the node LAN (192.168.112.0/24) at
+# <any-node-IP>:31100 — never exposed publicly / via Ingress.
+#
+# Security note: anything on that LAN can read AND write logs through it. If the
+# LAN is not trusted, front this with a TCP proxy that adds basic auth, or ship
+# GPU logs with a Promtail running as a small in-cluster Deployment that mounts
+# the host log paths instead.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-nodeport
+  namespace: project-hope-vox-infra
+  labels:
+    app: loki
+    app.kubernetes.io/part-of: project-hope
+spec:
+  type: NodePort
+  selector:
+    app: loki
+  ports:
+    - name: http
+      port: 3100
+      targetPort: 3100
+      nodePort: 31100

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "447fe592-da52-4180-ab14-96f8906e0ce9",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-model-resolvable.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/tts-model-resolvable.html",
+  "specification": {
+    "sha256": "05eb1096cbd1868424b65fa4b7f56266d29dae4551db7e24b5b91d88d20bb6b1",
+    "bytes": 1864
+  },
+  "artifact": {
+    "sha256": "aeba3d0ee5530c53eab72a9d8e9164370b9174896df8b7e32d205462a0024de3",
+    "bytes": 750587
+  }
+}

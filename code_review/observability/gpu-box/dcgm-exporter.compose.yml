@@ -1,0 +1,35 @@
+# OPTIONAL: hardware-level GPU metrics (utilisation, memory, temperature, power).
+#
+# vLLM already reports software-side metrics (vllm:kv_cache_usage_perc etc.).
+# Add this only if you want raw GPU metrics in Grafana.
+#
+#   docker compose -f dcgm-exporter.compose.yml up -d
+#
+# Then add a Prometheus job (02-prometheus-config.yaml):
+#   - job_name: 'dcgm-gpu'
+#     static_configs:
+#       - targets: ['192.168.112.2:9400']
+#         labels: { host: gpu-server, environment: gpu }
+#
+# Requires the NVIDIA driver + docker (nvidia runtime). Needs `sudo` to install
+# if the toolkit is not already present; see:
+#   https://github.com/NVIDIA/dcgm-exporter
+name: hope-gpu-dcgm
+
+services:
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.9-3.6.1-ubuntu22.04
+    container_name: hope-dcgm-exporter
+    restart: unless-stopped
+    network_mode: host
+    runtime: nvidia
+    cap_add: [SYS_ADMIN]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "9400:9400"

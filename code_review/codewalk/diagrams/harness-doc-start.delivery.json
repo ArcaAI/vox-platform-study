@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "3c681e67-9243-4a85-9b97-61b2e5fad5d6",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-doc-start.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-doc-start.html",
+  "specification": {
+    "sha256": "b5a724f542da1b5bc1128075d8b3ae7f6bec4f1e5b0a2f89064cbb5fee2d3cba",
+    "bytes": 1458
+  },
+  "artifact": {
+    "sha256": "0386d1a90145ada749eb3a0eb48775b7aae4238a65888ca86f124483b335cf3b",
+    "bytes": 747031
+  }
+}

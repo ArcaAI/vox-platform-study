@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "67a2505b-6ea1-4f15-a026-ae03b899744a",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-jobs.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/guardrail-jobs.html",
+  "specification": {
+    "sha256": "c77f9ba89d3e6549c076d4155db8f2abe3c2098864ab183d77469bb703d6fc73",
+    "bytes": 2592
+  },
+  "artifact": {
+    "sha256": "0c5503a4a6c4eb83bcaaeb1e952dacf3443573c080b6864fe338ab4daf9ac63d",
+    "bytes": 754972
+  }
+}

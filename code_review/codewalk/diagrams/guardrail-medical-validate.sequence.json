@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Guardrail Medical Validation",
+    "subtitle": "POST /api/medical/validate — delegation to Text service LLM judge",
+    "output": "guardrail-medical-validate.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "guardrail", "type": "backend", "label": "Guardrail", "sublabel": "FastAPI" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "AiRoutingPolicy" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "LLM Judge" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /medical/validate", "variant": "default", "note": "text + provider_overrides + X-Tenant-Id" },
+    { "from": "gateway", "to": "guardrail", "y": 210, "label": "POST /api/medical/validate", "variant": "default", "note": "X-Service-Token + X-Tenant-Id" },
+    { "from": "guardrail", "to": "postgres", "y": 260, "label": "resolve_guardian_provider()", "variant": "default", "note": "AiRoutingPolicy(guardian) → AiModel → AiProviderConnection" },
+    { "from": "postgres", "to": "guardrail", "y": 310, "label": "model_id + connection + BYOK creds", "variant": "return" },
+    { "from": "guardrail", "to": "text", "y": 360, "label": "POST /api/v1/generate", "variant": "default", "note": "judge prompt + provider_overrides + X-Service-Token" },
+    { "from": "text", "to": "guardrail", "y": 410, "label": "is_medical + confidence + reasoning", "variant": "return", "note": "stats with token usage" },
+    { "from": "guardrail", "to": "gateway", "y": 460, "label": "MedicalValidationResponse", "variant": "return", "note": "is_medical/confidence/context_type + stats" },
+    { "from": "gateway", "to": "client", "y": 510, "label": "200 response", "variant": "return" }
+  ]
+}

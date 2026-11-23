@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b730abc8-4c51-414a-a961-8ce0340432b3",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-eval-gate.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-eval-gate.html",
+  "specification": {
+    "sha256": "7dffb2a8685a1790e383273a889f373807ff330fe9bb4d950a7b620663af822a",
+    "bytes": 1666
+  },
+  "artifact": {
+    "sha256": "fdf6335a6ee3bcbf27b1f7167fdc78ed2cf1a505982801c2dbba29fefaa132db",
+    "bytes": 748788
+  }
+}

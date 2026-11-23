@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Gateway - Text LLM Generation Proxy",
+    "subtitle": "POST /api/v1/text/generate — agent resolution + proxy to Text service",
+    "output": "api-text-proxy.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "auth", "type": "backend", "label": "Auth", "sublabel": "UnifiedAuth" },
+    { "id": "agent_resolver", "type": "backend", "label": "AgentResolver", "sublabel": "Text agent" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "LLM" },
+    { "id": "usage", "type": "backend", "label": "UsageLedger", "sublabel": "BullMQ" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "POST /text/generate", "variant": "default", "note": "prompt + agentSlug + stream_format" },
+    { "from": "gateway", "to": "auth", "y": 210, "label": "UnifiedAuthGuard", "variant": "default", "note": "JWT / API key" },
+    { "from": "auth", "to": "gateway", "y": 260, "label": "tenantId", "variant": "return" },
+    { "from": "gateway", "to": "agent_resolver", "y": 310, "label": "resolve Text agent", "variant": "default", "note": "tenant → dept → SYSTEM" },
+    { "from": "agent_resolver", "to": "gateway", "y": 360, "label": "ResolvedTextGenAgent", "variant": "return", "note": "primary + fallback" },
+    { "from": "gateway", "to": "text", "y": 410, "label": "POST /api/v1/generate", "variant": "default", "note": "resolved_spec + provider_overrides (decrypted)" },
+    { "from": "text", "to": "gateway", "y": 460, "label": "Stream: tokens / SSE", "variant": "return", "note": "X-Text-* headers" },
+    { "from": "gateway", "to": "client", "y": 510, "label": "Stream proxy → client", "variant": "return" },
+    { "from": "gateway", "to": "usage", "y": 560, "label": "recordUsage()", "variant": "default", "note": "tokens + provider + conn_id" }
+  ]
+}

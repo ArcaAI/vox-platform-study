@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "aef652ba-cd51-433b-bb4e-00fd154b568a",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-admin-list.sequence.json",
+  "output": "/Users/apple/repos/VOX/review/codewalk/diagrams/harness-admin-list.html",
+  "specification": {
+    "sha256": "70aa211715f72ec957d073d5a848edad37415042bc635fedb36fe1d7db58e0c5",
+    "bytes": 1630
+  },
+  "artifact": {
+    "sha256": "e179357d04f5afa62650ee314fdbb05952d6d96f3484f48e1042e7aa34f3173f",
+    "bytes": 747769
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STT Streaming Transcription Flow",
+    "subtitle": "Real-time audio transcription via Redis Streams",
+    "output": "stt-streaming-transcription.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "WS" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "Streams" },
+    { "id": "preprocessor", "type": "backend", "label": "Preprocessor", "sublabel": "VAD" },
+    { "id": "inference", "type": "backend", "label": "Inference", "sublabel": "ASR" },
+    { "id": "model_cache", "type": "backend", "label": "ModelCache", "sublabel": "LRU+TTL" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "WS connect /streaming/{sid}", "variant": "default" },
+    { "from": "gateway", "to": "redis", "y": 210, "label": "XADD audio:{sid} audio frames", "variant": "default" },
+    { "from": "redis", "to": "preprocessor", "y": 260, "label": "IngestionConsumer reads audio", "variant": "default" },
+    { "from": "preprocessor", "to": "inference", "y": 310, "label": "VAD + resample + denoise → enqueue utterance", "variant": "emphasis", "note": "Segments audio into utterances" },
+    { "from": "inference", "to": "model_cache", "y": 360, "label": "get_or_load(ASR model)", "variant": "default", "note": "faster-whisper/whisper.cpp/Parakeet/Cloud" },
+    { "from": "model_cache", "to": "inference", "y": 410, "label": "LoadedModel", "variant": "return" },
+    { "from": "inference", "to": "redis", "y": 460, "label": "ASR inference → XADD result:{sid}", "variant": "emphasis", "note": "whisper_full/transcribe() partial + final" },
+    { "from": "redis", "to": "gateway", "y": 510, "label": "XREAD result:{sid}", "variant": "default" },
+    { "from": "gateway", "to": "client", "y": 560, "label": "WS message: transcript", "variant": "return" }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Text Provider Probing",
+    "subtitle": "GET/POST /api/v1/providers — parallel health probes",
+    "output": "text-providers-probe.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client", "sublabel": "HTTP" },
+    { "id": "gateway", "type": "backend", "label": "API GW", "sublabel": "NestJS" },
+    { "id": "text", "type": "backend", "label": "Text Svc", "sublabel": "FastAPI" },
+    { "id": "registry", "type": "backend", "label": "ProviderReg", "sublabel": "Registry" },
+    { "id": "provider", "type": "backend", "label": "Provider", "sublabel": "OpenAI/Ollama/..." },
+    { "id": "pool_health", "type": "backend", "label": "PoolHealth", "sublabel": "Tracker" }
+  ],
+  "messages": [
+    { "from": "client", "to": "gateway", "y": 160, "label": "GET /providers", "variant": "default" },
+    { "from": "gateway", "to": "text", "y": 210, "label": "GET /api/v1/providers", "variant": "default" },
+    { "from": "text", "to": "registry", "y": 260, "label": "list_providers()", "variant": "default" },
+    { "from": "registry", "to": "text", "y": 310, "label": "[openai, ollama, ...]", "variant": "return" },
+    { "from": "text", "to": "provider", "y": 360, "label": "probe_all: get_info/discover_models", "variant": "default", "note": "parallel, 5s timeout each" },
+    { "from": "provider", "to": "text", "y": 410, "label": "ProviderInfo + probe_status", "variant": "return", "note": "ok/timeout/error/skipped" },
+    { "from": "text", "to": "pool_health", "y": 460, "label": "record(name, healthy)", "variant": "default", "note": "feeds degrade routing" },
+    { "from": "text", "to": "gateway", "y": 510, "label": "[ProviderInfo + probe_status + pool_health]", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 560, "label": "200 list", "variant": "return" },
+    { "from": "client", "to": "gateway", "y": 610, "label": "POST /providers/probe", "variant": "default", "note": "connections: {provider: endpoint}" },
+    { "from": "gateway", "to": "text", "y": 660, "label": "POST /api/v1/providers/probe", "variant": "default" },
+    { "from": "text", "to": "provider", "y": 710, "label": "discover_models(tenant_conn)", "variant": "default", "note": "connection-aware" },
+    { "from": "provider", "to": "text", "y": 760, "label": "models from tenant endpoint", "variant": "return" },
+    { "from": "text", "to": "gateway", "y": 810, "label": "200 list (tenant models)", "variant": "return" },
+    { "from": "gateway", "to": "client", "y": 860, "label": "200 response", "variant": "return" }
+  ]
+}

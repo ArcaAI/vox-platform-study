@@ -1,0 +1,60 @@
+# Alertmanager configuration — namespace project-hope-vox-infra
+#
+# Rewritten for Alertmanager v0.28 (see 05-alertmanager.yaml). v0.28 REMOVED the
+# legacy `source_match` / `target_match` / route-level `match` / `match_re`
+# fields, so this config uses the modern `matchers` / `source_matchers` /
+# `target_matchers` syntax. The old raw manifest used `source_match` and would
+# have been rejected by v0.28 on startup.
+#
+# There is NO external receiver wired yet. Everything routes to the built-in
+# `null` receiver: alerts are accepted and visible in the Alertmanager UI/API but
+# never delivered. Add a real receiver (webhook / email / MS Teams) and point
+# `route.receiver` at it to make alerts leave the cluster.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: project-hope-vox-infra
+  labels:
+    app: alertmanager
+    app.kubernetes.io/part-of: project-hope
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      receiver: 'null'
+      group_by: ['alertname', 'namespace', 'job']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+        # Watchdog is the always-firing heartbeat alert; never route it.
+        - matchers:
+            - alertname = "Watchdog"
+          receiver: 'null'
+        # informational alerts are accepted but not delivered.
+        - matchers:
+            - severity = "info"
+          receiver: 'null'
+
+    # No delivery target yet. When adding one, keep `null` first in this list so
+    # the receiver referenced by `route.receiver` always exists.
+    receivers:
+      - name: 'null'
+
+    inhibit_rules:
+      # A firing critical on a target suppresses its warnings.
+      - source_matchers:
+          - severity = "critical"
+        target_matchers:
+          - severity = "warning"
+        equal: ['alertname', 'namespace', 'instance']
+      # A down target suppresses everything else about the same instance.
+      - source_matchers:
+          - alertname = "PrometheusTargetDown"
+        target_matchers:
+          - severity =~ ".*"
+        equal: ['instance']

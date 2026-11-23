@@ -1,0 +1,54 @@
+# Prometheus RBAC — namespace project-hope-vox-infra
+#
+# Needed only for the `kubernetes-pods` service-discovery job in
+# 02-prometheus-config.yaml (the kubelet/API discovery of pod endpoints).
+#
+# The two cluster-scoped objects are named `project-hope-vox-prometheus` — NOT
+# the bare `prometheus` used by the old Arca-AgenticSystemDeployment manifests.
+# ClusterRole/ClusterRoleBinding names are cluster-scoped, so a bare `prometheus`
+# collides with any other Prometheus on the cluster. Nothing here grants write
+# access: `get/list/watch` and the read-only `/metrics` non-resource URL only.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: project-hope-vox-infra
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: project-hope-vox-prometheus
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/metrics", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  # Read-only: lets Prometheus scrape kubelet cAdvisor through the API proxy
+  # (/api/v1/nodes/<node>/proxy/metrics/cadvisor) for per-pod CPU/memory.
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: project-hope-vox-prometheus
+  labels:
+    app: prometheus
+    app.kubernetes.io/part-of: project-hope
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: project-hope-vox-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: project-hope-vox-infra
