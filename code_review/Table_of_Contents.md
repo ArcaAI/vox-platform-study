@@ -5,7 +5,13 @@
 **Audience:** A developer taking over API Gateway exploration, `vox-node` integration analysis, or ALaaSv3 → HOPE debugging.
 **Last inventoried:** 2026-11-23 (from the files present in this folder; no source repositories were modified).
 
-> **Read this first.** The four subfolders are not four versions of the same document. They are four *research waves* with different jobs: baseline codebase mapping (`api_explore/`), route/call-tree and troubleshooting reference (`api_explore_2/`), curated interactive catalog and consultation/harness traces (`api_explore_3/`), and hands-on local debug procedures (`ALaaSv3/`). `Test_Results/` is the test/coverage evidence bundle that backs the claims made in the other waves.
+> **Read this first.** The four subfolders are not four versions of the same document. They are four *research waves* with different jobs:
+
+- baseline codebase mapping (`api_explore/`),
+- route/call-tree and troubleshooting reference (`api_explore_2/`),
+- curated interactive catalog and consultation/harness traces (`api_explore_3/`), and
+- hands-on local debug procedures (`ALaaSv3/`).
+- `Test_Results/` is the test/coverage evidence bundle that backs the claims made in the other waves.
 
 > **Companion index.** For the other four folders in this directory — `codewalk/`, `deploy/`, `observability/`, and `cloudflared/` — see [`additional_toc.md`](./additional_toc.md).
 
