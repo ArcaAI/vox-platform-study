@@ -1,0 +1,30 @@
+{
+  "rowIndex": 3,
+  "caseName": "Arun_Kumar_3",
+  "fileName": "Arun_Kumar_3.wav",
+  "language": "malayalam",
+  "words": 591,
+  "approxTokens": 788,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 331267.7381662652,
+  "hops": {
+    "sessionInitMs": 1661.7192910052836,
+    "transcriptIngestMs": 829.7861251048744,
+    "workflowDispatchMs": 1334.9948751274496,
+    "pipelineExecMs": 326792.96683403663,
+    "noteRetrievalMs": 648.2710409909487
+  },
+  "subhops": {
+    "nlpMs": 667.3770409543067,
+    "guardrailInboundMs": 11937.158833956346,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 310238.430959126
+  },
+  "consultationId": "01a20d18-a8df-7b5d-8e46-197fcaf8c84e",
+  "jobId": "harness-doc-78576736-0a74-45df-9a47-7e2563cf9998"
+}

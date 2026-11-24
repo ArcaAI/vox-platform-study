@@ -1,0 +1,30 @@
+{
+  "rowIndex": 16,
+  "caseName": "Liju_Varghese_Thomas_1",
+  "fileName": "Liju_Varghese_Thomas_1.wav",
+  "language": "malayalam",
+  "words": 610,
+  "approxTokens": 813,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 87896.23812469654,
+  "hops": {
+    "sessionInitMs": 920.3770000021905,
+    "transcriptIngestMs": 789.6209168247879,
+    "workflowDispatchMs": 728.0248750466853,
+    "pipelineExecMs": 84839.95287492871,
+    "noteRetrievalMs": 618.2624578941613
+  },
+  "subhops": {
+    "nlpMs": 668.3504581451416,
+    "guardrailInboundMs": 11578.081542160362,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 68643.52087462321
+  },
+  "consultationId": "01a20d26-7904-77f9-a83f-b46b095be899",
+  "jobId": "harness-doc-60458ee6-3cf2-4287-96f5-67b0894580c0"
+}

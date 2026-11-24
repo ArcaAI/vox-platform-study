@@ -1,0 +1,30 @@
+{
+  "rowIndex": 44,
+  "caseName": "RH_S2_SLE_2",
+  "fileName": "RH_S2_SLE_2.wav",
+  "language": "malayalam",
+  "words": 304,
+  "approxTokens": 405,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 34338.57041713782,
+  "hops": {
+    "sessionInitMs": 676.1942501179874,
+    "transcriptIngestMs": 626.058500027284,
+    "workflowDispatchMs": 2294.183833990246,
+    "pipelineExecMs": 30108.877500053495,
+    "noteRetrievalMs": 633.2563329488039
+  },
+  "subhops": {
+    "nlpMs": 669.0521249547601,
+    "guardrailInboundMs": 10177.56695789285,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 15312.258417205885
+  },
+  "consultationId": "01a20d31-c08d-76c7-8ab4-82ba5d65c64d",
+  "jobId": "harness-doc-d12acbb0-46bd-47f2-a66c-455e808e9a9c"
+}

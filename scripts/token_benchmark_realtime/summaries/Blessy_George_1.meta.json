@@ -1,0 +1,30 @@
+{
+  "rowIndex": 19,
+  "caseName": "Blessy_George_1",
+  "fileName": "Blessy_George_1.wav",
+  "language": "malayalam",
+  "words": 809,
+  "approxTokens": 1078,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 22139.99508274719,
+  "hops": {
+    "sessionInitMs": 780.3784578572959,
+    "transcriptIngestMs": 874.0906668826938,
+    "workflowDispatchMs": 766.0835001152009,
+    "pipelineExecMs": 19087.826791917905,
+    "noteRetrievalMs": 631.6156659740955
+  },
+  "subhops": {
+    "nlpMs": 671.6635420452803,
+    "guardrailInboundMs": 10340.63525008969,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 4125.527999782935
+  },
+  "consultationId": "01a20d28-1611-754d-ad0b-cd3d2730cbe6",
+  "jobId": "harness-doc-0679b759-c756-44a9-b800-f6745f575a94"
+}

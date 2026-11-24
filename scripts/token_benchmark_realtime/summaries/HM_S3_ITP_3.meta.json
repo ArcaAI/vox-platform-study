@@ -1,0 +1,30 @@
+{
+  "rowIndex": 39,
+  "caseName": "HM_S3_ITP_3",
+  "fileName": "HM_S3_ITP_3.wav",
+  "language": "malayalam",
+  "words": 274,
+  "approxTokens": 365,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 26849.456957774237,
+  "hops": {
+    "sessionInitMs": 731.7685829475522,
+    "transcriptIngestMs": 642.9055000189692,
+    "workflowDispatchMs": 740.971582941711,
+    "pipelineExecMs": 24130.700083915144,
+    "noteRetrievalMs": 603.1112079508603
+  },
+  "subhops": {
+    "nlpMs": 692.6929589826614,
+    "guardrailInboundMs": 9822.524624876678,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 9665.482500055805
+  },
+  "consultationId": "01a20d2f-84e2-7608-9fe2-2821e00e972f",
+  "jobId": "harness-doc-9f1ae0eb-fb75-43d3-aafa-ef70aa43f962"
+}

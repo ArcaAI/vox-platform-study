@@ -1,0 +1,30 @@
+{
+  "rowIndex": 20,
+  "caseName": "Suresh_Chandran_2",
+  "fileName": "Suresh_Chandran_2.wav",
+  "language": "malayalam",
+  "words": 651,
+  "approxTokens": 868,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 39217.21695829183,
+  "hops": {
+    "sessionInitMs": 756.4889171626419,
+    "transcriptIngestMs": 754.2893749196082,
+    "workflowDispatchMs": 756.4353330526501,
+    "pipelineExecMs": 36329.5261671301,
+    "noteRetrievalMs": 620.4771660268307
+  },
+  "subhops": {
+    "nlpMs": 663.6032499372959,
+    "guardrailInboundMs": 10990.31566712074,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 20725.607250072062
+  },
+  "consultationId": "01a20d28-6bc6-7cc5-9fd1-a86225c29897",
+  "jobId": "harness-doc-8a9bee21-ff3f-4187-85f0-e409a2f383db"
+}

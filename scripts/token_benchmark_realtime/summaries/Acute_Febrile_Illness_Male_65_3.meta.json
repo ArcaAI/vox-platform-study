@@ -1,0 +1,30 @@
+{
+  "rowIndex": 6,
+  "caseName": "Acute_Febrile_Illness_Male_65_3",
+  "fileName": "Acute_Febrile_Illness_Male_65_3.wav",
+  "language": "malayalam",
+  "words": 656,
+  "approxTokens": 874,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 318651.41533268616,
+  "hops": {
+    "sessionInitMs": 984.4633329194039,
+    "transcriptIngestMs": 730.6413748301566,
+    "workflowDispatchMs": 715.9173339605331,
+    "pipelineExecMs": 315609.89995813,
+    "noteRetrievalMs": 610.4933328460902
+  },
+  "subhops": {
+    "nlpMs": 710.4198751039803,
+    "guardrailInboundMs": 15872.856749920174,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 295076.6233331058
+  },
+  "consultationId": "01a20d1a-a534-7418-ac74-2a4242740afc",
+  "jobId": "harness-doc-72078e12-7aac-4188-9146-e6993d756ac9"
+}

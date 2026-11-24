@@ -1,0 +1,30 @@
+{
+  "rowIndex": 32,
+  "caseName": "GM_S2_Fever_2",
+  "fileName": "GM_S2_Fever_2.wav",
+  "language": "malayalam",
+  "words": 286,
+  "approxTokens": 381,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 26363.800083985552,
+  "hops": {
+    "sessionInitMs": 737.2393750119954,
+    "transcriptIngestMs": 651.8084581475705,
+    "workflowDispatchMs": 732.9582918900996,
+    "pipelineExecMs": 23617.13141691871,
+    "noteRetrievalMs": 624.6625420171767
+  },
+  "subhops": {
+    "nlpMs": 730.89729109779,
+    "guardrailInboundMs": 11421.703291125596,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 7514.530834695324
+  },
+  "consultationId": "01a20d2d-2603-7b60-ab1d-1e0c8f8ecc0f",
+  "jobId": "harness-doc-ee5edbd5-6d09-4fb0-9435-1f531dc45c4f"
+}

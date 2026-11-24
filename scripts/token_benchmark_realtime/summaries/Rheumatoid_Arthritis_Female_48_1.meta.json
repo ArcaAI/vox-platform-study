@@ -1,0 +1,30 @@
+{
+  "rowIndex": 10,
+  "caseName": "Rheumatoid_Arthritis_Female_48_1",
+  "fileName": "Rheumatoid_Arthritis_Female_48_1.wav",
+  "language": "malayalam",
+  "words": 685,
+  "approxTokens": 913,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 313638.7118753046,
+  "hops": {
+    "sessionInitMs": 786.011208081618,
+    "transcriptIngestMs": 1263.5745839215815,
+    "workflowDispatchMs": 729.5034171547741,
+    "pipelineExecMs": 310265.2404161636,
+    "noteRetrievalMs": 594.3822499830276
+  },
+  "subhops": {
+    "nlpMs": 693.7356670387089,
+    "guardrailInboundMs": 11853.13191707246,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 293768.3728320524
+  },
+  "consultationId": "01a20d1f-cc3e-7817-b9d3-efa617679e07",
+  "jobId": "harness-doc-69798482-08e3-48ce-908f-c72f7105a3ae"
+}

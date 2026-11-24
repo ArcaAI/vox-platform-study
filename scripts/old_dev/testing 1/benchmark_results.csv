@@ -1,0 +1,11 @@
+Hop #,Pipeline Stage,Execution Path,Status,Status Code,Total Latency (ms),Connect Time (ms),TTFB (ms),Payload (Bytes),Prompt Tokens,Completion Tokens,Tokens / Sec,Notes (Model),Error
+0,Client Ingress & Auth,Client → API Gateway,PASS,200,1203.75,550.91,652.2,816,,,,-,
+1,Open Consultation Session,Client → Gateway ↔ PostgreSQL,PASS,201,921.12,277.93,641.87,880,,,,-,
+2,Transcript Context Ingestion,Gateway ↔ Context Vault,PASS,201,858.21,305.28,552.26,2249,,,,-,
+3,Dispatch Summary Workflow,Gateway ↔ Workflow Queue,PASS,201,1065.79,290.02,774.64,174,,,,-,
+4,Pipeline Exec (NLP + Assembly + GPU + Guardrail),NLP ↔ Assembly ↔ LLM ↔ Guardrail,PASS,200,14619.33,0.0,12426.43,1340,550,265,18.1,gemma-4-e2b-it-qat,
+4.1,NLP Entity Extraction,Gateway ↔ apps/nlp,PASS,201,2470.3,300.72,2160.15,8683,,,,-,
+4.2,Prompt & Style DNA Assembly,Gateway ↔ apps/api,PASS,201,599.2,282.09,419.44,4480,,,,-,
+4.3,Clinical LLM Note Gen,apps/text ↔ LM Studio GPU,PASS,201,1961.0,0.0,1666.85,4480,757,380,193.78,gemma-4-e2b-it-qat,
+4.4,Medical Guardrail & Sensor Gate,Gateway ↔ apps/guardrail,PASS,200,9588.83,0.0,7671.06,0,,,,-,
+5,Clinical Note Retrieval,Gateway ↔ PostgreSQL,PASS,200,825.65,299.94,523.97,2581,,,,-,

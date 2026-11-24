@@ -1,0 +1,30 @@
+{
+  "rowIndex": 47,
+  "caseName": "RH_S5_Knee_Osteoarthritis_5",
+  "fileName": "RH_S5_Knee_Osteoarthritis_5.wav",
+  "language": "malayalam",
+  "words": 247,
+  "approxTokens": 329,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 38236.73641635105,
+  "hops": {
+    "sessionInitMs": 685.7122499495745,
+    "transcriptIngestMs": 636.8030409794301,
+    "workflowDispatchMs": 3703.9945002179593,
+    "pipelineExecMs": 32582.47912512161,
+    "noteRetrievalMs": 627.7475000824779
+  },
+  "subhops": {
+    "nlpMs": 681.2910421285778,
+    "guardrailInboundMs": 8777.224583085626,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 19173.963499907404
+  },
+  "consultationId": "01a20d34-12e5-7f03-98a8-443179209a5b",
+  "jobId": "harness-doc-37cb3b67-9941-4e23-b247-b87ef11beff5"
+}

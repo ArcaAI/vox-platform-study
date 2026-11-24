@@ -1,0 +1,30 @@
+{
+  "rowIndex": 1,
+  "caseName": "George_Varghese_1",
+  "fileName": "George_Varghese_1.wav",
+  "language": "malayalam",
+  "words": 588,
+  "approxTokens": 784,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 17573.60441610217,
+  "hops": {
+    "sessionInitMs": 812.1400829404593,
+    "transcriptIngestMs": 806.47062510252,
+    "workflowDispatchMs": 6112.292708130553,
+    "pipelineExecMs": 9185.74024992995,
+    "noteRetrievalMs": 656.9607499986887
+  },
+  "subhops": {
+    "nlpMs": 1065.9999998752028,
+    "guardrailInboundMs": 14404.53691710718,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 1200.0
+  },
+  "consultationId": "01a20d18-136d-7c6c-8607-109834979861",
+  "jobId": "harness-doc-0f31d254-9e75-4460-9938-00576f2b24ac"
+}

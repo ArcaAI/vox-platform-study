@@ -1,0 +1,27 @@
+{
+  "targetTokens": 2000,
+  "promptWords": 1510,
+  "promptChars": 10489,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL (Pipeline Execution)",
+  "totalE2EMs": 30004.10820939578,
+  "hops": {
+    "sessionInitMs": 720.573749858886,
+    "transcriptIngestMs": 830.1285421475768,
+    "workflowDispatchMs": 1997.4805421661586,
+    "pipelineExecMs": 25785.04554205574,
+    "noteRetrievalMs": 670.8798331674188
+  },
+  "subhops": {
+    "nlpMs": 708.984375,
+    "guardrailInboundMs": 3152.0020000170916,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 17974.05916703865
+  },
+  "consultationId": "01a20d42-d3a5-79fd-95e8-96e639bd453c",
+  "jobId": "harness-doc-dc534475-282a-4f5d-9640-74eecfc8d1d4"
+}

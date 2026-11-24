@@ -1,0 +1,2 @@
+Target Tokens,GPU Triggering Services,Active Models,Allocated Devices,Prefill TTFT Latency (ms),LLM Decode Latency (ms),Guardrail Policy Validation (ms),Translation Latency (ms),NLP Entity Extraction (ms),Baseline VRAM (GB),Peak VRAM (GB),Delta VRAM Consumed (MB),Avg GPU Compute Util (%),Peak GPU Compute Util (%),Pipeline Status
+666,LLM Scribe + Medical Guardrail,gemma-4-e2b + granite-4.1-8b,GPU 0 (LLM) + GPU 1 (Guardrail),75.0,3418.0,14343.9,903.1,2517.0,7.48,7.79,319.7,45.1,61.1,PASS

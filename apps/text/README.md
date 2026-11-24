@@ -54,8 +54,7 @@ pnpm text:typecheck        # mypy
 pnpm text:format           # black
 ```
 
-Stack subset (API + this service + harness worker): `pnpm stack:dev -- text
-worker`. Local server directly (conda `arcaenv` active, `PYTHONPATH` covering
+Stack subset (API + this service + harness worker): `pnpm stack:dev -- text worker`. Local server directly (conda `arcaenv` active, `PYTHONPATH` covering
 `apps/text/src`): `uvicorn text.main:app --host 127.0.0.1 --port 8862 --reload`.
 
 - OpenAPI: `http://127.0.0.1:8862/docs`
@@ -122,28 +121,30 @@ exempt — the single shared `INTERNAL_ACCESS_TOKEN` (the legacy
 `TEXT_SERVICE_TOKEN` is retired).
 
 ### Frozen identifiers
+
 These are **live** names, not leftovers to "fix":
 
-| Kind | Value |
-|---|---|
-| Health `service` field | `text` |
-| Effective-config query | `?service=text` |
-| Redis streams | `text:stream:` (DB 3) |
-| Prometheus metrics | `text_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`, `text_provider_bytes_total`) |
-| OTEL service name (image default) | `text` (`TEXT_OTEL_SERVICE_NAME`) |
-| Compat HTTP (gateway) | `/api/smr/api/v1/presummary`, `/api/smr/api/v1/summary/sync` |
-| Vault AppRole | `hope-text` |
-| Release tag prefix | `TEXT-` (image name is `text`) |
+| Kind                              | Value                                                                                                      |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Health `service` field          | `text`                                                                                                   |
+| Effective-config query            | `?service=text`                                                                                          |
+| Redis streams                     | `text:stream:` (DB 3)                                                                                    |
+| Prometheus metrics                | `text_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`, `text_provider_bytes_total`) |
+| OTEL service name (image default) | `text` (`TEXT_OTEL_SERVICE_NAME`)                                                                      |
+| Compat HTTP (gateway)             | `/api/smr/api/v1/presummary`, `/api/smr/api/v1/summary/sync`                                           |
+| Vault AppRole                     | `hope-text`                                                                                              |
+| Release tag prefix                | `TEXT-` (image name is `text`)                                                                         |
 
 Grafana dashboard **files**: `infrastructure/grafana/dashboards/text-overview.json`,
 `text-resilience.json`, `text-security.json`, `text-cache-friendliness.json`
 (dashboard **UIDs** match the file stems).
 
 ### Gateway
-| Surface | Location |
-|---|---|
-| Raw LLM proxy | `TextProxyController` — `apps/api/src/modules/streaming/text-proxy.controller.ts` (`@Controller('text-generations')`) |
-| v1 summarization compat | `TextCompatController` — `apps/api/src/modules/text-compat/` (HTTP paths under `/api/smr/...` stay) |
+
+| Surface                 | Location                                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Raw LLM proxy           | `TextProxyController` — `apps/api/src/modules/streaming/text-proxy.controller.ts` (`@Controller('text-generations')`) |
+| v1 summarization compat | `TextCompatController` — `apps/api/src/modules/text-compat/` (HTTP paths under `/api/smr/...` stay)                   |
 
 ## Gotchas
 

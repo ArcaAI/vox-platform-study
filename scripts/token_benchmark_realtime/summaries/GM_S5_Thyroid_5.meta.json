@@ -1,0 +1,30 @@
+{
+  "rowIndex": 35,
+  "caseName": "GM_S5_Thyroid_5",
+  "fileName": "GM_S5_Thyroid_5.wav",
+  "language": "malayalam",
+  "words": 225,
+  "approxTokens": 300,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 30728.346957825124,
+  "hops": {
+    "sessionInitMs": 670.4851249232888,
+    "transcriptIngestMs": 603.6864998750389,
+    "workflowDispatchMs": 727.3958751466125,
+    "pipelineExecMs": 28079.490832984447,
+    "noteRetrievalMs": 647.2886248957366
+  },
+  "subhops": {
+    "nlpMs": 678.4441249910742,
+    "guardrailInboundMs": 9557.446167105809,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 13893.600540887564
+  },
+  "consultationId": "01a20d2e-12cc-732c-8fa5-f925a68f74f3",
+  "jobId": "harness-doc-8ed33e72-1912-4e50-9ddf-6dde112bf29e"
+}

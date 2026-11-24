@@ -1,0 +1,30 @@
+{
+  "rowIndex": 12,
+  "caseName": "SLE_Workup_Female_42_3",
+  "fileName": "SLE_Workup_Female_42_3.wav",
+  "language": "malayalam",
+  "words": 654,
+  "approxTokens": 872,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 313097.7840835694,
+  "hops": {
+    "sessionInitMs": 908.4827499464154,
+    "transcriptIngestMs": 784.9073328543454,
+    "workflowDispatchMs": 740.7702088821679,
+    "pipelineExecMs": 310053.6234169267,
+    "noteRetrievalMs": 610.0003749597818
+  },
+  "subhops": {
+    "nlpMs": 671.0285418666899,
+    "guardrailInboundMs": 16346.147167030722,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 289086.4477080293
+  },
+  "consultationId": "01a20d20-ecf2-714b-9987-bf7d2b07aaea",
+  "jobId": "harness-doc-eeec8878-9a83-43b8-b75c-cfa235ec49a5"
+}

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 29,
+  "caseName": "GI_S5_Ulcerative_Colitis_5",
+  "fileName": "GI_S5_Ulcerative_Colitis_5.wav",
+  "language": "malayalam",
+  "words": 303,
+  "approxTokens": 404,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 30932.43962409906,
+  "hops": {
+    "sessionInitMs": 691.1260830238461,
+    "transcriptIngestMs": 636.2793331500143,
+    "workflowDispatchMs": 718.1912919040769,
+    "pipelineExecMs": 28258.01416602917,
+    "noteRetrievalMs": 628.8287499919534
+  },
+  "subhops": {
+    "nlpMs": 681.6010000184178,
+    "guardrailInboundMs": 10548.689250135794,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 13077.723915874958
+  },
+  "consultationId": "01a20d2c-23c3-7f22-9d6b-b3e9b0d5e084",
+  "jobId": "harness-doc-0800ebc4-d59f-4025-94da-f152d350a553"
+}

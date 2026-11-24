@@ -1,0 +1,30 @@
+{
+  "rowIndex": 30,
+  "caseName": "GI_S6_Chronic_Hepatitis_B_6",
+  "fileName": "GI_S6_Chronic_Hepatitis_B_6.wav",
+  "language": "malayalam",
+  "words": 279,
+  "approxTokens": 372,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 33121.29070912488,
+  "hops": {
+    "sessionInitMs": 689.3390000332147,
+    "transcriptIngestMs": 629.2776251211762,
+    "workflowDispatchMs": 713.2804999127984,
+    "pipelineExecMs": 30479.717042064294,
+    "noteRetrievalMs": 609.6765419933945
+  },
+  "subhops": {
+    "nlpMs": 725.4743331577629,
+    "guardrailInboundMs": 9534.460375085473,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 16269.782333821058
+  },
+  "consultationId": "01a20d2c-749c-7a95-81ec-8bf23892bb45",
+  "jobId": "harness-doc-8d1d54b9-0ce2-499e-8f52-4c9049d4a620"
+}

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 25,
+  "caseName": "GI_S1_Dyspepsia_1",
+  "fileName": "GI_S1_Dyspepsia_1.wav",
+  "language": "malayalam",
+  "words": 344,
+  "approxTokens": 458,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 45498.24933195487,
+  "hops": {
+    "sessionInitMs": 901.7361660953611,
+    "transcriptIngestMs": 641.326375072822,
+    "workflowDispatchMs": 729.0885420516133,
+    "pipelineExecMs": 42568.241165950894,
+    "noteRetrievalMs": 657.8570827841759
+  },
+  "subhops": {
+    "nlpMs": 635.3955829981714,
+    "guardrailInboundMs": 14266.326458193362,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 23716.51912475936
+  },
+  "consultationId": "01a20d2a-6462-7881-a90f-d09849138272",
+  "jobId": "harness-doc-ffdd784a-7973-482f-8f10-6ae8762ced40"
+}

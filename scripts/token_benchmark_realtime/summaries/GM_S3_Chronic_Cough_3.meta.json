@@ -1,0 +1,30 @@
+{
+  "rowIndex": 33,
+  "caseName": "GM_S3_Chronic_Cough_3",
+  "fileName": "GM_S3_Chronic_Cough_3.wav",
+  "language": "malayalam",
+  "words": 265,
+  "approxTokens": 353,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 24540.730874054134,
+  "hops": {
+    "sessionInitMs": 664.4969580229372,
+    "transcriptIngestMs": 691.0141669213772,
+    "workflowDispatchMs": 720.204166136682,
+    "pipelineExecMs": 21830.277499975637,
+    "noteRetrievalMs": 634.7380829975009
+  },
+  "subhops": {
+    "nlpMs": 673.6071249470115,
+    "guardrailInboundMs": 8950.799624901265,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 8255.87075012736
+  },
+  "consultationId": "01a20d2d-85cb-7e5c-8f5b-00ca6b339047",
+  "jobId": "harness-doc-f6832010-ca7b-431f-befd-4b43be5467d5"
+}

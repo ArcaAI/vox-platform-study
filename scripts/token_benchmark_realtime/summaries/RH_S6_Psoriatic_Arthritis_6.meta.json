@@ -1,0 +1,30 @@
+{
+  "rowIndex": 48,
+  "caseName": "RH_S6_Psoriatic_Arthritis_6",
+  "fileName": "RH_S6_Psoriatic_Arthritis_6.wav",
+  "language": "malayalam",
+  "words": 245,
+  "approxTokens": 326,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 29201.751207001507,
+  "hops": {
+    "sessionInitMs": 759.9625829607248,
+    "transcriptIngestMs": 669.8785829357803,
+    "workflowDispatchMs": 1542.9149169940501,
+    "pipelineExecMs": 25609.99595792964,
+    "noteRetrievalMs": 618.999166181311
+  },
+  "subhops": {
+    "nlpMs": 671.7904170509428,
+    "guardrailInboundMs": 8151.816915953532,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 12836.388624925166
+  },
+  "consultationId": "01a20d34-d98a-7e79-b138-274389d14192",
+  "jobId": "harness-doc-7dbaf2f4-f3ac-4eeb-815a-dbed696fd9e8"
+}

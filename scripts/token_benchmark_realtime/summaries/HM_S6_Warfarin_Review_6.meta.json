@@ -1,0 +1,30 @@
+{
+  "rowIndex": 42,
+  "caseName": "HM_S6_Warfarin_Review_6",
+  "fileName": "HM_S6_Warfarin_Review_6.wav",
+  "language": "malayalam",
+  "words": 303,
+  "approxTokens": 404,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 318328.1148332171,
+  "hops": {
+    "sessionInitMs": 671.0196661297232,
+    "transcriptIngestMs": 666.6797918733209,
+    "workflowDispatchMs": 3937.3792922124267,
+    "pipelineExecMs": 312374.34399989434,
+    "noteRetrievalMs": 678.6920831073076
+  },
+  "subhops": {
+    "nlpMs": 664.325375109911,
+    "guardrailInboundMs": 10857.452542055398,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 296902.566082729
+  },
+  "consultationId": "01a20d30-9e23-75bd-b236-eb6df56be712",
+  "jobId": "harness-doc-aa84468e-ce80-4803-8a6c-633c8511c32d"
+}

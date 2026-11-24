@@ -1,0 +1,30 @@
+{
+  "rowIndex": 24,
+  "caseName": "Ampili_T_3",
+  "fileName": "Ampili_T_3.wav",
+  "language": "malayalam",
+  "words": 521,
+  "approxTokens": 694,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 33477.38924995065,
+  "hops": {
+    "sessionInitMs": 675.1862920355052,
+    "transcriptIngestMs": 746.6957080177963,
+    "workflowDispatchMs": 822.2504579462111,
+    "pipelineExecMs": 30598.788583884016,
+    "noteRetrievalMs": 634.4682080671191
+  },
+  "subhops": {
+    "nlpMs": 688.1189171690494,
+    "guardrailInboundMs": 12314.812832977623,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 13645.856833737344
+  },
+  "consultationId": "01a20d2a-3347-70a0-b805-940346aab64f",
+  "jobId": "harness-doc-6d995676-ef0f-4b50-99a1-cd26aa02245e"
+}

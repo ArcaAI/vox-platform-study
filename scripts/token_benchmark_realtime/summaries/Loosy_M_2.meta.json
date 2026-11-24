@@ -1,0 +1,30 @@
+{
+  "rowIndex": 23,
+  "caseName": "Loosy_M_2",
+  "fileName": "Loosy_M_2.wav",
+  "language": "malayalam",
+  "words": 517,
+  "approxTokens": 689,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 42071.923875948414,
+  "hops": {
+    "sessionInitMs": 684.4176668673754,
+    "transcriptIngestMs": 743.2464170269668,
+    "workflowDispatchMs": 723.9098339341581,
+    "pipelineExecMs": 39290.907124988735,
+    "noteRetrievalMs": 629.4428331311792
+  },
+  "subhops": {
+    "nlpMs": 707.7897498384118,
+    "guardrailInboundMs": 9514.240624848753,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 25118.87675030157
+  },
+  "consultationId": "01a20d29-8eea-760b-ba1e-af163b50b8c2",
+  "jobId": "harness-doc-6dfca9d9-8ac3-4ce2-9395-c2dbce782005"
+}

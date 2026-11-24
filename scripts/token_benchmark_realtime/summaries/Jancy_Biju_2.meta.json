@@ -1,0 +1,30 @@
+{
+  "rowIndex": 14,
+  "caseName": "Jancy_Biju_2",
+  "fileName": "Jancy_Biju_2.wav",
+  "language": "malayalam",
+  "words": 561,
+  "approxTokens": 748,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 31232.035000575706,
+  "hops": {
+    "sessionInitMs": 833.3737498614937,
+    "transcriptIngestMs": 733.6107499431819,
+    "workflowDispatchMs": 897.3134169355035,
+    "pipelineExecMs": 28156.588041922078,
+    "noteRetrievalMs": 611.1490419134498
+  },
+  "subhops": {
+    "nlpMs": 663.6364997830242,
+    "guardrailInboundMs": 11875.12187496759,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 11667.829667171463
+  },
+  "consultationId": "01a20d25-b7e7-72ab-88d9-bfb2082c7fc3",
+  "jobId": "harness-doc-d43896a7-5acd-4d10-bad8-2bb3fbdfd067"
+}

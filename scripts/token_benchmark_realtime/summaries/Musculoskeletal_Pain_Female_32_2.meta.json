@@ -1,0 +1,30 @@
+{
+  "rowIndex": 11,
+  "caseName": "Musculoskeletal_Pain_Female_32_2",
+  "fileName": "Musculoskeletal_Pain_Female_32_2.wav",
+  "language": "malayalam",
+  "words": 586,
+  "approxTokens": 781,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 54923.03654132411,
+  "hops": {
+    "sessionInitMs": 693.2252091355622,
+    "transcriptIngestMs": 735.7637921813875,
+    "workflowDispatchMs": 717.10120793432,
+    "pipelineExecMs": 52162.737041013315,
+    "noteRetrievalMs": 614.2092910595238
+  },
+  "subhops": {
+    "nlpMs": 695.7322082016617,
+    "guardrailInboundMs": 11981.698374962434,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 35535.30645784922
+  },
+  "consultationId": "01a20d1f-ce25-74ee-8a93-38b15e8adb65",
+  "jobId": "harness-doc-9d184b39-a0c1-4af5-9203-80cdbea3a266"
+}

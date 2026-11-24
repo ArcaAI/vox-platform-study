@@ -1,0 +1,30 @@
+{
+  "rowIndex": 37,
+  "caseName": "HM_S1_Iron_Deficiency_1",
+  "fileName": "HM_S1_Iron_Deficiency_1.wav",
+  "language": "malayalam",
+  "words": 285,
+  "approxTokens": 380,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 38825.80333389342,
+  "hops": {
+    "sessionInitMs": 674.2831249721348,
+    "transcriptIngestMs": 606.2524591106921,
+    "workflowDispatchMs": 740.8543329220265,
+    "pipelineExecMs": 36138.49954190664,
+    "noteRetrievalMs": 665.9138749819249
+  },
+  "subhops": {
+    "nlpMs": 691.9863340444863,
+    "guardrailInboundMs": 10176.994791952893,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 21319.51841590926
+  },
+  "consultationId": "01a20d2e-baa2-754e-8587-f8af609e9c75",
+  "jobId": "harness-doc-d368f32a-30db-438c-a3d5-56ff5258ba9b"
+}

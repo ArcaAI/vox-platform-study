@@ -1,0 +1,30 @@
+{
+  "rowIndex": 34,
+  "caseName": "GM_S4_Anaemia_4",
+  "fileName": "GM_S4_Anaemia_4.wav",
+  "language": "malayalam",
+  "words": 252,
+  "approxTokens": 336,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 29087.001000065356,
+  "hops": {
+    "sessionInitMs": 692.8241660352796,
+    "transcriptIngestMs": 625.8566670585424,
+    "workflowDispatchMs": 726.4459999278188,
+    "pipelineExecMs": 26416.065209079534,
+    "noteRetrievalMs": 625.8089579641819
+  },
+  "subhops": {
+    "nlpMs": 690.8330000005662,
+    "guardrailInboundMs": 9329.792791977525,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 12445.439417101443
+  },
+  "consultationId": "01a20d2d-c426-7ea6-8de2-52f5f000c704",
+  "jobId": "harness-doc-8c9c3e9a-9abf-4140-aaa3-8b8f9420220e"
+}

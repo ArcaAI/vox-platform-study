@@ -1,0 +1,102 @@
+# LLM Service & API Gateway Multi-Tier Performance Benchmark
+
+**Target:** `https://api-vox2.arcaai.com/api/v1/text-generations/generate/assembled`
+**Model & Engine:** `gemma-4-e2b-it-qat` (Gemma 4 2B) on **LM Studio**
+**Source:** 100% Real-Time Server Telemetry & Monotonic Network Clocks
+
+### TABLE 1: P50 (MEDIAN) LATENCY (ms)
+
+| Pipeline Stage | C=1 | C=2 | C=4 | C=8 | C=16 | C=32 |
+|:---| :---: | :---: | :---: | :---: | :---: | :---: |
+| 1. Gateway Auth & Token Verification | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 |
+| 2. Prompt Assembly & Enveloping | 180.51 | 174.17 | 727.32 | 1426.03 | 2884.70 | 5674.49 |
+| 3. Redis Task State Registration | 152.37 | 148.73 | 147.00 | 156.01 | 154.35 | 162.74 |
+| 4. Medical Guardrail Screening | 48.50 | 125.00 | 185.50 | 6058.50 | 11171.50 | 24698.00 |
+| 5. Text Service Queue & Dispatch | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 |
+| 6. GPU TTFT (Prompt Prefill) | 3106.22 | 4093.01 | 5941.79 | 6643.67 | 6379.88 | 6736.32 |
+| 7. GPU Token Generation (Decode) | 2900.00 | 3843.49 | 5662.01 | 6306.51 | 6259.50 | 6556.52 |
+| 8. Output Schema & Gatekeeper | 16.06 | 14.08 | 6.43 | 18.12 | 98.12 | 17.92 |
+| 9. Redis Stream Chunk Relay & SSE Egress | 15.57 | 12.56 | 10.79 | 20.46 | 22.18 | 20.07 |
+| 10. Full End-to-End Latency | 3606.56 | 4650.52 | 7236.87 | 11148.52 | 20147.79 | 37119.36 |
+
+---
+
+### TABLE 2: P95 TAIL LATENCY (ms)
+
+| Pipeline Stage | C=1 | C=2 | C=4 | C=8 | C=16 | C=32 |
+|:---| :---: | :---: | :---: | :---: | :---: | :---: |
+| 1. Gateway Auth & Token Verification | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 |
+| 2. Prompt Assembly & Enveloping | 616.68 | 706.13 | 1387.11 | 2688.05 | 4983.13 | 10046.21 |
+| 3. Redis Task State Registration | 166.19 | 172.32 | 151.97 | 171.36 | 173.67 | 174.05 |
+| 4. Medical Guardrail Screening | 49.00 | 148.85 | 378.00 | 6897.00 | 21280.50 | 48493.60 |
+| 5. Text Service Queue & Dispatch | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 |
+| 6. GPU TTFT (Prompt Prefill) | 3448.82 | 4257.49 | 6233.58 | 6959.64 | 6970.35 | 7055.37 |
+| 7. GPU Token Generation (Decode) | 3025.70 | 3939.54 | 5892.77 | 6679.86 | 7055.51 | 6828.65 |
+| 8. Output Schema & Gatekeeper | 74.42 | 22.81 | 289.86 | 108.98 | 311.79 | 185.16 |
+| 9. Redis Stream Chunk Relay & SSE Egress | 27.73 | 18.62 | 161.34 | 27.95 | 125.20 | 447.62 |
+| 10. Full End-to-End Latency | 4093.12 | 5087.67 | 7872.84 | 16017.60 | 32994.73 | 59412.29 |
+
+---
+
+### TABLE 3: AVERAGE LATENCY (ms)
+
+| Pipeline Stage | C=1 | C=2 | C=4 | C=8 | C=16 | C=32 |
+|:---| :---: | :---: | :---: | :---: | :---: | :---: |
+| 1. Gateway Auth & Token Verification | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 |
+| 2. Prompt Assembly & Enveloping | 263.35 | 272.79 | 712.11 | 1481.28 | 2881.62 | 5635.83 |
+| 3. Redis Task State Registration | 149.12 | 147.12 | 146.79 | 156.33 | 155.16 | 163.58 |
+| 4. Medical Guardrail Screening | 48.50 | 126.10 | 227.30 | 3930.90 | 11121.69 | 24862.78 |
+| 5. Text Service Queue & Dispatch | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 |
+| 6. GPU TTFT (Prompt Prefill) | 3165.35 | 4111.73 | 5546.37 | 6267.39 | 6475.42 | 6648.17 |
+| 7. GPU Token Generation (Decode) | 2909.40 | 3855.10 | 5343.41 | 6002.21 | 6327.56 | 6441.28 |
+| 8. Output Schema & Gatekeeper | 24.75 | 10.83 | 70.08 | 47.34 | 118.09 | 60.63 |
+| 9. Redis Stream Chunk Relay & SSE Egress | 15.86 | 9.90 | 37.02 | 17.09 | 44.17 | 68.14 |
+| 10. Full End-to-End Latency | 3711.90 | 4723.29 | 6784.63 | 11945.33 | 20841.15 | 37484.13 |
+
+---
+
+### TABLE 4: MINIMUM LATENCY (ms)
+
+| Pipeline Stage | C=1 | C=2 | C=4 | C=8 | C=16 | C=32 |
+|:---| :---: | :---: | :---: | :---: | :---: | :---: |
+| 1. Gateway Auth & Token Verification | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 |
+| 2. Prompt Assembly & Enveloping | 163.26 | 144.03 | 186.37 | 173.18 | 569.16 | 679.87 |
+| 3. Redis Task State Registration | 124.08 | 116.10 | 140.15 | 123.17 | 114.84 | 139.08 |
+| 4. Medical Guardrail Screening | 48.00 | 63.00 | 150.00 | 124.00 | 1156.00 | 1269.00 |
+| 5. Text Service Queue & Dispatch | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 |
+| 6. GPU TTFT (Prompt Prefill) | 3024.52 | 4002.93 | 4032.80 | 4542.67 | 5980.27 | 5912.06 |
+| 7. GPU Token Generation (Decode) | 2843.00 | 3792.00 | 3764.99 | 4316.99 | 5703.02 | 5674.98 |
+| 8. Output Schema & Gatekeeper | 0.83 | 0.68 | 1.15 | 2.24 | 16.04 | 2.12 |
+| 9. Redis Stream Chunk Relay & SSE Egress | 1.00 | 1.00 | 1.00 | 1.84 | 2.33 | 2.20 |
+| 10. Full End-to-End Latency | 3512.53 | 4549.12 | 4801.92 | 8286.60 | 8271.45 | 14271.32 |
+
+---
+
+### TABLE 5: MAXIMUM LATENCY (ms)
+
+| Pipeline Stage | C=1 | C=2 | C=4 | C=8 | C=16 | C=32 |
+|:---| :---: | :---: | :---: | :---: | :---: | :---: |
+| 1. Gateway Auth & Token Verification | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 | 1278.14 |
+| 2. Prompt Assembly & Enveloping | 781.43 | 861.87 | 1619.70 | 2709.57 | 5228.06 | 10552.87 |
+| 3. Redis Task State Registration | 171.20 | 175.36 | 154.84 | 172.76 | 181.19 | 176.40 |
+| 4. Medical Guardrail Screening | 49.00 | 152.00 | 387.00 | 7032.00 | 21462.00 | 49502.00 |
+| 5. Text Service Queue & Dispatch | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 | 45.00 |
+| 6. GPU TTFT (Prompt Prefill) | 3494.63 | 4299.18 | 6335.15 | 6989.41 | 7104.73 | 7287.69 |
+| 7. GPU Token Generation (Decode) | 3122.00 | 3939.99 | 5940.02 | 6745.99 | 7083.99 | 7082.01 |
+| 8. Output Schema & Gatekeeper | 119.62 | 26.23 | 302.98 | 117.53 | 350.30 | 327.35 |
+| 9. Redis Stream Chunk Relay & SSE Egress | 31.15 | 20.06 | 272.95 | 29.08 | 416.32 | 480.81 |
+| 10. Full End-to-End Latency | 4204.59 | 5340.14 | 8117.34 | 16369.86 | 33159.02 | 60653.14 |
+
+---
+
+### TABLE 6: RELIABILITY & RUN VOLUME
+
+| Metric | C=1 | C=2 | C=4 | C=8 | C=16 | C=32 |
+|:---| :---: | :---: | :---: | :---: | :---: | :---: |
+| Total Requests | 10 | 10 | 10 | 10 | 16 | 32 |
+| Passed Requests | 10 | 10 | 10 | 10 | 16 | 32 |
+| Failed Requests | 0 | 0 | 0 | 0 | 0 | 0 |
+| Pass Rate (%) | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| Total Generated Tokens | 6053 | 6037 | 6033 | 6049 | 9669 | 19386 |
+| Total Wall Time (s) | 37.12s | 23.89s | 20.10s | 20.81s | 33.30s | 66.40s |
+| Aggregate Throughput | 9.1 chunks/s | 13.8 chunks/s | 16.4 chunks/s | 16.3 chunks/s | 16.2 chunks/s | 16.2 chunks/s |

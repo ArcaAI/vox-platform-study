@@ -1,0 +1,30 @@
+{
+  "rowIndex": 8,
+  "caseName": "Thrombocytopenia_Female_46_2",
+  "fileName": "Thrombocytopenia_Female_46_2.wav",
+  "language": "malayalam",
+  "words": 574,
+  "approxTokens": 765,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 28709.42945801653,
+  "hops": {
+    "sessionInitMs": 844.0229168627411,
+    "transcriptIngestMs": 754.4582500122488,
+    "workflowDispatchMs": 714.967291103676,
+    "pipelineExecMs": 25798.082458088174,
+    "noteRetrievalMs": 597.8985419496894
+  },
+  "subhops": {
+    "nlpMs": 646.7820829711854,
+    "guardrailInboundMs": 11234.211874892935,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 9967.088500224054
+  },
+  "consultationId": "01a20d1e-5bb3-7af0-ae4f-b395811e33e7",
+  "jobId": "harness-doc-b16d55bb-e653-4500-a599-53bf5f8fbda9"
+}

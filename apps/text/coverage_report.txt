@@ -1,0 +1,82 @@
+Name                                       Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------
+src/text/__init__.py                           0      0   100%
+src/text/api/__init__.py                       0      0   100%
+src/text/api/endpoints/__init__.py             0      0   100%
+src/text/api/endpoints/embeddings.py          14      0   100%
+src/text/api/endpoints/generate.py           322     16    95%   308-314, 317, 319, 322-323, 540-542, 598, 675, 1075-1082
+src/text/api/endpoints/health.py              81      6    93%   84-85, 138, 157, 228-229
+src/text/api/endpoints/judge.py              109      9    92%   260, 268, 308-310, 356-363, 371
+src/text/api/endpoints/providers.py           57      0   100%
+src/text/api/endpoints/stream.py             127      4    97%   236, 313, 351-352
+src/text/api/endpoints/tasks.py               33      1    97%   75
+src/text/api/endpoints/translate.py           25      0   100%
+src/text/api/middleware/__init__.py            0      0   100%
+src/text/api/middleware/auth.py               41      2    95%   87-88
+src/text/core/__init__.py                      0      0   100%
+src/text/core/config.py                       72      0   100%
+src/text/core/connection.py                   29      2    93%   50, 92
+src/text/core/defaults.py                     15      1    93%   35
+src/text/core/dependencies.py                 69     17    75%   41-57, 157
+src/text/core/effective_config.py            223     31    86%   88-89, 119, 125, 164, 167, 192, 269, 356-357, 369-389, 416, 447
+src/text/core/exception_handlers.py           36      3    92%   51, 99-100
+src/text/core/exceptions.py                   72      0   100%
+src/text/core/guardrail_posture.py            38      0   100%
+src/text/core/logging.py                       3      0   100%
+src/text/core/metrics.py                      34      0   100%
+src/text/core/reasoning.py                    45      0   100%
+src/text/core/retention.py                     4      0   100%
+src/text/core/runtime_defaults.py             38      0   100%
+src/text/core/telemetry.py                    18      1    94%   48
+src/text/main.py                             194      8    96%   35, 323-324, 344, 359-362
+src/text/models/__init__.py                    0      0   100%
+src/text/models/embedding.py                  23      1    96%   27
+src/text/models/probe.py                       7      0   100%
+src/text/models/provider.py                   34      0   100%
+src/text/models/requests.py                  107      3    97%   381-383
+src/text/models/responses.py                  65      0   100%
+src/text/models/stats.py                      90      2    98%   147, 324
+src/text/models/stream.py                      7      0   100%
+src/text/models/task.py                       29      0   100%
+src/text/models/translate.py                  14      0   100%
+src/text/models/usage.py                     159      9    94%   189-190, 245, 283, 325, 462, 469-470, 536
+src/text/providers/__init__.py                 0      0   100%
+src/text/providers/anthropic.py              180     48    73%   44, 106, 214-223, 235-238, 240, 356-403, 415
+src/text/providers/azure_openai.py           176      1    99%   28
+src/text/providers/base.py                    60      5    92%   115, 119, 123, 127, 163
+src/text/providers/bedrock.py                190      5    97%   36, 130, 143-144, 219
+src/text/providers/clients.py                 78      2    97%   173-174
+src/text/providers/embedding.py               38     16    58%   32, 36, 40, 56, 63-71, 76-77, 85
+src/text/providers/llama_cpp.py              136     16    88%   34, 82-83, 182, 187, 213, 234, 237, 241-243, 253-256, 270
+src/text/providers/lmstudio.py                55      5    91%   72, 143, 173-177
+src/text/providers/ollama.py                 187     29    84%   31, 54, 98-99, 113-115, 142, 145-151, 234, 273, 303-305, 321, 325, 327-332, 356-359
+src/text/providers/openai.py                 137     26    81%   38, 85, 182-193, 283-300, 313-314, 329
+src/text/providers/openai_compat.py          198     12    94%   42, 100, 104-106, 168, 182-184, 451, 458-462, 509
+src/text/providers/pool.py                   245     11    96%   96, 281, 286, 430-431, 471-472, 475-476, 566-569
+src/text/providers/tei_embed.py               44      5    89%   61-63, 74-75
+src/text/providers/vertex.py                 159     30    81%   44, 234, 276, 279, 371-411, 420
+src/text/providers/vllm.py                   110     74    33%   36, 76-77, 82-86, 120-122, 128-144, 153-174, 185-213
+src/text/routing/__init__.py                   0      0   100%
+src/text/routing/hub.py                      225     21    91%   170, 233, 263, 279, 284, 303, 377-386, 389, 395, 402, 409, 422-423, 490-501
+src/text/routing/streaming.py                203     14    93%   177-178, 311-317, 400-401, 516-517, 597-600, 609
+src/text/routing/usage.py                     36      1    97%   52
+src/text/services/__init__.py                  0      0   100%
+src/text/services/circuit_breaker.py          64      0   100%
+src/text/services/external_guardrail.py       83      0   100%
+src/text/services/generation_audit.py         24      0   100%
+src/text/services/judge_guard.py              21      0   100%
+src/text/services/output_gate.py              63      0   100%
+src/text/services/pool_health.py              18      0   100%
+src/text/services/pool_router.py               9      0   100%
+src/text/services/provider_queue.py           27      0   100%
+src/text/services/rate_limiter.py             85      1    99%   54
+src/text/services/resizable_semaphore.py      61      5    92%   80, 88, 100, 107-108
+src/text/services/retry_handler.py            73     10    86%   92-93, 100-107
+src/text/services/runtime_limits.py          103     13    87%   86, 94-95, 127, 130, 133-134, 190-191, 208, 212-217
+src/text/services/shutdown_manager.py         35      0   100%
+src/text/services/task_manager.py            168     23    86%   218, 243, 306, 310, 346, 348, 382-403
+src/text/translation/__init__.py               4      0   100%
+src/text/translation/base.py                  36      8    78%   36, 40, 71-73, 79-80, 88
+src/text/translation/sarvam.py                78      1    99%   250
+------------------------------------------------------------------------
+TOTAL                                       5643    498    91%

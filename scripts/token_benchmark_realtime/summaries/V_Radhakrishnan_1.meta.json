@@ -1,0 +1,30 @@
+{
+  "rowIndex": 22,
+  "caseName": "V_Radhakrishnan_1",
+  "fileName": "V_Radhakrishnan_1.wav",
+  "language": "malayalam",
+  "words": 519,
+  "approxTokens": 692,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 42970.52120859735,
+  "hops": {
+    "sessionInitMs": 691.6620419360697,
+    "transcriptIngestMs": 721.1900840047747,
+    "workflowDispatchMs": 742.7070408593863,
+    "pipelineExecMs": 40205.79312485643,
+    "noteRetrievalMs": 609.1689169406891
+  },
+  "subhops": {
+    "nlpMs": 638.8319579418749,
+    "guardrailInboundMs": 10702.990042045712,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 24913.97112486884
+  },
+  "consultationId": "01a20d29-48ad-700f-9ab5-c43fa50fc823",
+  "jobId": "harness-doc-acc77160-143e-40f0-bfa8-e7ac763a81a5"
+}

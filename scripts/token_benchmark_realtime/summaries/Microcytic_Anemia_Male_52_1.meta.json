@@ -1,0 +1,30 @@
+{
+  "rowIndex": 7,
+  "caseName": "Microcytic_Anemia_Male_52_1",
+  "fileName": "Microcytic_Anemia_Male_52_1.wav",
+  "language": "malayalam",
+  "words": 802,
+  "approxTokens": 1069,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 10553.284958703443,
+  "hops": {
+    "sessionInitMs": 702.524458989501,
+    "transcriptIngestMs": 773.1955419294536,
+    "workflowDispatchMs": 1358.4924158640206,
+    "pipelineExecMs": 7096.741250017658,
+    "noteRetrievalMs": 622.3312919028103
+  },
+  "subhops": {
+    "nlpMs": 647.9075418319553,
+    "guardrailInboundMs": 13429.007458034903,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 1200.0
+  },
+  "consultationId": "01a20d1d-f2c6-76b4-8a65-47bf8ce2521f",
+  "jobId": "harness-doc-1a6b5558-e960-47c8-a11e-e285605101cf"
+}

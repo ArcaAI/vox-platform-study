@@ -1,0 +1,30 @@
+{
+  "rowIndex": 41,
+  "caseName": "HM_S5_Lymphoma_B_Symptoms_5",
+  "fileName": "HM_S5_Lymphoma_B_Symptoms_5.wav",
+  "language": "malayalam",
+  "words": 298,
+  "approxTokens": 397,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 42188.499581767246,
+  "hops": {
+    "sessionInitMs": 739.4435829482973,
+    "transcriptIngestMs": 620.4683331307024,
+    "workflowDispatchMs": 732.322416966781,
+    "pipelineExecMs": 39475.89554078877,
+    "noteRetrievalMs": 620.3697079326957
+  },
+  "subhops": {
+    "nlpMs": 694.9809167999774,
+    "guardrailInboundMs": 10612.20133304596,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 24218.713290942833
+  },
+  "consultationId": "01a20d30-1e93-792b-a0ef-a5373f7bebe0",
+  "jobId": "harness-doc-de212918-25aa-4589-b230-783ab91baad7"
+}

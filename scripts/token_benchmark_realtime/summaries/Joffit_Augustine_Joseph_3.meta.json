@@ -1,0 +1,30 @@
+{
+  "rowIndex": 15,
+  "caseName": "Joffit_Augustine_Joseph_3",
+  "fileName": "Joffit_Augustine_Joseph_3.wav",
+  "language": "malayalam",
+  "words": 636,
+  "approxTokens": 848,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 28791.16683267057,
+  "hops": {
+    "sessionInitMs": 791.68341611512,
+    "transcriptIngestMs": 743.8823329284787,
+    "workflowDispatchMs": 711.1270418390632,
+    "pipelineExecMs": 25906.444957945496,
+    "noteRetrievalMs": 638.0290838424116
+  },
+  "subhops": {
+    "nlpMs": 701.565874973312,
+    "guardrailInboundMs": 11371.025249827653,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 9883.85383314453
+  },
+  "consultationId": "01a20d25-fea5-7e41-8ba7-42a133347fe8",
+  "jobId": "harness-doc-eee15cd7-e1b1-4e15-bf65-269d2846151b"
+}

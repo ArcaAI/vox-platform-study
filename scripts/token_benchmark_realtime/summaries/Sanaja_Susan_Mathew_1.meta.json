@@ -1,0 +1,30 @@
+{
+  "rowIndex": 13,
+  "caseName": "Sanaja_Susan_Mathew_1",
+  "fileName": "Sanaja_Susan_Mathew_1.wav",
+  "language": "malayalam",
+  "words": 606,
+  "approxTokens": 808,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 45078.84941692464,
+  "hops": {
+    "sessionInitMs": 720.5414171330631,
+    "transcriptIngestMs": 712.2606670018286,
+    "workflowDispatchMs": 736.8080411106348,
+    "pipelineExecMs": 42281.21262486093,
+    "noteRetrievalMs": 628.0266668181866
+  },
+  "subhops": {
+    "nlpMs": 656.8330840673298,
+    "guardrailInboundMs": 8978.461083956063,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 28695.918456837535
+  },
+  "consultationId": "01a20d24-d426-7c11-a968-a22d169e19e7",
+  "jobId": "harness-doc-da696fb1-2986-449f-8bd4-ddd89e91496b"
+}

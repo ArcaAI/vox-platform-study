@@ -1,0 +1,30 @@
+{
+  "rowIndex": 45,
+  "caseName": "RH_S3_Axial_Spondyloarthritis_3",
+  "fileName": "RH_S3_Axial_Spondyloarthritis_3.wav",
+  "language": "malayalam",
+  "words": 281,
+  "approxTokens": 374,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 40914.15445925668,
+  "hops": {
+    "sessionInitMs": 670.0954590924084,
+    "transcriptIngestMs": 617.4245830625296,
+    "workflowDispatchMs": 2782.3447501286864,
+    "pipelineExecMs": 36225.51433299668,
+    "noteRetrievalMs": 618.7753339763731
+  },
+  "subhops": {
+    "nlpMs": 687.860333127901,
+    "guardrailInboundMs": 10049.46345812641,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 21538.19054174237
+  },
+  "consultationId": "01a20d32-7e8d-719e-83df-cdf554bafee8",
+  "jobId": "harness-doc-fe445534-aafe-4a95-8adf-caee04fb245d"
+}

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 4,
+  "caseName": "Type2_Diabetes_Male_54_1",
+  "fileName": "Type2_Diabetes_Male_54_1.wav",
+  "language": "malayalam",
+  "words": 630,
+  "approxTokens": 840,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 52769.16787470691,
+  "hops": {
+    "sessionInitMs": 1008.7926248088479,
+    "transcriptIngestMs": 995.6888330634683,
+    "workflowDispatchMs": 778.4269168041646,
+    "pipelineExecMs": 49373.892250005156,
+    "noteRetrievalMs": 612.3672500252724
+  },
+  "subhops": {
+    "nlpMs": 652.4462078232318,
+    "guardrailInboundMs": 12693.30516597256,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 32078.140876209363
+  },
+  "consultationId": "01a20d18-c5f1-7e55-88b2-38fc3a737748",
+  "jobId": "harness-doc-d287fcaf-dc36-40c3-86ac-960089287383"
+}

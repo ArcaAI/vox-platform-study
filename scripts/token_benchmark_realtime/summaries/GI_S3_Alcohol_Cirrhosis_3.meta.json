@@ -1,0 +1,30 @@
+{
+  "rowIndex": 27,
+  "caseName": "GI_S3_Alcohol_Cirrhosis_3",
+  "fileName": "GI_S3_Alcohol_Cirrhosis_3.wav",
+  "language": "malayalam",
+  "words": 371,
+  "approxTokens": 494,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 38613.12074866146,
+  "hops": {
+    "sessionInitMs": 696.7259580269456,
+    "transcriptIngestMs": 655.8488749433309,
+    "workflowDispatchMs": 744.3669578060508,
+    "pipelineExecMs": 35877.15395796113,
+    "noteRetrievalMs": 639.0249999240041
+  },
+  "subhops": {
+    "nlpMs": 669.1123330965638,
+    "guardrailInboundMs": 10996.46049994044,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 20261.581124924123
+  },
+  "consultationId": "01a20d2b-5747-7211-b3b8-9149a5db65e4",
+  "jobId": "harness-doc-45612910-639d-4e26-88c6-8fc1091f631b"
+}

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 21,
+  "caseName": "Thiruvattal_David_Varghese_3",
+  "fileName": "Thiruvattal_David_Varghese_3.wav",
+  "language": "malayalam",
+  "words": 575,
+  "approxTokens": 766,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 33311.7073753383,
+  "hops": {
+    "sessionInitMs": 772.5376251619309,
+    "transcriptIngestMs": 742.5250001251698,
+    "workflowDispatchMs": 713.5312908794731,
+    "pipelineExecMs": 30441.415667068213,
+    "noteRetrievalMs": 641.6977921035141
+  },
+  "subhops": {
+    "nlpMs": 653.924958081916,
+    "guardrailInboundMs": 12317.95583292842,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 13519.534876057878
+  },
+  "consultationId": "01a20d28-b93b-706a-8fd4-e0e712b90de7",
+  "jobId": "harness-doc-09eabd9a-e2c9-4b68-ac07-91f2f819fcef"
+}

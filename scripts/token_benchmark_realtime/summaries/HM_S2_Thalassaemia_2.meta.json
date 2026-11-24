@@ -1,0 +1,30 @@
+{
+  "rowIndex": 38,
+  "caseName": "HM_S2_Thalassaemia_2",
+  "fileName": "HM_S2_Thalassaemia_2.wav",
+  "language": "malayalam",
+  "words": 241,
+  "approxTokens": 321,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 26802.130164811388,
+  "hops": {
+    "sessionInitMs": 709.9609158467501,
+    "transcriptIngestMs": 589.3097079824656,
+    "workflowDispatchMs": 738.2320419419557,
+    "pipelineExecMs": 23977.608958026394,
+    "noteRetrievalMs": 787.018541013822
+  },
+  "subhops": {
+    "nlpMs": 683.1640840973705,
+    "guardrailInboundMs": 9665.401624981314,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 9679.04324894771
+  },
+  "consultationId": "01a20d2f-2a9e-729c-8549-962712a31432",
+  "jobId": "harness-doc-08702f31-ce86-4601-a9a3-bb56441e110a"
+}

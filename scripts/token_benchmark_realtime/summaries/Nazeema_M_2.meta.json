@@ -1,0 +1,30 @@
+{
+  "rowIndex": 17,
+  "caseName": "Nazeema_M_2",
+  "fileName": "Nazeema_M_2.wav",
+  "language": "malayalam",
+  "words": 544,
+  "approxTokens": 725,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 45285.16462491825,
+  "hops": {
+    "sessionInitMs": 891.4858750067651,
+    "transcriptIngestMs": 772.5237079430372,
+    "workflowDispatchMs": 699.8869590461254,
+    "pipelineExecMs": 42301.26049998216,
+    "noteRetrievalMs": 620.0075829401612
+  },
+  "subhops": {
+    "nlpMs": 682.1381249465048,
+    "guardrailInboundMs": 10951.294583966956,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 26717.827791068703
+  },
+  "consultationId": "01a20d26-bee2-716c-84ec-84d452c3ed10",
+  "jobId": "harness-doc-dbc2051e-16f0-4d50-9659-f3a9376814d0"
+}

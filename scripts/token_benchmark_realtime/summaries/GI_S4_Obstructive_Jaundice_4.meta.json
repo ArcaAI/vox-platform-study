@@ -1,0 +1,30 @@
+{
+  "rowIndex": 28,
+  "caseName": "GI_S4_Obstructive_Jaundice_4",
+  "fileName": "GI_S4_Obstructive_Jaundice_4.wav",
+  "language": "malayalam",
+  "words": 308,
+  "approxTokens": 410,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 38732.98670887016,
+  "hops": {
+    "sessionInitMs": 716.6048330254853,
+    "transcriptIngestMs": 611.8400839623064,
+    "workflowDispatchMs": 705.4484579712152,
+    "pipelineExecMs": 36079.359916970134,
+    "noteRetrievalMs": 619.7334169410169
+  },
+  "subhops": {
+    "nlpMs": 685.047792037949,
+    "guardrailInboundMs": 9293.020666809753,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 22151.291458122432
+  },
+  "consultationId": "01a20d2b-ae96-7b4b-8b23-5de319377c1d",
+  "jobId": "harness-doc-88e95c2a-7b77-4427-bb43-1ae8bdf100e4"
+}

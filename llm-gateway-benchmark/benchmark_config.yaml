@@ -1,0 +1,58 @@
+# ==============================================================================
+# HOPE LLM Service & API Gateway Benchmark Configuration
+# ==============================================================================
+
+# Concurrency sweep levels to execute sequentially in an automated loop:
+concurrencies:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+
+# Cooldown delay in seconds between consecutive concurrency runs
+cooldown: 15
+
+# Number of requests dispatched per concurrency level
+requests_per_concurrency: 10
+
+# Throwaway warmup requests to prime GPU cache and Gateway connection pools
+warmup_requests: 2
+
+# Clinical Note & LLM Generation Configuration
+generation:
+  type: "summary"                     # "summary" or "pre-summary"
+  agent_slug: "general-medicine-summarization" # Clinical agent bound to Gemma 4 2B (LM Studio)
+  stream: true                        # true for real-time SSE token stream; false for synchronous
+  temperature: 0.05
+  max_tokens: 1500
+  payload_file: "sample_clinical_transcript.json"
+
+# API Gateway & Network Configuration
+gateway:
+  # Base URL: Use Ingress domain or cluster NodePort:
+  # - Ingress: "https://api-vox2.arcaai.com"
+  # - Direct NodePort: "http://192.168.112.6:32458"
+  base_url: "https://api-vox2.arcaai.com"
+  endpoint: "/api/v1/text-generations/generate/assembled"
+  tenant_id: "50000000-0000-0000-0000-000000000001"    # ArcaAI Tenant UUID
+  tenant_key: "ARCAAI"
+  username: "super_admin"
+  password: "password123"
+
+# Remote GPU Server Monitoring & Diagnostics (192.168.112.2)
+remote_diagnostics: true
+gpu_host: "192.168.112.2"
+gpu_user: "vidit"
+gpu_sample_ms: 1000                   # Telemetry interval (ms)
+gpu_metrics_csv: "gpu_metrics.csv"
+
+# Output reporting
+output_report: "benchmark_results.json"
+
+# Redis Cluster Configuration (Kubernetes NodePort)
+redis:
+  host: "192.168.112.7"
+  port: 32522
+  password: "5GX3kEti7iZHt69ZOUnUavkfEjsWGwgfD+GAcBK74Xc="

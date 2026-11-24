@@ -1,0 +1,30 @@
+{
+  "rowIndex": 31,
+  "caseName": "GM_S1_Diabetes_Hypertension_1",
+  "fileName": "GM_S1_Diabetes_Hypertension_1.wav",
+  "language": "malayalam",
+  "words": 328,
+  "approxTokens": 437,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 28692.665917333215,
+  "hops": {
+    "sessionInitMs": 684.6002079546452,
+    "transcriptIngestMs": 602.8382501099259,
+    "workflowDispatchMs": 738.0816671065986,
+    "pipelineExecMs": 26042.343167122453,
+    "noteRetrievalMs": 624.8026250395924
+  },
+  "subhops": {
+    "nlpMs": 650.9867920540273,
+    "guardrailInboundMs": 15247.799291042611,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 6193.557084025815
+  },
+  "consultationId": "01a20d2c-d019-78e2-99dc-d9b63fbbe2cb",
+  "jobId": "harness-doc-abd84f60-4a63-4c1d-b1f0-0376b36ab6fe"
+}

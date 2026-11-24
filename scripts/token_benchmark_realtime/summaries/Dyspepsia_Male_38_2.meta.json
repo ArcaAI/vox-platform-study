@@ -1,0 +1,30 @@
+{
+  "rowIndex": 5,
+  "caseName": "Dyspepsia_Male_38_2",
+  "fileName": "Dyspepsia_Male_38_2.wav",
+  "language": "malayalam",
+  "words": 521,
+  "approxTokens": 694,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 39109.80604123324,
+  "hops": {
+    "sessionInitMs": 723.2117080129683,
+    "transcriptIngestMs": 716.6532091796398,
+    "workflowDispatchMs": 775.1767500303686,
+    "pipelineExecMs": 36275.929833063856,
+    "noteRetrievalMs": 618.8345409464091
+  },
+  "subhops": {
+    "nlpMs": 673.0823330581188,
+    "guardrailInboundMs": 12421.709333080798,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 19231.13816692494
+  },
+  "consultationId": "01a20d19-d0b4-7ac2-80b0-f164cf4ae5b7",
+  "jobId": "harness-doc-b02f256a-5173-46ef-a8de-b94e4a7b8cfa"
+}

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 2,
+  "caseName": "Bindu_2",
+  "fileName": "Bindu_2.wav",
+  "language": "malayalam",
+  "words": 464,
+  "approxTokens": 618,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 31823.026125319302,
+  "hops": {
+    "sessionInitMs": 828.0129581689835,
+    "transcriptIngestMs": 1201.6027090139687,
+    "workflowDispatchMs": 2160.668208030984,
+    "pipelineExecMs": 27010.089833987877,
+    "noteRetrievalMs": 622.6524161174893
+  },
+  "subhops": {
+    "nlpMs": 947.851040866226,
+    "guardrailInboundMs": 10533.984208945185,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 11578.254584176466
+  },
+  "consultationId": "01a20d18-135f-7762-9282-d38b82500306",
+  "jobId": "harness-doc-7522829e-f84b-43c4-b299-859cadb97a51"
+}

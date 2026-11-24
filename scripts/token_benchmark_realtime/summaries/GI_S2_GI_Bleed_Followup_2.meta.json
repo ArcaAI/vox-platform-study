@@ -1,0 +1,30 @@
+{
+  "rowIndex": 26,
+  "caseName": "GI_S2_GI_Bleed_Followup_2",
+  "fileName": "GI_S2_GI_Bleed_Followup_2.wav",
+  "language": "malayalam",
+  "words": 324,
+  "approxTokens": 432,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 33560.29408425093,
+  "hops": {
+    "sessionInitMs": 720.4547501169145,
+    "transcriptIngestMs": 614.8692921269685,
+    "workflowDispatchMs": 748.7972090020776,
+    "pipelineExecMs": 30840.24770813994,
+    "noteRetrievalMs": 635.9251248650253
+  },
+  "subhops": {
+    "nlpMs": 655.4892910644412,
+    "guardrailInboundMs": 8710.201540961862,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 17524.55687611364
+  },
+  "consultationId": "01a20d2a-ff2a-741d-b086-207fb344f1f8",
+  "jobId": "harness-doc-b22ddefe-8df0-46f9-a83f-a595e4dcd850"
+}

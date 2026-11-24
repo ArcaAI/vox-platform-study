@@ -1,0 +1,30 @@
+{
+  "rowIndex": 43,
+  "caseName": "RH_S1_Early_RA_1",
+  "fileName": "RH_S1_Early_RA_1.wav",
+  "language": "malayalam",
+  "words": 352,
+  "approxTokens": 469,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 34315.94654219225,
+  "hops": {
+    "sessionInitMs": 674.4621670804918,
+    "transcriptIngestMs": 669.7464580647647,
+    "workflowDispatchMs": 2437.271249946207,
+    "pipelineExecMs": 29906.862708041444,
+    "noteRetrievalMs": 627.6039590593427
+  },
+  "subhops": {
+    "nlpMs": 655.8383328374475,
+    "guardrailInboundMs": 13013.647709041834,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 12287.376666162163
+  },
+  "consultationId": "01a20d30-f71c-7dde-85bd-2408fbbdbf10",
+  "jobId": "harness-doc-d49e4827-5069-4591-a5ac-f8dee30bf999"
+}

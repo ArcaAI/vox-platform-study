@@ -1,0 +1,30 @@
+{
+  "rowIndex": 46,
+  "caseName": "RH_S4_Gout_4",
+  "fileName": "RH_S4_Gout_4.wav",
+  "language": "malayalam",
+  "words": 268,
+  "approxTokens": 357,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 23266.987751005217,
+  "hops": {
+    "sessionInitMs": 690.7012090086937,
+    "transcriptIngestMs": 625.9545830544084,
+    "workflowDispatchMs": 9624.301542062312,
+    "pipelineExecMs": 11693.320374935865,
+    "noteRetrievalMs": 632.7100419439375
+  },
+  "subhops": {
+    "nlpMs": 675.6169169675559,
+    "guardrailInboundMs": 10849.973750067875,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 1200.0
+  },
+  "consultationId": "01a20d33-59c7-7d9b-8f30-3d5f3bdc8c84",
+  "jobId": "harness-doc-296264ee-7954-462a-bff4-38d7ec55937e"
+}

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 9,
+  "caseName": "Cervical_Lymphadenopathy_Female_61_3",
+  "fileName": "Cervical_Lymphadenopathy_Female_61_3.wav",
+  "language": "malayalam",
+  "words": 639,
+  "approxTokens": 852,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 28670.884041814134,
+  "hops": {
+    "sessionInitMs": 855.5081249214709,
+    "transcriptIngestMs": 811.4500418305397,
+    "workflowDispatchMs": 709.6225421410054,
+    "pipelineExecMs": 25658.04583299905,
+    "noteRetrievalMs": 636.2574999220669
+  },
+  "subhops": {
+    "nlpMs": 677.2310419473797,
+    "guardrailInboundMs": 15746.99916713871,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 5283.81562391296
+  },
+  "consultationId": "01a20d1f-0810-7b13-bbd2-140acc09dc67",
+  "jobId": "harness-doc-ff036c3e-22c7-4538-b118-8c81ec60e613"
+}

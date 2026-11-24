@@ -1,0 +1,30 @@
+{
+  "rowIndex": 18,
+  "caseName": "Aadarsha_S_3",
+  "fileName": "Aadarsha_S_3.wav",
+  "language": "malayalam",
+  "words": 530,
+  "approxTokens": 706,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 28947.31154269539,
+  "hops": {
+    "sessionInitMs": 932.9769578762352,
+    "transcriptIngestMs": 739.9459588341415,
+    "workflowDispatchMs": 732.9879170283675,
+    "pipelineExecMs": 25933.737166924402,
+    "noteRetrievalMs": 607.6635420322418
+  },
+  "subhops": {
+    "nlpMs": 667.3159168567508,
+    "guardrailInboundMs": 12399.41891701892,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 8917.002333048731
+  },
+  "consultationId": "01a20d27-b22e-73d4-9875-83ccc7899c92",
+  "jobId": "harness-doc-7652fbeb-b430-45b8-8989-3131f878e067"
+}

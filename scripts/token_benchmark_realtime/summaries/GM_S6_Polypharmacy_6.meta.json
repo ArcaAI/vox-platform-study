@@ -1,0 +1,30 @@
+{
+  "rowIndex": 36,
+  "caseName": "GM_S6_Polypharmacy_6",
+  "fileName": "GM_S6_Polypharmacy_6.wav",
+  "language": "malayalam",
+  "words": 289,
+  "approxTokens": 385,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 38662.88220859133,
+  "hops": {
+    "sessionInitMs": 668.9782498870045,
+    "transcriptIngestMs": 630.2112911362201,
+    "workflowDispatchMs": 750.4639588296413,
+    "pipelineExecMs": 35989.26629195921,
+    "noteRetrievalMs": 623.9624167792499
+  },
+  "subhops": {
+    "nlpMs": 644.010541960597,
+    "guardrailInboundMs": 9372.387625044212,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 22022.868124954402
+  },
+  "consultationId": "01a20d2e-646f-7e0a-81c3-c8f89c71d0f9",
+  "jobId": "harness-doc-cb0f12d6-9cd8-49e5-bc8e-272f9f06de26"
+}

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 40,
+  "caseName": "HM_S4_Myeloma_Referral_4",
+  "fileName": "HM_S4_Myeloma_Referral_4.wav",
+  "language": "malayalam",
+  "words": 339,
+  "approxTokens": 452,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 42116.62670853548,
+  "hops": {
+    "sessionInitMs": 684.8502089269459,
+    "transcriptIngestMs": 904.348166892305,
+    "workflowDispatchMs": 746.1604999843985,
+    "pipelineExecMs": 39158.38662488386,
+    "noteRetrievalMs": 622.8812078479677
+  },
+  "subhops": {
+    "nlpMs": 711.4810419734567,
+    "guardrailInboundMs": 11128.28170787543,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 23368.623875034973
+  },
+  "consultationId": "01a20d2f-c37c-7860-b756-986f0da8fefb",
+  "jobId": "harness-doc-dc907ce7-5605-4381-a73b-f51ecd499734"
+}
