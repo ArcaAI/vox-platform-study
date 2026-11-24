@@ -1,0 +1,23 @@
+--- deployment images ---
+NAME                   REPLICAS   IMAGE
+alertmanager           1          prom/alertmanager:v0.28.1
+grafana                1          grafana/grafana:13.1.2
+hope-admin-console     1          192.168.112.13:5000/project-vox-admin-console-v2:2611.21
+hope-api               1          192.168.112.13:5000/project-vox-api-v2:2611.18
+hope-guardrail         1          192.168.112.13:5000/project-vox-guardrail-v2:2611.18
+hope-harness           1          192.168.112.13:5000/project-vox-harness-v2:2611.18
+hope-harness-worker    1          192.168.112.13:5000/project-vox-harness-worker-v2:2611.18
+hope-model-publisher   1          192.168.112.13:5000/project-vox-api-v2:2611.18
+hope-nlp               1          192.168.112.13:5000/project-vox-nlp-gpu-v2:2611.18
+hope-stt-v2            1          192.168.112.13:5000/project-vox-stt-ml-runtime-v2:2611.18
+hope-stt-v2-worker     1          192.168.112.13:5000/project-vox-stt-worker-v2:2611.18
+hope-text              1          192.168.112.13:5000/project-vox-text-v2:2611.18
+hope-tts               1          192.168.112.13:5000/project-vox-tts-v2:2611.18
+hope-vllm              1          192.168.112.13:5000/project-vox-vllm-v2:2611.18
+hope-vllm-asr          1          192.168.112.13:5000/project-vox-vllm-v2:2611.18
+kube-state-metrics     1          registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
+loki                   1          grafana/loki:3.7.8
+otel-collector         2          otel/opentelemetry-collector-contrib:0.149.0
+prometheus             1          prom/prometheus:v3.10.0
+tempo                  1          grafana/tempo:2.10.3
+metric_names_http=200

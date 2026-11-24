@@ -1,0 +1,1 @@
+{"service":"Medical Entity Recognition & NLP","version":"1.0.0"}

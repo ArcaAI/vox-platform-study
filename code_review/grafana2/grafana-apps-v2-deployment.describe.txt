@@ -1,0 +1,67 @@
+Name:               grafana
+Namespace:          project-hope-vox-apps-v2
+CreationTimestamp:  Mon, 23 Nov 2026 14:00:28 +0530
+Labels:             app=grafana
+                    app.kubernetes.io/part-of=project-hope
+Annotations:        deployment.kubernetes.io/revision: 3
+Selector:           app=grafana
+Replicas:           1 desired | 1 updated | 1 total | 1 available | 0 unavailable
+StrategyType:       Recreate
+MinReadySeconds:    0
+Pod Template:
+  Labels:  app=grafana
+  Containers:
+   grafana:
+    Image:      grafana/grafana:13.1.2
+    Port:       3000/TCP
+    Host Port:  0/TCP
+    Limits:
+      cpu:     500m
+      memory:  512Mi
+    Requests:
+      cpu:      100m
+      memory:   256Mi
+    Liveness:   http-get http://:3000/api/health delay=30s timeout=1s period=30s #success=1 #failure=3
+    Readiness:  http-get http://:3000/api/health delay=15s timeout=1s period=10s #success=1 #failure=3
+    Environment:
+      GF_SECURITY_ADMIN_PASSWORD:           <set to the key 'GRAFANA_ADMIN_PASSWORD' in secret 'hope-secrets'>  Optional: true
+      GF_SERVER_DOMAIN:                     192.168.112.6
+      GF_SERVER_ROOT_URL:                   http://192.168.112.6:30300
+      GF_AUTH_ANONYMOUS_ENABLED:            false
+      GF_USERS_ALLOW_SIGN_UP:               false
+      GF_USERS_VIEWERS_CAN_EDIT:            false
+      GF_USERS_DEFAULT_THEME:               dark
+      GF_SECURITY_COOKIE_SAMESITE:          strict
+      GF_SECURITY_COOKIE_SECURE:            false
+      GF_SECURITY_CONTENT_SECURITY_POLICY:  true
+      GF_SECURITY_DISABLE_GRAVATAR:         true
+      GF_ANALYTICS_REPORTING_ENABLED:       false
+      GF_ANALYTICS_CHECK_FOR_UPDATES:       false
+      GF_ROUTER_LOGGING:                    true
+    Mounts:
+      /etc/grafana/provisioning from config (rw)
+      /var/lib/grafana from data (rw)
+      /var/lib/grafana/dashboards from dashboards (rw)
+  Volumes:
+   config:
+    Type:           Projected (a volume that contains injected data from multiple sources)
+    ConfigMapName:  grafana-provisioning
+    Optional:       false
+   dashboards:
+    Type:      ConfigMap (a volume populated by a ConfigMap)
+    Name:      grafana-dashboards
+    Optional:  false
+   data:
+    Type:          PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:     grafana-data
+    ReadOnly:      false
+  Node-Selectors:  kubernetes.io/hostname=worker-node-2
+  Tolerations:     <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Progressing    True    NewReplicaSetAvailable
+  Available      True    MinimumReplicasAvailable
+OldReplicaSets:  grafana-77fdd44f7b (0/0 replicas created), grafana-5df64f576d (0/0 replicas created)
+NewReplicaSet:   grafana-86764ccf9c (1/1 replicas created)
+Events:          <none>

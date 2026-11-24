@@ -1,0 +1,24 @@
+container_label_http=200
+env_label_http=200
+count_hope-nlp_http=200
+count_hope-stt-v2_http=200
+count_hope-stt-v2-worker_http=200
+count_hope-vllm_http=200
+count_hope-vllm-asr_http=200
+count_hope-admin-console_http=200
+count_prometheus_http=200
+
+=== k8s_container_name (10) ===
+  api, grafana, guardrail, harness, harness-worker, loki, model-publisher, tempo, text, tts
+
+=== deployment_environment_name (2) ===
+  dev, production
+
+=== missing-service counts (last 1h) ===
+  hope-nlp: result_series=0 points=0
+  hope-stt-v2: result_series=0 points=0
+  hope-stt-v2-worker: result_series=0 points=0
+  hope-vllm: result_series=0 points=0
+  hope-vllm-asr: result_series=0 points=0
+  hope-admin-console: result_series=0 points=0
+  prometheus: result_series=0 points=0

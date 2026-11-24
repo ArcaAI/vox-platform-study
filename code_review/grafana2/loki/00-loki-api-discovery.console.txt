@@ -1,0 +1,13 @@
+Mon Nov 23 17:51:27 IST 2026
+labels_http=200
+label_service_name_http=200
+label_k8s_namespace_name_http=200
+label_detected_level_http=200
+label_level_http=200
+label_app_http=200
+label_container_http=200
+label_pod_http=200
+label_job_http=200
+label_filename_http=200
+index_stats_http=200
+sample_logs_http=200

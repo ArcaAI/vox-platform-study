@@ -1,0 +1,62 @@
+Name:           alloy-logs
+Namespace:      project-hope-vox-apps-v2
+Selector:       app=alloy-logs
+Node-Selector:  <none>
+Labels:         app=alloy-logs
+                app.kubernetes.io/part-of=project-hope
+Annotations:    deprecated.daemonset.template.generation: 2
+Desired Number of Nodes Scheduled: 6
+Current Number of Nodes Scheduled: 6
+Number of Nodes Scheduled with Up-to-date Pods: 6
+Number of Nodes Scheduled with Available Pods: 6
+Number of Nodes Misscheduled: 0
+Pods Status:  6 Running / 0 Waiting / 0 Succeeded / 0 Failed
+Pod Template:
+  Labels:           app=alloy-logs
+  Service Account:  alloy-logs
+  Containers:
+   alloy:
+    Image:      grafana/alloy:v1.7.1
+    Port:       12345/TCP (http-metrics)
+    Host Port:  0/TCP (http-metrics)
+    Args:
+      run
+      --server.http.listen-addr=0.0.0.0:12345
+      --storage.path=/var/lib/alloy/data
+      /etc/alloy
+    Limits:
+      cpu:     300m
+      memory:  384Mi
+    Requests:
+      cpu:      30m
+      memory:   128Mi
+    Liveness:   http-get http://:12345/-/ready delay=30s timeout=1s period=30s #success=1 #failure=3
+    Readiness:  http-get http://:12345/-/ready delay=10s timeout=1s period=15s #success=1 #failure=3
+    Environment:
+      NODE_NAME:       (v1:spec.nodeName)
+      POD_NAMESPACE:   (v1:metadata.namespace)
+    Mounts:
+      /etc/alloy from config (rw)
+      /tmp from tmp (rw)
+      /var/lib/alloy/data from alloy-data (rw)
+      /var/log/pods from varlog (ro)
+  Volumes:
+   config:
+    Type:      ConfigMap (a volume populated by a ConfigMap)
+    Name:      alloy-logs-config
+    Optional:  false
+   varlog:
+    Type:          HostPath (bare host directory volume)
+    Path:          /var/log/pods
+    HostPathType:  DirectoryOrCreate
+   alloy-data:
+    Type:          HostPath (bare host directory volume)
+    Path:          /var/lib/alloy-logs-data
+    HostPathType:  DirectoryOrCreate
+   tmp:
+    Type:          EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:        
+    SizeLimit:     <unset>
+  Node-Selectors:  <none>
+  Tolerations:     op=Exists
+Events:            <none>

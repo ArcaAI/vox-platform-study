@@ -1,0 +1,11 @@
+HTTP/1.1 302 Found
+Cache-Control: no-store
+Content-Security-Policy: script-src 'self' 'unsafe-eval' 'unsafe-inline' 'strict-dynamic' 'nonce-PyQiyhjhbeIgONuS/6xeaA';object-src 'none';font-src 'self';style-src 'self' 'unsafe-inline' blob:;img-src * data:;base-uri 'self';connect-src 'self' grafana.com ws://192.168.112.6:30300/ wss://192.168.112.6:30300/;manifest-src 'self';media-src 'none';form-action 'self' ;
+Content-Type: text/html; charset=utf-8
+Location: /login?redirectTo=%2Falerting
+X-Content-Type-Options: nosniff
+X-Frame-Options: deny
+X-Xss-Protection: 1; mode=block
+Date: Mon, 23 Nov 2026 12:15:13 GMT
+Content-Length: 52
+

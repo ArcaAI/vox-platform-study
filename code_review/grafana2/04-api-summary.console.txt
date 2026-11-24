@@ -1,0 +1,103 @@
+=== Grafana health ===
+{
+  "database": "ok",
+  "version": "13.1.2",
+  "commit": "7f247b37a4e51a1ed33904ec63ac6c6087bf7f48"
+}
+
+=== Datasources ===
+- Loki | type=loki | uid=loki | default=False | url=http://loki:3100
+- Prometheus | type=prometheus | uid=prometheus | default=True | url=http://prometheus:9090
+- Tempo | type=tempo | uid=tempo | default=False | url=http://tempo:3200
+
+=== Folders ===
+- HOPE (uid=fg55iamkl37y8d)
+
+=== Dashboards ===
+total=9
+- HOPE — Data-tier Dependencies | uid=hope-dependencies | folder=HOPE | tags=['dependencies', 'hope', 'in-cluster', 'infrastructure']
+- HOPE — GPU (DCGM) | uid=hope-gpu | folder=HOPE | tags=['gpu', 'hope', 'infrastructure', 'task-636']
+- HOPE — Infrastructure Overview | uid=hope-infra-overview | folder=HOPE | tags=['hope', 'infrastructure', 'task-636']
+- HOPE — Kubernetes Workloads & Events | uid=hope-k8s-workloads | folder=HOPE | tags=['hope', 'infrastructure', 'kubernetes', 'task-636']
+- HOPE — Model Residency | uid=hope-model-residency | folder=HOPE | tags=['gpu', 'hope', 'infrastructure', 'task-1005']
+- HOPE — Node & System Activity | uid=hope-node-system | folder=HOPE | tags=['hope', 'infrastructure', 'node', 'task-636']
+- HOPE — Platform (Application Plane) | uid=hope-platform | folder=HOPE | tags=['application', 'hope', 'task-989']
+- HOPE — SDK Clients | uid=hope-sdk-clients | folder=HOPE | tags=['hope', 'sdk', 'task-1071']
+- HOPE — vLLM Inference | uid=hope-vllm | folder=HOPE | tags=['gpu', 'hope', 'inference', 'task-1021']
+
+=== Prometheus jobs ===
+['alertmanager', 'alloy', 'api-gateway', 'cadvisor', 'dcgm-exporter', 'grafana', 'guardrail', 'harness', 'kube-state-metrics', 'loki', 'minio', 'nlp', 'node-exporter', 'patroni', 'pgbouncer', 'postgres', 'prometheus', 'redis', 'smr', 'stt-v2', 'tempo', 'temporal', 'tts', 'vault']
+
+=== Prometheus targets by job/health ===
+- alertmanager: {'up': 1}
+- alloy: {'up': 6}
+- api-gateway: {'up': 1}
+- cadvisor: {'up': 7}
+- dcgm-exporter: {'up': 1}
+- grafana: {'up': 1}
+- guardrail: {'up': 1}
+- harness: {'up': 1}
+- kube-state-metrics: {'up': 1}
+- loki: {'up': 1}
+- minio: {'down': 1}
+- nlp: {'up': 1}
+- node-exporter: {'up': 7}
+- patroni: {'down': 3}
+- pgbouncer: {'down': 3}
+- postgres: {'down': 3}
+- prometheus: {'up': 1}
+- redis: {'down': 2}
+- smr: {'down': 1}
+- stt-v2: {'up': 1}
+- tempo: {'up': 1}
+- temporal: {'down': 1}
+- tts: {'up': 1}
+- vault: {'down': 3}
+active_targets_total=50
+
+=== Prometheus alert rules ===
+- group=coverage rules=3
+    TargetDown state=firing severity=ticket
+    ExpectedTargetCountMismatch state=firing severity=ticket
+    PrometheusTSDBCompactionFailing state=inactive severity=ticket
+- group=gpu rules=3
+    GPUTemperatureHigh state=inactive severity=ticket
+    GPUMemoryRemapFailure state=inactive severity=page
+    GPUUncorrectableMemoryErrors state=inactive severity=ticket
+- group=node rules=7
+    NodeDiskPressure state=inactive severity=page
+    NodeFilesystemFillingUp state=inactive severity=ticket
+    NodeFilesystemAlmostFull state=inactive severity=page
+    NodeMemoryPressureStall state=inactive severity=ticket
+    NodeOOMKill state=inactive severity=page
+    NodeFileDescriptorsExhausting state=inactive severity=ticket
+    NodeRebooted state=inactive severity=info
+- group=postgres rules=6
+    PatroniNoLeader state=inactive severity=page
+    PatroniSplitBrain state=inactive severity=page
+    PatroniClusterUnlocked state=inactive severity=page
+    PatroniReplicaNotStreaming state=inactive severity=ticket
+    PostgresConnectionsNearMax state=inactive severity=ticket
+    PgBouncerClientsWaiting state=inactive severity=ticket
+- group=redis rules=3
+    RedisDown state=inactive severity=page
+    RedisEvictingKeys state=inactive severity=page
+    RedisMemoryNearMax state=inactive severity=ticket
+- group=temporal rules=1
+    TemporalDown state=firing severity=page
+- group=vault_storage rules=4
+    VaultSealed state=inactive severity=page
+    VaultQuorumRisk state=inactive severity=page
+    MinIODriveOffline state=inactive severity=page
+    MinIOCapacityLow state=inactive severity=ticket
+- group=workers rules=4
+    STTBatchWorkerDown state=inactive severity=page
+    STTBatchJobFailureRate state=inactive severity=ticket
+    STTBatchQueueBacklog state=inactive severity=ticket
+    TemporalWorkerTaskFailures state=inactive severity=ticket
+- group=workloads rules=4
+    PodCrashLooping state=pending severity=page
+    ContainerWaitingOnError state=firing severity=ticket
+    DeploymentReplicasUnavailable state=firing severity=ticket
+    PodEvicted state=firing severity=ticket
+alert_rule_groups=9 alert_rules=35

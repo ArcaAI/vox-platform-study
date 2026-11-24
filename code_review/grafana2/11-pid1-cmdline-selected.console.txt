@@ -1,0 +1,5 @@
+--- PID 1 cmdline (selected) ---
+hope-api: dumb-init -- node --import ./apps/api/dist/instrumentation.js apps/api/dist/main.js 
+hope-model-publisher: node --import ./apps/api/dist/instrumentation.js ./apps/api/dist/model-publisher.main.js 
+hope-guardrail: python -m guardrail.main 
+hope-text: python -m uvicorn text.main:app --host 0.0.0.0 --port 8862 

@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    deprecated.daemonset.template.generation: "2"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"DaemonSet","metadata":{"annotations":{},"labels":{"app":"alloy-logs","app.kubernetes.io/part-of":"project-hope"},"name":"alloy-logs","namespace":"project-hope-vox-apps-v2"},"spec":{"selector":{"matchLabels":{"app":"alloy-logs"}},"template":{"metadata":{"labels":{"app":"alloy-logs"}},"spec":{"containers":[{"args":["run","--server.http.listen-addr=0.0.0.0:12345","--storage.path=/var/lib/alloy/data","/etc/alloy"],"env":[{"name":"NODE_NAME","valueFrom":{"fieldRef":{"fieldPath":"spec.nodeName"}}},{"name":"POD_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}],"image":"grafana/alloy:v1.7.1","livenessProbe":{"httpGet":{"path":"/-/ready","port":12345},"initialDelaySeconds":30,"periodSeconds":30},"name":"alloy","ports":[{"containerPort":12345,"name":"http-metrics"}],"readinessProbe":{"httpGet":{"path":"/-/ready","port":12345},"initialDelaySeconds":10,"periodSeconds":15},"resources":{"limits":{"cpu":"300m","memory":"384Mi"},"requests":{"cpu":"30m","memory":"128Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true},"volumeMounts":[{"mountPath":"/etc/alloy","name":"config"},{"mountPath":"/var/log/pods","name":"varlog","readOnly":true},{"mountPath":"/var/lib/alloy/data","name":"alloy-data"},{"mountPath":"/tmp","name":"tmp"}]}],"securityContext":{"runAsNonRoot":false,"runAsUser":0,"supplementalGroups":[473]},"serviceAccountName":"alloy-logs","tolerations":[{"operator":"Exists"}],"volumes":[{"configMap":{"name":"alloy-logs-config"},"name":"config"},{"hostPath":{"path":"/var/log/pods","type":"DirectoryOrCreate"},"name":"varlog"},{"hostPath":{"path":"/var/lib/alloy-logs-data","type":"DirectoryOrCreate"},"name":"alloy-data"},{"emptyDir":{},"name":"tmp"}]}}}}
+  creationTimestamp: "2026-11-23T08:30:27Z"
+  generation: 2
+  labels:
+    app: alloy-logs
+    app.kubernetes.io/part-of: project-hope
+  name: alloy-logs
+  namespace: project-hope-vox-apps-v2
+  resourceVersion: "47310962"
+  uid: 70c99497-e3cc-427f-88bc-424a88135355
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: alloy-logs
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: alloy-logs
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-type
+                operator: NotIn
+                values:
+                - gpu-node
+      containers:
+      - args:
+        - run
+        - --server.http.listen-addr=0.0.0.0:12345
+        - --storage.path=/var/lib/alloy/data
+        - /etc/alloy
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        image: grafana/alloy:v1.7.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /-/ready
+            port: 12345
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: alloy
+        ports:
+        - containerPort: 12345
+          name: http-metrics
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /-/ready
+            port: 12345
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 300m
+            memory: 384Mi
+          requests:
+            cpu: 30m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/alloy
+          name: config
+        - mountPath: /var/log/pods
+          name: varlog
+          readOnly: true
+        - mountPath: /var/lib/alloy/data
+          name: alloy-data
+        - mountPath: /tmp
+          name: tmp
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        supplementalGroups:
+        - 473
+      serviceAccount: alloy-logs
+      serviceAccountName: alloy-logs
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - operator: Exists
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: alloy-logs-config
+        name: config
+      - hostPath:
+          path: /var/log/pods
+          type: DirectoryOrCreate
+        name: varlog
+      - hostPath:
+          path: /var/lib/alloy-logs-data
+          type: DirectoryOrCreate
+        name: alloy-data
+      - emptyDir: {}
+        name: tmp
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+status:
+  currentNumberScheduled: 6
+  desiredNumberScheduled: 6
+  numberAvailable: 6
+  numberMisscheduled: 0
+  numberReady: 6
+  observedGeneration: 2
+  updatedNumberScheduled: 6

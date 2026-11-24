@@ -1,0 +1,29 @@
+Mon Nov 23 18:04:29 IST 2026
+=== NodePort -> service mapping ===
+project-hope-vox-apps-v2    grafana                                   NodePort       10.111.22.143    <none>        3000:30300/TCP                                   4h4m    app=grafana
+project-hope-vox-apps-v2    hope-guardrail                            NodePort       10.110.231.38    <none>        8863:30863/TCP                                   17d     app=hope-guardrail
+project-hope-vox-apps-v2    hope-lmstudio                             NodePort       10.107.160.44    <none>        1234:31234/TCP                                   17d     <none>
+project-hope-vox-apps-v2    hope-nlp                                  NodePort       10.102.47.203    <none>        8864:30864/TCP                                   17d     app=hope-nlp
+project-hope-vox-apps-v2    hope-text                                 NodePort       10.104.103.9     <none>        8862:30862/TCP                                   17d     app=hope-text
+project-hope-vox-infra-v2   hope-vault                                NodePort       10.101.208.166   <none>        8200:30820/TCP                                   20d     app=hope-vault
+project-hope-vox-infra-v2   postgres                                  NodePort       10.106.172.15    <none>        5432:30543/TCP                                   20d     app=postgres
+project-hope-vox-infra-v2   qdrant                                    NodePort       10.102.6.170     <none>        6333:30633/TCP,6334:30634/TCP                    20d     app=qdrant
+project-hope-vox-infra-v2   silo-console                              NodePort       10.101.182.67    <none>        9001:30901/TCP                                   20d     app=silo
+project-hope-vox-infra-v2   temporal-ui                               NodePort       10.99.66.45      <none>        8080:30880/TCP                                   20d     app=temporal-ui
+=== HTTP endpoint checks ===
+guardrail          http://192.168.112.6:30863                    http=401 final=http://192.168.112.6:30863/ bytes=45
+text               http://192.168.112.6:30862                    http=401 final=http://192.168.112.6:30862/ bytes=45
+nlp                http://192.168.112.6:30864                    http=200 final=http://192.168.112.6:30864/ bytes=64
+lmstudio           http://192.168.112.6:31234                    http=200 final=http://192.168.112.6:31234/ bytes=50
+temporal-ui        http://192.168.112.6:30880                    http=200 final=http://192.168.112.6:30880/ bytes=2691
+silo-console       http://192.168.112.6:30901                    http=200 final=http://192.168.112.6:30901/ bytes=2139
+qdrant-rest        http://192.168.112.6:30633                    http=200 final=http://192.168.112.6:30633/ bytes=112
+vault-ui           http://192.168.112.6:30820                    curl: (28) Operation timed out after 11531 milliseconds with 481564 out of 996281 bytes received
+http=200 final=http://192.168.112.6:30820/ui/ bytes=481564
+FAILED
+grafana            http://192.168.112.6:30300/alerting           http=200 final=http://192.168.112.6:30300/login?redirectTo=%2Falerting bytes=60511
+=== raw TCP checks ===
+postgres           192.168.112.6:30543 OPEN
+qdrant-grpc        192.168.112.6:30634 OPEN
+=== Grafana credential check (value not logged) ===
+pasted_cred_http=200

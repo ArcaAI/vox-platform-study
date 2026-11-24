@@ -1,0 +1,181 @@
+
+=== HOPE — Data-tier Dependencies (grafana-dashboard-hope-dependencies.json) ===
+- PostgreSQL — hope-postgres (in-cluster, single instance) [row] ds=None
+- Database reachable [timeseries] ds=prometheus :: pg_scrape_collector_success{collector="stat_database"}
+- Connections vs max_connections [timeseries] ds=prometheus :: sum by (node) (pg_stat_database_numbackends)
+- Buffer cache hit ratio [timeseries] ds=prometheus :: sum by (node) (rate(pg_stat_database_blks_hit[5m])) / clamp_min(sum by (node) (rate(pg_stat_database
+- Transaction rate [timeseries] ds=prometheus :: sum by (node) (rate(pg_stat_database_xact_commit[5m]))
+- Database size [timeseries] ds=prometheus :: pg_database_size_bytes
+- WAL archiving (pgBackRest) [timeseries] ds=prometheus :: pg_stat_archiver_last_archive_age
+- Redis — hope-redis (in-cluster; persistence DISABLED, maxmemory-policy noeviction) [row] ds=None
+- Memory used vs maxmemory [timeseries] ds=prometheus :: redis_memory_used_bytes
+- Clients [timeseries] ds=prometheus :: redis_connected_clients
+- Throughput & keyspace [timeseries] ds=prometheus :: rate(redis_commands_processed_total[5m])
+- Object storage & secrets — hope-minio · hope-vault (in-cluster) [row] ds=None
+- MinIO capacity [timeseries] ds=prometheus :: minio_cluster_capacity_usable_total_bytes
+- MinIO drives & buckets [timeseries] ds=prometheus :: minio_cluster_drive_online_total
+- Vault seal state & leases [timeseries] ds=prometheus :: vault_core_unsealed{job="hope-vault"}
+
+=== HOPE — GPU (DCGM) (grafana-dashboard-hope-gpu.json) ===
+- At a glance [row] ds=None
+- GPUs detected [stat] ds=prometheus :: count(DCGM_FI_DEV_GPU_UTIL) or vector(0)
+- Mean utilisation [stat] ds=prometheus :: avg(DCGM_FI_DEV_GPU_UTIL{gpu=~"$gpu"})
+- Peak temperature [stat] ds=prometheus :: max(DCGM_FI_DEV_GPU_TEMP{gpu=~"$gpu"})
+- Total power draw [stat] ds=prometheus :: sum(DCGM_FI_DEV_POWER_USAGE{gpu=~"$gpu"})
+- Framebuffer used [stat] ds=prometheus :: sum(DCGM_FI_DEV_FB_USED{gpu=~"$gpu"}) / (sum(DCGM_FI_DEV_FB_USED{gpu=~"$gpu"}) + sum(DCGM_FI_DEV_FB_
+- Utilisation & memory [row] ds=None
+- GPU utilisation per device [timeseries] ds=prometheus :: DCGM_FI_DEV_GPU_UTIL{gpu=~"$gpu"}
+- Framebuffer memory [timeseries] ds=prometheus :: DCGM_FI_DEV_FB_USED{gpu=~"$gpu"} * 1024 * 1024
+- Thermals, power & clocks [row] ds=None
+- Temperature [timeseries] ds=prometheus :: DCGM_FI_DEV_GPU_TEMP{gpu=~"$gpu"}
+- Power draw [timeseries] ds=prometheus :: DCGM_FI_DEV_POWER_USAGE{gpu=~"$gpu"}
+- Clocks [timeseries] ds=prometheus :: DCGM_FI_DEV_SM_CLOCK{gpu=~"$gpu"}
+- Engine activity & interconnect [row] ds=None
+- Engine activity (profiling counters) [timeseries] ds=prometheus :: DCGM_FI_PROF_GR_ENGINE_ACTIVE{gpu=~"$gpu"}
+- PCIe throughput & errors [timeseries] ds=prometheus :: DCGM_FI_PROF_PCIE_TX_BYTES{gpu=~"$gpu"}
+- Memory errors — remapped rows [timeseries] ds=prometheus :: DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{gpu=~"$gpu"}
+
+=== HOPE — Infrastructure Overview (grafana-dashboard-hope-infra-overview.json) ===
+- Platform status [row] ds=None
+- Targets up [stat] ds=prometheus :: count(up == 1)
+- Targets DOWN [stat] ds=prometheus :: count(up == 0) or vector(0)
+- Node uptime [stat] ds=prometheus :: time() - node_boot_time_seconds
+- Availability (selected range) [stat] ds=prometheus :: avg(avg_over_time(up[$__range])) * 100
+- GPUs present [stat] ds=prometheus :: count(DCGM_FI_DEV_GPU_UTIL) or vector(0)
+- Alerts FIRING [stat] ds=prometheus :: count(ALERTS{alertstate="firing"}) or vector(0)
+- Firing alerts [table] ds=prometheus :: ALERTS{alertstate="firing"}
+- Target status — every scrape job [table] ds=prometheus :: up
+- Up / down over time (by job) [timeseries] ds=prometheus :: min by (job) (up)
+- Dependency health at a glance [row] ds=None
+- Postgres nodes up [stat] ds=prometheus :: count(pg_up == 1) or vector(0)
+- Patroni leaders [stat] ds=prometheus :: sum(patroni_primary) or vector(0)
+- Vault nodes unsealed [stat] ds=prometheus :: sum(vault_core_unsealed) or vector(0)
+- Redis nodes up [stat] ds=prometheus :: sum(redis_up) or vector(0)
+- PgBouncer up [stat] ds=prometheus :: sum(pgbouncer_up) or vector(0)
+- MinIO drives online [stat] ds=prometheus :: sum(minio_cluster_drive_online_total) or vector(0)
+- Node resources (summary — full detail in 'Node & System Activity') [row] ds=None
+- CPU utilisation [timeseries] ds=prometheus :: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+- Memory used [timeseries] ds=prometheus :: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+- Filesystem used — watch /mnt/data [timeseries] ds=prometheus :: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fst
+
+=== HOPE — Kubernetes Workloads & Events (grafana-dashboard-hope-k8s-workloads.json) ===
+- Node conditions — the 2026-08-06 signal [row] ds=None
+- Node conditions (1 = condition TRUE) [timeseries] ds=prometheus :: kube_node_status_condition{condition=~"DiskPressure|MemoryPressure|PIDPressure|NetworkUnavailable",s
+- Node schedulable [stat] ds=prometheus :: count(kube_node_spec_unschedulable == 0) or vector(0)
+- Pods not Running [stat] ds=prometheus :: sum(kube_pod_status_phase{namespace="$namespace",phase=~"Pending|Failed|Unknown"}) or vector(0)
+- Restarts (last 1h) [stat] ds=prometheus :: sum(increase(kube_pod_container_status_restarts_total{namespace="$namespace"}[1h])) or vector(0)
+- Workload status [row] ds=None
+- Pods by phase [timeseries] ds=prometheus :: sum by (phase) (kube_pod_status_phase{namespace="$namespace"})
+- Deployment availability gap [timeseries] ds=prometheus :: kube_deployment_spec_replicas{namespace="$namespace"} - on(namespace, deployment) kube_deployment_st
+- Event proxies (restarts, waiting reasons, evictions) [row] ds=None
+- Container restarts by pod [timeseries] ds=prometheus :: sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="$namespace"}[15m])) > 0
+- Containers waiting — by reason [timeseries] ds=prometheus :: sum by (reason) (kube_pod_container_status_waiting_reason{namespace="$namespace"}) > 0
+- Terminated / evicted pods [table] ds=prometheus :: kube_pod_status_reason{namespace="$namespace"} > 0
+- Pod container resource requests vs node capacity [timeseries] ds=prometheus :: sum(kube_pod_container_resource_requests{namespace="$namespace",resource="memory"})
+
+=== HOPE — Model Residency (grafana-dashboard-hope-model-residency.json) ===
+- GPU capacity [row] ds=None
+- GPU VRAM used / free [timeseries] ds=prometheus :: DCGM_FI_DEV_FB_USED{gpu=~"$gpu"} * 1024 * 1024
+- Model residency [row] ds=None
+- Resident bytes by model [timeseries] ds=prometheus :: sum by (service, model) (model_resident_bytes)
+- Running instances by model [timeseries] ds=prometheus :: model_running_instances
+- Load time — p50 / p95 [timeseries] ds=prometheus :: histogram_quantile(0.5, sum by (le, service, model) (rate(model_load_seconds_bucket[$__rate_interval
+- Evictions by reason [timeseries] ds=prometheus :: sum by (service, reason) (increase(model_evictions_total[$__rate_interval]))
+- Residency decisions — shadow vs enforce [timeseries] ds=prometheus :: sum by (action, mode) (increase(residency_decisions_total[$__rate_interval]))
+- Admission rejections by reason [timeseries] ds=prometheus :: sum by (reason) (increase(residency_admission_rejections_total[$__rate_interval]))
+
+=== HOPE — Node & System Activity (grafana-dashboard-hope-node-system.json) ===
+- Uptime & load [row] ds=None
+- Uptime [stat] ds=prometheus :: time() - node_boot_time_seconds
+- Cores [stat] ds=prometheus :: count(count by (cpu) (node_cpu_seconds_total))
+- Load average vs core count [timeseries] ds=prometheus :: node_load1
+- Reboots in range [stat] ds=prometheus :: changes(node_boot_time_seconds[$__range])
+- CPU [row] ds=None
+- CPU by mode [timeseries] ds=prometheus :: sum by (mode) (rate(node_cpu_seconds_total{mode!="idle"}[5m])) / on() group_left count(count by (cpu
+- Context switches & interrupts [timeseries] ds=prometheus :: rate(node_context_switches_total[5m])
+- Memory & pressure (RAM stress) [row] ds=None
+- Memory breakdown [timeseries] ds=prometheus :: node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+- PSI — resource stall (the real 'stress' signal) [timeseries] ds=prometheus :: rate(node_pressure_memory_waiting_seconds_total[5m])
+- Swap & major page faults [timeseries] ds=prometheus :: node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes
+- OOM kills [timeseries] ds=prometheus :: rate(node_vmstat_oom_kill[5m])
+- Sockets & file descriptors [row] ds=None
+- Open sockets by type [timeseries] ds=prometheus :: node_sockstat_TCP_inuse
+- Established connections & file descriptors [timeseries] ds=prometheus :: node_netstat_Tcp_CurrEstab
+- Disk & network [row] ds=None
+- Disk throughput [timeseries] ds=prometheus :: rate(node_disk_read_bytes_total[5m])
+- Disk busy (io_time) [timeseries] ds=prometheus :: rate(node_disk_io_time_seconds_total[5m])
+- Network throughput [timeseries] ds=prometheus :: rate(node_network_receive_bytes_total{device!~"lo|veth.*|cni.*|flannel.*"}[5m])
+
+=== HOPE — Platform (Application Plane) (grafana-dashboard-hope-platform.json) ===
+- HOPE services up [stat] ds=prometheus :: sum(up{job=~"api-gateway|stt|stt-worker|text|guardrail|nlp|harness|tts"})
+- Gateway request rate [stat] ds=prometheus :: sum(rate(hope_api_http_requests_total[$__rate_interval]))
+- Gateway 5xx ratio [stat] ds=prometheus :: sum(rate(hope_api_http_requests_total{status=~"5.."}[$__rate_interval])) / clamp_min(sum(rate(hope_a
+- Gateway p95 latency [stat] ds=prometheus :: histogram_quantile(0.95, sum by (le) (rate(hope_api_http_request_duration_seconds_bucket[$__rate_int
+- Open gateway connections [stat] ds=prometheus :: hope_api_active_connections_count
+- Active STT sessions [stat] ds=prometheus :: stt_streaming_sessions_active
+- API Gateway — requests, latency, runtime [row] ds=None
+- Request rate by status [timeseries] ds=prometheus :: sum by (status) (rate(hope_api_http_requests_total[$__rate_interval]))
+- Latency percentiles [timeseries] ds=prometheus :: histogram_quantile(0.50, sum by (le) (rate(hope_api_http_request_duration_seconds_bucket[$__rate_int
+- Busiest paths [timeseries] ds=prometheus :: topk(10, sum by (path) (rate(hope_api_http_requests_total[$__rate_interval])))
+- Failing paths (4xx / 5xx) [timeseries] ds=prometheus :: topk(10, sum by (path, status) (rate(hope_api_http_requests_total{status=~"4..|5.."}[$__rate_interva
+- Event-loop lag [timeseries] ds=prometheus :: hope_api_nodejs_eventloop_lag_p50_seconds
+- Heap & file descriptors [timeseries] ds=prometheus :: hope_api_nodejs_heap_size_used_bytes
+- Error log lines by service [timeseries] ds=loki :: sum by (service_name) (count_over_time({k8s_namespace_name=~".+"} | detected_level=~"error|fatal" [$
+- Realtime STT — sessions, quality, socket churn [row] ds=None
+  - Sessions active & start rate [timeseries] ds=prometheus :: stt_streaming_sessions_active
+  - Real-time factor by engine [timeseries] ds=prometheus :: histogram_quantile(0.50, sum by (le, engine) (rate(stt_streaming_rtf_bucket[$__rate_interval])))
+  - Utterance inference latency [timeseries] ds=prometheus :: histogram_quantile(0.50, sum by (le) (rate(stt_streaming_inference_latency_seconds_bucket[$__rate_in
+  - Audio ingested per session [timeseries] ds=prometheus :: histogram_quantile(0.50, sum by (le, engine) (rate(stt_streaming_audio_duration_seconds_bucket[$__ra
+  - Transcript degradation [timeseries] ds=prometheus :: sum(rate(stt_streaming_inference_queue_dropped_total[$__rate_interval])) * 60
+  - WebSocket session churn [timeseries] ds=loki :: sum(count_over_time({service_name="hope-api", k8s_namespace_name=~".+"} |= "WebSocket client connect
+  - Session end reason [timeseries] ds=loki :: sum by (reason) (count_over_time({service_name="hope-api", k8s_namespace_name=~".+"} |= "Streaming s
+  - Session errors & rejections [timeseries] ds=loki :: sum(count_over_time({service_name="hope-api", k8s_namespace_name=~".+"} | detected_level=~"warn|erro
+- AI Services — text, guardrail, NLP [row] ds=None
+  - Text generation rate [timeseries] ds=prometheus :: sum by (status) (rate(text_generation_total[$__rate_interval])) * 60
+  - Time to first token [timeseries] ds=prometheus :: histogram_quantile(0.50, sum by (le) (rate(text_time_to_first_token_seconds_bucket[$__rate_interval]
+  - Token throughput [timeseries] ds=prometheus :: histogram_quantile(0.50, sum by (le) (rate(text_tokens_per_second_bucket[$__rate_interval])))
+  - Provider health & circuit breakers [timeseries] ds=prometheus :: text_provider_health
+  - Guardrail decisions [timeseries] ds=prometheus :: sum by (decision) (rate(guardrail_screening_decisions_total[$__rate_interval])) * 60
+  - Guardrail saturation [timeseries] ds=prometheus :: guardrail_queue_depth
+  - NLP inference queue [timeseries] ds=prometheus :: nlp_inference_queue_depth
+  - Python service request rate [timeseries] ds=prometheus :: sum by (job) (rate(http_requests_total{job=~"harness|tts|nlp|guardrail"}[$__rate_interval]))
+  - Note language checks by outcome [timeseries] ds=loki :: sum by (outcome) (count_over_time({service_name="hope-text", k8s_namespace_name=~".+"} |= "text.outp
+  - Mixed-language notes by tenant and agent [timeseries] ds=loki :: sum by (tenant_id, agent_slug, outcome) (count_over_time({service_name="hope-text", k8s_namespace_na
+  - Malayalam characters per note before repair (p95) [timeseries] ds=prometheus :: histogram_quantile(0.95, sum by (le, model) (rate(text_output_language_indic_chars_bucket[$__rate_in
+- Jobs & Queues — BullMQ [row] ds=None
+  - Jobs in flight by queue [timeseries] ds=prometheus :: hope_job_active_count
+  - Job outcome rate [timeseries] ds=prometheus :: sum by (queue, status) (rate(hope_job_processing_total[$__rate_interval])) * 60
+  - Job errors by type [timeseries] ds=prometheus :: sum by (queue, error_type) (rate(hope_job_errors_total[$__rate_interval])) * 60
+  - Job queue wait [timeseries] ds=prometheus :: histogram_quantile(0.50, sum by (le, queue) (rate(hope_job_waiting_duration_seconds_bucket[$__rate_i
+
+=== HOPE — SDK Clients (grafana-dashboard-hope-sdk-clients.json) ===
+- SDK error rate by error.type [timeseries] ds=prometheus :: sum by (error_type) (rate(traces_spanmetrics_calls_total{hope_sdk_name=~"$sdk",status_code="STATUS_C
+- SDK error ratio per SDK [timeseries] ds=prometheus :: sum by (hope_sdk_name) (rate(traces_spanmetrics_calls_total{hope_sdk_name=~"$sdk",status_code="STATU
+- p95 latency by span name [timeseries] ds=prometheus :: histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{hope_sdk_nam
+- Calls by SDK version [timeseries] ds=prometheus :: sum by (hope_sdk_name, hope_sdk_version) (rate(traces_spanmetrics_calls_total{hope_sdk_name=~"$sdk"}
+- SDK error logs [logs] ds=loki :: {service_name=~".+"} | hope_sdk_name=~"$sdk" | detected_level=~"(?i)error|fatal"
+
+=== HOPE — vLLM Inference (grafana-dashboard-hope-vllm.json) ===
+- Traffic [row] ds=None
+- Requests by status [timeseries] ds=prometheus :: sum by (status) (rate(hope_vllm_requests_total{service=~"$pool"}[$__rate_interval]))
+- Request latency p50 / p95 / p99 by kind [timeseries] ds=prometheus :: histogram_quantile(0.5, sum by (le, kind) (rate(hope_vllm_request_seconds_bucket{service=~"$pool"}[$
+- ASR real-time factor [timeseries] ds=prometheus :: histogram_quantile(0.5, sum by (le, model) (rate(hope_vllm_asr_rtf_bucket{service=~"$pool"}[$__rate_
+- In-flight requests and queue depth [timeseries] ds=prometheus :: sum by (model) (hope_vllm_inflight{service=~"$pool"})
+- Admission and engines [row] ds=None
+- Rejections by reason [timeseries] ds=prometheus :: sum by (reason) (rate(hope_vllm_rejections_total{service=~"$pool"}[$__rate_interval]))
+- Resident VRAM against the pool budget [timeseries] ds=prometheus :: sum by (service) (hope_vllm_resident_gib{service=~"$pool"}) * 1024 * 1024 * 1024
+- Engine loads and evictions [timeseries] ds=prometheus :: sum by (result) (increase(hope_vllm_engine_loads_total{service=~"$pool"}[$__rate_interval]))
+- Upstream engine (vllm:*) [row] ds=None
+- KV cache usage [timeseries] ds=prometheus :: max by (pod, model_name) (vllm:kv_cache_usage_perc{service=~"$pool"})
+- Engine scheduler: running and waiting requests [timeseries] ds=prometheus :: sum by (pod, model_name) (vllm:num_requests_running{service=~"$pool"})
+- Scaling [row] ds=None
+- Request latency p95 (scale signal) [timeseries] ds=prometheus :: hope:inference_replica_latency_p95:seconds{service=~"$pool"}
+- Replica saturation [timeseries] ds=prometheus :: hope:inference_replica_saturation:ratio{service=~"$pool"}
+- Service saturation (average) [timeseries] ds=prometheus :: hope:inference_service_saturation:avg{service=~"$pool"}
+- In-flight vs limit [timeseries] ds=prometheus :: sum by (service, pod) (hope_vllm_inflight{service=~"$pool"})
+- Replicas reporting [timeseries] ds=prometheus :: hope:inference_service_replicas:count{service=~"$pool"}
+- Waiting requests [timeseries] ds=prometheus :: hope:inference_replica_waiting:sum{service=~"$pool"}
+- Time to ready (engine load) [timeseries] ds=prometheus :: histogram_quantile(0.5, sum by (le, exported_service, model) (rate(model_load_seconds_bucket{exporte
+- Rejections [timeseries] ds=prometheus :: sum by (service, reason) (rate(hope_vllm_rejections_total{service=~"$pool"}[$__rate_interval]))
+- Scaler replicas (current / max) [timeseries] ds=prometheus :: kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=~"keda-hpa-.+"}
+- GPU pods pending [timeseries] ds=prometheus :: count(max by (namespace, pod) (kube_pod_status_phase{phase="Pending"} == 1) and on (namespace, pod) 

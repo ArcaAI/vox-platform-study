@@ -1,0 +1,10 @@
+--- container process comm by deployment ---
+hope-api: 
+hope-model-publisher: 
+hope-admin-console: cut,next-server (v1,paste,ps,sh,sort
+hope-guardrail: 
+hope-harness: 
+hope-nlp: 
+hope-text: 
+hope-tts: 
+hope-stt-v2: cut,paste,ps,python,sh,sort

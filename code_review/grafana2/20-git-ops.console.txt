@@ -1,0 +1,59 @@
+Tue Nov 24 09:26:52 IST 2026
+=== folder move ===
+source: /Users/apple/repos/VOX/review/grafana2
+destination: /Users/apple/repos/VOX/vox-platform-study/code_review/grafana2
+drwxr-xr-x@ 93 apple  staff  2976 24 Nov 09:26 /Users/apple/repos/VOX/vox-platform-study/code_review/grafana2
+file count:      164
+
+=== ignore check ===
+.gitignore:219:/code_review/grafana2/credentials.md	code_review/grafana2/credentials.md
+
+=== git status (short) ===
+ M .gitignore
+?? code_review/grafana2/
+
+=== untracked files that would be added ===
+     163
+
+=== gitleaks availability ===
+gitleaks not installed
+
+=== targeted secret scan (values suppressed) ===
+grafana_chat_password: files=1 occurrences=3
+  credentials.md: 3
+ssh_root_password: files=0 occurrences=0
+tap_password: files=0 occurrences=0
+cloudflare_token: files=0 occurrences=0
+postgres_password: files=1 occurrences=9
+  credentials.md: 9
+minio_access_key: files=1 occurrences=6
+  credentials.md: 6
+minio_secret_key: files=1 occurrences=6
+  credentials.md: 6
+guardrail_token: files=1 occurrences=3
+  credentials.md: 3
+internal_token: files=1 occurrences=5
+  credentials.md: 5
+bootstrap_admin_password: files=1 occurrences=3
+  credentials.md: 3
+cloudflared_tunnel_token: files=0 occurrences=0
+
+=== secret-like env assignments outside credentials.md (values suppressed) ===
+code_review/grafana2/03-api-discovery.console.txt:
+  line 2: grafana_admin_password_available=<redacted>
+code_review/grafana2/20-git-ops.console.txt:
+  line 22: grafana_chat_password=<redacted>
+  line 24: ssh_root_password=<redacted>
+  line 25: tap_password=<redacted>
+  line 26: cloudflare_token=<redacted>
+  line 27: postgres_password=<redacted>
+  line 29: minio_access_key=<redacted>
+  line 31: minio_secret_key=<redacted>
+  line 33: guardrail_token=<redacted>
+  line 35: internal_token=<redacted>
+  line 37: bootstrap_admin_password=<redacted>
+  line 39: cloudflared_tunnel_token=<redacted>
+code_review/grafana2/grafana-apps-v2-deployment.describe.txt:
+  line 27: GF_SECURITY_ADMIN_PASSWORD=<redacted>
+
+=== staging ===

@@ -1,0 +1,10 @@
+--- PID 1 comm by deployment ---
+hope-api: dumb-init
+hope-model-publisher: MainThread
+hope-admin-console: next-server (v1
+hope-guardrail: python
+hope-harness: python
+hope-nlp: python
+hope-text: python
+hope-tts: python
+hope-stt-v2: python

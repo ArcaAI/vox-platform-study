@@ -1,0 +1,53 @@
+=== Loki labels ===
+count=4
+  deployment_environment_name
+  k8s_container_name
+  k8s_namespace_name
+  service_name
+
+=== service_name values (10) ===
+  grafana
+  hope-api
+  hope-guardrail
+  hope-harness
+  hope-harness-worker
+  hope-model-publisher
+  hope-text
+  hope-tts
+  loki
+  tempo
+
+=== k8s_namespace_name values (1) ===
+  project-hope-vox-apps-v2
+
+=== detected_level values (0) ===
+
+=== level values (0) ===
+
+=== app values (0) ===
+
+=== container values (0) ===
+
+=== job values (0) ===
+
+=== filename values (0) ===
+
+=== pod values (0) ===
+
+=== index stats ===
+{
+  "streams": 0,
+  "chunks": 0,
+  "bytes": 0,
+  "entries": 0
+}
+
+=== sample query_range shape ===
+resultType=streams streams=200 entries=200
+  ('project-hope-vox-apps-v2', 'loki', None, 'info'): 147
+  ('project-hope-vox-apps-v2', 'hope-api', None, 'info'): 23
+  ('project-hope-vox-apps-v2', 'grafana', None, 'info'): 15
+  ('project-hope-vox-apps-v2', 'hope-api', None, 'warn'): 7
+  ('project-hope-vox-apps-v2', 'hope-tts', None, 'warn'): 6
+  ('project-hope-vox-apps-v2', 'grafana', None, 'error'): 1
+  ('project-hope-vox-apps-v2', 'tempo', None, 'info'): 1

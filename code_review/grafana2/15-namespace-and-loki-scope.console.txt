@@ -1,0 +1,52 @@
+=== apps-v2 Loki: namespaces seen in last 24h ===
+apps_v2_loki_http=200
+=== infra Loki: labels and namespaces in last 24h ===
+infra_loki_labels_http=200
+infra_loki_ns_http=200
+infra_loki_k8s_ns_http=200
+=== Alloy DS namespace env ===
+5-    deprecated.daemonset.template.generation: "2"
+6-    kubectl.kubernetes.io/last-applied-configuration: |
+7:      {"apiVersion":"apps/v1","kind":"DaemonSet","metadata":{"annotations":{},"labels":{"app":"alloy-logs","app.kubernetes.io/part-of":"project-hope"},"name":"alloy-logs","namespace":"project-hope-vox-apps-v2"},"spec":{"selector":{"matchLabels":{"app":"alloy-logs"}},"template":{"metadata":{"labels":{"app":"alloy-logs"}},"spec":{"containers":[{"args":["run","--server.http.listen-addr=0.0.0.0:12345","--storage.path=/var/lib/alloy/data","/etc/alloy"],"env":[{"name":"NODE_NAME","valueFrom":{"fieldRef":{"fieldPath":"spec.nodeName"}}},{"name":"POD_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}],"image":"grafana/alloy:v1.7.1","livenessProbe":{"httpGet":{"path":"/-/ready","port":12345},"initialDelaySeconds":30,"periodSeconds":30},"name":"alloy","ports":[{"containerPort":12345,"name":"http-metrics"}],"readinessProbe":{"httpGet":{"path":"/-/ready","port":12345},"initialDelaySeconds":10,"periodSeconds":15},"resources":{"limits":{"cpu":"300m","memory":"384Mi"},"requests":{"cpu":"30m","memory":"128Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true},"volumeMounts":[{"mountPath":"/etc/alloy","name":"config"},{"mountPath":"/var/log/pods","name":"varlog","readOnly":true},{"mountPath":"/var/lib/alloy/data","name":"alloy-data"},{"mountPath":"/tmp","name":"tmp"}]}],"securityContext":{"runAsNonRoot":false,"runAsUser":0,"supplementalGroups":[473]},"serviceAccountName":"alloy-logs","tolerations":[{"operator":"Exists"}],"volumes":[{"configMap":{"name":"alloy-logs-config"},"name":"config"},{"hostPath":{"path":"/var/log/pods","type":"DirectoryOrCreate"},"name":"varlog"},{"hostPath":{"path":"/var/lib/alloy-logs-data","type":"DirectoryOrCreate"},"name":"alloy-data"},{"emptyDir":{},"name":"tmp"}]}}}}
+8-  creationTimestamp: "2026-11-23T08:30:27Z"
+9-  generation: 2
+10-  labels:
+11-    app: alloy-logs
+12-    app.kubernetes.io/part-of: project-hope
+13-  name: alloy-logs
+14-  namespace: project-hope-vox-apps-v2
+15-  resourceVersion: "47310962"
+--
+47-              apiVersion: v1
+48-              fieldPath: spec.nodeName
+49:        - name: POD_NAMESPACE
+50-          valueFrom:
+51-            fieldRef:
+52-              apiVersion: v1
+53-              fieldPath: metadata.namespace
+54-        image: grafana/alloy:v1.7.1
+55-        imagePullPolicy: IfNotPresent
+56-        livenessProbe:
+57-          failureThreshold: 3
+
+=== 15-loki-apps-v2-namespaces-24h.json ===
+  project-hope-vox-apps-v2: 63203
+
+=== 16-loki-infra-namespaces-24h.json ===
+  arcafabric: 87998
+  argocd: 8248
+  kube-system: 89734
+  monitoring: 1426
+  nfs: 28
+  project-hope-vox: 438142
+  project-hope-vox-apps-v2: 91107
+  project-hope-vox-infra: 370801
+  project-hope-vox-infra-v2: 13037
+  rubix: 270269
+  supabase-ak: 579
+  vidit: 465
+
+=== 16-loki-infra-k8s-namespaces-24h.json ===
+
+=== infra Loki labels ===
+['container', 'filename', 'job', 'namespace', 'node', 'pod', 'service_name', 'stream']

@@ -1,0 +1,48 @@
+
+=== query-volume_by_service.json ===
+  loki: 4802
+  hope-api: 659
+  grafana: 471
+  tempo: 74
+  hope-tts: 68
+  hope-text: 19
+  alloy-logs: 12
+  hope-guardrail: 12
+  alertmanager: 10
+  hope-harness: 8
+  hope-harness-worker: 5
+  hope-model-publisher: 4
+  otel-collector: 1
+
+=== query-errors_by_service.json ===
+  hope-guardrail: 6
+  hope-api: 5
+  loki: 4
+  grafana: 3
+  hope-model-publisher: 3
+  hope-text: 3
+
+=== query-line_errors_by_service.json ===
+  loki: 184
+  hope-tts: 56
+  tempo: 26
+  grafana: 20
+  alloy-logs: 12
+  hope-api: 1
+  otel-collector: 1
+
+=== query-warn_hope_api.json: streams=92 entries=92 ===
+  stream={'availableVars_0': 'user.id', 'availableVars_1': 'user.tenantId', 'availableVars_2': 'context.tenantId', 'availableVars_3': 'context.departmentIds', 'availableVars_4': 'params.id', 'credentialClass': 'jwt', 'deployment_environment': 'dev', 'deployment_environment_name': 'production', 'detected_level': 'warn', 'enduser_id': '70000000-0000-0000-0000-0000000000ff', 'hope_request_id': '41f1f139-2a55-46a7-958a-60f4fb45a75f', 'k8s_cluster_name': 'hope-v2', 'k8s_container_name': 'api', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_node_name': 'worker-node-4', 'k8s_pod_name': 'hope-api-7f9979bdfb-cvxfl', 'observed_timestamp': '1795434484770136499', 'scope_name': 'PolicyEngine', 'service_name': 'hope-api', 'service_namespace': 'hope-v2', 'service_version': '0.0.0-dev-2-3.dccc9954', 'severity_number': '13', 'severity_text': 'warn', 'template': '${context.tenantId}', 'varName': 'context.tenantId'}
+    Unknown variable in policy rule
+  stream={'availableVars_0': 'user.id', 'availableVars_1': 'user.tenantId', 'availableVars_2': 'context.tenantId', 'availableVars_3': 'context.departmentIds', 'availableVars_4': 'params.id', 'credentialClass': 'jwt', 'deployment_environment': 'dev', 'deployment_environment_name': 'production', 'detected_level': 'warn', 'enduser_id': '70000000-0000-0000-0000-0000000000ff', 'hope_request_id': 'd334a7a6-1c73-4bca-9d2a-b22ecda913d0', 'k8s_cluster_name': 'hope-v2', 'k8s_container_name': 'api', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_node_name': 'worker-node-4', 'k8s_pod_name': 'hope-api-7f9979bdfb-cvxfl', 'observed_timestamp': '1795433722194374324', 'scope_name': 'PolicyEngine', 'service_name': 'hope-api', 'service_namespace': 'hope-v2', 'service_version': '0.0.0-dev-2-3.dccc9954', 'severity_number': '13', 'severity_text': 'warn', 'template': '${context.tenantId}', 'varName': 'context.tenantId'}
+    Unknown variable in policy rule
+  stream={'availableVars_0': 'user.id', 'availableVars_1': 'user.tenantId', 'availableVars_2': 'context.tenantId', 'availableVars_3': 'context.departmentIds', 'credentialClass': 'jwt', 'deployment_environment': 'dev', 'deployment_environment_name': 'production', 'detected_level': 'warn', 'enduser_id': '70000000-0000-0000-0000-0000000000ff', 'hope_request_id': '0595f820-87df-47c9-8b03-2ce42f0477dd', 'k8s_cluster_name': 'hope-v2', 'k8s_container_name': 'api', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_node_name': 'worker-node-4', 'k8s_pod_name': 'hope-api-7f9979bdfb-cvxfl', 'observed_timestamp': '1795434939701777545', 'scope_name': 'PolicyEngine', 'service_name': 'hope-api', 'service_namespace': 'hope-v2', 'service_version': '0.0.0-dev-2-3.dccc9954', 'severity_number': '13', 'severity_text': 'warn', 'template': '${context.tenantId}', 'varName': 'context.tenantId'}
+    Unknown variable in policy rule
+
+=== query-error_grafana.json: streams=3 entries=3 ===
+  stream={'deployment_environment': 'dev', 'deployment_environment_name': 'dev', 'detected_level': 'error', 'k8s_cluster_name': 'hope-v2', 'k8s_container_name': 'grafana', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_node_name': 'worker-node-2', 'k8s_pod_name': 'grafana-86764ccf9c-dnstj', 'observed_timestamp': '1795435864599128956', 'service_name': 'grafana', 'service_namespace': 'hope-v2'}
+    logger=tsdb.tempo endpoint=queryData pluginId=tempo dsName=Tempo dsUID=tempo uname=admin t=2026-11-23T12:11:04.34948753Z level=error msg="Failed to execute TraceQL query" error=null function=github.com/grafana/grafana/pkg/tsdb/tempo/tempo.go:403[tempo.logEntrypoint]
+  stream={'deployment_environment': 'dev', 'deployment_environment_name': 'dev', 'detected_level': 'error', 'k8s_cluster_name': 'hope-v2', 'k8s_container_name': 'grafana', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_node_name': 'worker-node-2', 'k8s_pod_name': 'grafana-86764ccf9c-dnstj', 'observed_timestamp': '1795435864599212531', 'service_name': 'grafana', 'service_namespace': 'hope-v2'}
+    logger=tsdb.tempo endpoint=queryData pluginId=tempo dsName=Tempo dsUID=tempo uname=admin t=2026-11-23T12:11:04.34952032Z level=error msg="Error processing TraceQL query" error="failed to execute TraceQL query: {nestedSetParent<0 && true && undefined != nil} | rate() by(undefined) Status: 400 Bad Req
+  stream={'deployment_environment': 'dev', 'deployment_environment_name': 'dev', 'detected_level': 'error', 'k8s_cluster_name': 'hope-v2', 'k8s_container_name': 'grafana', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_node_name': 'worker-node-2', 'k8s_pod_name': 'grafana-86764ccf9c-dnstj', 'observed_timestamp': '1795436171671808263', 'service_name': 'grafana', 'service_namespace': 'hope-v2'}
+    logger=context userId=1 orgId=1 uname=admin t=2026-11-23T12:16:11.579141814Z level=error msg="Request Completed" method=GET path=/api/search status=500 remote_addr=172.16.4.0 time_ms=24 duration=24.797991ms size=27 referer= handler=/api/search/ status_source=server error="bad type request"

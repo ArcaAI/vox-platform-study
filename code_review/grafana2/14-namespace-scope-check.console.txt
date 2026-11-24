@@ -1,0 +1,150 @@
+Mon Nov 23 18:02:14 IST 2026
+=== namespaces ===
+NAME                        STATUS   AGE
+anantha                     Active   209d
+arcafabric                  Active   194d
+arcaspark                   Active   189d
+argocd                      Active   19d
+aura                        Active   125d
+default                     Active   217d
+kube-node-lease             Active   217d
+kube-public                 Active   217d
+kube-system                 Active   217d
+monitoring                  Active   213d
+nfs                         Active   216d
+nitik                       Active   152d
+pathready                   Active   126d
+project-hope-vox            Active   47d
+project-hope-vox-apps-v2    Active   17d
+project-hope-vox-infra      Active   47d
+project-hope-vox-infra-v2   Active   21d
+ramya629                    Active   207d
+rubix                       Active   213d
+stenovault                  Active   189d
+supabase-ak                 Active   17d
+trueclaim-main              Active   125d
+vidit                       Active   200d
+=== services by namespace ===
+anantha 7
+arcafabric 37
+argocd 9
+default 1
+kube-system 3
+monitoring 2
+nitik 18
+project-hope-vox 19
+project-hope-vox-apps-v2 24
+project-hope-vox-infra 20
+project-hope-vox-infra-v2 8
+rubix 3
+supabase-ak 13
+trueclaim-main 4
+vidit 9
+=== hope/infra monitoring-ish services ===
+anantha                     minio-mlflow-svc                          ClusterIP      9000                         <none>
+anantha                     minio-svc                                 NodePort       9000,9001                    31541,31640
+anantha                     postgres-mlflow-svc                       ClusterIP      5432                         <none>
+anantha                     postgres-svc                              ClusterIP      5432                         <none>
+arcafabric                  grafana-svc                               NodePort       3000                         32121
+arcafabric                  label-studio-postgresql                   ClusterIP      5432                         <none>
+arcafabric                  label-studio-postgresql-hl                ClusterIP      5432                         <none>
+arcafabric                  minio-svc                                 NodePort       9000                         31380
+arcafabric                  minio-svc-131                             NodePort       9001                         30730
+arcafabric                  postgres-15-svc                           ClusterIP      5432                         <none>
+arcafabric                  postgres-15-svc-8794                      NodePort       5432                         31155
+arcafabric                  prometheus-svc                            ClusterIP      9090                         <none>
+arcafabric                  prometheus-svc-4156                       NodePort       9090                         30201
+arcafabric                  redis-svc                                 ClusterIP      6379                         <none>
+arcafabric                  redis-svc-4089                            NodePort       80                           32074
+argocd                      argocd-redis                              ClusterIP      6379                         <none>
+monitoring                  prometheus-service                        NodePort       9090                         32090
+nitik                       stenovault-core-svc                       ClusterIP      80                           <none>
+nitik                       stenovault-core-svc-9608                  NodePort       80                           31987
+nitik                       stenovault-frontend-svc                   ClusterIP      80                           <none>
+nitik                       stenovault-frontend-svc-2048              NodePort       80                           31451
+project-hope-vox-apps-v2    alertmanager                              ClusterIP      9093                         <none>
+project-hope-vox-apps-v2    alloy-logs                                ClusterIP      12345                        <none>
+project-hope-vox-apps-v2    alloy-logs-metrics                        ClusterIP      12345                        <none>
+project-hope-vox-apps-v2    dcgm-exporter                             ClusterIP      9400                         <none>
+project-hope-vox-apps-v2    grafana                                   NodePort       3000                         30300
+project-hope-vox-apps-v2    hope-admin-console                        ClusterIP      3000                         <none>
+project-hope-vox-apps-v2    hope-api                                  ClusterIP      8868                         <none>
+project-hope-vox-apps-v2    hope-gpu-process-exporter                 ClusterIP      9401                         <none>
+project-hope-vox-apps-v2    hope-guardrail                            NodePort       8863                         30863
+project-hope-vox-apps-v2    hope-harness                              ClusterIP      8866                         <none>
+project-hope-vox-apps-v2    hope-lmstudio                             NodePort       1234                         31234
+project-hope-vox-apps-v2    hope-nlp                                  NodePort       8864                         30864
+project-hope-vox-apps-v2    hope-stt-v2                               ClusterIP      8861                         <none>
+project-hope-vox-apps-v2    hope-text                                 NodePort       8862                         30862
+project-hope-vox-apps-v2    hope-tts                                  ClusterIP      8865                         <none>
+project-hope-vox-apps-v2    hope-vllm                                 ClusterIP      8867                         <none>
+project-hope-vox-apps-v2    hope-vllm-asr                             ClusterIP      8867                         <none>
+project-hope-vox-apps-v2    kube-state-metrics                        ClusterIP      8080                         <none>
+project-hope-vox-apps-v2    loki                                      ClusterIP      3100,9096                    <none>
+project-hope-vox-apps-v2    node-exporter                             ClusterIP      9101                         <none>
+project-hope-vox-apps-v2    otel-collector                            ClusterIP      4317,4318,8889,13133,55679   <none>
+project-hope-vox-apps-v2    otel-collector-metrics                    ClusterIP      8888                         <none>
+project-hope-vox-apps-v2    prometheus                                ClusterIP      9090                         <none>
+project-hope-vox-apps-v2    tempo                                     ClusterIP      3200,4317                    <none>
+project-hope-vox-infra-v2   hope-vault                                NodePort       8200                         30820
+project-hope-vox-infra-v2   postgres                                  NodePort       5432                         30543
+project-hope-vox-infra-v2   qdrant                                    NodePort       6333,6334                    30633,30634
+project-hope-vox-infra-v2   redis                                     ClusterIP      6379                         <none>
+project-hope-vox-infra-v2   silo                                      ClusterIP      9000                         <none>
+project-hope-vox-infra-v2   silo-console                              NodePort       9001                         30901
+project-hope-vox-infra-v2   temporal                                  ClusterIP      7233,9090                    <none>
+project-hope-vox-infra-v2   temporal-ui                               NodePort       8080                         30880
+project-hope-vox-infra      alertmanager                              ClusterIP      9093                         <none>
+project-hope-vox-infra      grafana                                   ClusterIP      3000                         <none>
+project-hope-vox-infra      loki                                      ClusterIP      3100                         <none>
+project-hope-vox-infra      loki-nodeport                             NodePort       3100                         31100
+project-hope-vox-infra      postgres-pgvector-db-svc                  NodePort       5432                         31763
+project-hope-vox-infra      postgres-pgvector-db-svc-8436             NodePort       5432                         32251
+project-hope-vox-infra      prometheus                                NodePort       9090                         31952
+project-hope-vox-infra      promtail                                  ClusterIP      9080                         <none>
+project-hope-vox-infra      qdrant-store-svc                          ClusterIP      6333                         <none>
+project-hope-vox-infra      qdrant-store-svc-6340                     NodePort       6333                         30661
+project-hope-vox-infra      redis-store-svc                           ClusterIP      6379                         <none>
+project-hope-vox-infra      redis-store-svc-6433                      NodePort       6379                         32522
+project-hope-vox-infra      silo-object-store-svc                     ClusterIP      9000                         <none>
+project-hope-vox-infra      silo-object-store-svc-3627                NodePort       9000                         32631
+project-hope-vox-infra      silo-object-store-svc-4633                NodePort       9001                         30372
+project-hope-vox-infra      temporal-svc                              ClusterIP      7233                         <none>
+project-hope-vox-infra      temporal-svc-679                          NodePort       7233                         32185
+project-hope-vox-infra      temporal-ui-svc                           NodePort       8080                         31888
+project-hope-vox-infra      vault-store-svc                           ClusterIP      8200                         <none>
+project-hope-vox-infra      vault-store-svc-2824                      NodePort       8200                         32367
+project-hope-vox            cloudflared-metrics                       ClusterIP      2000                         <none>
+project-hope-vox            gateway-test-svc                          NodePort       80                           32319
+project-hope-vox            hope-admin-console-svc                    ClusterIP      3000                         <none>
+project-hope-vox            hope-admin-console-svc-1776               NodePort       3000                         32540
+project-hope-vox            hope-api-gateway-svc                      NodePort       8866                         32458
+project-hope-vox            hope-guardrail-svc                        ClusterIP      8863                         <none>
+project-hope-vox            hope-guardrail-svc-5762                   NodePort       8863                         30858
+=== pods by namespace ===
+anantha 5
+arcafabric 27
+argocd 7
+aura 1
+kube-system 24
+monitoring 7
+nfs 1
+nitik 9
+pathready 1
+project-hope-vox 18
+project-hope-vox-apps-v2 36
+project-hope-vox-infra 26
+project-hope-vox-infra-v2 7
+rubix 5
+supabase-ak 25
+trueclaim-main 3
+vidit 4
+=== alloy/loki workloads across all namespaces ===
+project-hope-vox-apps-v2    alloy-logs-52hcl                                                  1/1     Running                  0                  84m     172.16.4.13      master-node-1    <none>           <none>
+project-hope-vox-apps-v2    alloy-logs-gkpqz                                                  1/1     Running                  0                  84m     172.16.19.185    worker-node-2    <none>           <none>
+project-hope-vox-apps-v2    alloy-logs-mggdr                                                  1/1     Running                  0                  84m     172.16.200.132   worker-node-4    <none>           <none>
+project-hope-vox-apps-v2    alloy-logs-mrjh5                                                  1/1     Running                  0                  84m     172.16.212.88    worker-node-1    <none>           <none>
+project-hope-vox-apps-v2    alloy-logs-q48kg                                                  1/1     Running                  0                  84m     172.16.181.247   worker-node-5    <none>           <none>
+project-hope-vox-apps-v2    alloy-logs-t9l4x                                                  1/1     Running                  0                  84m     172.16.8.195     worker-node-3    <none>           <none>
+project-hope-vox-apps-v2    loki-65b7698849-ltm69                                             1/1     Running                  0                  84m     172.16.19.187    worker-node-2    <none>           <none>
+project-hope-vox-infra      loki-0                                                            1/1     Running                  0                  38d     172.16.19.163    worker-node-2    <none>           <none>

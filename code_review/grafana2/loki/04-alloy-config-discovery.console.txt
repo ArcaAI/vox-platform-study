@@ -1,0 +1,85 @@
+Mon Nov 23 17:52:10 IST 2026
+--- alloy-related configmaps ---
+alloy-logs-config           2      3h51m
+=== configmap/alloy-logs-config ===
+apiVersion: v1
+data:
+  discovery.alloy: "// Alloy, half 1 of 2: WHICH files to tail, and the Kubernetes
+    metadata for\n// each. Half 2 (pipeline.alloy) is what happens to a line. The
+    split exists\n// so scripts/test-alloy-collector-logs.sh can run the REAL pipeline.alloy\n//
+    with a static file source in place of this Kubernetes discovery.\n//\n// Discover
+    pods scheduled on THIS node, in THIS namespace, for label\n// metadata only. NODE_NAME/POD_NAMESPACE
+    come from the Downward API\n// (see the DaemonSet env in base/alloy.yaml).\ndiscovery.kubernetes
+    \"k8s_pods\" {\n\trole = \"pod\"\n\n\tselectors {\n\t\trole  = \"pod\"\n\t\tfield
+    = \"spec.nodeName=\" + sys.env(\"NODE_NAME\") + \",metadata.namespace=\" + sys.env(\"POD_NAMESPACE\")\n\t}\n}\n\n//
+    `role = \"pod\"` yields one target PER CONTAINER PORT (TASK-1180 OPS-10).\n//
+    They are not tailed twice: every target of one container carries the same\n//
+    __path__ and the same non-reserved labels below, and loki.source.file keys\n//
+    its readers on exactly that pair. Measured on dev 2026-11-12:\n// loki_source_file_files_active_total
+    = 76 = count of distinct `path`\n// series. Do NOT add a per-port label here;
+    it would split that key and\n// double-ship every multi-port container.\ndiscovery.relabel
+    \"k8s_pods\" {\n\ttargets = discovery.kubernetes.k8s_pods.targets\n\n\trule {\n\t\tsource_labels
+    = [\"__meta_kubernetes_namespace\"]\n\t\ttarget_label  = \"namespace\"\n\t}\n\n\trule
+    {\n\t\tsource_labels = [\"__meta_kubernetes_pod_name\"]\n\t\ttarget_label  = \"pod\"\n\t}\n\n\trule
+    {\n\t\tsource_labels = [\"__meta_kubernetes_pod_container_name\"]\n\t\ttarget_label
+    \ = \"container\"\n\t}\n\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_pod_node_name\"]\n\t\ttarget_label
+    \ = \"node\"\n\t}\n\n\t// Every HOPE workload's pod template sets label `app:
+    hope-*`; it becomes\n\t// the resource `service.name` (pipeline.alloy), which
+    a contract line's\n\t// own `service` key then overrides in the collector.\n\trule
+    {\n\t\tsource_labels = [\"__meta_kubernetes_pod_label_app\"]\n\t\ttarget_label
+    \ = \"app\"\n\t}\n\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_pod_uid\",
+    \"__meta_kubernetes_pod_container_name\"]\n\t\tseparator     = \"/\"\n\t\ttarget_label
+    \ = \"__path__\"\n\t\treplacement   = \"/var/log/pods/*$1/*.log\"\n\t}\n}\n\nlocal.file_match
+    \"k8s_pods\" {\n\tpath_targets = discovery.relabel.k8s_pods.output\n}\n\nloki.source.file
+    \"k8s_pods\" {\n\ttargets    = local.file_match.k8s_pods.targets\n\tforward_to
+    = [loki.process.cri.receiver]\n}\n"
+  pipeline.alloy: "// Alloy, half 2 of 2 (TASK-1180, OD-9): what happens to a line
+    once read.\n//\n//   kubelet file ─► CRI unwrap ─► OTLP ─► OTel Collector ─► Loki
+    /otlp (+ any later backend)\n//\n// Alloy does three things and no more: tail,
+    unwrap the CRI wrapper, attach\n// the Kubernetes metadata as OTel RESOURCE attributes.
+    It never parses the\n// line, never drops one and never knows the backend: mapping
+    the HOPE log\n// line, the PHI scrub and the export all live in the collector\n//
+    (base/observability/otel-collector-config.yaml), so changing backend is a\n//
+    collector change, not a node-agent rewrite.\nloki.process \"cri\" {\n\t// ONE
+    destination (OD-12): the collector. The dual-write overlap of\n\t// rollout step
+    2 (docs/observability-log-pipeline.md §4) is over; there\n\t// is no direct Loki
+    push from the node any more.\n\tforward_to = [otelcol.receiver.loki.default.receiver]\n\n\t//
+    Unwraps kubelet's CRI log-line wrapper (timestamp + stream prefix)\n\t// into
+    the real message. This is format decoding, not content\n\t// extraction: nothing
+    from the message body is read here.\n\tstage.cri { }\n}\n\notelcol.receiver.loki
+    \"default\" {\n\toutput {\n\t\tlogs = [otelcol.processor.transform.k8s.input]\n\t}\n}\n\n//
+    The labels discovery.alloy attached arrive as log-record attributes. Move\n//
+    them to the resource under their semantic-convention names and drop the\n// rest
+    (`filename` is a host path, `stream` is noise). Loki indexes only\n// service.name,
+    k8s.namespace.name, k8s.container.name and the environment\n// (loki-config.yaml
+    `otlp_config`); the pod and node are structured metadata.\notelcol.processor.transform
+    \"k8s\" {\n\terror_mode = \"ignore\"\n\n\tlog_statements {\n\t\tcontext    = \"log\"\n\t\tstatements
+    = [\n\t\t\t`set(resource.attributes[\"k8s.namespace.name\"], attributes[\"namespace\"])
+    where attributes[\"namespace\"] != nil`,\n\t\t\t`set(resource.attributes[\"k8s.pod.name\"],
+    attributes[\"pod\"]) where attributes[\"pod\"] != nil`,\n\t\t\t`set(resource.attributes[\"k8s.container.name\"],
+    attributes[\"container\"]) where attributes[\"container\"] != nil`,\n\t\t\t`set(resource.attributes[\"k8s.node.name\"],
+    attributes[\"node\"]) where attributes[\"node\"] != nil`,\n\t\t\t`set(resource.attributes[\"service.name\"],
+    attributes[\"app\"]) where attributes[\"app\"] != nil`,\n\t\t\t`set(resource.attributes[\"service.name\"],
+    attributes[\"container\"]) where attributes[\"app\"] == nil and attributes[\"container\"]
+    != nil`,\n\t\t\t`delete_matching_keys(attributes, \"^(namespace|pod|container|node|app|filename|stream|loki\\\\..*)$\")`,\n\t\t]\n\t}\n\n\toutput
+    {\n\t\tlogs = [otelcol.processor.batch.default.input]\n\t}\n}\n\notelcol.processor.batch
+    \"default\" {\n\toutput {\n\t\tlogs = [otelcol.exporter.otlp.collector.input]\n\t}\n}\n\n//
+    ALLOY_OTLP_ENDPOINT exists for the pipeline test only; in the cluster the\n//
+    collector Service in the same namespace is the one destination.\notelcol.exporter.otlp
+    \"collector\" {\n\tclient {\n\t\tendpoint = coalesce(sys.env(\"ALLOY_OTLP_ENDPOINT\"),
+    \"otel-collector:4317\")\n\n\t\ttls {\n\t\t\tinsecure = true\n\t\t}\n\t}\n\n\tretry_on_failure
+    {\n\t\tmax_elapsed_time = \"10m\"\n\t}\n}\n"
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"discovery.alloy":"// Alloy, half 1 of 2: WHICH files to tail, and the Kubernetes metadata for\n// each. Half 2 (pipeline.alloy) is what happens to a line. The split exists\n// so scripts/test-alloy-collector-logs.sh can run the REAL pipeline.alloy\n// with a static file source in place of this Kubernetes discovery.\n//\n// Discover pods scheduled on THIS node, in THIS namespace, for label\n// metadata only. NODE_NAME/POD_NAMESPACE come from the Downward API\n// (see the DaemonSet env in base/alloy.yaml).\ndiscovery.kubernetes \"k8s_pods\" {\n\trole = \"pod\"\n\n\tselectors {\n\t\trole  = \"pod\"\n\t\tfield = \"spec.nodeName=\" + sys.env(\"NODE_NAME\") + \",metadata.namespace=\" + sys.env(\"POD_NAMESPACE\")\n\t}\n}\n\n// `role = \"pod\"` yields one target PER CONTAINER PORT (TASK-1180 OPS-10).\n// They are not tailed twice: every target of one container carries the same\n// __path__ and the same non-reserved labels below, and loki.source.file keys\n// its readers on exactly that pair. Measured on dev 2026-11-12:\n// loki_source_file_files_active_total = 76 = count of distinct `path`\n// series. Do NOT add a per-port label here; it would split that key and\n// double-ship every multi-port container.\ndiscovery.relabel \"k8s_pods\" {\n\ttargets = discovery.kubernetes.k8s_pods.targets\n\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_namespace\"]\n\t\ttarget_label  = \"namespace\"\n\t}\n\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_pod_name\"]\n\t\ttarget_label  = \"pod\"\n\t}\n\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_pod_container_name\"]\n\t\ttarget_label  = \"container\"\n\t}\n\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_pod_node_name\"]\n\t\ttarget_label  = \"node\"\n\t}\n\n\t// Every HOPE workload's pod template sets label `app: hope-*`; it becomes\n\t// the resource `service.name` (pipeline.alloy), which a contract line's\n\t// own `service` key then overrides in the collector.\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_pod_label_app\"]\n\t\ttarget_label  = \"app\"\n\t}\n\n\trule {\n\t\tsource_labels = [\"__meta_kubernetes_pod_uid\", \"__meta_kubernetes_pod_container_name\"]\n\t\tseparator     = \"/\"\n\t\ttarget_label  = \"__path__\"\n\t\treplacement   = \"/var/log/pods/*$1/*.log\"\n\t}\n}\n\nlocal.file_match \"k8s_pods\" {\n\tpath_targets = discovery.relabel.k8s_pods.output\n}\n\nloki.source.file \"k8s_pods\" {\n\ttargets    = local.file_match.k8s_pods.targets\n\tforward_to = [loki.process.cri.receiver]\n}\n","pipeline.alloy":"// Alloy, half 2 of 2 (TASK-1180, OD-9): what happens to a line once read.\n//\n//   kubelet file ─► CRI unwrap ─► OTLP ─► OTel Collector ─► Loki /otlp (+ any later backend)\n//\n// Alloy does three things and no more: tail, unwrap the CRI wrapper, attach\n// the Kubernetes metadata as OTel RESOURCE attributes. It never parses the\n// line, never drops one and never knows the backend: mapping the HOPE log\n// line, the PHI scrub and the export all live in the collector\n// (base/observability/otel-collector-config.yaml), so changing backend is a\n// collector change, not a node-agent rewrite.\nloki.process \"cri\" {\n\t// ONE destination (OD-12): the collector. The dual-write overlap of\n\t// rollout step 2 (docs/observability-log-pipeline.md §4) is over; there\n\t// is no direct Loki push from the node any more.\n\tforward_to = [otelcol.receiver.loki.default.receiver]\n\n\t// Unwraps kubelet's CRI log-line wrapper (timestamp + stream prefix)\n\t// into the real message. This is format decoding, not content\n\t// extraction: nothing from the message body is read here.\n\tstage.cri { }\n}\n\notelcol.receiver.loki \"default\" {\n\toutput {\n\t\tlogs = [otelcol.processor.transform.k8s.input]\n\t}\n}\n\n// The labels discovery.alloy attached arrive as log-record attributes. Move\n// them to the resource under their semantic-convention names and drop the\n// rest (`filename` is a host path, `stream` is noise). Loki indexes only\n// service.name, k8s.namespace.name, k8s.container.name and the environment\n// (loki-config.yaml `otlp_config`); the pod and node are structured metadata.\notelcol.processor.transform \"k8s\" {\n\terror_mode = \"ignore\"\n\n\tlog_statements {\n\t\tcontext    = \"log\"\n\t\tstatements = [\n\t\t\t`set(resource.attributes[\"k8s.namespace.name\"], attributes[\"namespace\"]) where attributes[\"namespace\"] != nil`,\n\t\t\t`set(resource.attributes[\"k8s.pod.name\"], attributes[\"pod\"]) where attributes[\"pod\"] != nil`,\n\t\t\t`set(resource.attributes[\"k8s.container.name\"], attributes[\"container\"]) where attributes[\"container\"] != nil`,\n\t\t\t`set(resource.attributes[\"k8s.node.name\"], attributes[\"node\"]) where attributes[\"node\"] != nil`,\n\t\t\t`set(resource.attributes[\"service.name\"], attributes[\"app\"]) where attributes[\"app\"] != nil`,\n\t\t\t`set(resource.attributes[\"service.name\"], attributes[\"container\"]) where attributes[\"app\"] == nil and attributes[\"container\"] != nil`,\n\t\t\t`delete_matching_keys(attributes, \"^(namespace|pod|container|node|app|filename|stream|loki\\\\..*)$\")`,\n\t\t]\n\t}\n\n\toutput {\n\t\tlogs = [otelcol.processor.batch.default.input]\n\t}\n}\n\notelcol.processor.batch \"default\" {\n\toutput {\n\t\tlogs = [otelcol.exporter.otlp.collector.input]\n\t}\n}\n\n// ALLOY_OTLP_ENDPOINT exists for the pipeline test only; in the cluster the\n// collector Service in the same namespace is the one destination.\notelcol.exporter.otlp \"collector\" {\n\tclient {\n\t\tendpoint = coalesce(sys.env(\"ALLOY_OTLP_ENDPOINT\"), \"otel-collector:4317\")\n\n\t\ttls {\n\t\t\tinsecure = true\n\t\t}\n\t}\n\n\tretry_on_failure {\n\t\tmax_elapsed_time = \"10m\"\n\t}\n}\n"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"alloy-logs-config","namespace":"project-hope-vox-apps-v2"}}
+  creationTimestamp: "2026-11-23T08:30:26Z"
+  name: alloy-logs-config
+  namespace: project-hope-vox-apps-v2
+  resourceVersion: "47285271"
+  uid: d7ca3117-393e-40ae-9f0c-0bea6b4dc680
+--- alloy daemonset describe (discovery highlights) ---
+    Image:      grafana/alloy:v1.7.1
+    Mounts:
+    Type:      ConfigMap (a volume populated by a ConfigMap)

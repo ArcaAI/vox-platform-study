@@ -1,0 +1,384 @@
+total_metric_names=2373
+
+Top prefixes:
+  grafana: 529
+  loki: 365
+  node: 298
+  prometheus: 252
+  go: 175
+  kube: 148
+  tempo: 107
+  alertmanager: 82
+  stt: 63
+  hope: 51
+  guardrail: 47
+  arca: 33
+  alloy: 22
+  model: 21
+  http: 19
+  openfga: 19
+  nlp: 18
+  container: 16
+  tempodb: 16
+  rpc: 15
+  otelcol: 14
+  process: 9
+  DCGM: 7
+  net: 6
+  python: 4
+  residency: 4
+  scrape: 4
+  kv: 3
+  logql: 3
+  promhttp: 3
+  ring: 3
+  ALERTS: 2
+  harness: 2
+  plugins: 2
+  postgres: 2
+  active: 1
+  deprecated: 1
+  fastapi: 1
+  governed: 1
+  grpc: 1
+
+Selected metric families:
+
+[hope] count=51
+   hope_api_active_connections_count
+   hope_api_deprecated_requests_total
+   hope_api_http_request_duration_seconds_bucket
+   hope_api_http_request_duration_seconds_count
+   hope_api_http_request_duration_seconds_sum
+   hope_api_http_requests_total
+   hope_api_http_responses_total
+   hope_api_nodejs_active_handles
+   hope_api_nodejs_active_handles_total
+   hope_api_nodejs_active_requests
+   hope_api_nodejs_active_requests_total
+   hope_api_nodejs_active_resources
+   hope_api_nodejs_active_resources_total
+   hope_api_nodejs_eventloop_lag_max_seconds
+   hope_api_nodejs_eventloop_lag_mean_seconds
+   hope_api_nodejs_eventloop_lag_min_seconds
+   hope_api_nodejs_eventloop_lag_p50_seconds
+   hope_api_nodejs_eventloop_lag_p90_seconds
+   hope_api_nodejs_eventloop_lag_p99_seconds
+   hope_api_nodejs_eventloop_lag_seconds
+   hope_api_nodejs_eventloop_lag_stddev_seconds
+   hope_api_nodejs_external_memory_bytes
+   hope_api_nodejs_gc_duration_seconds_bucket
+   hope_api_nodejs_gc_duration_seconds_count
+   hope_api_nodejs_gc_duration_seconds_sum
+   ... and 26 more
+
+[stt] count=63
+   stt_audio_duration_seconds_bucket
+   stt_audio_duration_seconds_count
+   stt_audio_duration_seconds_created
+   stt_audio_duration_seconds_sum
+   stt_cloud_asr_errors_created
+   stt_cloud_asr_errors_total
+   stt_gateway_audio_ingest_dropped_total
+   stt_gateway_audio_xadd_seconds_bucket
+   stt_gateway_audio_xadd_seconds_count
+   stt_gateway_audio_xadd_seconds_sum
+   stt_gateway_client_audio_dropped_total
+   stt_gateway_commit_latency_seconds_bucket
+   stt_gateway_commit_latency_seconds_count
+   stt_gateway_commit_latency_seconds_sum
+   stt_gateway_first_partial_seconds_bucket
+   stt_gateway_first_partial_seconds_count
+   stt_gateway_first_partial_seconds_sum
+   stt_gateway_relay_lag_seconds_bucket
+   stt_gateway_relay_lag_seconds_count
+   stt_gateway_relay_lag_seconds_sum
+   stt_ingest_lag_seconds_bucket
+   stt_ingest_lag_seconds_count
+   stt_ingest_lag_seconds_created
+   stt_ingest_lag_seconds_sum
+   stt_provider_switch_created
+   ... and 38 more
+
+[nlp] count=18
+   nlp_documents_processed_created
+   nlp_documents_processed_total
+   nlp_entities_created
+   nlp_entities_total
+   nlp_inference_batch_size_bucket
+   nlp_inference_batch_size_count
+   nlp_inference_batch_size_created
+   nlp_inference_batch_size_sum
+   nlp_inference_queue_depth
+   nlp_inference_queue_wait_seconds_bucket
+   nlp_inference_queue_wait_seconds_count
+   nlp_inference_queue_wait_seconds_created
+   nlp_inference_queue_wait_seconds_sum
+   nlp_inference_rejections_created
+   nlp_inference_rejections_total
+   nlp_ner_windows_created
+   nlp_ner_windows_total
+   nlp_process_rss_bytes
+
+[guardrail] count=47
+   guardrail_admission_wait_seconds_bucket
+   guardrail_admission_wait_seconds_count
+   guardrail_admission_wait_seconds_created
+   guardrail_admission_wait_seconds_sum
+   guardrail_circuit_breaker_state
+   guardrail_config_cache_events_created
+   guardrail_config_cache_events_total
+   guardrail_evaluation_missing_total
+   guardrail_evaluation_outbox_drained_created
+   guardrail_evaluation_outbox_drained_total
+   guardrail_evaluation_outbox_failed_created
+   guardrail_evaluation_outbox_failed_total
+   guardrail_evaluation_outbox_produced_created
+   guardrail_evaluation_outbox_produced_total
+   guardrail_evaluation_outbox_redriven_created
+   guardrail_evaluation_outbox_redriven_total
+   guardrail_inflight_requests
+   guardrail_medical_judge_calls_created
+   guardrail_medical_judge_calls_total
+   guardrail_peer_failures_created
+   guardrail_peer_failures_total
+   guardrail_peer_request_seconds_bucket
+   guardrail_peer_request_seconds_count
+   guardrail_peer_request_seconds_created
+   guardrail_peer_request_seconds_sum
+   ... and 22 more
+
+[harness] count=2
+   harness_regen_created
+   harness_regen_total
+
+[text] count=5
+   go_godebug_non_default_behavior_gotestjsonbuildtext_events_total
+   node_context_switches_total
+   node_textfile_scrape_error
+   prometheus_template_text_expansion_failures_total
+   prometheus_template_text_expansions_total
+
+[tts] count=1
+   tts_model_loaded
+
+[api] count=138
+   fastapi_inprogress
+   grafana_api_admin_user_created_total
+   grafana_api_dashboard_get_milliseconds
+   grafana_api_dashboard_get_milliseconds_count
+   grafana_api_dashboard_get_milliseconds_sum
+   grafana_api_dashboard_save_milliseconds
+   grafana_api_dashboard_save_milliseconds_count
+   grafana_api_dashboard_save_milliseconds_sum
+   grafana_api_dashboard_search_milliseconds
+   grafana_api_dashboard_search_milliseconds_count
+   grafana_api_dashboard_search_milliseconds_sum
+   grafana_api_dashboard_snapshot_create_total
+   grafana_api_dashboard_snapshot_external_total
+   grafana_api_dashboard_snapshot_get_total
+   grafana_api_dataproxy_request_all_milliseconds
+   grafana_api_dataproxy_request_all_milliseconds_count
+   grafana_api_dataproxy_request_all_milliseconds_sum
+   grafana_api_login_oauth_total
+   grafana_api_login_post_total
+   grafana_api_login_saml_total
+   grafana_api_models_dashboard_insert_total
+   grafana_api_org_create_total
+   grafana_api_response_status_total
+   grafana_api_user_signup_completed_total
+   grafana_api_user_signup_invite_total
+   ... and 113 more
+
+[fastapi] count=1
+   fastapi_inprogress
+
+[python] count=4
+   python_gc_collections_total
+   python_gc_objects_collected_total
+   python_gc_objects_uncollectable_total
+   python_info
+
+[nodejs] count=48
+   arca_nodejs_active_handles
+   arca_nodejs_active_handles_total
+   arca_nodejs_active_requests
+   arca_nodejs_active_requests_total
+   arca_nodejs_active_resources
+   arca_nodejs_active_resources_total
+   arca_nodejs_eventloop_lag_max_seconds
+   arca_nodejs_eventloop_lag_mean_seconds
+   arca_nodejs_eventloop_lag_min_seconds
+   arca_nodejs_eventloop_lag_p50_seconds
+   arca_nodejs_eventloop_lag_p90_seconds
+   arca_nodejs_eventloop_lag_p99_seconds
+   arca_nodejs_eventloop_lag_seconds
+   arca_nodejs_eventloop_lag_stddev_seconds
+   arca_nodejs_external_memory_bytes
+   arca_nodejs_gc_duration_seconds_bucket
+   arca_nodejs_gc_duration_seconds_count
+   arca_nodejs_gc_duration_seconds_sum
+   arca_nodejs_heap_size_total_bytes
+   arca_nodejs_heap_size_used_bytes
+   arca_nodejs_heap_space_size_available_bytes
+   arca_nodejs_heap_space_size_total_bytes
+   arca_nodejs_heap_space_size_used_bytes
+   arca_nodejs_version_info
+   hope_api_nodejs_active_handles
+   ... and 23 more
+
+[process_] count=41
+   alloy_resources_process_cpu_seconds_total
+   alloy_resources_process_resident_memory_bytes
+   alloy_resources_process_start_time_seconds
+   alloy_resources_process_virtual_memory_bytes
+   arca_process_cpu_seconds_total
+   arca_process_cpu_system_seconds_total
+   arca_process_cpu_user_seconds_total
+   arca_process_heap_bytes
+   arca_process_max_fds
+   arca_process_open_fds
+   arca_process_resident_memory_bytes
+   arca_process_start_time_seconds
+   arca_process_virtual_memory_bytes
+   grafana_process_cpu_seconds_total
+   grafana_process_max_fds
+   grafana_process_network_receive_bytes_total
+   grafana_process_network_transmit_bytes_total
+   grafana_process_open_fds
+   grafana_process_resident_memory_bytes
+   grafana_process_start_time_seconds
+   grafana_process_virtual_memory_bytes
+   grafana_process_virtual_memory_max_bytes
+   hope_api_process_cpu_seconds_total
+   hope_api_process_cpu_system_seconds_total
+   hope_api_process_cpu_user_seconds_total
+   ... and 16 more
+
+[http_] count=53
+   alertmanager_http_concurrency_limit_exceeded_total
+   alertmanager_http_request_duration_seconds_bucket
+   alertmanager_http_request_duration_seconds_count
+   alertmanager_http_request_duration_seconds_sum
+   alertmanager_http_requests_in_flight
+   alertmanager_http_response_size_bytes_bucket
+   alertmanager_http_response_size_bytes_count
+   alertmanager_http_response_size_bytes_sum
+   grafana_http_request_duration_seconds_bucket
+   grafana_http_request_duration_seconds_count
+   grafana_http_request_duration_seconds_sum
+   grafana_http_request_in_flight
+   grafana_http_response_size_bytes_bucket
+   grafana_http_response_size_bytes_count
+   grafana_http_response_size_bytes_sum
+   hope_api_http_request_duration_seconds_bucket
+   hope_api_http_request_duration_seconds_count
+   hope_api_http_request_duration_seconds_sum
+   hope_api_http_requests_total
+   hope_api_http_responses_total
+   http_combined_size_bytes_count
+   http_combined_size_bytes_created
+   http_combined_size_bytes_sum
+   http_request_duration_highr_seconds_bucket
+   http_request_duration_highr_seconds_count
+   ... and 28 more
+
+[request] count=194
+   alertmanager_http_request_duration_seconds_bucket
+   alertmanager_http_request_duration_seconds_count
+   alertmanager_http_request_duration_seconds_sum
+   alertmanager_http_requests_in_flight
+   alertmanager_notification_requests_failed_total
+   alertmanager_notification_requests_total
+   arca_nodejs_active_requests
+   arca_nodejs_active_requests_total
+   grafana_aggregator_discovery_nopeer_requests_total
+   grafana_alerting_request_duration_seconds_bucket
+   grafana_alerting_request_duration_seconds_count
+   grafana_alerting_request_duration_seconds_sum
+   grafana_api_dataproxy_request_all_milliseconds
+   grafana_api_dataproxy_request_all_milliseconds_count
+   grafana_api_dataproxy_request_all_milliseconds_sum
+   grafana_apiserver_audit_requests_rejected_total
+   grafana_apiserver_current_inflight_requests
+   grafana_apiserver_flowcontrol_read_vs_write_current_requests_bucket
+   grafana_apiserver_flowcontrol_read_vs_write_current_requests_count
+   grafana_apiserver_flowcontrol_read_vs_write_current_requests_sum
+   grafana_apiserver_longrunning_requests
+   grafana_apiserver_request_body_size_bytes_bucket
+   grafana_apiserver_request_body_size_bytes_count
+   grafana_apiserver_request_body_size_bytes_sum
+   grafana_apiserver_request_duration_seconds_bucket
+   ... and 169 more
+
+[task] count=1
+   loki_engine_v2_task_short_circuits_total
+
+[queue] count=59
+   alertmanager_cluster_messages_queued
+   alloy_component_evaluation_queue_size
+   go_gc_cleanups_queued_cleanups_total
+   go_gc_finalizers_queued_finalizers_total
+   grafana_index_server_rebuild_queue_length
+   grafana_rendering_queue_size
+   grafana_workqueue_adds_total
+   grafana_workqueue_depth
+   grafana_workqueue_longest_running_processor_seconds
+   grafana_workqueue_queue_duration_seconds_bucket
+   grafana_workqueue_queue_duration_seconds_count
+   grafana_workqueue_queue_duration_seconds_sum
+   grafana_workqueue_retries_total
+   grafana_workqueue_unfinished_work_seconds
+   grafana_workqueue_work_duration_seconds_bucket
+   grafana_workqueue_work_duration_seconds_count
+   grafana_workqueue_work_duration_seconds_sum
+   guardrail_queue_depth
+   loki_ingester_flush_queue_length
+   loki_prometheus_notifications_queue_capacity
+   loki_prometheus_notifications_queue_length
+   loki_query_scheduler_enqueue_count
+   loki_query_scheduler_queue_duration_seconds_bucket
+   loki_query_scheduler_queue_duration_seconds_count
+   loki_query_scheduler_queue_duration_seconds_sum
+   ... and 34 more
+
+[model] count=24
+   grafana_api_models_dashboard_insert_total
+   model_cache_evictions_created
+   model_cache_evictions_total
+   model_cache_loads_created
+   model_cache_loads_total
+   model_cache_resident_bytes_estimate
+   model_cache_resident_models
+   model_evictions_created
+   model_evictions_total
+   model_inference_latency_seconds_bucket
+   model_inference_latency_seconds_count
+   model_inference_latency_seconds_created
+   model_inference_latency_seconds_sum
+   model_load_failures_created
+   model_load_failures_total
+   model_load_seconds_bucket
+   model_load_seconds_count
+   model_load_seconds_created
+   model_load_seconds_sum
+   model_resident
+   model_resident_bytes
+   model_running_instances
+   residency_live_path_model_loaded
+   tts_model_loaded
+
+[vllm] count=4
+   stt_vllm_slot_wait_seconds_bucket
+   stt_vllm_slot_wait_seconds_count
+   stt_vllm_slot_wait_seconds_created
+   stt_vllm_slot_wait_seconds_sum
+
+[dcgm] count=7
+   DCGM_FI_DEV_FB_FREE
+   DCGM_FI_DEV_FB_RESERVED
+   DCGM_FI_DEV_FB_USED
+   DCGM_FI_DEV_GPU_TEMP
+   DCGM_FI_DEV_GPU_UTIL
+   DCGM_FI_DEV_MEM_COPY_UTIL
+   DCGM_FI_DEV_POWER_USAGE

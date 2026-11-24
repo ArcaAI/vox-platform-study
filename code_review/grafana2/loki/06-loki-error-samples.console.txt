@@ -1,0 +1,22 @@
+
+=== hope-guardrail: streams=6 entries=6 ===
+  scope=guardrail.services.external_text_client level=error
+    guardrail.judge.undetermined
+  scope=guardrail.services.external_text_client level=error
+    guardrail.judge.undetermined
+
+=== hope-api: streams=5 entries=5 ===
+  scope=S3Service level=error
+    Error uploading file to S3
+  scope=S3Service level=error
+    Error listing files from S3
+
+=== hope-model-publisher: streams=0 entries=0 ===
+
+=== hope-text: streams=3 entries=3 ===
+  scope=text.api.endpoints.judge level=error
+    judge.failed
+  scope=text.api.endpoints.judge level=error
+    judge.failed
+
+=== hope-tts: streams=0 entries=0 ===

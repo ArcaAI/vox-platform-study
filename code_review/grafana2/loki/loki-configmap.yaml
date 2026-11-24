@@ -1,0 +1,232 @@
+apiVersion: v1
+data:
+  loki-config.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9096
+      log_level: info
+    common:
+      path_prefix: /loki
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+    # ── OBJECT STORAGE: `hope-minio`, IN-CLUSTER (TASK-847) ───────────────
+    # Chunks first moved off node-local disk onto the EXTERNAL MinIO on
+    # 10.10.1.102 after the node hit DiskPressure and evicted pods, Loki among
+    # them. TASK-847 moves them again, onto the in-cluster `hope-minio`, under
+    # the owner directive "in-cluster only ... do NOT use any out-cluster
+    # dependencies/apps/services".
+    #
+    # THREE THINGS THIS CUTOVER NEEDS THAT ARE NOT IN THIS FILE:
+    #
+    #   1. THE BUCKET. `hope-loki-logs` must exist in `hope-minio`. base/
+    #      minio.yaml's header currently states that store holds "exactly one
+    #      bucket, `hope-backups`" — that statement is superseded by this
+    #      change, and the bucket + a scoped identity have to be provisioned
+    #      the way `out-of-band/pgbackrest-bootstrap.yaml` provisions its own.
+    #
+    #   2. THE CREDENTIAL. access_key_id/secret_access_key are still
+    #      deliberately OMITTED below — Loki falls back to the standard AWS
+    #      env-var chain — but loki.yaml currently populates those env vars
+    #      from `hope-secrets` MINIO_ACCESS_KEY/MINIO_SECRET_KEY, which are VM
+    #      402's ROOT credentials and are meaningless against `hope-minio`.
+    #      Until loki.yaml points at the new identity, every flush fails auth.
+    #
+    #   3. THE HISTORY. Chunks and index written since 2026-08-08 live in VM
+    #      402's `hope-loki-logs`. Loki has exactly one `storage_config.aws`
+    #      block, so it cannot read two endpoints: after the cutover those
+    #      objects are unreachable and pre-cutover logs return empty, silently.
+    #      `mc mirror` the bucket across before the cutover, or accept the gap
+    #      knowingly — do not discover it during an incident.
+    #
+    # ⚠️ CAPACITY (restated 2026-09-02 — the 30Gi figure here was stale).
+    # `hope-minio`'s claim is 300Gi of `local-path` on the SAME /dev/vdb that
+    # holds the Postgres data directory; VM 200's second disk was grown
+    # 300G -> 500G to carry it. `local-path` has `allowVolumeExpansion: false`
+    # AND enforces no quota, so neither number reserves or caps anything — the
+    # enforced ceiling is the per-bucket quota set by
+    # out-of-band/minio-bootstrap.yaml (40Gi here). Measured ingest is 618 B/s
+    # (~53 MB/day), so the 30-day window costs ~1.6 GB.
+    # `MinIOCapacityLow` (alert-rules.yaml, 15% free) is the backstop and it
+    # now watches the disk that can take the DATABASE down with it — which is
+    # an improvement in coverage and a worse consequence if it fires.
+    #
+    # ── SCHEMA PERIODS ────────────────────────────────────────────────────
+    # NOT touched by the endpoint change, deliberately. A period records the
+    # index format and the STORE TYPE, not the endpoint; `object_store: s3` is
+    # already correct and adding a third period for a bucket move would be
+    # noise that looks like a format change. The 2026-04-01 filesystem entry
+    # stays so any chunk still on the local disk remains queryable until it
+    # ages out under the retention window below.
+    schema_config:
+      configs:
+        - from: "2026-04-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+        - from: "2026-08-08"
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    ingester:
+      chunk_encoding: snappy
+      chunk_idle_period: 1h
+      max_chunk_age: 2h
+      chunk_target_size: 1572864
+      flush_check_period: 30s
+    storage_config:
+      filesystem:
+        directory: /loki/chunks
+      tsdb_shipper:
+        active_index_directory: /loki/tsdb-index
+        cache_location: /loki/tsdb-cache
+      aws:
+        endpoint: silo.project-hope-vox-infra-v2.svc.cluster.local:9000
+        bucketnames: hope-loki-logs
+        # MinIO ignores the region but SigV4 signs with it, so it only has to
+        # be consistent between writer and reader. It is not a location.
+        region: us-east-1
+        s3forcepathstyle: true
+        # `insecure: true` means "use TLS", not "verify TLS" — `hope-minio`
+        # serves HTTPS and has no plain-HTTP listener.
+        insecure: true
+        http_config:
+          # ⚠️ VERIFICATION STAYS OFF, AND THAT IS MEASURED, NOT LAZY.
+          # The obvious improvement is to mount ConfigMap `arcaai-internal-ca`
+          # and set a `ca_file`. It would break Loki today: that CA issued the
+          # leaf for the EXTERNAL MinIO (CN=s3.taphuynh.dev), whereas
+          # `hope-minio` serves the leaf in Secret `hope-minio-tls`, which
+          # base/postgres.yaml records as "bootstrap material rather than a
+          # chained cert" — self-signed, unverifiable against that root. It is
+          # also why pgBackRest still runs `repo1-storage-verify-tls=n`.
+          # Second blocker: `arcaai-internal-ca` is a kustomize COMPONENT that
+          # only overlays/dev enables, so referencing it from base/ breaks the
+          # staging and prod renders.
+          # The fix is docs/database-backup-restore.md §7 — reissue the
+          # `hope-minio` leaf from the ARCAAI Internal CA — after which this
+          # becomes `ca_file:` and pgBackRest becomes `verify-tls=y` together.
+          insecure_skip_verify: true
+    limits_config:
+      # ── RETENTION: 30 days (2160h -> 720h) — OWNER DECISION 2026-09-02 ────
+      # The re-decision TASK-847 deferred. 90 days was chosen when chunks lived
+      # on VM 402, where "MinIO capacity" was somebody else's disk and a wrong
+      # guess cost nothing on this node. Chunks now live in `hope-minio`, a
+      # `local-path` directory on the SAME /dev/vdb as the Postgres data
+      # directory — so overrunning it does not degrade logging, it fills the
+      # disk under the database. The owner set the window to 30 days; this is
+      # that number, and it is the same window Prometheus already runs
+      # (`--storage.tsdb.retention.time=30d`), so the three signals now age out
+      # together instead of leaving 60 days of logs with no metrics beside them.
+      #
+      # MEASURED, not guessed (2026-09-02, dev, idle-to-light load):
+      #     sum(rate(loki_distributor_bytes_received_total[24h])) = 618 B/s
+      #   => ~53 MB/day ingested => ~1.6 GB per 30-day window before
+      #      compression; the live `hope-loki-logs` bucket held 8.3 MB.
+      # That is three orders of magnitude under the budget, so the window is
+      # bounded by POLICY here, not by capacity — re-measure under real load
+      # before reading any headroom into it. The 40Gi bucket quota set by
+      # out-of-band/minio-bootstrap.yaml is the hard ceiling; `MinIOCapacityLow`
+      # (15% free, alert-rules.yaml) is the backstop, and it now guards the
+      # database's disk, which makes it a more expensive alert to ignore.
+      #
+      # The local Loki PVC is unaffected either way: it holds only the tsdb
+      # index cache, WAL and compactor scratch — the part that does not scale
+      # with the window.
+      retention_period: 720h
+      # ── ADMINISTRATOR PURGE ───────────────────────────────────────────────
+      # Stated EXPLICITLY rather than inherited. Measured from the loki 3.7.1
+      # binary's own help output, this is already the default:
+      #   -compactor.deletion-mode ... (default "filter-and-delete")
+      # so the delete API was in fact already available here, because
+      # `compactor.retention_enabled: true` below is the other half of the
+      # condition. Pinning it means a future change of upstream default cannot
+      # silently remove the platform's only log-erasure mechanism.
+      deletion_mode: filter-and-delete
+      ingestion_rate_mb: 10
+      ingestion_burst_size_mb: 20
+      max_query_parallelism: 8
+      max_query_series: 5000
+      max_entries_limit_per_query: 10000
+      allow_structured_metadata: true
+      volume_enabled: true
+      # ── OTLP INGEST (TASK-1180, OPS-11) ───────────────────────────────────
+      # Every line now arrives on /otlp from the OTel Collector. Loki's default
+      # would index ~17 resource attributes, k8s.pod.name and
+      # service.instance.id among them: a new stream per pod restart, the
+      # cardinality OPS-11 flagged. Index exactly the four an operator selects
+      # on; everything else, the pod, the node and every hope.* id included,
+      # lands as STRUCTURED METADATA, still filterable without a full-text scan
+      # (`| hope_request_id="…"`, `| k8s_pod_name="…"`).
+      # Label names after Loki's dot → underscore: service_name,
+      # k8s_namespace_name, k8s_container_name, deployment_environment_name.
+      otlp_config:
+        resource_attributes:
+          ignore_defaults: true
+          attributes_config:
+            - action: index_label
+              attributes:
+                - service.name
+                - k8s.namespace.name
+                - k8s.container.name
+                - deployment.environment.name
+    compactor:
+      working_directory: /loki/compactor
+      compaction_interval: 10m
+      # Required for BOTH custom retention and the delete API — with this false
+      # the delete endpoints do not exist at all, whatever deletion_mode says.
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 50
+      # Where delete REQUESTS are persisted (not the deleted data). Without it
+      # the delete API cannot accept a request.
+      delete_request_store: s3
+      # ⚠️ ERASURE IS NOT IMMEDIATE, AND THIS IS THE REASON. Stated explicitly
+      # at its default so nobody is surprised by it during a real erasure
+      # request: a delete request stays CANCELLABLE for this long, and the data
+      # is only removed once the request is older than it. Loki's own guidance
+      # is "ideally this should be set to at least 24h", so it is deliberately
+      # NOT lowered to make purges feel faster — the cancellation window is a
+      # safety property, and a mis-scoped delete is unrecoverable.
+      # Budget ~24h + one compaction_interval from request to erasure.
+      delete_request_cancel_period: 24h
+    querier:
+      max_concurrent: 4
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 2048
+    # ── RULER (TASK-1180, OPS-5) ──────────────────────────────────────────
+    # Was configured with no rules and nowhere to send them. Rules come from the
+    # generated `loki-rules` ConfigMap (observability/loki-rules.yaml), mounted
+    # at /loki-rules/fake: `fake` is the tenant id Loki uses when
+    # auth_enabled is false. Not under /etc/loki (a read-only ConfigMap mount
+    # that cannot host a nested mount point) and not under /loki (the PVC).
+    # Alerts go to the same Alertmanager as Prometheus's, so routing, silences
+    # and receivers are shared.
+    ruler:
+      storage:
+        type: local
+        local:
+          directory: /loki-rules
+      rule_path: /loki/rules-tmp
+      alertmanager_url: http://alertmanager:9093
+      evaluation_interval: 1m
+      enable_api: true
+    analytics:
+      reporting_enabled: false
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"loki-config.yaml":"auth_enabled: false\nserver:\n  http_listen_port: 3100\n  grpc_listen_port: 9096\n  log_level: info\ncommon:\n  path_prefix: /loki\n  replication_factor: 1\n  ring:\n    kvstore:\n      store: inmemory\n# ── OBJECT STORAGE: `hope-minio`, IN-CLUSTER (TASK-847) ───────────────\n# Chunks first moved off node-local disk onto the EXTERNAL MinIO on\n# 10.10.1.102 after the node hit DiskPressure and evicted pods, Loki among\n# them. TASK-847 moves them again, onto the in-cluster `hope-minio`, under\n# the owner directive \"in-cluster only ... do NOT use any out-cluster\n# dependencies/apps/services\".\n#\n# THREE THINGS THIS CUTOVER NEEDS THAT ARE NOT IN THIS FILE:\n#\n#   1. THE BUCKET. `hope-loki-logs` must exist in `hope-minio`. base/\n#      minio.yaml's header currently states that store holds \"exactly one\n#      bucket, `hope-backups`\" — that statement is superseded by this\n#      change, and the bucket + a scoped identity have to be provisioned\n#      the way `out-of-band/pgbackrest-bootstrap.yaml` provisions its own.\n#\n#   2. THE CREDENTIAL. access_key_id/secret_access_key are still\n#      deliberately OMITTED below — Loki falls back to the standard AWS\n#      env-var chain — but loki.yaml currently populates those env vars\n#      from `hope-secrets` MINIO_ACCESS_KEY/MINIO_SECRET_KEY, which are VM\n#      402's ROOT credentials and are meaningless against `hope-minio`.\n#      Until loki.yaml points at the new identity, every flush fails auth.\n#\n#   3. THE HISTORY. Chunks and index written since 2026-08-08 live in VM\n#      402's `hope-loki-logs`. Loki has exactly one `storage_config.aws`\n#      block, so it cannot read two endpoints: after the cutover those\n#      objects are unreachable and pre-cutover logs return empty, silently.\n#      `mc mirror` the bucket across before the cutover, or accept the gap\n#      knowingly — do not discover it during an incident.\n#\n# ⚠️ CAPACITY (restated 2026-09-02 — the 30Gi figure here was stale).\n# `hope-minio`'s claim is 300Gi of `local-path` on the SAME /dev/vdb that\n# holds the Postgres data directory; VM 200's second disk was grown\n# 300G -\u003e 500G to carry it. `local-path` has `allowVolumeExpansion: false`\n# AND enforces no quota, so neither number reserves or caps anything — the\n# enforced ceiling is the per-bucket quota set by\n# out-of-band/minio-bootstrap.yaml (40Gi here). Measured ingest is 618 B/s\n# (~53 MB/day), so the 30-day window costs ~1.6 GB.\n# `MinIOCapacityLow` (alert-rules.yaml, 15% free) is the backstop and it\n# now watches the disk that can take the DATABASE down with it — which is\n# an improvement in coverage and a worse consequence if it fires.\n#\n# ── SCHEMA PERIODS ────────────────────────────────────────────────────\n# NOT touched by the endpoint change, deliberately. A period records the\n# index format and the STORE TYPE, not the endpoint; `object_store: s3` is\n# already correct and adding a third period for a bucket move would be\n# noise that looks like a format change. The 2026-04-01 filesystem entry\n# stays so any chunk still on the local disk remains queryable until it\n# ages out under the retention window below.\nschema_config:\n  configs:\n    - from: \"2026-04-01\"\n      store: tsdb\n      object_store: filesystem\n      schema: v13\n      index:\n        prefix: index_\n        period: 24h\n    - from: \"2026-08-08\"\n      store: tsdb\n      object_store: s3\n      schema: v13\n      index:\n        prefix: index_\n        period: 24h\ningester:\n  chunk_encoding: snappy\n  chunk_idle_period: 1h\n  max_chunk_age: 2h\n  chunk_target_size: 1572864\n  flush_check_period: 30s\nstorage_config:\n  filesystem:\n    directory: /loki/chunks\n  tsdb_shipper:\n    active_index_directory: /loki/tsdb-index\n    cache_location: /loki/tsdb-cache\n  aws:\n    endpoint: silo.project-hope-vox-infra-v2.svc.cluster.local:9000\n    bucketnames: hope-loki-logs\n    # MinIO ignores the region but SigV4 signs with it, so it only has to\n    # be consistent between writer and reader. It is not a location.\n    region: us-east-1\n    s3forcepathstyle: true\n    # `insecure: true` means \"use TLS\", not \"verify TLS\" — `hope-minio`\n    # serves HTTPS and has no plain-HTTP listener.\n    insecure: true\n    http_config:\n      # ⚠️ VERIFICATION STAYS OFF, AND THAT IS MEASURED, NOT LAZY.\n      # The obvious improvement is to mount ConfigMap `arcaai-internal-ca`\n      # and set a `ca_file`. It would break Loki today: that CA issued the\n      # leaf for the EXTERNAL MinIO (CN=s3.taphuynh.dev), whereas\n      # `hope-minio` serves the leaf in Secret `hope-minio-tls`, which\n      # base/postgres.yaml records as \"bootstrap material rather than a\n      # chained cert\" — self-signed, unverifiable against that root. It is\n      # also why pgBackRest still runs `repo1-storage-verify-tls=n`.\n      # Second blocker: `arcaai-internal-ca` is a kustomize COMPONENT that\n      # only overlays/dev enables, so referencing it from base/ breaks the\n      # staging and prod renders.\n      # The fix is docs/database-backup-restore.md §7 — reissue the\n      # `hope-minio` leaf from the ARCAAI Internal CA — after which this\n      # becomes `ca_file:` and pgBackRest becomes `verify-tls=y` together.\n      insecure_skip_verify: true\nlimits_config:\n  # ── RETENTION: 30 days (2160h -\u003e 720h) — OWNER DECISION 2026-09-02 ────\n  # The re-decision TASK-847 deferred. 90 days was chosen when chunks lived\n  # on VM 402, where \"MinIO capacity\" was somebody else's disk and a wrong\n  # guess cost nothing on this node. Chunks now live in `hope-minio`, a\n  # `local-path` directory on the SAME /dev/vdb as the Postgres data\n  # directory — so overrunning it does not degrade logging, it fills the\n  # disk under the database. The owner set the window to 30 days; this is\n  # that number, and it is the same window Prometheus already runs\n  # (`--storage.tsdb.retention.time=30d`), so the three signals now age out\n  # together instead of leaving 60 days of logs with no metrics beside them.\n  #\n  # MEASURED, not guessed (2026-09-02, dev, idle-to-light load):\n  #     sum(rate(loki_distributor_bytes_received_total[24h])) = 618 B/s\n  #   =\u003e ~53 MB/day ingested =\u003e ~1.6 GB per 30-day window before\n  #      compression; the live `hope-loki-logs` bucket held 8.3 MB.\n  # That is three orders of magnitude under the budget, so the window is\n  # bounded by POLICY here, not by capacity — re-measure under real load\n  # before reading any headroom into it. The 40Gi bucket quota set by\n  # out-of-band/minio-bootstrap.yaml is the hard ceiling; `MinIOCapacityLow`\n  # (15% free, alert-rules.yaml) is the backstop, and it now guards the\n  # database's disk, which makes it a more expensive alert to ignore.\n  #\n  # The local Loki PVC is unaffected either way: it holds only the tsdb\n  # index cache, WAL and compactor scratch — the part that does not scale\n  # with the window.\n  retention_period: 720h\n  # ── ADMINISTRATOR PURGE ───────────────────────────────────────────────\n  # Stated EXPLICITLY rather than inherited. Measured from the loki 3.7.1\n  # binary's own help output, this is already the default:\n  #   -compactor.deletion-mode ... (default \"filter-and-delete\")\n  # so the delete API was in fact already available here, because\n  # `compactor.retention_enabled: true` below is the other half of the\n  # condition. Pinning it means a future change of upstream default cannot\n  # silently remove the platform's only log-erasure mechanism.\n  deletion_mode: filter-and-delete\n  ingestion_rate_mb: 10\n  ingestion_burst_size_mb: 20\n  max_query_parallelism: 8\n  max_query_series: 5000\n  max_entries_limit_per_query: 10000\n  allow_structured_metadata: true\n  volume_enabled: true\n  # ── OTLP INGEST (TASK-1180, OPS-11) ───────────────────────────────────\n  # Every line now arrives on /otlp from the OTel Collector. Loki's default\n  # would index ~17 resource attributes, k8s.pod.name and\n  # service.instance.id among them: a new stream per pod restart, the\n  # cardinality OPS-11 flagged. Index exactly the four an operator selects\n  # on; everything else, the pod, the node and every hope.* id included,\n  # lands as STRUCTURED METADATA, still filterable without a full-text scan\n  # (`| hope_request_id=\"…\"`, `| k8s_pod_name=\"…\"`).\n  # Label names after Loki's dot → underscore: service_name,\n  # k8s_namespace_name, k8s_container_name, deployment_environment_name.\n  otlp_config:\n    resource_attributes:\n      ignore_defaults: true\n      attributes_config:\n        - action: index_label\n          attributes:\n            - service.name\n            - k8s.namespace.name\n            - k8s.container.name\n            - deployment.environment.name\ncompactor:\n  working_directory: /loki/compactor\n  compaction_interval: 10m\n  # Required for BOTH custom retention and the delete API — with this false\n  # the delete endpoints do not exist at all, whatever deletion_mode says.\n  retention_enabled: true\n  retention_delete_delay: 2h\n  retention_delete_worker_count: 50\n  # Where delete REQUESTS are persisted (not the deleted data). Without it\n  # the delete API cannot accept a request.\n  delete_request_store: s3\n  # ⚠️ ERASURE IS NOT IMMEDIATE, AND THIS IS THE REASON. Stated explicitly\n  # at its default so nobody is surprised by it during a real erasure\n  # request: a delete request stays CANCELLABLE for this long, and the data\n  # is only removed once the request is older than it. Loki's own guidance\n  # is \"ideally this should be set to at least 24h\", so it is deliberately\n  # NOT lowered to make purges feel faster — the cancellation window is a\n  # safety property, and a mis-scoped delete is unrecoverable.\n  # Budget ~24h + one compaction_interval from request to erasure.\n  delete_request_cancel_period: 24h\nquerier:\n  max_concurrent: 4\nquery_scheduler:\n  max_outstanding_requests_per_tenant: 2048\n# ── RULER (TASK-1180, OPS-5) ──────────────────────────────────────────\n# Was configured with no rules and nowhere to send them. Rules come from the\n# generated `loki-rules` ConfigMap (observability/loki-rules.yaml), mounted\n# at /loki-rules/fake: `fake` is the tenant id Loki uses when\n# auth_enabled is false. Not under /etc/loki (a read-only ConfigMap mount\n# that cannot host a nested mount point) and not under /loki (the PVC).\n# Alerts go to the same Alertmanager as Prometheus's, so routing, silences\n# and receivers are shared.\nruler:\n  storage:\n    type: local\n    local:\n      directory: /loki-rules\n  rule_path: /loki/rules-tmp\n  alertmanager_url: http://alertmanager:9093\n  evaluation_interval: 1m\n  enable_api: true\nanalytics:\n  reporting_enabled: false\n"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"loki-config","namespace":"project-hope-vox-apps-v2"}}
+  creationTimestamp: "2026-11-23T08:30:26Z"
+  name: loki-config
+  namespace: project-hope-vox-apps-v2
+  resourceVersion: "47285268"
+  uid: 1eb27662-dda9-4f0d-8902-ba7a0bad3f3e

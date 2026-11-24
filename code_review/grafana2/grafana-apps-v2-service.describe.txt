@@ -1,0 +1,18 @@
+Name:                     grafana
+Namespace:                project-hope-vox-apps-v2
+Labels:                   app=grafana
+Annotations:              <none>
+Selector:                 app=grafana
+Type:                     NodePort
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       10.111.22.143
+IPs:                      10.111.22.143
+Port:                     http  3000/TCP
+TargetPort:               3000/TCP
+NodePort:                 http  30300/TCP
+Endpoints:                172.16.19.166:3000
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Internal Traffic Policy:  Cluster
+Events:                   <none>

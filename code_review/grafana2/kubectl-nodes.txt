@@ -1,0 +1,8 @@
+NAME             STATUS   ROLES           AGE    VERSION    INTERNAL-IP      EXTERNAL-IP   OS-IMAGE                      KERNEL-VERSION                 CONTAINER-RUNTIME
+ai-ml-worker-1   Ready    <none>          18d    v1.29.15   192.168.112.2    <none>        Rocky Linux 9.8 (Blue Onyx)   5.14.0-687.12.1.el9_8.x86_64   containerd://2.2.4
+master-node-1    Ready    control-plane   217d   v1.29.15   192.168.112.6    <none>        Rocky Linux 9.7 (Blue Onyx)   5.14.0-503.14.1.el9_5.x86_64   containerd://2.2.3
+worker-node-1    Ready    <none>          217d   v1.29.15   192.168.112.7    <none>        Rocky Linux 9.7 (Blue Onyx)   5.14.0-503.14.1.el9_5.x86_64   containerd://2.2.3
+worker-node-2    Ready    <none>          217d   v1.29.15   192.168.112.8    <none>        Rocky Linux 9.7 (Blue Onyx)   5.14.0-503.14.1.el9_5.x86_64   containerd://2.2.3
+worker-node-3    Ready    <none>          217d   v1.29.15   192.168.112.9    <none>        Rocky Linux 9.7 (Blue Onyx)   5.14.0-503.14.1.el9_5.x86_64   containerd://2.2.3
+worker-node-4    Ready    <none>          217d   v1.29.15   192.168.112.10   <none>        Rocky Linux 9.7 (Blue Onyx)   5.14.0-503.14.1.el9_5.x86_64   containerd://2.2.3
+worker-node-5    Ready    <none>          217d   v1.29.15   192.168.112.11   <none>        Rocky Linux 9.7 (Blue Onyx)   5.14.0-503.14.1.el9_5.x86_64   containerd://2.2.3

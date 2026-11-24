@@ -1,0 +1,35 @@
+--- nodePort 30300 match ---
+83:project-hope-vox-apps-v2    grafana                                   NodePort       10.111.22.143    <none>        3000:30300/TCP                                   3h44m   app=grafana
+--- grafana-related services/pods ---
+/Users/apple/repos/VOX/review/grafana2/kubectl-services-all.txt:14:arcafabric                  grafana-svc                               NodePort       10.110.238.1     <none>        3000:32121/TCP                                   164d    app=grafana
+/Users/apple/repos/VOX/review/grafana2/kubectl-services-all.txt:83:project-hope-vox-apps-v2    grafana                                   NodePort       10.111.22.143    <none>        3000:30300/TCP                                   3h44m   app=grafana
+/Users/apple/repos/VOX/review/grafana2/kubectl-services-all.txt:112:project-hope-vox-infra      grafana                                   ClusterIP      10.96.88.165     <none>        3000/TCP                                         39d     app=grafana
+/Users/apple/repos/VOX/review/grafana2/kubectl-pods-all.txt:11:arcafabric                  grafana-586899fdcf-rbq84                                          1/1     Running                  0                 164d    172.16.19.144    worker-node-2    <none>           <none>
+/Users/apple/repos/VOX/review/grafana2/kubectl-pods-all.txt:92:project-hope-vox-apps-v2    grafana-86764ccf9c-dnstj                                          1/1     Running                  0                 68m     172.16.19.166    worker-node-2    <none>           <none>
+/Users/apple/repos/VOX/review/grafana2/kubectl-pods-all.txt:128:project-hope-vox-infra      grafana-6d5b9cb94c-h22c2                                          1/1     Running                  0                 20d     172.16.19.133    worker-node-2    <none>           <none>
+/Users/apple/repos/VOX/review/grafana2/kubectl-pods-all.txt:129:project-hope-vox-infra      grafana-permissions-fix-xx4qk                                     0/1     Completed                0                 39d     172.16.8.253     worker-node-3    <none>           <none>
+--- namespaces ---
+NAME                        STATUS   AGE
+anantha                     Active   209d
+arcafabric                  Active   194d
+arcaspark                   Active   189d
+argocd                      Active   19d
+aura                        Active   125d
+default                     Active   217d
+kube-node-lease             Active   217d
+kube-public                 Active   217d
+kube-system                 Active   217d
+monitoring                  Active   213d
+nfs                         Active   216d
+nitik                       Active   152d
+pathready                   Active   126d
+project-hope-vox            Active   47d
+project-hope-vox-apps-v2    Active   17d
+project-hope-vox-infra      Active   47d
+project-hope-vox-infra-v2   Active   21d
+ramya629                    Active   207d
+rubix                       Active   213d
+stenovault                  Active   189d
+supabase-ak                 Active   17d
+trueclaim-main              Active   125d
+vidit                       Active   200d

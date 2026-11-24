@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <base href="/" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <meta
+      content="#040A16"
+      media="(prefers-color-scheme: light)"
+      name="theme-color"
+    />
+    <meta
+      content="#040A16"
+      media="(prefers-color-scheme: dark)"
+      name="theme-color"
+    />
+    <meta content="SILO object storage console" name="description" />
+    <meta name="license" content="agpl" />
+    <meta name="silo-console-source" content="https://github.com/pgsty/silo-console/commit/1360e26d976d" />
+    <meta name="silo-console-source-status" content="available" />
+    <meta name="silo-console-source-reason" content="" />
+    <meta name="silo-console-build" content="(dev) (dev)" />
+    <link href="./styles/root-styles.css" rel="stylesheet" />
+    <link
+      href="./apple-icon-180x180.png"
+      rel="apple-touch-icon"
+      sizes="180x180"
+    />
+    <link href="./favicon-32x32.png" rel="icon" sizes="32x32" type="image/png" />
+    <link href="./favicon-96x96.png" rel="icon" sizes="96x96" type="image/png" />
+    <link href="./favicon-16x16.png" rel="icon" sizes="16x16" type="image/png" />
+    <link href="./manifest.json" rel="manifest" />
+    <link color="#007FA8" href="./safari-pinned-tab.svg" rel="mask-icon" />
+    <title>SILO Console</title>
+    <script type="module" crossorigin src="./assets/index-CvS6VhbY.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-D0rXHccJ.js">
+    <link rel="modulepreload" crossorigin href="./assets/preload-helper-kNaey6uv.js">
+    <link rel="modulepreload" crossorigin href="./assets/lang-Aa4XqCxi.js">
+    <link rel="modulepreload" crossorigin href="./assets/get-i4FgFrza.js">
+    <link rel="modulepreload" crossorigin href="./assets/store-DtJUL4g9.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-clIzMmhk.css">
+  </head>
+
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root">
+      <div id="loader-block">
+        <img src="./Loader.svg" />
+      </div>
+    </div>
+  </body>
+</html>

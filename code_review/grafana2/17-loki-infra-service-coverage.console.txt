@@ -1,0 +1,33 @@
+services_project-hope-vox-infra_http=200
+services_project-hope-vox-infra-v2_http=200
+services_project-hope-vox_http=200
+
+=== project-hope-vox-infra service_name values in old Loki (24h) ===
+  loki: 236860
+  temporal: 125740
+  promtail: 3801
+  redis-store: 2538
+  grafana: 1352
+  postgres-pgvector-db: 654
+  prometheus: 98
+
+=== project-hope-vox-infra-v2 service_name values in old Loki (24h) ===
+  temporal-ui: 9044
+  redis: 1934
+  temporal: 1378
+  postgres: 655
+  qdrant: 17
+  vault: 12
+
+=== project-hope-vox service_name values in old Loki (24h) ===
+  hope-guardrail: 140014
+  hope-nlp: 84153
+  hope-tts: 83430
+  hope-text: 79737
+  hope-api-gateway: 37751
+  gateway-test: 8336
+  traefik: 2900
+  hope-harness-worker: 1245
+  cloudflared: 398
+  hope-harness: 288
+  hope-vllm: 12

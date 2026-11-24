@@ -1,0 +1,10 @@
+--- fetching dashboard definitions ---
+hope-dependencies http=200
+hope-gpu http=200
+hope-infra-overview http=200
+hope-k8s-workloads http=200
+hope-model-residency http=200
+hope-node-system http=200
+hope-platform http=200
+hope-sdk-clients http=200
+hope-vllm http=200

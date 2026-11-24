@@ -1,0 +1,409 @@
+apiVersion: v1
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:4317"
+          http:
+            endpoint: "0.0.0.0:4318"
+    processors:
+      batch:
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+        timeout: 5s
+      # TASK-1180 (CP-5): a share of the container limit, not a fixed 400 MiB, so
+      # the overlays that raise the limit (eks/components/scale-30-users: 1Gi) get
+      # the headroom they pay for, and the ones that lower the request keep the
+      # same safety margin. Refusing data here is back-pressure to Alloy, whose
+      # own queue holds it; `OtelCollectorRefusingData` alerts on it.
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+      # environment labelling.
+      # `deployment.environment: "dev"` was hardcoded here and upserted over
+      # EVERY signal, in a base shared by all three overlays: telemetry from
+      # staging or prod would have been stamped "dev". Compounding it, STT's
+      # resource builder hardcoded "production", so the two disagreed inside
+      # one pipeline.
+      #
+      # Now sourced from the pod env, which each overlay patches. `insert`
+      # (not `upsert`) so a service that sets its own correct value keeps it —
+      # the collector should fill the gap, not overrule the emitter.
+      resource:
+        attributes:
+          # Both spellings: `deployment.environment.name` is the current
+          # semantic convention, `deployment.environment` the legacy one that
+          # existing dashboards/queries still use.
+          - key: deployment.environment.name
+            value: "${env:DEPLOYMENT_ENVIRONMENT}"
+            action: insert
+          - key: deployment.environment
+            value: "${env:DEPLOYMENT_ENVIRONMENT}"
+            action: insert
+          - key: service.namespace
+            value: "${env:SERVICE_NAMESPACE}"
+            action: upsert
+          - key: k8s.cluster.name
+            value: "${env:K8S_CLUSTER_NAME}"
+            action: upsert
+
+      # PHI redaction. THE compliance gate for this platform.
+      #
+      # Before this, the pipeline was `memory_limiter, resource, batch` — no
+      # redaction of any kind — on a multi-tenant healthcare platform whose
+      # spans carry clinical payloads. Turning tracing on fleet-wide without
+      # this would push PHI into Tempo.
+      #
+      # ALLOWLIST, not a denylist, for SPANS and METRICS. A span attribute is
+      # set by library code nobody reviews, so a denylist would fail open on
+      # every attribute anyone adds later. Anything not named here is dropped
+      # from every span and metric. Log records use the deny-list in
+      # `transform/logs_contract` instead (OD-13, below).
+      #
+      # Adding an attribute? Add it here deliberately, and only if it cannot
+      # carry patient data.
+      redaction/phi:
+        allow_all_keys: false
+        allowed_keys:
+          # Resource / identity
+          - service.name
+          - service.namespace
+          - service.version
+          - service.instance.id
+          - deployment.environment
+          - deployment.environment.name
+          - k8s.cluster.name
+          - k8s.namespace.name
+          - k8s.pod.name
+          - k8s.container.name
+          - k8s.node.name
+          - k8s.deployment.name
+          - host.name
+          - process.pid
+          # HTTP — route TEMPLATE only. `http.url`/`http.target` are
+          # deliberately absent: query strings routinely carry identifiers.
+          - http.method
+          - http.request.method
+          - http.route
+          - http.status_code
+          - http.response.status_code
+          - http.scheme
+          - net.peer.name
+          - server.address
+          - server.port
+          # RPC / messaging / db — operation shape, never statements or payloads.
+          # `db.statement` is absent on purpose: it embeds parameter values.
+          - rpc.system
+          - rpc.service
+          - rpc.method
+          - messaging.system
+          - messaging.destination.name
+          - messaging.operation
+          - db.system
+          - db.operation
+          - db.name
+          # Tracing/correlation
+          - trace_id
+          - span_id
+          - otel.status_code
+          - otel.status_description
+          - exception.type
+          # NOTE: `exception.message` and `exception.stacktrace` are NOT
+          # allowed — both routinely embed the offending payload.
+          # HOPE domain: tenant is a routing key, not patient data. There is
+          # deliberately no patient/consultation/user identifier here.
+          - hope.tenant_id
+          # TASK-1180: the agent a call ran for (TASK-1179). A configuration slug
+          # such as `guard-default`, never patient data.
+          - hope.agent_slug
+          # `hope.pipeline_id` was dropped from this list (TASK-1012): no service
+          # emits it, and the pipelineId concept it named was retired by TASK-1006.
+          - hope.model
+          - hope.capability
+          # TASK-1071: SDK client telemetry (@arcaai/vox, @arcaai/vox-node). The
+          # frozen allow-list: SDK identity, the logical operation, the correlation
+          # ids and the error class. `url.template` is the route TEMPLATE (ids
+          # replaced by `:id`) - never a raw URL. No patient/consultation/user/run
+          # id, body or header may ever be added here.
+          - hope.sdk.name
+          - hope.sdk.version
+          - hope.operation
+          - hope.request_id
+          - hope.error.code
+          - hope.credential_class
+          - url.template
+          - error.type
+          # TASK-987 D2 (F-18): NLP's OTel metric attributes, renamed into the
+          # hope.* namespace by lane E (apps/nlp/src/nlp/core/metrics.py) —
+          # `hope.model` above was already allowed; these two were not, so
+          # every metric data point carrying them was silently dropped here.
+          - hope.entity_type
+          - hope.label
+          # Owner decision 2026-09-29 (TASK-1012 follow-up): the gateway's STT stream span
+          # id. A random session UUID — it joins a trace to STT logs, carries no patient data.
+          - hope.stt.session_id
+          # TASK-1150 AC-33: one span per inference attempt. Enums, ids and numbers only.
+          - hope.inference.attempt
+          - hope.inference.tier
+          - hope.inference.candidate_kind
+          - hope.inference.operation
+          - hope.inference.provider
+          - hope.inference.locality
+          - hope.inference.funding_tier
+          - hope.inference.status
+          - hope.inference.error_class
+          - hope.inference.http_status
+          - hope.inference.ttft_ms
+          - hope.inference.total_ms
+          # Owner decision 2026-09-29: OTel GenAI semconv from apps/text providers. The
+          # EXACT keys the code emits (this processor matches names, not globs). Request
+          # shape, model and token counts only — `gen_ai.prompt` / `gen_ai.completion` /
+          # any message-content key are deliberately NOT here and must never be added.
+          - gen_ai.system
+          - gen_ai.operation.name
+          - gen_ai.request.model
+          - gen_ai.request.temperature
+          - gen_ai.request.max_tokens
+          - gen_ai.request.reasoning.enabled
+          - gen_ai.request.reasoning.effort
+          - gen_ai.request.reasoning.unenforceable
+          - gen_ai.response.finish_reason
+          - gen_ai.response.finish_reasons
+          - gen_ai.usage.input_tokens
+          - gen_ai.usage.output_tokens
+        # Belt-and-braces: even among allowed keys, blank any VALUE that looks
+        # like an inlined recording or a long base64 blob.
+        blocked_values: &phi_blocked_values
+          - "(?i)^(data|blob|file):.*"
+          - "^[A-Za-z0-9+/]{512,}={0,2}$"
+        summary: debug
+
+      # ── LOGS (TASK-1180, OD-9/OD-10) ─────────────────────────────────────
+      # Every container's stdout reaches this pipeline the same way: kubelet
+      # file → Alloy (tail + CRI + k8s metadata, nothing else) → OTLP → here.
+      # Apps write the short camelCase line of the HOPE log-line contract
+      # (arca/hope-v2 docs/operations/observability/log-line-contract.md; the
+      # machine-readable mapping is `otelMapping` in
+      # tests/contracts/log-line.fixture.json, vendored at
+      # scripts/tests/fixtures/log-line.fixture.json). THIS processor is the one
+      # place that maps it onto the OTel Log Data Model, so a new backend is one
+      # more exporter and never an app change.
+      #
+      # A body that is not a JSON object (postgres, redis, a Python traceback
+      # that escaped the formatter) is NOT parsed and NOT dropped: it keeps its
+      # text as Body, gets the same PHI scrub, and reaches Loki with the
+      # Kubernetes resource attributes Alloy attached.
+      #
+      # `silent`, not `ignore`: a malformed `{…` line from one container would
+      # otherwise write one collector warning per line, which is exactly the
+      # garbage OD-12 forbids. The line itself still passes through unparsed.
+      transform/logs_contract:
+        error_mode: silent
+        log_statements:
+          - statements:
+              # 1. Parse only a JSON object body. The parsed keys live in `cache`
+              #    (per record, discarded after this processor), never on the record
+              #    until they are mapped.
+              - merge_maps(log.cache, ParseJSON(log.body), "upsert") where IsString(log.body) and IsMatch(log.body, "^\\s*\\{")
+
+              # 2. Timestamp / severity. Lower-cased, and the two Python spellings
+              #    the contract forbids are folded so a not-yet-migrated service is
+              #    still graded correctly.
+              - set(log.time, Time(log.cache["timestamp"], "%Y-%m-%dT%H:%M:%S.%LZ")) where IsString(log.cache["timestamp"])
+              - set(log.severity_text, ConvertCase(log.cache["level"], "lower")) where IsString(log.cache["level"])
+              - set(log.severity_text, "warn") where IsString(log.cache["level"]) and log.severity_text == "warning"
+              - set(log.severity_text, "fatal") where IsString(log.cache["level"]) and log.severity_text == "critical"
+              - set(log.severity_number, SEVERITY_NUMBER_TRACE) where IsString(log.cache["level"]) and log.severity_text == "trace"
+              - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where IsString(log.cache["level"]) and log.severity_text == "debug"
+              - set(log.severity_number, SEVERITY_NUMBER_INFO) where IsString(log.cache["level"]) and log.severity_text == "info"
+              - set(log.severity_number, SEVERITY_NUMBER_WARN) where IsString(log.cache["level"]) and log.severity_text == "warn"
+              - set(log.severity_number, SEVERITY_NUMBER_ERROR) where IsString(log.cache["level"]) and log.severity_text == "error"
+              - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsString(log.cache["level"]) and log.severity_text == "fatal"
+
+              # 3. Trace context: W3C hex only; anything else is left unset rather
+              #    than turned into a bogus id.
+              - set(log.trace_id.string, log.cache["traceId"]) where IsMatch(log.cache["traceId"], "^[0-9a-f]{32}$")
+              - set(log.span_id.string, log.cache["spanId"]) where IsMatch(log.cache["spanId"], "^[0-9a-f]{16}$")
+
+              # 4. Identity → resource. Alloy sends one record per resource, so a
+              #    write here cannot leak onto a neighbouring line. The line's own
+              #    `service` wins over the pod's `app` label Alloy supplied.
+              - set(resource.attributes["service.name"], log.cache["service"]) where IsString(log.cache["service"])
+              - set(resource.attributes["service.version"], log.cache["version"]) where IsString(log.cache["version"])
+              - set(resource.attributes["deployment.environment.name"], log.cache["env"]) where IsString(log.cache["env"])
+              - set(scope.name, log.cache["logger"]) where IsString(log.cache["logger"])
+
+              # 5. Correlation → attributes (the names the allow-list already uses).
+              - set(log.attributes["hope.request_id"], log.cache["requestId"]) where log.cache["requestId"] != nil
+              - set(log.attributes["hope.tenant_id"], log.cache["tenantId"]) where log.cache["tenantId"] != nil
+              - set(log.attributes["enduser.id"], log.cache["userId"]) where log.cache["userId"] != nil
+              - set(log.attributes["hope.agent_slug"], log.cache["agentSlug"]) where log.cache["agentSlug"] != nil
+              - set(log.attributes["hope.truncated"], log.cache["truncated"]) where log.cache["truncated"] != nil
+
+              # 6. Structured error → OTel exception semconv.
+              - set(log.attributes["exception.type"], log.cache["error"]["type"]) where IsMap(log.cache["error"]) and log.cache["error"]["type"] != nil
+              - set(log.attributes["exception.message"], log.cache["error"]["message"]) where IsMap(log.cache["error"]) and log.cache["error"]["message"] != nil
+              - set(log.attributes["exception.stacktrace"], log.cache["error"]["stack"]) where IsMap(log.cache["error"]) and log.cache["error"]["stack"] != nil
+              - set(log.attributes["hope.error.code"], log.cache["error"]["code"]) where IsMap(log.cache["error"]) and log.cache["error"]["code"] != nil
+
+              # 7. Body = the message, last, once everything else is mapped.
+              - set(log.body, log.cache["message"]) where IsString(log.cache["message"])
+
+              # 8. Remaining fields become attributes under their own names, flat
+              #    (`a.b`), so the deny-list and the scrub below reach nested values.
+              - delete_matching_keys(log.cache, "^(timestamp|level|message|service|version|env|logger|traceId|spanId|requestId|tenantId|userId|agentSlug|truncated|error)$")
+              - merge_maps(log.attributes, log.cache, "insert") where Len(log.cache) > 0
+              - flatten(log.attributes)
+
+              # 9. DENY-LIST (OD-13, owner decision 2026-11-13). Logs keep every
+              #    field an emitter wrote EXCEPT these, at any depth. The emitters
+              #    redact the same keys before writing (gateway `redactor.ts`
+              #    PHI_KEYS, py-obs `hope_obs.redaction`), so this is the second
+              #    layer, not the only one. The names mirror the contract fixture's
+              #    `forbiddenKeys` plus those PHI_KEYS; keep them in step.
+              #    a. The three ids the emitters HASH (12 hex chars, or `-`) are
+              #       kept only in that hashed form; a raw value is dropped by (c).
+              - set(log.cache["keep.patientId"], log.attributes["patientId"]) where IsString(log.attributes["patientId"]) and IsMatch(log.attributes["patientId"], "^([0-9a-f]{12}|-)$")
+              - set(log.cache["keep.externalPatientId"], log.attributes["externalPatientId"]) where IsString(log.attributes["externalPatientId"]) and IsMatch(log.attributes["externalPatientId"], "^([0-9a-f]{12}|-)$")
+              - set(log.cache["keep.consultationId"], log.attributes["consultationId"]) where IsString(log.attributes["consultationId"]) and IsMatch(log.attributes["consultationId"], "^([0-9a-f]{12}|-)$")
+              #    b. Legacy contract keys, top level only (`hope.request_id` stays).
+              - delete_matching_keys(log.attributes, "^(event|context|request_id|tenant_id|timestampMs|msg|severity)$")
+              #    b2. The agent's file metadata (`log.file.name`, `log.file.path`,
+              #       added when Alloy converts a tailed line to OTLP). The k8s.*
+              #       resource attributes already name the pod and container, so
+              #       these would only be two more columns on every line (OD-12).
+              - delete_matching_keys(log.attributes, "^log\\.file\\.")
+              #    c. Content, PHI and credential keys, matched on the last path
+              #       segment, any case.
+              - delete_matching_keys(log.attributes, "(?i)(^|\\.)(body|text|content|utterance|transcript|transcript[_-]?text|stt[_-]?text|stt[_-]?result|prompt|completion|summary[_-]?text|pre[_-]?summary[_-]?text|note[_-]?text|clinical[_-]?note|audio[_-]?buffer|audio[_-]?blob|recording|voice[_-]?embedding|patient[_-]?id|external[_-]?patient[_-]?id|consultation[_-]?id|doctor[_-]?id|patient[_-]?name|doctor[_-]?name|first[_-]?name|last[_-]?name|full[_-]?name|email|phone.*|dob|date[_-]?of[_-]?birth|national[_-]?id|ssn|mrn|address|password|passphrase|secret|client[_-]?secret|private[_-]?key|token|access[_-]?token|refresh[_-]?token|service[_-]?token|x-service-token|api[_-]?key|x-api-key|authorization|cookie|set-cookie)$")
+              - set(log.attributes["patientId"], log.cache["keep.patientId"]) where log.cache["keep.patientId"] != nil
+              - set(log.attributes["externalPatientId"], log.cache["keep.externalPatientId"]) where log.cache["keep.externalPatientId"] != nil
+              - set(log.attributes["consultationId"], log.cache["keep.consultationId"]) where log.cache["keep.consultationId"] != nil
+
+              # 10. PHI scrub on the Body and on every string attribute (OD-5): JWTs,
+              #    bearer credentials and e-mail addresses. Runs on parsed AND
+              #    plain-text lines, before anything is buffered or exported.
+              - replace_pattern(log.body, "eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*", "[REDACTED_JWT]") where IsString(log.body)
+              - replace_pattern(log.body, "(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]") where IsString(log.body)
+              - replace_pattern(log.body, "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", "[REDACTED_EMAIL]") where IsString(log.body)
+              - replace_all_patterns(log.attributes, "value", "eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*", "[REDACTED_JWT]")
+              - replace_all_patterns(log.attributes, "value", "(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")
+              - replace_all_patterns(log.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", "[REDACTED_EMAIL]")
+
+      # Logs keep every key the deny-list above left (OD-13): an unlisted
+      # diagnostic field such as `queueName` or `sessionRef` reaches Loki without
+      # a collector change. This processor still blanks any VALUE that looks like
+      # an inlined recording or a long base64 blob, on record AND resource
+      # attributes. `summary: silent`: the `debug` summary would stamp two
+      # redaction.* attributes on every log record, i.e. two structured-metadata
+      # columns per line in Loki for nobody.
+      redaction/phi_logs:
+        allow_all_keys: true
+        blocked_values: *phi_blocked_values
+        summary: silent
+    exporters:
+      # TASK-1180 (CP-5): every container's log line now crosses this exporter,
+      # so a Loki restart must not lose what is in flight. The queue is on disk
+      # (`file_storage/queue`, an emptyDir in base/otel-collector.yaml): it
+      # survives a collector CONTAINER restart (crash, OOM kill, failed liveness)
+      # and a Loki outage up to `max_elapsed_time`, NOT a pod deletion (rollout,
+      # eviction, drain) — Alloy's own WAL-less queue and the second replica are
+      # what cover a pod going away. Full queue = back-pressure to Alloy,
+      # alerted by `OtelCollectorQueueSaturated`.
+      otlphttp/loki:
+        endpoint: "http://loki:3100/otlp"
+        tls:
+          insecure: true
+        sending_queue:
+          enabled: true
+          storage: file_storage/queue
+          num_consumers: 4
+          queue_size: 2000
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 60s
+          max_elapsed_time: 30m
+      otlp/tempo:
+        endpoint: "tempo:4317"
+        tls:
+          insecure: true
+      prometheusremotewrite:
+        endpoint: "http://prometheus:9090/api/v1/write"
+        resource_to_telemetry_conversion:
+          enabled: true
+      debug:
+        verbosity: basic
+        sampling_initial: 5
+        sampling_thereafter: 200
+    extensions:
+      health_check:
+        endpoint: "0.0.0.0:13133"
+      zpages:
+        endpoint: "0.0.0.0:55679"
+      # Backs the Loki exporter's sending_queue. Directory = the `queue` emptyDir
+      # mounted in base/otel-collector.yaml.
+      file_storage/queue:
+        directory: /var/lib/otelcol/queue
+        create_directory: true
+        timeout: 1s
+        compaction:
+          on_start: true
+          on_rebound: true
+          directory: /var/lib/otelcol/queue
+    service:
+      extensions: [health_check, zpages, file_storage/queue]
+      telemetry:
+        logs:
+          level: "info"
+        # TASK-1180 (OPS-4): self-metrics on 0.0.0.0:8888 so Prometheus can scrape
+        # them (the default binds localhost, i.e. nobody). The `otel-collector`
+        # scrape job and the `otel_collector` alert group read these.
+        metrics:
+          level: normal
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: "0.0.0.0"
+                    port: 8888
+      # `redaction/phi` runs on traces and metrics, `redaction/phi_logs` on logs;
+      # each runs BEFORE `batch` so nothing unredacted is ever buffered in memory
+      # or flushed on shutdown.
+      #
+      # Traces/metrics: memory_limiter (shed load first) → resource (stamp
+      # environment) → redaction/phi (drop everything not allowlisted) → batch
+      # → export.
+      #
+      # Logs (TASK-1180): memory_limiter → transform/logs_contract (contract →
+      # OTel mapping, key deny-list, JWT/bearer/e-mail scrub) → resource (fills
+      # the environment only where the line had none) → redaction/phi_logs
+      # (blob/inline-media values)
+      # → batch → Loki /otlp. To add a backend, add its exporter to THIS list
+      # once its BAA, residency and retention are decided (OD-11).
+      pipelines:
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/logs_contract, resource, redaction/phi_logs, batch]
+          exporters: [otlphttp/loki]
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, redaction/phi, batch]
+          exporters: [otlp/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, redaction/phi, batch]
+          exporters: [prometheusremotewrite]
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"otel-collector-config.yaml":"receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: \"0.0.0.0:4317\"\n      http:\n        endpoint: \"0.0.0.0:4318\"\nprocessors:\n  batch:\n    send_batch_size: 1024\n    send_batch_max_size: 2048\n    timeout: 5s\n  # TASK-1180 (CP-5): a share of the container limit, not a fixed 400 MiB, so\n  # the overlays that raise the limit (eks/components/scale-30-users: 1Gi) get\n  # the headroom they pay for, and the ones that lower the request keep the\n  # same safety margin. Refusing data here is back-pressure to Alloy, whose\n  # own queue holds it; `OtelCollectorRefusingData` alerts on it.\n  memory_limiter:\n    check_interval: 1s\n    limit_percentage: 80\n    spike_limit_percentage: 20\n  # environment labelling.\n  # `deployment.environment: \"dev\"` was hardcoded here and upserted over\n  # EVERY signal, in a base shared by all three overlays: telemetry from\n  # staging or prod would have been stamped \"dev\". Compounding it, STT's\n  # resource builder hardcoded \"production\", so the two disagreed inside\n  # one pipeline.\n  #\n  # Now sourced from the pod env, which each overlay patches. `insert`\n  # (not `upsert`) so a service that sets its own correct value keeps it —\n  # the collector should fill the gap, not overrule the emitter.\n  resource:\n    attributes:\n      # Both spellings: `deployment.environment.name` is the current\n      # semantic convention, `deployment.environment` the legacy one that\n      # existing dashboards/queries still use.\n      - key: deployment.environment.name\n        value: \"${env:DEPLOYMENT_ENVIRONMENT}\"\n        action: insert\n      - key: deployment.environment\n        value: \"${env:DEPLOYMENT_ENVIRONMENT}\"\n        action: insert\n      - key: service.namespace\n        value: \"${env:SERVICE_NAMESPACE}\"\n        action: upsert\n      - key: k8s.cluster.name\n        value: \"${env:K8S_CLUSTER_NAME}\"\n        action: upsert\n\n  # PHI redaction. THE compliance gate for this platform.\n  #\n  # Before this, the pipeline was `memory_limiter, resource, batch` — no\n  # redaction of any kind — on a multi-tenant healthcare platform whose\n  # spans carry clinical payloads. Turning tracing on fleet-wide without\n  # this would push PHI into Tempo.\n  #\n  # ALLOWLIST, not a denylist, for SPANS and METRICS. A span attribute is\n  # set by library code nobody reviews, so a denylist would fail open on\n  # every attribute anyone adds later. Anything not named here is dropped\n  # from every span and metric. Log records use the deny-list in\n  # `transform/logs_contract` instead (OD-13, below).\n  #\n  # Adding an attribute? Add it here deliberately, and only if it cannot\n  # carry patient data.\n  redaction/phi:\n    allow_all_keys: false\n    allowed_keys:\n      # Resource / identity\n      - service.name\n      - service.namespace\n      - service.version\n      - service.instance.id\n      - deployment.environment\n      - deployment.environment.name\n      - k8s.cluster.name\n      - k8s.namespace.name\n      - k8s.pod.name\n      - k8s.container.name\n      - k8s.node.name\n      - k8s.deployment.name\n      - host.name\n      - process.pid\n      # HTTP — route TEMPLATE only. `http.url`/`http.target` are\n      # deliberately absent: query strings routinely carry identifiers.\n      - http.method\n      - http.request.method\n      - http.route\n      - http.status_code\n      - http.response.status_code\n      - http.scheme\n      - net.peer.name\n      - server.address\n      - server.port\n      # RPC / messaging / db — operation shape, never statements or payloads.\n      # `db.statement` is absent on purpose: it embeds parameter values.\n      - rpc.system\n      - rpc.service\n      - rpc.method\n      - messaging.system\n      - messaging.destination.name\n      - messaging.operation\n      - db.system\n      - db.operation\n      - db.name\n      # Tracing/correlation\n      - trace_id\n      - span_id\n      - otel.status_code\n      - otel.status_description\n      - exception.type\n      # NOTE: `exception.message` and `exception.stacktrace` are NOT\n      # allowed — both routinely embed the offending payload.\n      # HOPE domain: tenant is a routing key, not patient data. There is\n      # deliberately no patient/consultation/user identifier here.\n      - hope.tenant_id\n      # TASK-1180: the agent a call ran for (TASK-1179). A configuration slug\n      # such as `guard-default`, never patient data.\n      - hope.agent_slug\n      # `hope.pipeline_id` was dropped from this list (TASK-1012): no service\n      # emits it, and the pipelineId concept it named was retired by TASK-1006.\n      - hope.model\n      - hope.capability\n      # TASK-1071: SDK client telemetry (@arcaai/vox, @arcaai/vox-node). The\n      # frozen allow-list: SDK identity, the logical operation, the correlation\n      # ids and the error class. `url.template` is the route TEMPLATE (ids\n      # replaced by `:id`) - never a raw URL. No patient/consultation/user/run\n      # id, body or header may ever be added here.\n      - hope.sdk.name\n      - hope.sdk.version\n      - hope.operation\n      - hope.request_id\n      - hope.error.code\n      - hope.credential_class\n      - url.template\n      - error.type\n      # TASK-987 D2 (F-18): NLP's OTel metric attributes, renamed into the\n      # hope.* namespace by lane E (apps/nlp/src/nlp/core/metrics.py) —\n      # `hope.model` above was already allowed; these two were not, so\n      # every metric data point carrying them was silently dropped here.\n      - hope.entity_type\n      - hope.label\n      # Owner decision 2026-09-29 (TASK-1012 follow-up): the gateway's STT stream span\n      # id. A random session UUID — it joins a trace to STT logs, carries no patient data.\n      - hope.stt.session_id\n      # TASK-1150 AC-33: one span per inference attempt. Enums, ids and numbers only.\n      - hope.inference.attempt\n      - hope.inference.tier\n      - hope.inference.candidate_kind\n      - hope.inference.operation\n      - hope.inference.provider\n      - hope.inference.locality\n      - hope.inference.funding_tier\n      - hope.inference.status\n      - hope.inference.error_class\n      - hope.inference.http_status\n      - hope.inference.ttft_ms\n      - hope.inference.total_ms\n      # Owner decision 2026-09-29: OTel GenAI semconv from apps/text providers. The\n      # EXACT keys the code emits (this processor matches names, not globs). Request\n      # shape, model and token counts only — `gen_ai.prompt` / `gen_ai.completion` /\n      # any message-content key are deliberately NOT here and must never be added.\n      - gen_ai.system\n      - gen_ai.operation.name\n      - gen_ai.request.model\n      - gen_ai.request.temperature\n      - gen_ai.request.max_tokens\n      - gen_ai.request.reasoning.enabled\n      - gen_ai.request.reasoning.effort\n      - gen_ai.request.reasoning.unenforceable\n      - gen_ai.response.finish_reason\n      - gen_ai.response.finish_reasons\n      - gen_ai.usage.input_tokens\n      - gen_ai.usage.output_tokens\n    # Belt-and-braces: even among allowed keys, blank any VALUE that looks\n    # like an inlined recording or a long base64 blob.\n    blocked_values: \u0026phi_blocked_values\n      - \"(?i)^(data|blob|file):.*\"\n      - \"^[A-Za-z0-9+/]{512,}={0,2}$\"\n    summary: debug\n\n  # ── LOGS (TASK-1180, OD-9/OD-10) ─────────────────────────────────────\n  # Every container's stdout reaches this pipeline the same way: kubelet\n  # file → Alloy (tail + CRI + k8s metadata, nothing else) → OTLP → here.\n  # Apps write the short camelCase line of the HOPE log-line contract\n  # (arca/hope-v2 docs/operations/observability/log-line-contract.md; the\n  # machine-readable mapping is `otelMapping` in\n  # tests/contracts/log-line.fixture.json, vendored at\n  # scripts/tests/fixtures/log-line.fixture.json). THIS processor is the one\n  # place that maps it onto the OTel Log Data Model, so a new backend is one\n  # more exporter and never an app change.\n  #\n  # A body that is not a JSON object (postgres, redis, a Python traceback\n  # that escaped the formatter) is NOT parsed and NOT dropped: it keeps its\n  # text as Body, gets the same PHI scrub, and reaches Loki with the\n  # Kubernetes resource attributes Alloy attached.\n  #\n  # `silent`, not `ignore`: a malformed `{…` line from one container would\n  # otherwise write one collector warning per line, which is exactly the\n  # garbage OD-12 forbids. The line itself still passes through unparsed.\n  transform/logs_contract:\n    error_mode: silent\n    log_statements:\n      - statements:\n          # 1. Parse only a JSON object body. The parsed keys live in `cache`\n          #    (per record, discarded after this processor), never on the record\n          #    until they are mapped.\n          - merge_maps(log.cache, ParseJSON(log.body), \"upsert\") where IsString(log.body) and IsMatch(log.body, \"^\\\\s*\\\\{\")\n\n          # 2. Timestamp / severity. Lower-cased, and the two Python spellings\n          #    the contract forbids are folded so a not-yet-migrated service is\n          #    still graded correctly.\n          - set(log.time, Time(log.cache[\"timestamp\"], \"%Y-%m-%dT%H:%M:%S.%LZ\")) where IsString(log.cache[\"timestamp\"])\n          - set(log.severity_text, ConvertCase(log.cache[\"level\"], \"lower\")) where IsString(log.cache[\"level\"])\n          - set(log.severity_text, \"warn\") where IsString(log.cache[\"level\"]) and log.severity_text == \"warning\"\n          - set(log.severity_text, \"fatal\") where IsString(log.cache[\"level\"]) and log.severity_text == \"critical\"\n          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where IsString(log.cache[\"level\"]) and log.severity_text == \"trace\"\n          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where IsString(log.cache[\"level\"]) and log.severity_text == \"debug\"\n          - set(log.severity_number, SEVERITY_NUMBER_INFO) where IsString(log.cache[\"level\"]) and log.severity_text == \"info\"\n          - set(log.severity_number, SEVERITY_NUMBER_WARN) where IsString(log.cache[\"level\"]) and log.severity_text == \"warn\"\n          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where IsString(log.cache[\"level\"]) and log.severity_text == \"error\"\n          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsString(log.cache[\"level\"]) and log.severity_text == \"fatal\"\n\n          # 3. Trace context: W3C hex only; anything else is left unset rather\n          #    than turned into a bogus id.\n          - set(log.trace_id.string, log.cache[\"traceId\"]) where IsMatch(log.cache[\"traceId\"], \"^[0-9a-f]{32}$\")\n          - set(log.span_id.string, log.cache[\"spanId\"]) where IsMatch(log.cache[\"spanId\"], \"^[0-9a-f]{16}$\")\n\n          # 4. Identity → resource. Alloy sends one record per resource, so a\n          #    write here cannot leak onto a neighbouring line. The line's own\n          #    `service` wins over the pod's `app` label Alloy supplied.\n          - set(resource.attributes[\"service.name\"], log.cache[\"service\"]) where IsString(log.cache[\"service\"])\n          - set(resource.attributes[\"service.version\"], log.cache[\"version\"]) where IsString(log.cache[\"version\"])\n          - set(resource.attributes[\"deployment.environment.name\"], log.cache[\"env\"]) where IsString(log.cache[\"env\"])\n          - set(scope.name, log.cache[\"logger\"]) where IsString(log.cache[\"logger\"])\n\n          # 5. Correlation → attributes (the names the allow-list already uses).\n          - set(log.attributes[\"hope.request_id\"], log.cache[\"requestId\"]) where log.cache[\"requestId\"] != nil\n          - set(log.attributes[\"hope.tenant_id\"], log.cache[\"tenantId\"]) where log.cache[\"tenantId\"] != nil\n          - set(log.attributes[\"enduser.id\"], log.cache[\"userId\"]) where log.cache[\"userId\"] != nil\n          - set(log.attributes[\"hope.agent_slug\"], log.cache[\"agentSlug\"]) where log.cache[\"agentSlug\"] != nil\n          - set(log.attributes[\"hope.truncated\"], log.cache[\"truncated\"]) where log.cache[\"truncated\"] != nil\n\n          # 6. Structured error → OTel exception semconv.\n          - set(log.attributes[\"exception.type\"], log.cache[\"error\"][\"type\"]) where IsMap(log.cache[\"error\"]) and log.cache[\"error\"][\"type\"] != nil\n          - set(log.attributes[\"exception.message\"], log.cache[\"error\"][\"message\"]) where IsMap(log.cache[\"error\"]) and log.cache[\"error\"][\"message\"] != nil\n          - set(log.attributes[\"exception.stacktrace\"], log.cache[\"error\"][\"stack\"]) where IsMap(log.cache[\"error\"]) and log.cache[\"error\"][\"stack\"] != nil\n          - set(log.attributes[\"hope.error.code\"], log.cache[\"error\"][\"code\"]) where IsMap(log.cache[\"error\"]) and log.cache[\"error\"][\"code\"] != nil\n\n          # 7. Body = the message, last, once everything else is mapped.\n          - set(log.body, log.cache[\"message\"]) where IsString(log.cache[\"message\"])\n\n          # 8. Remaining fields become attributes under their own names, flat\n          #    (`a.b`), so the deny-list and the scrub below reach nested values.\n          - delete_matching_keys(log.cache, \"^(timestamp|level|message|service|version|env|logger|traceId|spanId|requestId|tenantId|userId|agentSlug|truncated|error)$\")\n          - merge_maps(log.attributes, log.cache, \"insert\") where Len(log.cache) \u003e 0\n          - flatten(log.attributes)\n\n          # 9. DENY-LIST (OD-13, owner decision 2026-11-13). Logs keep every\n          #    field an emitter wrote EXCEPT these, at any depth. The emitters\n          #    redact the same keys before writing (gateway `redactor.ts`\n          #    PHI_KEYS, py-obs `hope_obs.redaction`), so this is the second\n          #    layer, not the only one. The names mirror the contract fixture's\n          #    `forbiddenKeys` plus those PHI_KEYS; keep them in step.\n          #    a. The three ids the emitters HASH (12 hex chars, or `-`) are\n          #       kept only in that hashed form; a raw value is dropped by (c).\n          - set(log.cache[\"keep.patientId\"], log.attributes[\"patientId\"]) where IsString(log.attributes[\"patientId\"]) and IsMatch(log.attributes[\"patientId\"], \"^([0-9a-f]{12}|-)$\")\n          - set(log.cache[\"keep.externalPatientId\"], log.attributes[\"externalPatientId\"]) where IsString(log.attributes[\"externalPatientId\"]) and IsMatch(log.attributes[\"externalPatientId\"], \"^([0-9a-f]{12}|-)$\")\n          - set(log.cache[\"keep.consultationId\"], log.attributes[\"consultationId\"]) where IsString(log.attributes[\"consultationId\"]) and IsMatch(log.attributes[\"consultationId\"], \"^([0-9a-f]{12}|-)$\")\n          #    b. Legacy contract keys, top level only (`hope.request_id` stays).\n          - delete_matching_keys(log.attributes, \"^(event|context|request_id|tenant_id|timestampMs|msg|severity)$\")\n          #    b2. The agent's file metadata (`log.file.name`, `log.file.path`,\n          #       added when Alloy converts a tailed line to OTLP). The k8s.*\n          #       resource attributes already name the pod and container, so\n          #       these would only be two more columns on every line (OD-12).\n          - delete_matching_keys(log.attributes, \"^log\\\\.file\\\\.\")\n          #    c. Content, PHI and credential keys, matched on the last path\n          #       segment, any case.\n          - delete_matching_keys(log.attributes, \"(?i)(^|\\\\.)(body|text|content|utterance|transcript|transcript[_-]?text|stt[_-]?text|stt[_-]?result|prompt|completion|summary[_-]?text|pre[_-]?summary[_-]?text|note[_-]?text|clinical[_-]?note|audio[_-]?buffer|audio[_-]?blob|recording|voice[_-]?embedding|patient[_-]?id|external[_-]?patient[_-]?id|consultation[_-]?id|doctor[_-]?id|patient[_-]?name|doctor[_-]?name|first[_-]?name|last[_-]?name|full[_-]?name|email|phone.*|dob|date[_-]?of[_-]?birth|national[_-]?id|ssn|mrn|address|password|passphrase|secret|client[_-]?secret|private[_-]?key|token|access[_-]?token|refresh[_-]?token|service[_-]?token|x-service-token|api[_-]?key|x-api-key|authorization|cookie|set-cookie)$\")\n          - set(log.attributes[\"patientId\"], log.cache[\"keep.patientId\"]) where log.cache[\"keep.patientId\"] != nil\n          - set(log.attributes[\"externalPatientId\"], log.cache[\"keep.externalPatientId\"]) where log.cache[\"keep.externalPatientId\"] != nil\n          - set(log.attributes[\"consultationId\"], log.cache[\"keep.consultationId\"]) where log.cache[\"keep.consultationId\"] != nil\n\n          # 10. PHI scrub on the Body and on every string attribute (OD-5): JWTs,\n          #    bearer credentials and e-mail addresses. Runs on parsed AND\n          #    plain-text lines, before anything is buffered or exported.\n          - replace_pattern(log.body, \"eyJ[A-Za-z0-9_-]+\\\\.[A-Za-z0-9_-]+\\\\.[A-Za-z0-9_-]*\", \"[REDACTED_JWT]\") where IsString(log.body)\n          - replace_pattern(log.body, \"(?i)bearer\\\\s+[A-Za-z0-9._~+/=-]+\", \"Bearer [REDACTED]\") where IsString(log.body)\n          - replace_pattern(log.body, \"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}\", \"[REDACTED_EMAIL]\") where IsString(log.body)\n          - replace_all_patterns(log.attributes, \"value\", \"eyJ[A-Za-z0-9_-]+\\\\.[A-Za-z0-9_-]+\\\\.[A-Za-z0-9_-]*\", \"[REDACTED_JWT]\")\n          - replace_all_patterns(log.attributes, \"value\", \"(?i)bearer\\\\s+[A-Za-z0-9._~+/=-]+\", \"Bearer [REDACTED]\")\n          - replace_all_patterns(log.attributes, \"value\", \"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}\", \"[REDACTED_EMAIL]\")\n\n  # Logs keep every key the deny-list above left (OD-13): an unlisted\n  # diagnostic field such as `queueName` or `sessionRef` reaches Loki without\n  # a collector change. This processor still blanks any VALUE that looks like\n  # an inlined recording or a long base64 blob, on record AND resource\n  # attributes. `summary: silent`: the `debug` summary would stamp two\n  # redaction.* attributes on every log record, i.e. two structured-metadata\n  # columns per line in Loki for nobody.\n  redaction/phi_logs:\n    allow_all_keys: true\n    blocked_values: *phi_blocked_values\n    summary: silent\nexporters:\n  # TASK-1180 (CP-5): every container's log line now crosses this exporter,\n  # so a Loki restart must not lose what is in flight. The queue is on disk\n  # (`file_storage/queue`, an emptyDir in base/otel-collector.yaml): it\n  # survives a collector CONTAINER restart (crash, OOM kill, failed liveness)\n  # and a Loki outage up to `max_elapsed_time`, NOT a pod deletion (rollout,\n  # eviction, drain) — Alloy's own WAL-less queue and the second replica are\n  # what cover a pod going away. Full queue = back-pressure to Alloy,\n  # alerted by `OtelCollectorQueueSaturated`.\n  otlphttp/loki:\n    endpoint: \"http://loki:3100/otlp\"\n    tls:\n      insecure: true\n    sending_queue:\n      enabled: true\n      storage: file_storage/queue\n      num_consumers: 4\n      queue_size: 2000\n    retry_on_failure:\n      enabled: true\n      initial_interval: 5s\n      max_interval: 60s\n      max_elapsed_time: 30m\n  otlp/tempo:\n    endpoint: \"tempo:4317\"\n    tls:\n      insecure: true\n  prometheusremotewrite:\n    endpoint: \"http://prometheus:9090/api/v1/write\"\n    resource_to_telemetry_conversion:\n      enabled: true\n  debug:\n    verbosity: basic\n    sampling_initial: 5\n    sampling_thereafter: 200\nextensions:\n  health_check:\n    endpoint: \"0.0.0.0:13133\"\n  zpages:\n    endpoint: \"0.0.0.0:55679\"\n  # Backs the Loki exporter's sending_queue. Directory = the `queue` emptyDir\n  # mounted in base/otel-collector.yaml.\n  file_storage/queue:\n    directory: /var/lib/otelcol/queue\n    create_directory: true\n    timeout: 1s\n    compaction:\n      on_start: true\n      on_rebound: true\n      directory: /var/lib/otelcol/queue\nservice:\n  extensions: [health_check, zpages, file_storage/queue]\n  telemetry:\n    logs:\n      level: \"info\"\n    # TASK-1180 (OPS-4): self-metrics on 0.0.0.0:8888 so Prometheus can scrape\n    # them (the default binds localhost, i.e. nobody). The `otel-collector`\n    # scrape job and the `otel_collector` alert group read these.\n    metrics:\n      level: normal\n      readers:\n        - pull:\n            exporter:\n              prometheus:\n                host: \"0.0.0.0\"\n                port: 8888\n  # `redaction/phi` runs on traces and metrics, `redaction/phi_logs` on logs;\n  # each runs BEFORE `batch` so nothing unredacted is ever buffered in memory\n  # or flushed on shutdown.\n  #\n  # Traces/metrics: memory_limiter (shed load first) → resource (stamp\n  # environment) → redaction/phi (drop everything not allowlisted) → batch\n  # → export.\n  #\n  # Logs (TASK-1180): memory_limiter → transform/logs_contract (contract →\n  # OTel mapping, key deny-list, JWT/bearer/e-mail scrub) → resource (fills\n  # the environment only where the line had none) → redaction/phi_logs\n  # (blob/inline-media values)\n  # → batch → Loki /otlp. To add a backend, add its exporter to THIS list\n  # once its BAA, residency and retention are decided (OD-11).\n  pipelines:\n    logs:\n      receivers: [otlp]\n      processors: [memory_limiter, transform/logs_contract, resource, redaction/phi_logs, batch]\n      exporters: [otlphttp/loki]\n    traces:\n      receivers: [otlp]\n      processors: [memory_limiter, resource, redaction/phi, batch]\n      exporters: [otlp/tempo]\n    metrics:\n      receivers: [otlp]\n      processors: [memory_limiter, resource, redaction/phi, batch]\n      exporters: [prometheusremotewrite]\n"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"otel-collector-config","namespace":"project-hope-vox-apps-v2"}}
+  creationTimestamp: "2026-11-23T08:30:26Z"
+  name: otel-collector-config
+  namespace: project-hope-vox-apps-v2
+  resourceVersion: "47285267"
+  uid: 3aba9a57-b66b-4df8-811c-7b7215f313ca

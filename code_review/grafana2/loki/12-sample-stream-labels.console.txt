@@ -1,0 +1,27 @@
+sample_hope-vllm_http=200
+sample_hope-nlp_http=200
+sample_hope-admin-console_http=200
+
+=== hope-vllm: streams=5 entries=5 ===
+  stream keys: ['deployment_environment', 'deployment_environment_name', 'detected_level', 'durationMs', 'hope_request_id', 'k8s_cluster_name', 'k8s_container_name', 'k8s_namespace_name', 'k8s_node_name', 'k8s_pod_name', 'method', 'observed_timestamp', 'route', 'scope_name', 'service_name', 'service_namespace', 'service_version', 'severity_number', 'severity_text', 'statusCode', 'ttfbMs']
+  key fields: {'service_name': 'hope-vllm', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_container_name': 'vllm', 'k8s_pod_name': 'hope-vllm-69f556c9f5-hrsr4', 'k8s_node_name': 'ai-ml-worker-1', 'deployment_environment_name': 'production', 'detected_level': 'info'}
+  line: http.request
+  stream keys: ['deployment_environment', 'deployment_environment_name', 'detected_level', 'durationMs', 'hope_request_id', 'k8s_cluster_name', 'k8s_container_name', 'k8s_namespace_name', 'k8s_node_name', 'k8s_pod_name', 'method', 'observed_timestamp', 'route', 'scope_name', 'service_name', 'service_namespace', 'service_version', 'severity_number', 'severity_text', 'statusCode', 'ttfbMs']
+  key fields: {'service_name': 'hope-vllm', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_container_name': 'vllm', 'k8s_pod_name': 'hope-vllm-69f556c9f5-hrsr4', 'k8s_node_name': 'ai-ml-worker-1', 'deployment_environment_name': 'production', 'detected_level': 'info'}
+  line: http.request
+
+=== hope-nlp: streams=5 entries=5 ===
+  stream keys: ['deployment_environment', 'deployment_environment_name', 'detected_level', 'durationMs', 'hope_request_id', 'hope_tenant_id', 'k8s_cluster_name', 'k8s_container_name', 'k8s_namespace_name', 'k8s_node_name', 'k8s_pod_name', 'method', 'observed_timestamp', 'route', 'scope_name', 'service_name', 'service_namespace', 'service_version', 'severity_number', 'severity_text', 'statusCode', 'ttfbMs']
+  key fields: {'service_name': 'hope-nlp', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_container_name': 'nlp', 'k8s_pod_name': 'hope-nlp-66478dd647-8f8j7', 'k8s_node_name': 'ai-ml-worker-1', 'deployment_environment_name': 'production', 'detected_level': 'info'}
+  line: http.request
+  stream keys: ['deployment_environment', 'deployment_environment_name', 'detected_level', 'durationMs', 'hope_request_id', 'hope_tenant_id', 'k8s_cluster_name', 'k8s_container_name', 'k8s_namespace_name', 'k8s_node_name', 'k8s_pod_name', 'method', 'observed_timestamp', 'route', 'scope_name', 'service_name', 'service_namespace', 'service_version', 'severity_number', 'severity_text', 'statusCode', 'ttfbMs']
+  key fields: {'service_name': 'hope-nlp', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_container_name': 'nlp', 'k8s_pod_name': 'hope-nlp-66478dd647-8f8j7', 'k8s_node_name': 'ai-ml-worker-1', 'deployment_environment_name': 'production', 'detected_level': 'info'}
+  line: http.request
+
+=== hope-admin-console: streams=5 entries=5 ===
+  stream keys: ['deployment_environment', 'deployment_environment_name', 'detected_level', 'durationMs', 'hope_request_id', 'k8s_cluster_name', 'k8s_container_name', 'k8s_namespace_name', 'k8s_node_name', 'k8s_pod_name', 'method', 'observed_timestamp', 'route', 'scope_name', 'service_name', 'service_namespace', 'service_version', 'severity_number', 'severity_text', 'status']
+  key fields: {'service_name': 'hope-admin-console', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_container_name': 'admin-console', 'k8s_pod_name': 'hope-admin-console-7494d47445-lmh5p', 'k8s_node_name': 'worker-node-3', 'deployment_environment_name': 'production', 'detected_level': 'warn'}
+  line: Gateway returned a server error
+  stream keys: ['deployment_environment', 'deployment_environment_name', 'detected_level', 'durationMs', 'hope_request_id', 'k8s_cluster_name', 'k8s_container_name', 'k8s_namespace_name', 'k8s_node_name', 'k8s_pod_name', 'method', 'observed_timestamp', 'route', 'scope_name', 'service_name', 'service_namespace', 'service_version', 'severity_number', 'severity_text', 'status']
+  key fields: {'service_name': 'hope-admin-console', 'k8s_namespace_name': 'project-hope-vox-apps-v2', 'k8s_container_name': 'admin-console', 'k8s_pod_name': 'hope-admin-console-7494d47445-lmh5p', 'k8s_node_name': 'worker-node-3', 'deployment_environment_name': 'production', 'detected_level': 'warn'}
+  line: Gateway returned a server error

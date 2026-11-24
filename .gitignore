@@ -214,3 +214,6 @@ image-bundles/
 # A pipeline artifact and a local scratch file — the reviewable source text for a
 # release note lives in docs/operations/release-notes/, never here.
 changelog-draft.json
+
+# Grafana observability discovery credentials (never commit)
+/code_review/grafana2/credentials.md

@@ -1,0 +1,19 @@
+NAMESPACE                  NAME                        CLASS     HOSTS                             ADDRESS   PORTS   AGE
+project-hope-vox-apps-v2   hope-admin-console          traefik   adminconsole-vox.arcaai.com                 80      5d17h
+project-hope-vox-apps-v2   hope-api                    traefik   hope-api-gateway-vox.arcaai.com             80      3d3h
+project-hope-vox-infra     hope-alertmanager           traefik   alertmanager-vox2.arcaai.com                80      39d
+project-hope-vox-infra     hope-grafana                traefik   grafana-vox2.arcaai.com                     80      39d
+project-hope-vox-infra     hope-prometheus             traefik   prometheus-vox2.arcaai.com                  80      39d
+project-hope-vox-infra     hope-temporal-ui            traefik   temporal-vox2.arcaai.com                    80      41d
+project-hope-vox-infra     hope-vault                  traefik   vault-vox2.arcaai.com                       80      41d
+project-hope-vox           gateway-test-ingress        traefik   gateway-test.arcaai.com                     80      19d
+project-hope-vox           hope-admin-console          traefik   vox2.arcaai.com                             80      41d
+project-hope-vox           hope-api-gateway            traefik   api-vox2.arcaai.com                         80      41d
+project-hope-vox           hope-guardrail              traefik   guardrail-vox2.arcaai.com                   80      41d
+project-hope-vox           hope-harness                traefik   harness-vox2.arcaai.com                     80      41d
+project-hope-vox           hope-nlp                    traefik   nlp-vox2.arcaai.com                         80      41d
+project-hope-vox           hope-stt                    traefik   stt-vox2.arcaai.com                         80      41d
+project-hope-vox           hope-text                   traefik   text-vox2.arcaai.com                        80      41d
+project-hope-vox           hope-tts                    traefik   tts-vox2.arcaai.com                         80      41d
+rubix                      rubix-app                   nginx     rubix.example.com                           80      213d
+supabase-ak                supabase-ak-supabase-kong   nginx     supabase-ak.local                           80      17d

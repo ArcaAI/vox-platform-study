@@ -1,0 +1,154 @@
+NAME                                        READY   STATUS    RESTARTS       AGE     IP               NODE             NOMINATED NODE   READINESS GATES
+pod/alertmanager-589f4fcc4-9zh88            1/1     Running   0              68m     172.16.19.146    worker-node-2    <none>           <none>
+pod/alloy-logs-52hcl                        1/1     Running   0              68m     172.16.4.13      master-node-1    <none>           <none>
+pod/alloy-logs-gkpqz                        1/1     Running   0              68m     172.16.19.185    worker-node-2    <none>           <none>
+pod/alloy-logs-mggdr                        1/1     Running   0              68m     172.16.200.132   worker-node-4    <none>           <none>
+pod/alloy-logs-mrjh5                        1/1     Running   0              68m     172.16.212.88    worker-node-1    <none>           <none>
+pod/alloy-logs-q48kg                        1/1     Running   0              68m     172.16.181.247   worker-node-5    <none>           <none>
+pod/alloy-logs-t9l4x                        1/1     Running   0              68m     172.16.8.195     worker-node-3    <none>           <none>
+pod/dcgm-exporter-r7tjl                     1/1     Running   0              3d12h   172.16.241.160   ai-ml-worker-1   <none>           <none>
+pod/grafana-86764ccf9c-dnstj                1/1     Running   0              68m     172.16.19.166    worker-node-2    <none>           <none>
+pod/hope-admin-console-7494d47445-lmh5p     1/1     Running   0              38h     172.16.8.236     worker-node-3    <none>           <none>
+pod/hope-api-7f9979bdfb-cvxfl               1/1     Running   0              2d4h    172.16.200.165   worker-node-4    <none>           <none>
+pod/hope-gpu-process-exporter-hmfvh         1/1     Running   0              5d      172.16.241.184   ai-ml-worker-1   <none>           <none>
+pod/hope-guardrail-b56c7d89c-8v8wc          1/1     Running   0              2d21h   172.16.8.247     worker-node-3    <none>           <none>
+pod/hope-harness-56c57c9c67-gjlc5           1/1     Running   0              2d21h   172.16.181.214   worker-node-5    <none>           <none>
+pod/hope-harness-worker-bb7ff644c-pcxg8     1/1     Running   0              2d21h   172.16.181.220   worker-node-5    <none>           <none>
+pod/hope-model-publisher-58cbd5bd5d-gxczr   1/1     Running   0              5d1h    172.16.200.137   worker-node-4    <none>           <none>
+pod/hope-nlp-66478dd647-8f8j7               2/2     Running   1 (74m ago)    2d4h    172.16.241.165   ai-ml-worker-1   <none>           <none>
+pod/hope-stt-v2-59f4788f9f-5pfcf            2/2     Running   3 (74m ago)    2d21h   172.16.241.168   ai-ml-worker-1   <none>           <none>
+pod/hope-stt-v2-worker-99758f94f-m8tgx      1/1     Running   2 (2d5h ago)   4d18h   172.16.241.167   ai-ml-worker-1   <none>           <none>
+pod/hope-text-7c759b49d5-8pxct              1/1     Running   0              5d1h    172.16.8.201     worker-node-3    <none>           <none>
+pod/hope-tts-799f76c9cf-npm6q               2/2     Running   0              3d8h    172.16.8.220     worker-node-3    <none>           <none>
+pod/hope-vllm-69f556c9f5-hrsr4              1/1     Running   0              4d8h    172.16.241.146   ai-ml-worker-1   <none>           <none>
+pod/hope-vllm-asr-d959d5cdf-ttpxs           2/2     Running   0              3d9h    172.16.241.149   ai-ml-worker-1   <none>           <none>
+pod/kube-state-metrics-7fd6db67c4-xpzsx     1/1     Running   0              3d13h   172.16.241.159   ai-ml-worker-1   <none>           <none>
+pod/loki-65b7698849-ltm69                   1/1     Running   0              68m     172.16.19.187    worker-node-2    <none>           <none>
+pod/node-exporter-5dmnr                     1/1     Running   0              3d13h   192.168.112.6    master-node-1    <none>           <none>
+pod/node-exporter-5kr6l                     1/1     Running   0              3d13h   192.168.112.10   worker-node-4    <none>           <none>
+pod/node-exporter-7csmh                     1/1     Running   0              3d13h   192.168.112.2    ai-ml-worker-1   <none>           <none>
+pod/node-exporter-c9qcs                     1/1     Running   0              3d13h   192.168.112.9    worker-node-3    <none>           <none>
+pod/node-exporter-cv6ct                     1/1     Running   0              3d13h   192.168.112.11   worker-node-5    <none>           <none>
+pod/node-exporter-ghpq7                     1/1     Running   0              3d13h   192.168.112.7    worker-node-1    <none>           <none>
+pod/node-exporter-vm6g6                     1/1     Running   0              3d13h   192.168.112.8    worker-node-2    <none>           <none>
+pod/otel-collector-6bf65b8b98-twn4s         1/1     Running   0              68m     172.16.19.167    worker-node-2    <none>           <none>
+pod/otel-collector-6bf65b8b98-zsbld         1/1     Running   0              68m     172.16.19.188    worker-node-2    <none>           <none>
+pod/prometheus-bb6f49758-qlkpj              1/1     Running   0              3d12h   172.16.241.132   ai-ml-worker-1   <none>           <none>
+pod/tempo-9b97ccd47-fcwvt                   1/1     Running   0              68m     172.16.19.191    worker-node-2    <none>           <none>
+
+NAME                                TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                                          AGE     SELECTOR
+service/alertmanager                ClusterIP   10.98.91.160     <none>        9093/TCP                                         3h45m   app=alertmanager
+service/alloy-logs                  ClusterIP   10.96.97.67      <none>        12345/TCP                                        3h45m   app=alloy-logs
+service/alloy-logs-metrics          ClusterIP   None             <none>        12345/TCP                                        3h45m   app=alloy-logs
+service/dcgm-exporter               ClusterIP   10.98.250.14     <none>        9400/TCP                                         3d12h   app=dcgm-exporter
+service/grafana                     NodePort    10.111.22.143    <none>        3000:30300/TCP                                   3h45m   app=grafana
+service/hope-admin-console          ClusterIP   10.110.168.15    <none>        3000/TCP                                         17d     app=hope-admin-console
+service/hope-api                    ClusterIP   10.110.51.17     <none>        8868/TCP                                         17d     app=hope-api
+service/hope-gpu-process-exporter   ClusterIP   10.98.45.32      <none>        9401/TCP                                         5d3h    app=hope-gpu-process-exporter
+service/hope-guardrail              NodePort    10.110.231.38    <none>        8863:30863/TCP                                   17d     app=hope-guardrail
+service/hope-harness                ClusterIP   10.107.199.83    <none>        8866/TCP                                         17d     app=hope-harness
+service/hope-lmstudio               NodePort    10.107.160.44    <none>        1234:31234/TCP                                   17d     <none>
+service/hope-nlp                    NodePort    10.102.47.203    <none>        8864:30864/TCP                                   17d     app=hope-nlp
+service/hope-stt-v2                 ClusterIP   10.98.196.18     <none>        8861/TCP                                         17d     app=hope-stt-v2
+service/hope-text                   NodePort    10.104.103.9     <none>        8862:30862/TCP                                   17d     app=hope-text
+service/hope-tts                    ClusterIP   10.109.112.90    <none>        8865/TCP                                         17d     app=hope-tts
+service/hope-vllm                   ClusterIP   10.97.190.121    <none>        8867/TCP                                         17d     app=hope-vllm
+service/hope-vllm-asr               ClusterIP   10.110.86.214    <none>        8867/TCP                                         3d10h   app=hope-vllm-asr
+service/kube-state-metrics          ClusterIP   10.103.168.242   <none>        8080/TCP                                         3d13h   app=kube-state-metrics
+service/loki                        ClusterIP   10.101.61.196    <none>        3100/TCP,9096/TCP                                3h45m   app=loki
+service/node-exporter               ClusterIP   None             <none>        9101/TCP                                         3d12h   app=node-exporter
+service/otel-collector              ClusterIP   10.110.54.129    <none>        4317/TCP,4318/TCP,8889/TCP,13133/TCP,55679/TCP   3h45m   app=otel-collector
+service/otel-collector-metrics      ClusterIP   None             <none>        8888/TCP                                         3h45m   app=otel-collector
+service/prometheus                  ClusterIP   10.104.52.86     <none>        9090/TCP                                         3d13h   app=prometheus
+service/tempo                       ClusterIP   10.98.79.69      <none>        3200/TCP,4317/TCP                                3h45m   app=tempo
+
+NAME                                       DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR        AGE     CONTAINERS      IMAGES                                                            SELECTOR
+daemonset.apps/alloy-logs                  6         6         6       6            6           <none>               3h45m   alloy           grafana/alloy:v1.7.1                                              app=alloy-logs
+daemonset.apps/dcgm-exporter               1         1         1       1            1           node-type=gpu-node   3d12h   dcgm-exporter   nvidia/dcgm-exporter:4.4.2-4.7.0-distroless                       app=dcgm-exporter
+daemonset.apps/hope-gpu-process-exporter   1         1         1       1            1           node-type=gpu-node   5d3h    exporter        192.168.112.13:5000/project-vox-gpu-process-exporter-v2:2611.18   app=hope-gpu-process-exporter
+daemonset.apps/node-exporter               7         7         7       7            7           <none>               3d13h   node-exporter   quay.io/prometheus/node-exporter:v1.9.1                           app=node-exporter
+
+NAME                                   READY   UP-TO-DATE   AVAILABLE   AGE     CONTAINERS           IMAGES                                                          SELECTOR
+deployment.apps/alertmanager           1/1     1            1           3h45m   alertmanager         prom/alertmanager:v0.28.1                                       app=alertmanager
+deployment.apps/grafana                1/1     1            1           3h45m   grafana              grafana/grafana:13.1.2                                          app=grafana
+deployment.apps/hope-admin-console     1/1     1            1           17d     admin-console        192.168.112.13:5000/project-vox-admin-console-v2:2611.21        app=hope-admin-console
+deployment.apps/hope-api               1/1     1            1           17d     api                  192.168.112.13:5000/project-vox-api-v2:2611.18                  app=hope-api
+deployment.apps/hope-guardrail         1/1     1            1           17d     guardrail            192.168.112.13:5000/project-vox-guardrail-v2:2611.18            app=hope-guardrail
+deployment.apps/hope-harness           1/1     1            1           17d     harness              192.168.112.13:5000/project-vox-harness-v2:2611.18              app=hope-harness
+deployment.apps/hope-harness-worker    1/1     1            1           17d     harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18       app=hope-harness-worker
+deployment.apps/hope-model-publisher   1/1     1            1           5d12h   model-publisher      192.168.112.13:5000/project-vox-api-v2:2611.18                  app=hope-model-publisher
+deployment.apps/hope-nlp               1/1     1            1           17d     nlp                  192.168.112.13:5000/project-vox-nlp-gpu-v2:2611.18              app=hope-nlp
+deployment.apps/hope-stt-v2            1/1     1            1           17d     stt-v2               192.168.112.13:5000/project-vox-stt-ml-runtime-v2:2611.18       app=hope-stt-v2
+deployment.apps/hope-stt-v2-worker     1/1     1            1           17d     stt-worker           192.168.112.13:5000/project-vox-stt-worker-v2:2611.18           app=hope-stt-v2-worker
+deployment.apps/hope-text              1/1     1            1           17d     text                 192.168.112.13:5000/project-vox-text-v2:2611.18                 app=hope-text
+deployment.apps/hope-tts               1/1     1            1           17d     tts                  192.168.112.13:5000/project-vox-tts-v2:2611.18                  app=hope-tts
+deployment.apps/hope-vllm              1/1     1            1           5d4h    vllm                 192.168.112.13:5000/project-vox-vllm-v2:2611.18                 app=hope-vllm
+deployment.apps/hope-vllm-asr          1/1     1            1           3d10h   vllm                 192.168.112.13:5000/project-vox-vllm-v2:2611.18                 app=hope-vllm-asr
+deployment.apps/kube-state-metrics     1/1     1            1           3d13h   kube-state-metrics   registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0   app=kube-state-metrics
+deployment.apps/loki                   1/1     1            1           3h45m   loki                 grafana/loki:3.7.8                                              app=loki
+deployment.apps/otel-collector         2/2     2            2           3h45m   otel-collector       otel/opentelemetry-collector-contrib:0.149.0                    app=otel-collector
+deployment.apps/prometheus             1/1     1            1           3d13h   prometheus           prom/prometheus:v3.10.0                                         app=prometheus
+deployment.apps/tempo                  1/1     1            1           3h45m   tempo                grafana/tempo:2.10.3                                            app=tempo
+
+NAME                                              DESIRED   CURRENT   READY   AGE     CONTAINERS           IMAGES                                                            SELECTOR
+replicaset.apps/alertmanager-589f4fcc4            1         1         1       176m    alertmanager         prom/alertmanager:v0.28.1                                         app=alertmanager,pod-template-hash=589f4fcc4
+replicaset.apps/alertmanager-59c7b94775           0         0         0       3h45m   alertmanager         prom/alertmanager:v0.28.1                                         app=alertmanager,pod-template-hash=59c7b94775
+replicaset.apps/grafana-5df64f576d                0         0         0       177m    grafana              grafana/grafana:13.1.2                                            app=grafana,pod-template-hash=5df64f576d
+replicaset.apps/grafana-77fdd44f7b                0         0         0       3h45m   grafana              grafana/grafana:12.4.2                                            app=grafana,pod-template-hash=77fdd44f7b
+replicaset.apps/grafana-86764ccf9c                1         1         1       170m    grafana              grafana/grafana:13.1.2                                            app=grafana,pod-template-hash=86764ccf9c
+replicaset.apps/hope-admin-console-5444bb7989     0         0         0       5d3h    admin-console        192.168.112.13:5000/project-vox-admin-console-v2:2611.18          app=hope-admin-console,pod-template-hash=5444bb7989
+replicaset.apps/hope-admin-console-55ff6c4bdf     0         0         0       4d      admin-console        192.168.112.13:5000/project-vox-admin-console-v2:2611.18          app=hope-admin-console,pod-template-hash=55ff6c4bdf
+replicaset.apps/hope-admin-console-7494d47445     1         1         1       38h     admin-console        192.168.112.13:5000/project-vox-admin-console-v2:2611.21          app=hope-admin-console,pod-template-hash=7494d47445
+replicaset.apps/hope-api-659fdbc688               0         0         0       2d20h   api                  192.168.112.13:5000/project-vox-api-v2:2611.18                    app=hope-api,pod-template-hash=659fdbc688
+replicaset.apps/hope-api-7795f7ddfc               0         0         0       3d9h    api                  192.168.112.13:5000/project-vox-api-v2:2611.18                    app=hope-api,pod-template-hash=7795f7ddfc
+replicaset.apps/hope-api-7bf5d89547               0         0         0       2d21h   api                  192.168.112.13:5000/project-vox-api-v2:2611.18                    app=hope-api,pod-template-hash=7bf5d89547
+replicaset.apps/hope-api-7f9979bdfb               1         1         1       2d4h    api                  192.168.112.13:5000/project-vox-api-v2:2611.18                    app=hope-api,pod-template-hash=7f9979bdfb
+replicaset.apps/hope-guardrail-568485959c         0         0         0       5d3h    guardrail            192.168.112.13:5000/project-vox-guardrail-v2:2611.18              app=hope-guardrail,pod-template-hash=568485959c
+replicaset.apps/hope-guardrail-7cb9484bff         0         0         0       3d21h   guardrail            192.168.112.13:5000/project-vox-guardrail-v2:2611.18              app=hope-guardrail,pod-template-hash=7cb9484bff
+replicaset.apps/hope-guardrail-7f4555996d         0         0         0       2d21h   guardrail            192.168.112.13:5000/project-vox-guardrail-v2:2611.18              app=hope-guardrail,pod-template-hash=7f4555996d
+replicaset.apps/hope-guardrail-b56c7d89c          1         1         1       2d21h   guardrail            192.168.112.13:5000/project-vox-guardrail-v2:2611.18              app=hope-guardrail,pod-template-hash=b56c7d89c
+replicaset.apps/hope-harness-54568696c8           0         0         0       2d22h   harness              192.168.112.13:5000/project-vox-harness-v2:2611.18                app=hope-harness,pod-template-hash=54568696c8
+replicaset.apps/hope-harness-56c57c9c67           1         1         1       2d21h   harness              192.168.112.13:5000/project-vox-harness-v2:2611.18                app=hope-harness,pod-template-hash=56c57c9c67
+replicaset.apps/hope-harness-5969586ff            0         0         0       2d22h   harness              192.168.112.13:5000/project-vox-harness-v2:2611.18                app=hope-harness,pod-template-hash=5969586ff
+replicaset.apps/hope-harness-9b4bc6774            0         0         0       2d22h   harness              192.168.112.13:5000/project-vox-harness-v2:2611.18                app=hope-harness,pod-template-hash=9b4bc6774
+replicaset.apps/hope-harness-worker-5cd6f9447b    0         0         0       2d22h   harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=5cd6f9447b
+replicaset.apps/hope-harness-worker-5fc77dff9b    0         0         0       4d3h    harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=5fc77dff9b
+replicaset.apps/hope-harness-worker-69b6c749c9    0         0         0       5d3h    harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=69b6c749c9
+replicaset.apps/hope-harness-worker-6d57cb9494    0         0         0       2d22h   harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=6d57cb9494
+replicaset.apps/hope-harness-worker-74c6c46dd7    0         0         0       2d22h   harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=74c6c46dd7
+replicaset.apps/hope-harness-worker-7788d79ccd    0         0         0       2d22h   harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=7788d79ccd
+replicaset.apps/hope-harness-worker-77d46f675f    0         0         0       2d22h   harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=77d46f675f
+replicaset.apps/hope-harness-worker-7866499df     0         0         0       4d3h    harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=7866499df
+replicaset.apps/hope-harness-worker-86c6894b76    0         0         0       4d2h    harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=86c6894b76
+replicaset.apps/hope-harness-worker-bb7ff644c     1         1         1       2d21h   harness-worker       192.168.112.13:5000/project-vox-harness-worker-v2:2611.18         app=hope-harness-worker,pod-template-hash=bb7ff644c
+replicaset.apps/hope-model-publisher-58cbd5bd5d   1         1         1       5d3h    model-publisher      192.168.112.13:5000/project-vox-api-v2:2611.18                    app=hope-model-publisher,pod-template-hash=58cbd5bd5d
+replicaset.apps/hope-nlp-5496bf859d               0         0         0       3d7h    nlp                  192.168.112.13:5000/project-vox-nlp-v2:2611.18                    app=hope-nlp,pod-template-hash=5496bf859d
+replicaset.apps/hope-nlp-66478dd647               1         1         1       2d4h    nlp                  192.168.112.13:5000/project-vox-nlp-gpu-v2:2611.18                app=hope-nlp,pod-template-hash=66478dd647
+replicaset.apps/hope-nlp-8547dfb46c               0         0         0       2d20h   nlp                  192.168.112.13:5000/project-vox-nlp-v2:2611.18                    app=hope-nlp,pod-template-hash=8547dfb46c
+replicaset.apps/hope-nlp-d9ffd7577                0         0         0       2d5h    nlp                  192.168.112.13:5000/project-vox-nlp-gpu-v2:2611.18                app=hope-nlp,pod-template-hash=d9ffd7577
+replicaset.apps/hope-stt-v2-5567b5cfbb            0         0         0       2d21h   stt-v2               192.168.112.13:5000/project-vox-stt-ml-runtime-v2:2611.18         app=hope-stt-v2,pod-template-hash=5567b5cfbb
+replicaset.apps/hope-stt-v2-587bfc6dd7            0         0         0       4d1h    stt-v2               192.168.112.13:5000/project-vox-stt-ml-runtime-v2:2611.18         app=hope-stt-v2,pod-template-hash=587bfc6dd7
+replicaset.apps/hope-stt-v2-59f4788f9f            1         1         1       2d21h   stt-v2               192.168.112.13:5000/project-vox-stt-ml-runtime-v2:2611.18         app=hope-stt-v2,pod-template-hash=59f4788f9f
+replicaset.apps/hope-stt-v2-6c6bcbbfc             0         0         0       4d1h    stt-v2               192.168.112.13:5000/project-vox-stt-ml-runtime-v2:2611.18         app=hope-stt-v2,pod-template-hash=6c6bcbbfc
+replicaset.apps/hope-stt-v2-worker-98cfbbb6       0         0         0       4d1h    stt-worker           192.168.112.13:5000/project-vox-stt-worker:2610.23-sha-5aeb64cc   app=hope-stt-v2-worker,pod-template-hash=98cfbbb6
+replicaset.apps/hope-stt-v2-worker-99758f94f      1         1         1       5d3h    stt-worker           192.168.112.13:5000/project-vox-stt-worker-v2:2611.18             app=hope-stt-v2-worker,pod-template-hash=99758f94f
+replicaset.apps/hope-text-7c759b49d5              1         1         1       5d3h    text                 192.168.112.13:5000/project-vox-text-v2:2611.18                   app=hope-text,pod-template-hash=7c759b49d5
+replicaset.apps/hope-tts-54bfbbb64d               0         0         0       3d8h    tts                  192.168.112.13:5000/project-vox-tts-v2:2611.18                    app=hope-tts,pod-template-hash=54bfbbb64d
+replicaset.apps/hope-tts-5584958845               0         0         0       3d8h    tts                  192.168.112.13:5000/project-vox-tts-v2:2611.18                    app=hope-tts,pod-template-hash=5584958845
+replicaset.apps/hope-tts-799f76c9cf               1         1         1       3d8h    tts                  192.168.112.13:5000/project-vox-tts-v2:2611.18                    app=hope-tts,pod-template-hash=799f76c9cf
+replicaset.apps/hope-tts-85bfbb487                0         0         0       5d3h    tts                  192.168.112.13:5000/project-vox-tts-v2:2611.18                    app=hope-tts,pod-template-hash=85bfbb487
+replicaset.apps/hope-vllm-69f556c9f5              1         1         1       5d4h    vllm                 192.168.112.13:5000/project-vox-vllm-v2:2611.18                   app=hope-vllm,pod-template-hash=69f556c9f5
+replicaset.apps/hope-vllm-asr-694c6668d8          0         0         0       3d10h   vllm                 192.168.112.13:5000/project-vox-vllm:2610.23-sha-5aeb64cc         app=hope-vllm-asr,pod-template-hash=694c6668d8
+replicaset.apps/hope-vllm-asr-d959d5cdf           1         1         1       3d9h    vllm                 192.168.112.13:5000/project-vox-vllm-v2:2611.18                   app=hope-vllm-asr,pod-template-hash=d959d5cdf
+replicaset.apps/kube-state-metrics-7fd6db67c4     1         1         1       3d13h   kube-state-metrics   registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0     app=kube-state-metrics,pod-template-hash=7fd6db67c4
+replicaset.apps/loki-65b7698849                   1         1         1       169m    loki                 grafana/loki:3.7.8                                                app=loki,pod-template-hash=65b7698849
+replicaset.apps/loki-77489d6f6f                   0         0         0       3h45m   loki                 grafana/loki:3.7.1                                                app=loki,pod-template-hash=77489d6f6f
+replicaset.apps/loki-78576fc4dd                   0         0         0       177m    loki                 grafana/loki:3.7.8                                                app=loki,pod-template-hash=78576fc4dd
+replicaset.apps/otel-collector-69475d7455         0         0         0       3h45m   otel-collector       otel/opentelemetry-collector-contrib:0.149.0                      app=otel-collector,pod-template-hash=69475d7455
+replicaset.apps/otel-collector-6bf65b8b98         2         2         2       176m    otel-collector       otel/opentelemetry-collector-contrib:0.149.0                      app=otel-collector,pod-template-hash=6bf65b8b98
+replicaset.apps/otel-collector-fb68c9db8          0         0         0       176m    otel-collector       otel/opentelemetry-collector-contrib:0.149.0                      app=otel-collector,pod-template-hash=fb68c9db8
+replicaset.apps/prometheus-5f5657876b             0         0         0       3d12h   prometheus           prom/prometheus:v3.10.0                                           app=prometheus,pod-template-hash=5f5657876b
+replicaset.apps/prometheus-7cbf85468f             0         0         0       3d12h   prometheus           prom/prometheus:v3.10.0                                           app=prometheus,pod-template-hash=7cbf85468f
+replicaset.apps/prometheus-bb6f49758              1         1         1       3d12h   prometheus           prom/prometheus:v3.10.0                                           app=prometheus,pod-template-hash=bb6f49758
+replicaset.apps/tempo-9b97ccd47                   1         1         1       176m    tempo                grafana/tempo:2.10.3                                              app=tempo,pod-template-hash=9b97ccd47
+replicaset.apps/tempo-dcbb6754                    0         0         0       3h45m   tempo                grafana/tempo:2.10.3                                              app=tempo,pod-template-hash=dcbb6754

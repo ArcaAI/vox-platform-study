@@ -1,0 +1,15 @@
+errors_loki_http=200
+flush_loki_http=200
+
+=== query-errors-loki.json: streams=4 entries=4 ===
+  level=error ts=2026-11-23T12:08:22.072345177Z caller=scheduler_processor.go:111 component=querier msg="error processing requests from scheduler" err="rpc error: code = Canceled desc = context canceled" addr=172.16.19.187:9096
+  level=error ts=2026-11-23T12:08:22.072404657Z caller=scheduler_processor.go:304 component=querier org_id=fake frontend=172.16.19.187:9096 msg="error health checking" err="rpc error: code = Canceled desc = context canceled"
+  level=error ts=2026-11-23T12:08:22.072417847Z caller=scheduler_processor.go:176 component=querier org_id=fake msg="error notifying scheduler about finished query" err=EOF addr=172.16.19.187:9096
+  level=error ts=2026-11-23T12:08:22.072580922Z caller=scheduler_processor.go:304 component=querier org_id=fake frontend=172.16.19.187:9096 msg="error health checking" err="rpc error: code = Canceled desc = grpc: the client connection is closing"
+
+=== query-flush-loki.json: streams=5 entries=5 ===
+  level=info ts=2026-11-23T11:22:47.080356302Z caller=flush.go:305 component=ingester msg="flushing stream" user=fake fp=4913c7a2bb63eb9c immediate=false num_chunks=1 total_comp="11 kB" avg_comp="11 kB" total_uncomp="38 kB" avg_uncomp="38 kB" idle=1 labels="{deployment_environment_name=\"production\", k8s_container_name=\"harness\", k8s_namespace_name=\"project-hope-vox-apps-v2\", service_name=\"hop
+  level=info ts=2026-11-23T11:23:45.826121052Z caller=flush.go:305 component=ingester msg="flushing stream" user=fake fp=084a1dc84f111871 immediate=false num_chunks=1 total_comp="3.8 kB" avg_comp="3.8 kB" total_uncomp="11 kB" avg_uncomp="11 kB" idle=1 labels="{deployment_environment_name=\"production\", k8s_container_name=\"harness-worker\", k8s_namespace_name=\"project-hope-vox-apps-v2\", service_n
+  level=info ts=2026-11-23T12:08:23.525165373Z caller=flush.go:305 component=ingester msg="flushing stream" user=fake fp=f667390b333aafc1 immediate=false num_chunks=1 total_comp="1.5 kB" avg_comp="1.5 kB" total_uncomp="29 kB" avg_uncomp="29 kB" idle=1 labels="{deployment_environment_name=\"dev\", k8s_container_name=\"otel-collector\", k8s_namespace_name=\"project-hope-vox-apps-v2\", service_name=\"o
+  level=info ts=2026-11-23T12:08:50.045434527Z caller=flush.go:305 component=ingester msg="flushing stream" user=fake fp=30a00676d08930a7 immediate=false num_chunks=1 total_comp="337 B" avg_comp="337 B" total_uncomp="1.6 kB" avg_uncomp="1.6 kB" idle=1 labels="{deployment_environment_name=\"dev\", k8s_container_name=\"alloy\", k8s_namespace_name=\"project-hope-vox-apps-v2\", service_name=\"alloy-logs
+  level=info ts=2026-11-23T12:08:50.346033221Z caller=flush.go:305 component=ingester msg="flushing stream" user=fake fp=a91918e55fcdb616 immediate=false num_chunks=1 total_comp="427 B" avg_comp="427 B" total_uncomp="2.4 kB" avg_uncomp="2.4 kB" idle=1 labels="{deployment_environment_name=\"dev\", k8s_container_name=\"alertmanager\", k8s_namespace_name=\"project-hope-vox-apps-v2\", service_name=\"ale

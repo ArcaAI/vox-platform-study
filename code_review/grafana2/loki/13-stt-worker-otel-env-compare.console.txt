@@ -1,0 +1,4 @@
+=== hope-stt-v2 OTEL/log env ===
+OTEL_SERVICE_NAME=hope-stt-v2
+=== hope-stt-v2-worker OTEL/log env ===
+OTEL_SERVICE_NAME=hope-stt-v2-worker

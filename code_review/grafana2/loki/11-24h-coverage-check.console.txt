@@ -1,0 +1,36 @@
+24h_hope-admin-console_http=200
+24h_hope-nlp_http=200
+24h_hope-stt-v2_http=200
+24h_hope-stt-v2-worker_http=200
+24h_hope-vllm_http=200
+24h_hope-vllm-asr_http=200
+24h_volume_http=200
+=== 24h totals for previously-missing services ===
+  hope-admin-console: 1096
+  hope-nlp: 96308
+  hope-stt-v2: 153952
+  hope-stt-v2-worker: 0
+  hope-vllm: 478300
+  hope-vllm-asr: 317598
+
+=== 24h volume by service ===
+  hope-api: 15999
+  kube-state-metrics: 12446
+  loki: 10650
+  prometheus: 5059
+  grafana: 3046
+  hope-guardrail: 2188
+  hope-stt-v2: 2116
+  hope-nlp: 1961
+  hope-text: 1757
+  hope-harness: 1627
+  hope-tts: 1616
+  hope-vllm: 1552
+  hope-vllm-asr: 1106
+  alloy-logs: 865
+  otel-collector: 356
+  tempo: 205
+  hope-model-publisher: 149
+  hope-harness-worker: 117
+  alertmanager: 20
+  hope-admin-console: 11

@@ -1,0 +1,31 @@
+labels={"accelerator":"nvidia-gpu","beta.kubernetes.io/arch":"amd64","beta.kubernetes.io/os":"linux","kubernetes.io/arch":"amd64","kubernetes.io/hostname":"ai-ml-worker-1","kubernetes.io/os":"linux","node-type":"gpu-node"}
+taints=
+unschedulable=
+--- DS scheduling fields ---
+28:      affinity:
+29-        nodeAffinity:
+30-          requiredDuringSchedulingIgnoredDuringExecution:
+31-            nodeSelectorTerms:
+32-            - matchExpressions:
+33-              - key: node-type
+34-                operator: NotIn
+35-                values:
+36-                - gpu-node
+37-      containers:
+38-      - args:
+39-        - run
+40-        - --server.http.listen-addr=0.0.0.0:12345
+--
+117:      tolerations:
+118-      - operator: Exists
+119-      volumes:
+120-      - configMap:
+121-          defaultMode: 420
+122-          name: alloy-logs-config
+123-        name: config
+124-      - hostPath:
+125-          path: /var/log/pods
+126-          type: DirectoryOrCreate
+127-        name: varlog
+128-      - hostPath:
+129-          path: /var/lib/alloy-logs-data
