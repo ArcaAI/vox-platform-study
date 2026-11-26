@@ -1,0 +1,423 @@
+{
+  "kind": "workflow",
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-25T08:59:19.659Z",
+  "source": {
+    "tenantKind": "tenant",
+    "slug": "general-medicine-consultation",
+    "version": 3
+  },
+  "payload": {
+    "name": "General Medicine Consultation",
+    "description": "Realtime transcription, medical NER and the per-turn General Medicine running note; case-note finalization at the close, a clinician review, and the {case_note, redactions} output. Governs consultations and is exposed on the API plane.",
+    "paletteKey": "core",
+    "graph": {
+      "edges": [
+        {
+          "id": "e1",
+          "to": "n_presummary",
+          "from": "n_trigger",
+          "toPort": "after",
+          "fromPort": "next"
+        },
+        {
+          "id": "e2",
+          "to": "n_presummary",
+          "from": "n_trigger",
+          "toPort": "context",
+          "fromPort": "out"
+        },
+        {
+          "id": "e3",
+          "to": "n_finalize",
+          "from": "n_presummary",
+          "toPort": "after",
+          "fromPort": "next"
+        },
+        {
+          "id": "e4",
+          "to": "n_asr",
+          "from": "n_trigger",
+          "toPort": "after",
+          "fromPort": "next"
+        },
+        {
+          "id": "e5",
+          "to": "n_ner",
+          "from": "n_asr",
+          "toPort": "in",
+          "fromPort": "transcript"
+        },
+        {
+          "id": "e6",
+          "to": "n_visit",
+          "from": "n_ner",
+          "toPort": "in",
+          "fromPort": "out"
+        },
+        {
+          "id": "e7",
+          "to": "n_summary_new",
+          "from": "n_visit",
+          "toPort": "after",
+          "fromPort": "new_visit"
+        },
+        {
+          "id": "e8",
+          "to": "n_summary_revisit",
+          "from": "n_visit",
+          "toPort": "after",
+          "fromPort": "revisit"
+        },
+        {
+          "id": "e9",
+          "to": "n_summary_new",
+          "from": "n_visit",
+          "toPort": "after",
+          "fromPort": "else"
+        },
+        {
+          "id": "e10",
+          "to": "n_summary_new",
+          "from": "n_trigger",
+          "toPort": "context",
+          "fromPort": "out"
+        },
+        {
+          "id": "e11",
+          "to": "n_summary_revisit",
+          "from": "n_trigger",
+          "toPort": "context",
+          "fromPort": "out"
+        },
+        {
+          "id": "e12",
+          "to": "n_summary_new",
+          "from": "n_ner",
+          "toPort": "in",
+          "fromPort": "out"
+        },
+        {
+          "id": "e13",
+          "to": "n_summary_revisit",
+          "from": "n_ner",
+          "toPort": "in",
+          "fromPort": "out"
+        },
+        {
+          "id": "e14",
+          "to": "n_finalize",
+          "from": "n_summary_new",
+          "toPort": "in",
+          "fromPort": "out"
+        },
+        {
+          "id": "e15",
+          "to": "n_finalize",
+          "from": "n_summary_revisit",
+          "toPort": "in",
+          "fromPort": "out"
+        },
+        {
+          "id": "e16",
+          "to": "n_review",
+          "from": "n_finalize",
+          "toPort": "in",
+          "fromPort": "out"
+        },
+        {
+          "id": "e17",
+          "to": "n_output",
+          "from": "n_finalize",
+          "toPort": "in",
+          "fromPort": "data"
+        },
+        {
+          "id": "e18",
+          "to": "n_output",
+          "from": "n_review",
+          "toPort": "after",
+          "fromPort": "next"
+        },
+        {
+          "id": "e19",
+          "to": "n_transcript",
+          "from": "n_trigger",
+          "toPort": "in",
+          "fromPort": "out"
+        },
+        {
+          "id": "e20",
+          "to": "n_ner",
+          "from": "n_transcript",
+          "toPort": "in",
+          "fromPort": "text"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "n_trigger",
+          "type": "core.trigger",
+          "config": {
+            "kinds": [
+              "consultation",
+              "api"
+            ],
+            "contextSchema": {
+              "contextSchemaId": "01a206a9-49a0-75b6-b7ef-8c90ce4db245"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "n_presummary",
+          "type": "core.agent",
+          "config": {
+            "onError": "degrade",
+            "agentRef": {
+              "slug": "case-notes-pre-summary"
+            },
+            "execution": {
+              "lane": "realtime",
+              "cadence": "onStart"
+            }
+          },
+          "position": {
+            "x": 316,
+            "y": 0
+          }
+        },
+        {
+          "id": "n_asr",
+          "type": "core.agent",
+          "config": {
+            "onError": "fail",
+            "agentRef": {
+              "slug": "sarvam-saaras-v4"
+            },
+            "execution": {
+              "lane": "realtime",
+              "cadence": "perTurn"
+            }
+          },
+          "position": {
+            "x": 316,
+            "y": 136
+          }
+        },
+        {
+          "id": "n_transcript",
+          "type": "core.data",
+          "config": {
+            "mappings": [
+              {
+                "to": "text",
+                "from": "in.transcript.text"
+              }
+            ]
+          },
+          "position": {
+            "x": 316,
+            "y": 272
+          }
+        },
+        {
+          "id": "n_ner",
+          "type": "core.agent",
+          "config": {
+            "onError": "degrade",
+            "agentRef": {
+              "slug": "medical-ner"
+            },
+            "execution": {
+              "lane": "realtime",
+              "cadence": "perTurn"
+            }
+          },
+          "position": {
+            "x": 691.7916666666666,
+            "y": 94.79166666666666
+          }
+        },
+        {
+          "id": "n_visit",
+          "type": "core.condition",
+          "config": {
+            "branches": [
+              {
+                "key": "new_visit",
+                "when": "trigger.context.visit_type == 'new-visit'",
+                "label": "New / referral visit"
+              },
+              {
+                "key": "revisit",
+                "when": "trigger.context.visit_type == 'revisit'",
+                "label": "Follow-up visit"
+              }
+            ]
+          },
+          "position": {
+            "x": 948,
+            "y": 0
+          }
+        },
+        {
+          "id": "n_summary_new",
+          "type": "core.agent",
+          "config": {
+            "onError": "degrade",
+            "agentRef": {
+              "slug": "general-medicine-summary-new-visit"
+            },
+            "execution": {
+              "lane": "realtime",
+              "cadence": "perTurn"
+            },
+            "documentTemplateSlug": "gastroenterology_new_referral"
+          },
+          "position": {
+            "x": 1264,
+            "y": 0
+          }
+        },
+        {
+          "id": "n_summary_revisit",
+          "type": "core.agent",
+          "config": {
+            "onError": "degrade",
+            "agentRef": {
+              "slug": "general-medicine-summary-revisit"
+            },
+            "execution": {
+              "lane": "realtime",
+              "cadence": "perTurn"
+            },
+            "documentTemplateSlug": "general_medicine_follow_up"
+          },
+          "position": {
+            "x": 1264,
+            "y": 136
+          }
+        },
+        {
+          "id": "n_finalize",
+          "type": "core.agent",
+          "config": {
+            "dna": {
+              "enabled": true
+            },
+            "onError": "fail",
+            "agentRef": {
+              "slug": "casenote-finalization"
+            },
+            "execution": {
+              "lane": "durable",
+              "cadence": "onEnd"
+            },
+            "timeoutSeconds": 3600
+          },
+          "position": {
+            "x": 1678.875,
+            "y": 72.625
+          }
+        },
+        {
+          "id": "n_review",
+          "type": "core.humanReview",
+          "config": {
+            "allowEdit": true,
+            "assignRole": "DOCTOR",
+            "reviewType": "clinical_finalization",
+            "instructions": "Review the finalized case note. Approve to sign it off, or edit it and approve; reject to discard this finalization.",
+            "timeoutSeconds": 3600
+          },
+          "position": {
+            "x": 1896,
+            "y": 0
+          }
+        },
+        {
+          "id": "n_output",
+          "type": "core.output",
+          "config": {
+            "protocols": [
+              "http",
+              "http-sse",
+              "socket"
+            ],
+            "outputSchema": {
+              "type": "object",
+              "required": [
+                "case_note"
+              ],
+              "properties": {
+                "case_note": {
+                  "type": "string"
+                },
+                "redactions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "text",
+                      "label"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "onSchemaViolation": "fail"
+          },
+          "position": {
+            "x": 2212,
+            "y": 0
+          }
+        }
+      ],
+      "version": 1
+    },
+    "references": [
+      {
+        "nodeId": "n_presummary",
+        "kind": "agent",
+        "key": "case-notes-pre-summary"
+      },
+      {
+        "nodeId": "n_asr",
+        "kind": "agent",
+        "key": "sarvam-saaras-v4"
+      },
+      {
+        "nodeId": "n_ner",
+        "kind": "agent",
+        "key": "medical-ner"
+      },
+      {
+        "nodeId": "n_summary_new",
+        "kind": "agent",
+        "key": "general-medicine-summary-new-visit"
+      },
+      {
+        "nodeId": "n_summary_revisit",
+        "kind": "agent",
+        "key": "general-medicine-summary-revisit"
+      },
+      {
+        "nodeId": "n_finalize",
+        "kind": "agent",
+        "key": "casenote-finalization"
+      }
+    ]
+  }
+}

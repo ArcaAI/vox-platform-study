@@ -1,0 +1,2027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Studio — General Medicine &amp; BREN Consultation (general-medicine-consultation.v3) | LLM Service &amp; Guardrail Map</title>
+  <style>
+
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+      /* STRICT BLACK & WHITE / MONOCHROME PALETTE - ZERO COLORS */
+      --bg-canvas: #090909;
+      --bg-panel: #111111;
+      --bg-surface: #171717;
+      --bg-surface-hover: #222222;
+      --border-dark: #222222;
+      --border-mid: #383838;
+      --border-light: #666666;
+      --border-white: #ffffff;
+      --text-main: #f5f5f5;
+      --text-muted: #9e9e9e;
+      --text-dim: #616161;
+      --grid-dot: #222222;
+      --node-bg: #141414;
+      --node-header-bg: #1a1a1a;
+      --node-selected-border: #ffffff;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-canvas);
+      font-family: var(--font-sans);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    p, span, div, h1, h2, h3, code, td, th, label, a {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    /* TOP STUDIO TOOLBAR */
+    .studio-header {
+      height: 52px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      z-index: 20;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .workflow-logo {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      border-radius: 4px;
+    }
+
+    .workflow-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .crumb-dim { color: var(--text-dim); }
+    .crumb-sep { color: var(--border-mid); font-family: var(--font-mono); }
+
+    .tag-mono {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tag-guardrail {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 700;
+      border: 1px solid #ffffff;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-mono {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .btn-mono:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .btn-mono.active {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    /* MAIN STUDIO WORKSPACE */
+    .studio-body {
+      flex: 1;
+      position: relative;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* CANVAS AREA */
+    .canvas-viewport {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background-color: var(--bg-canvas);
+      background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    .canvas-viewport.is-dragging {
+      cursor: grabbing;
+      user-select: none;
+    }
+
+    .canvas-world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      width: 3200px;
+      height: 1200px;
+    }
+
+    /* SVG CONNECTIONS LAYER */
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .wire-path {
+      fill: none;
+      stroke: var(--border-mid);
+      stroke-width: 2;
+      stroke-linecap: round;
+      transition: stroke 0.2s ease, stroke-width 0.2s ease;
+    }
+
+    .wire-path.active {
+      stroke: var(--border-white);
+      stroke-width: 2.5;
+    }
+
+    /* NODE CARDS ON CANVAS */
+    .node-element {
+      position: absolute;
+      width: 290px;
+      background: var(--node-bg);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      z-index: 2;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.2s ease;
+    }
+
+    .node-element:hover {
+      border-color: var(--border-light);
+    }
+
+    .node-element.selected {
+      border-color: var(--border-white);
+      box-shadow: 0 0 0 2px var(--border-white), 0 12px 30px rgba(0, 0, 0, 0.9);
+      z-index: 10;
+    }
+
+    .node-element.llm-highlight {
+      border: 1.5px solid #ffffff;
+    }
+
+    .node-header {
+      background: var(--node-header-bg);
+      border-bottom: 1px solid var(--border-dark);
+      padding: 9px 12px;
+      border-top-left-radius: 7px;
+      border-top-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .node-title-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .node-type-icon {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+
+    .node-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-main);
+    }
+
+    .node-id-chip {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      color: var(--text-dim);
+      background: #000;
+      padding: 1px 5px;
+      border: 1px solid var(--border-dark);
+      border-radius: 3px;
+    }
+
+    .node-content {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .node-summary-line {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .node-slug-badge {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      padding: 3px 6px;
+      border-radius: 4px;
+      color: var(--text-main);
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .node-footer {
+      border-top: 1px solid var(--border-dark);
+      padding: 7px 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-bottom-left-radius: 7px;
+      border-bottom-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .guard-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 600;
+    }
+
+    .guard-dot-active {
+      color: #ffffff;
+    }
+
+    .guard-dot-none {
+      color: var(--text-dim);
+    }
+
+    /* CANVAS HUD CONTROLS */
+    .canvas-hud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      z-index: 15;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    }
+
+    .hud-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hud-btn:hover {
+      background: var(--bg-surface);
+    }
+
+    .hud-zoom-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 0 6px;
+    }
+
+    /* RIGHT INSPECTOR PANEL */
+    .inspector-panel {
+      width: 440px;
+      height: 100%;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-dark);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 20;
+      overflow: hidden;
+      transition: width 0.2s ease;
+    }
+
+    .inspector-panel.collapsed {
+      width: 0;
+      border-left: none;
+    }
+
+    .inspector-panel.collapsed ~ .bottom-drawer {
+      right: 0;
+    }
+
+    .inspector-panel.collapsed ~ .inspector-reopen-btn {
+      display: flex;
+    }
+
+    .inspector-reopen-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 15;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .inspector-reopen-btn:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .inspector-top {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .inspector-title-group h3 {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inspector-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-dark);
+      padding: 0 12px;
+      background: var(--bg-surface);
+    }
+
+    .ins-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 10px 14px;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-family: var(--font-mono);
+    }
+
+    .ins-tab:hover {
+      color: var(--text-main);
+    }
+
+    .ins-tab.active {
+      color: #ffffff;
+      border-bottom-color: #ffffff;
+    }
+
+    .inspector-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .ins-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ins-card-title {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+      padding: 4px 0;
+      border-bottom: 1px dashed var(--border-dark);
+    }
+
+    .prop-row:last-child {
+      border-bottom: none;
+    }
+
+    .prop-label {
+      color: var(--text-muted);
+    }
+
+    .prop-val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-main);
+      text-align: right;
+    }
+
+    .guard-banner {
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      border-left: 3px solid #ffffff;
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .guard-banner-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+    }
+
+    .guard-banner-desc {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+
+    .lane1-box {
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11.5px;
+    }
+
+    .lane1-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      text-transform: uppercase;
+    }
+
+    .lane1-step {
+      display: flex;
+      gap: 6px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .category-jump-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      width: fit-content;
+      transition: all 0.15s ease;
+    }
+
+    .category-jump-btn:hover {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    /* BOTTOM DRAWER (LLM SERVICE FILE INVENTORY) */
+    .bottom-drawer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 440px;
+      height: 310px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-mid);
+      z-index: 25;
+      display: flex;
+      flex-direction: column;
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), right 0.2s ease;
+      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .bottom-drawer.open {
+      transform: translateY(0);
+    }
+
+    .drawer-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-surface);
+    }
+
+    .drawer-title {
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 14px;
+    }
+
+    .category-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .category-card:hover {
+      border-color: var(--border-light);
+    }
+
+    .category-card.active-cat {
+      border-color: #ffffff;
+      background: #1f1f1f;
+    }
+
+    .category-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border-dark);
+      padding-bottom: 6px;
+    }
+
+    .category-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .category-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .pill-file {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--text-main);
+    }
+
+    .category-desc {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+  
+    .tag-guardrail-active {
+      background: #1e3a29;
+      color: #34d399;
+      border: 1px solid #059669;
+    }
+    .node-guardrail-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      background: #11291d;
+      color: #10b981;
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid #059669;
+      margin-top: 4px;
+    }
+    .btn-mono.active-green {
+      background: #064e3b;
+      color: #34d399;
+      border-color: #059669;
+    }
+    .ins-tab.active-green {
+      color: #34d399;
+      border-bottom-color: #10b981;
+    }
+    .json-code-box {
+      background: #050505;
+      border: 1px solid var(--border-mid);
+      border-radius: 4px;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #d1d5db;
+      white-space: pre-wrap;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- STUDIO HEADER -->
+  <header class="studio-header">
+    <div class="header-left">
+      <div class="workflow-logo">STUDIO</div>
+      <div class="workflow-breadcrumb">
+        <span class="crumb-dim">Workflows</span>
+        <span class="crumb-sep">/</span>
+        <span>general-medicine-consultation</span>
+        <span class="tag-mono">v3</span>
+        <span class="tag-mono">BREN &amp; GEN-MED</span>
+        <span class="tag-mono tag-guardrail-active">GUARDRAILS: FAIL-CLOSED</span>
+        <span class="crumb-sep">|</span>
+        <span class="tag-mono">ENTRY: Gateway (POST /consultations/open)</span>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <button class="btn-mono" id="btn-toggle-filter" onclick="toggleLLMFilter()">
+        <span>◉</span> Highlight LLM Nodes
+      </button>
+      <button class="btn-mono" id="btn-toggle-guardrail" onclick="toggleGuardrailFilter()">
+        <span>🛡️</span> Guardrail Interlock
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inventory" onclick="toggleInventoryDrawer()">
+        <span>📁</span> LLM Service Inventory
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inspector" onclick="toggleInspector()" title="Toggle Right Inspector Sidebar">
+        <span>◨</span> Inspector
+      </button>
+      <button class="btn-mono" onclick="resetCanvasView()">
+        <span>⟲</span> Fit Graph
+      </button>
+    </div>
+  </header>
+
+  <!-- STUDIO WORKSPACE -->
+  <div class="studio-body">
+
+    <!-- CANVAS VIEWPORT -->
+    <div class="canvas-viewport" id="viewport">
+      <div class="canvas-world" id="world">
+        <!-- SVG CONNECTIONS -->
+        <svg class="connections-svg" id="wires-layer"></svg>
+
+        <!-- NODES CONTAINER (Rendered via JS) -->
+        <div id="nodes-layer"></div>
+      </div>
+
+      <!-- HUD CONTROLS -->
+      <div class="canvas-hud">
+        <button class="hud-btn" onclick="zoomIn()">+</button>
+        <span class="hud-zoom-label" id="zoom-val">100%</span>
+        <button class="hud-btn" onclick="zoomOut()">−</button>
+        <button class="hud-btn" onclick="resetCanvasView()" title="Fit View">⛶</button>
+      </div>
+    </div>
+
+    <!-- RIGHT INSPECTOR PANEL -->
+    <aside class="inspector-panel" id="inspector">
+      <div class="inspector-top">
+        <div class="inspector-title-group">
+          <h3 id="ins-node-title">Node Inspector</h3>
+          <span class="tag-mono" id="ins-node-id">Select a node</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="toggleInspector()">✕</button>
+      </div>
+
+      <div class="inspector-tabs">
+        <button class="ins-tab active" onclick="switchInspectorTab('spec')">Node Specs</button>
+        <button class="ins-tab" onclick="switchInspectorTab('llm')">LLM &amp; GPU</button>
+        <button class="ins-tab" onclick="switchInspectorTab('guard')">Guardrail Safety</button>
+        <button class="ins-tab" onclick="switchInspectorTab('json')">Raw JSON</button>
+      </div>
+
+      <div class="inspector-scroll">
+
+        <!-- TAB 1: NODE SPECS & ROLE -->
+        <div id="ins-tab-spec" class="ins-tab-content">
+          <div class="ins-card">
+            <div class="ins-card-title">Workflow Node Attributes</div>
+            <div class="prop-row">
+              <span class="prop-label">Node Type</span>
+              <span class="prop-val" id="ins-type">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Execution Lane</span>
+              <span class="prop-val" id="ins-lane">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Trigger Cadence</span>
+              <span class="prop-val" id="ins-cadence">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Agent / Engine Slug</span>
+              <span class="prop-val" id="ins-slug">--</span>
+            </div>
+            <div class="prop-row" id="row-template" style="display:none;">
+              <span class="prop-label">Document Template</span>
+              <span class="prop-val" id="ins-template">--</span>
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Node Purpose in Consultation</div>
+            <p id="ins-purpose" style="font-size:12.5px; line-height:1.5; color:var(--text-muted);"></p>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Graph Ports &amp; Connections</div>
+            <div class="prop-row">
+              <span class="prop-label">Input Ports</span>
+              <span class="prop-val" id="ins-ports-in">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Output Ports</span>
+              <span class="prop-val" id="ins-ports-out">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: LLM SERVICE & GPU EXECUTION -->
+        <div id="ins-tab-llm" class="ins-tab-content" style="display:none;">
+          <div class="guard-banner">
+            <div class="guard-banner-title">
+              <span id="ins-llm-symbol">●</span>
+              <span id="ins-llm-headline">LLM Inference Node</span>
+            </div>
+            <p class="guard-banner-desc" id="ins-llm-desc">
+              Details of how apps/text routes and executes this node on GPUs.
+            </p>
+            <div style="margin-top:6px;" id="ins-cat-link-container">
+              <!-- Jump button to bottom inventory -->
+            </div>
+          </div>
+
+          <!-- APPS/TEXT EXECUTION PATTERN BREAKDOWN -->
+          <div class="ins-card" id="ins-llm-execution-card" style="display:none;">
+            <div class="ins-card-title">apps/text Internal Execution Pipeline</div>
+            <div class="lane1-box">
+              <div class="lane1-title">Admission &amp; Guardrail Gate (Lane 1)</div>
+              <div class="lane1-step"><span>1.</span> Inbound token admission via <code>ResizableSemaphore</code> (DB 3 Redis stream)</div>
+              <div class="lane1-step"><span>2.</span> Inbound guardrail screen at <code>apps/guardrail</code> (Granite 4.1 8B on GPU 1)</div>
+              <div class="lane1-step"><span>3.</span> Model context check: prompt tokens + max_tokens &le; <code>64,000</code></div>
+            </div>
+            <div class="lane1-box">
+              <div class="lane1-title">Engine Inference &amp; Autoregressive Gen</div>
+              <div class="lane1-step"><span>1.</span> Dispatched to <code>LMStudioProvider</code> (Port 1234, GPU 0) -> Gemma-4-e2b-it-qat (~178 tok/s)</div>
+              <div class="lane1-step"><span>2.</span> Output screened by Guardrail Judge (<code>/internal/judge</code> on Granite Guardian 4.1 8B)</div>
+              <div class="lane1-step"><span>3.</span> Clinical note persisted to PostgreSQL; audited in Redis streams</div>
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Runtime &amp; Hardware Profile</div>
+            <div class="prop-row">
+              <span class="prop-label">Model Target</span>
+              <span class="prop-val" id="ins-model-target">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Engine Provider</span>
+              <span class="prop-val" id="ins-provider-engine">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Hardware Device</span>
+              <span class="prop-val" id="ins-hardware-device">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Context Limit</span>
+              <span class="prop-val" id="ins-context-limit">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Security Posture</span>
+              <span class="prop-val" id="ins-security-posture">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: GUARDRAIL & SAFETY POSTURE -->
+        <div id="ins-tab-guard" class="ins-tab-content" style="display:none;">
+          <div class="ins-card">
+            <div class="ins-card-title">🛡️ Guardrail Policy &amp; Safety Interlock</div>
+            <p id="ins-guard-desc" style="font-size:12.5px; line-height:1.5; color:var(--text-muted); margin-bottom:12px;"></p>
+            
+            <div class="lane1-box">
+              <div class="lane1-title">Safety Enforcement Matrix</div>
+              <div class="lane1-step"><span>•</span> <strong>Inbound Safety Gate:</strong> Granite Guardian 4.1 8B screens for medical prompt anomalies.</div>
+              <div class="lane1-step"><span>•</span> <strong>Grounding Verification:</strong> Cross-checks clinical claims against patient dialogue segments.</div>
+              <div class="lane1-step"><span>•</span> <strong>PHI/PII Redaction:</strong> Generates strict redactions array to scrub identifiable patient data.</div>
+              <div class="lane1-step"><span>•</span> <strong>Fail-Closed Posture:</strong> On 500/503 downstream faults, circuit trips safely without partial corrupt notes.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: RAW BUNDLE JSON -->
+        <div id="ins-tab-json" class="ins-tab-content" style="display:none;">
+          <div class="ins-card">
+            <div class="ins-card-title">Exact Node Configuration from Bundle</div>
+            <div class="json-code-box" id="ins-raw-json"></div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- FLOATING REOPEN BUTTON -->
+    <button class="inspector-reopen-btn" id="btn-inspector-reopen" onclick="toggleInspector()" title="Open Node Inspector">
+      <span>◀</span> Node Inspector
+    </button>
+
+    <!-- BOTTOM INVENTORY DRAWER (LLM SERVICE FILES INVENTORY) -->
+    <div class="bottom-drawer open" id="bottom-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <span class="tag-mono tag-guardrail-active">LLM &amp; GUARDRAIL SUBSYSTEM INVENTORY</span>
+          <span>apps/text &amp; apps/guardrail Production Architecture (24 Core Files Segregated by Functionality)</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="toggleInventoryDrawer()">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        
+        <!-- Category 1 -->
+        <div class="category-card" id="cat-card-1" onclick="highlightCategoryNodes(1)">
+          <div class="category-header">
+            <span class="category-name">1. Ingress, Auth &amp; Lifespan</span>
+            <span class="tag-mono">Port 8862/8863</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">main.py</span>
+            <span class="pill-file">api/middleware/auth.py</span>
+            <span class="pill-file">core/config.py</span>
+            <span class="pill-file">core/dependencies.py</span>
+          </div>
+          <div class="category-desc">
+            Outer ASGI stack on port 8862. Verifies <code>INTERNAL_ACCESS_TOKEN</code> on inter-service requests, binds <code>X-Tenant-Id</code> and <code>X-Request-Id</code> for distributed OpenTelemetry spans, initializes Redis DB 3 streams and DB connection pools.
+          </div>
+        </div>
+
+        <!-- Category 2 -->
+        <div class="category-card" id="cat-card-2" onclick="highlightCategoryNodes(2)">
+          <div class="category-header">
+            <span class="category-name">2. Generation &amp; Judge API Surface</span>
+            <span class="tag-mono">POST /api/v1/generate</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">api/endpoints/generate.py</span>
+            <span class="pill-file">api/endpoints/judge.py</span>
+            <span class="pill-file">api/endpoints/stream.py</span>
+            <span class="pill-file">models/requests.py</span>
+          </div>
+          <div class="category-desc">
+            Primary generation routes. Validates incoming consultation prompts, extracts temperature/max_tokens parameters, coordinates SSE token streaming, and handles <code>/internal/judge</code> for guardrail verdict evaluation on Granite 4.1 8B.
+          </div>
+        </div>
+
+        <!-- Category 3 -->
+        <div class="category-card" id="cat-card-3" onclick="highlightCategoryNodes(3)">
+          <div class="category-header">
+            <span class="category-name">3. Provider Abstraction &amp; Engine Adapters</span>
+            <span class="tag-mono">Engine Multiplexer</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">providers/base.py</span>
+            <span class="pill-file">providers/lmstudio.py</span>
+            <span class="pill-file">providers/vllm.py</span>
+            <span class="pill-file">providers/registry.py</span>
+          </div>
+          <div class="category-desc">
+            Abstracts underlying inference engines. <code>LMStudioProvider</code> communicates over HTTP to LM Studio (NodePort 1234, GPU 0 / Gemma-4), while <code>VLLMProvider</code> interfaces with vLLM PagedAttention continuous batching instances.
+          </div>
+        </div>
+
+        <!-- Category 4 -->
+        <div class="category-card" id="cat-card-4" onclick="highlightCategoryNodes(4)">
+          <div class="category-header">
+            <span class="category-name">4. Guardrail Interlock &amp; Safety Gates</span>
+            <span class="tag-mono">Fail-Closed Posture</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/external_guardrail.py</span>
+            <span class="pill-file">services/judge_guard.py</span>
+            <span class="pill-file">services/output_gate.py</span>
+            <span class="pill-file">core/guardrail_posture.py</span>
+          </div>
+          <div class="category-desc">
+            Enforces Lane 1 clinical guardrails. Dispatches pre-generation prompts to <code>apps/guardrail</code> (port 8863), gates generated text through outbound toxicity &amp; PII verification, and enforces fail-closed posture on circuit trips.
+          </div>
+        </div>
+
+        <!-- Category 5 -->
+        <div class="category-card" id="cat-card-5" onclick="highlightCategoryNodes(5)">
+          <div class="category-header">
+            <span class="category-name">5. Concurrency, Queue &amp; Circuit Breakers</span>
+            <span class="tag-mono">Traffic Regulation</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/circuit_breaker.py</span>
+            <span class="pill-file">services/provider_queue.py</span>
+            <span class="pill-file">services/resizable_semaphore.py</span>
+            <span class="pill-file">services/rate_limiter.py</span>
+          </div>
+          <div class="category-desc">
+            Protects GPU VRAM and upstream queues from token stampedes. Dynamically resizes concurrent slot semaphores based on model context limits, tracks sliding-window error rates, and trips circuit breakers on repeated engine 500s.
+          </div>
+        </div>
+
+        <!-- Category 6 -->
+        <div class="category-card" id="cat-card-6" onclick="highlightCategoryNodes(6)">
+          <div class="category-header">
+            <span class="category-name">6. Audit, Token Usage &amp; Observability</span>
+            <span class="tag-mono">Metrics &amp; Billing</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/generation_audit.py</span>
+            <span class="pill-file">core/metrics.py</span>
+            <span class="pill-file">core/telemetry.py</span>
+            <span class="pill-file">core/retention.py</span>
+          </div>
+          <div class="category-desc">
+            Maintains HIPAA-compliant cryptographic audit trails. Logs prompt/completion tokens, TTFT, inter-token generation speed, and records token usage metrics for clinician billing and OpenTelemetry dashboards.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const GRAPH_NODES = [
+  {
+    "title": "Consultation Trigger",
+    "type": "core.trigger",
+    "x": 60,
+    "y": 140,
+    "lane": "Ingress",
+    "cadence": "onOpen",
+    "slug": "Kind: consultation, api",
+    "purpose": "Initiated by Client calling Hope's POST /consultations/open with { source: 'gateway', department: 'General Medicine / BREN', visit_type }. Binds tenant context schema and starts durable workflow execution.",
+    "inPorts": [],
+    "outPorts": [
+      "next",
+      "out"
+    ],
+    "llmActive": false,
+    "guardrailActive": false,
+    "llmCategoryId": 1,
+    "llmCategoryName": "1. Ingress, Auth & Lifespan",
+    "llmSummary": "API Gateway session initialization. Ingests patient context into PostgreSQL & Redis Context Vault before triggering LLM generation pipeline.",
+    "modelTarget": "None (Control Plane)",
+    "providerEngine": "apps/api (NestJS Gateway)",
+    "hardwareDevice": "Cluster CPU",
+    "contextLimit": "N/A",
+    "securityPosture": "JWT Auth, Tenant Isolation & Schema 01a206a9 Validation",
+    "guardrailDetails": "Enforces tenant isolation and schema validation. Ingests patient ID, visit type, and department without exposing unauthenticated endpoints.",
+    "rawConfig": {
+      "kinds": [
+        "consultation",
+        "api"
+      ],
+      "contextSchema": {
+        "contextSchemaId": "01a206a9-49a0-75b6-b7ef-8c90ce4db245"
+      }
+    },
+    "id": "n_trigger"
+  },
+  {
+    "title": "Pre-Summary Agent",
+    "type": "core.agent",
+    "x": 420,
+    "y": 40,
+    "lane": "Realtime",
+    "cadence": "onStart",
+    "slug": "case-notes-pre-summary",
+    "purpose": "Executes on consultation start to synthesize historical clinical case notes, prior discharge summaries, baseline labs, and vitals into a concise pre-summary for the clinician.",
+    "inPorts": [
+      "after",
+      "context"
+    ],
+    "outPorts": [
+      "next",
+      "out"
+    ],
+    "llmActive": true,
+    "guardrailActive": true,
+    "llmCategoryId": 2,
+    "llmCategoryName": "2. Generation & Judge API Surface",
+    "llmSummary": "Executes POST /api/v1/generate on apps/text. Synthesizes longitudinal EHR records with prompt caching and pre-flight guardrail validation.",
+    "modelTarget": "gemma-4-e2b-it-qat",
+    "providerEngine": "LMStudioProvider (Port 1234)",
+    "hardwareDevice": "GPU 0 (VRAM 16GB)",
+    "contextLimit": "64,000 tokens (loaded_context_length)",
+    "securityPosture": "Fail-Closed Inbound & Outbound Guardrail",
+    "guardrailDetails": "Inbound prompt safety screening via Granite Guardian 4.1 8B on GPU 1. Checks for malicious prompt injections, system prompt override attempts, and ensures clinical data integrity before Gemma-4 invocation.",
+    "rawConfig": {
+      "onError": "degrade",
+      "agentRef": {
+        "slug": "case-notes-pre-summary"
+      },
+      "execution": {
+        "lane": "realtime",
+        "cadence": "onStart"
+      }
+    },
+    "id": "n_presummary"
+  },
+  {
+    "title": "Speech-to-Text (ASR)",
+    "type": "core.agent",
+    "x": 420,
+    "y": 240,
+    "lane": "Realtime",
+    "cadence": "perTurn",
+    "slug": "sarvam-saaras-v4",
+    "purpose": "Realtime speech-to-text turning live doctor-patient consultation audio streams (Malayalam & Indian English) into streaming conversation transcripts.",
+    "inPorts": [
+      "after"
+    ],
+    "outPorts": [
+      "transcript"
+    ],
+    "llmActive": false,
+    "guardrailActive": false,
+    "llmCategoryId": null,
+    "llmCategoryName": null,
+    "llmSummary": "Streaming audio transcription on apps/stt-v2 (SenseVoice / Sarvam Saaras v4). Emits turn transcripts into Context Vault for LLM prompt assembly.",
+    "modelTarget": "sarvam-saaras-v4 / SenseVoice",
+    "providerEngine": "apps/stt-v2 (GPU ASR Engine)",
+    "hardwareDevice": "GPU 0 (Dedicated ASR Lane)",
+    "contextLimit": "Streaming Chunks",
+    "securityPosture": "Verbatim Audio Retention & Zero-Cloud Leak",
+    "guardrailDetails": "Strictly internal audio stream processing with zero external cloud API routing. Complies with local healthcare data protection and HIPAA/DISHA guidelines.",
+    "rawConfig": {
+      "onError": "fail",
+      "agentRef": {
+        "slug": "sarvam-saaras-v4"
+      },
+      "execution": {
+        "lane": "realtime",
+        "cadence": "perTurn"
+      }
+    },
+    "id": "n_asr"
+  },
+  {
+    "title": "Transcript Context Vault",
+    "type": "core.data",
+    "x": 420,
+    "y": 440,
+    "lane": "Data Vault",
+    "cadence": "perTurn",
+    "slug": "Mapping: in.transcript.text",
+    "purpose": "Aggregates, deduplicates, and sanitizes multi-turn clinician/patient dialogue turns for entity extraction and downstream LLM prompt injection.",
+    "inPorts": [
+      "in"
+    ],
+    "outPorts": [
+      "text"
+    ],
+    "llmActive": false,
+    "guardrailActive": false,
+    "llmCategoryId": 1,
+    "llmCategoryName": "1. Ingress, Auth & Lifespan",
+    "llmSummary": "Data mapping and context storage plane. Feeds clean text turns into Medical NER and summary generation prompts.",
+    "modelTarget": "None (PostgreSQL / Redis Context Vault)",
+    "providerEngine": "apps/api / ContextVault",
+    "hardwareDevice": "Cluster Memory",
+    "contextLimit": "Unlimited Dialogue Window",
+    "securityPosture": "AES-256 Encrypted In-Memory Storage",
+    "guardrailDetails": "All transcript segments are stored in encrypted Redis DB 3 and PostgreSQL with row-level tenant security (RLS). Temporal state claim-checks offload large transcripts to MinIO with 24-hr auto-expiration.",
+    "rawConfig": {
+      "mappings": [
+        {
+          "to": "text",
+          "from": "in.transcript.text"
+        }
+      ]
+    },
+    "id": "n_transcript"
+  },
+  {
+    "title": "Medical NER (Clinical NLP)",
+    "type": "core.agent",
+    "x": 800,
+    "y": 240,
+    "lane": "Realtime",
+    "cadence": "perTurn",
+    "slug": "medical-ner",
+    "purpose": "Extracts clinical entities (chief complaints, symptoms, anatomical sites, medications, dosage, lab tests, and clinical procedures) from the live transcript stream.",
+    "inPorts": [
+      "in"
+    ],
+    "outPorts": [
+      "out"
+    ],
+    "llmActive": false,
+    "guardrailActive": true,
+    "llmCategoryId": null,
+    "llmCategoryName": null,
+    "llmSummary": "Realtime NLP entity extraction via GLiNER on apps/nlp (port 8861/8864). Injects structured clinical tags directly into SOAP prompt assembly.",
+    "modelTarget": "gliner-biomedical-large / NegEx",
+    "providerEngine": "apps/nlp (HuggingFace/ONNX)",
+    "hardwareDevice": "GPU 0 / CPU Vector Engine",
+    "contextLimit": "2,048 tokens per chunk",
+    "securityPosture": "Zero-Data Retention & In-Memory Entity Extraction",
+    "guardrailDetails": "Identifies PHI/PII entity spans (patient names, phone numbers, addresses, relative names) to prime downstream redaction filters in apps/guardrail.",
+    "rawConfig": {
+      "onError": "degrade",
+      "agentRef": {
+        "slug": "medical-ner"
+      },
+      "execution": {
+        "lane": "realtime",
+        "cadence": "perTurn"
+      }
+    },
+    "id": "n_ner"
+  },
+  {
+    "title": "Visit Type Router",
+    "type": "core.condition",
+    "x": 1180,
+    "y": 240,
+    "lane": "Control Plane",
+    "cadence": "Instant",
+    "slug": "Condition: new_visit vs revisit",
+    "purpose": "Evaluates trigger.context.visit_type sent by Gateway. If 'new-visit', routes to n_summary_new; if 'revisit', routes to n_summary_revisit.",
+    "inPorts": [
+      "in"
+    ],
+    "outPorts": [
+      "new_visit",
+      "revisit",
+      "else"
+    ],
+    "llmActive": false,
+    "guardrailActive": false,
+    "llmCategoryId": null,
+    "llmCategoryName": null,
+    "llmSummary": "Deterministic routing condition in Hope control plane. Zero model inference or latency overhead.",
+    "modelTarget": "None (Logic Rule Engine)",
+    "providerEngine": "Temporal Engine / Harness",
+    "hardwareDevice": "Cluster CPU",
+    "contextLimit": "N/A",
+    "securityPosture": "Strict Type Evaluation & Fallback Else",
+    "guardrailDetails": "Guarantees deterministic control flow with an enforced 'else' fallback to prevent unhandled routing states or hung workflows.",
+    "rawConfig": {
+      "branches": [
+        {
+          "key": "new_visit",
+          "when": "trigger.context.visit_type == 'new-visit'",
+          "label": "New / referral visit"
+        },
+        {
+          "key": "revisit",
+          "when": "trigger.context.visit_type == 'revisit'",
+          "label": "Follow-up visit"
+        }
+      ]
+    },
+    "id": "n_visit"
+  },
+  {
+    "title": "General Medicine / BREN Summary (New Visit)",
+    "type": "core.agent",
+    "x": 1540,
+    "y": 100,
+    "lane": "Realtime",
+    "cadence": "perTurn",
+    "slug": "general-medicine-summary-new-visit",
+    "template": "gastroenterology_new_referral (or arcaai-bren-soap-new-visit)",
+    "purpose": "Drafts comprehensive consult notes for new clinical visits, structuring presenting complaints, history of presenting illness (HPI), systemic review, physical exam findings, and management plans.",
+    "inPorts": [
+      "after",
+      "context",
+      "in"
+    ],
+    "outPorts": [
+      "out"
+    ],
+    "llmActive": true,
+    "guardrailActive": true,
+    "llmCategoryId": 3,
+    "llmCategoryName": "3. Provider Abstraction & Engine Adapters",
+    "llmSummary": "Primary generative LLM execution via apps/text. Synthesizes full consultation transcript + NER entities into structured clinical SOAP documentation.",
+    "modelTarget": "gemma-4-e2b-it-qat",
+    "providerEngine": "LMStudioProvider (Port 1234)",
+    "hardwareDevice": "GPU 0 (VRAM 16GB)",
+    "contextLimit": "64,000 tokens (loaded_context_length)",
+    "securityPosture": "Inbound Guardrail + Granite Guardian 4.1 Safety Judge",
+    "guardrailDetails": "Dual-stage guardrail interlock: 1. Inbound safety screen on prompt assembly. 2. Realtime token monitoring and outbound clinical claim validation. If safety judge fails, gracefully degrades with status tag.",
+    "rawConfig": {
+      "onError": "degrade",
+      "agentRef": {
+        "slug": "general-medicine-summary-new-visit"
+      },
+      "execution": {
+        "lane": "realtime",
+        "cadence": "perTurn"
+      },
+      "documentTemplateSlug": "gastroenterology_new_referral"
+    },
+    "id": "n_summary_new"
+  },
+  {
+    "title": "General Medicine / BREN Summary (Revisit)",
+    "type": "core.agent",
+    "x": 1540,
+    "y": 380,
+    "lane": "Realtime",
+    "cadence": "perTurn",
+    "slug": "general-medicine-summary-revisit",
+    "template": "general_medicine_follow_up (or arcaai-bren-soap-revisit)",
+    "purpose": "Drafts interval follow-up notes for returning patients, focusing on treatment response, symptom resolution/progression, interval lab comparisons, and medication adjustments.",
+    "inPorts": [
+      "after",
+      "context",
+      "in"
+    ],
+    "outPorts": [
+      "out"
+    ],
+    "llmActive": true,
+    "guardrailActive": true,
+    "llmCategoryId": 3,
+    "llmCategoryName": "3. Provider Abstraction & Engine Adapters",
+    "llmSummary": "Primary generative LLM execution via apps/text. Focuses on interval clinical delta, medication tolerance, and follow-up trajectory.",
+    "modelTarget": "gemma-4-e2b-it-qat",
+    "providerEngine": "LMStudioProvider (Port 1234)",
+    "hardwareDevice": "GPU 0 (VRAM 16GB)",
+    "contextLimit": "64,000 tokens (loaded_context_length)",
+    "securityPosture": "Inbound Guardrail + Granite Guardian 4.1 Safety Judge",
+    "guardrailDetails": "Follows identical dual-stage guardrail interlock as new-visit, with additional checks ensuring longitudinal patient trajectory consistency and preventing medication hallucination.",
+    "rawConfig": {
+      "onError": "degrade",
+      "agentRef": {
+        "slug": "general-medicine-summary-revisit"
+      },
+      "execution": {
+        "lane": "realtime",
+        "cadence": "perTurn"
+      },
+      "documentTemplateSlug": "general_medicine_follow_up"
+    },
+    "id": "n_summary_revisit"
+  },
+  {
+    "title": "Casenote Finalization & DNA Style Adaptation",
+    "type": "core.agent",
+    "x": 1940,
+    "y": 240,
+    "lane": "Durable",
+    "cadence": "onEnd",
+    "slug": "casenote-finalization",
+    "purpose": "Durable Temporal activity running on consultation end. Assembles pre-summary, turn transcripts, and summary drafts into a finalized, immutable clinical note, injecting clinician writing DNA preferences.",
+    "inPorts": [
+      "after",
+      "in"
+    ],
+    "outPorts": [
+      "out",
+      "data"
+    ],
+    "llmActive": true,
+    "guardrailActive": true,
+    "llmCategoryId": 4,
+    "llmCategoryName": "4. Guardrail Interlock & Safety Gates",
+    "llmSummary": "Final note assembly and multi-pass validation in apps/text. Applies Doctor DNA profile (REPORT_BREN) and conducts outbound hallucination screening.",
+    "modelTarget": "granite-guardian-4.1-8b + gemma-4-e2b-it-qat",
+    "providerEngine": "LMStudioProvider / Guardrail Judge",
+    "hardwareDevice": "GPU 1 (Granite Judge) + GPU 0 (Gemma Note)",
+    "contextLimit": "16,384 tokens (Judge) / 64,000 tokens (Note)",
+    "securityPosture": "Granite Guardian 4.1 8B Guardrail Audit + PII Redaction",
+    "guardrailDetails": "Comprehensive 3-phase outbound verification: 1. Granite Guardian 4.1 8B clinical safety judgment (/internal/judge). 2. Claim-by-claim grounding audit against raw dialogue transcript. 3. Full PII redaction array generation ({text, label}).",
+    "rawConfig": {
+      "dna": {
+        "enabled": true
+      },
+      "onError": "fail",
+      "agentRef": {
+        "slug": "casenote-finalization"
+      },
+      "execution": {
+        "lane": "durable",
+        "cadence": "onEnd"
+      },
+      "timeoutSeconds": 3600
+    },
+    "id": "n_finalize"
+  },
+  {
+    "title": "Doctor Human Review (Sign-off Gate)",
+    "type": "core.humanReview",
+    "x": 2320,
+    "y": 140,
+    "lane": "Human-in-the-Loop",
+    "cadence": "onEnd",
+    "slug": "Role: DOCTOR \u00b7 clinical_finalization",
+    "purpose": "Presents the generated consultation note to the attending clinician for review, inline editing, and final sign-off. The clinician has full authority to edit or reject.",
+    "inPorts": [
+      "in"
+    ],
+    "outPorts": [
+      "next"
+    ],
+    "llmActive": false,
+    "guardrailActive": true,
+    "llmCategoryId": null,
+    "llmCategoryName": null,
+    "llmSummary": "Human-in-the-loop review interface in HOPE Admin Console. Doctor approval constitutes clinical authority prior to EHR persistence.",
+    "modelTarget": "None (Clinician Review)",
+    "providerEngine": "apps/admin-console",
+    "hardwareDevice": "Web Browser Client",
+    "contextLimit": "N/A",
+    "securityPosture": "Attending Doctor Authority & Signature Lock",
+    "guardrailDetails": "Ultimate clinical safety safeguard (Human-in-the-Loop). No AI note is ever transmitted to the hospital EHR without explicit licensed physician review and approval.",
+    "rawConfig": {
+      "allowEdit": true,
+      "assignRole": "DOCTOR",
+      "reviewType": "clinical_finalization",
+      "instructions": "Review the finalized case note. Approve to sign it off, or edit it and approve; reject to discard this finalization.",
+      "timeoutSeconds": 3600
+    },
+    "id": "n_review"
+  },
+  {
+    "title": "Case Note & Redactions Output",
+    "type": "core.output",
+    "x": 2680,
+    "y": 240,
+    "lane": "Egress",
+    "cadence": "Terminal",
+    "slug": "Schema: case_note, redactions[]",
+    "purpose": "Emits the signed case note and redactions array to the Hospital Information System (HIS/EHR) and ALaaS client over HTTP and WebSockets.",
+    "inPorts": [
+      "in",
+      "after"
+    ],
+    "outPorts": [],
+    "llmActive": false,
+    "guardrailActive": true,
+    "llmCategoryId": 6,
+    "llmCategoryName": "6. Audit, Token Usage & Observability",
+    "llmSummary": "Final egress gate. Publishes token telemetry, latency metrics, and audit logs to Redis DB 3 and Prometheus exporter.",
+    "modelTarget": "None (Egress Protocol)",
+    "providerEngine": "apps/api / apps/text",
+    "hardwareDevice": "Network Interface",
+    "contextLimit": "N/A",
+    "securityPosture": "EHR Safe Transmission & Zero PII Leakage",
+    "guardrailDetails": "Egress schema validation (onSchemaViolation: fail). Strict JSON contract validation ensuring 'case_note' and 'redactions' match data specifications before egress.",
+    "rawConfig": {
+      "protocols": [
+        "http",
+        "http-sse",
+        "socket"
+      ],
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "case_note"
+        ],
+        "properties": {
+          "case_note": {
+            "type": "string"
+          },
+          "redactions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "label"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "onSchemaViolation": "fail"
+    },
+    "id": "n_output"
+  }
+];
+    const GRAPH_EDGES = [
+  {
+    "id": "e1",
+    "from": "n_trigger",
+    "to": "n_presummary",
+    "fromPort": "next",
+    "toPort": "after"
+  },
+  {
+    "id": "e2",
+    "from": "n_trigger",
+    "to": "n_presummary",
+    "fromPort": "out",
+    "toPort": "context"
+  },
+  {
+    "id": "e3",
+    "from": "n_presummary",
+    "to": "n_finalize",
+    "fromPort": "next",
+    "toPort": "after"
+  },
+  {
+    "id": "e4",
+    "from": "n_trigger",
+    "to": "n_asr",
+    "fromPort": "next",
+    "toPort": "after"
+  },
+  {
+    "id": "e5",
+    "from": "n_asr",
+    "to": "n_ner",
+    "fromPort": "transcript",
+    "toPort": "in"
+  },
+  {
+    "id": "e6",
+    "from": "n_ner",
+    "to": "n_visit",
+    "fromPort": "out",
+    "toPort": "in"
+  },
+  {
+    "id": "e7",
+    "from": "n_visit",
+    "to": "n_summary_new",
+    "fromPort": "new_visit",
+    "toPort": "after"
+  },
+  {
+    "id": "e8",
+    "from": "n_visit",
+    "to": "n_summary_revisit",
+    "fromPort": "revisit",
+    "toPort": "after"
+  },
+  {
+    "id": "e9",
+    "from": "n_visit",
+    "to": "n_summary_new",
+    "fromPort": "else",
+    "toPort": "after"
+  },
+  {
+    "id": "e10",
+    "from": "n_trigger",
+    "to": "n_summary_new",
+    "fromPort": "out",
+    "toPort": "context"
+  },
+  {
+    "id": "e11",
+    "from": "n_trigger",
+    "to": "n_summary_revisit",
+    "fromPort": "out",
+    "toPort": "context"
+  },
+  {
+    "id": "e12",
+    "from": "n_ner",
+    "to": "n_summary_new",
+    "fromPort": "out",
+    "toPort": "in"
+  },
+  {
+    "id": "e13",
+    "from": "n_ner",
+    "to": "n_summary_revisit",
+    "fromPort": "out",
+    "toPort": "in"
+  },
+  {
+    "id": "e14",
+    "from": "n_summary_new",
+    "to": "n_finalize",
+    "fromPort": "out",
+    "toPort": "in"
+  },
+  {
+    "id": "e15",
+    "from": "n_summary_revisit",
+    "to": "n_finalize",
+    "fromPort": "out",
+    "toPort": "in"
+  },
+  {
+    "id": "e16",
+    "from": "n_finalize",
+    "to": "n_review",
+    "fromPort": "out",
+    "toPort": "in"
+  },
+  {
+    "id": "e17",
+    "from": "n_finalize",
+    "to": "n_output",
+    "fromPort": "data",
+    "toPort": "in"
+  },
+  {
+    "id": "e18",
+    "from": "n_review",
+    "to": "n_output",
+    "fromPort": "next",
+    "toPort": "after"
+  },
+  {
+    "id": "e19",
+    "from": "n_trigger",
+    "to": "n_transcript",
+    "fromPort": "out",
+    "toPort": "in"
+  },
+  {
+    "id": "e20",
+    "from": "n_transcript",
+    "to": "n_ner",
+    "fromPort": "text",
+    "toPort": "in"
+  }
+];
+
+    let selectedNodeId = "n_summary_new";
+    let isLLMFiltered = false;
+    let isGuardrailFiltered = false;
+
+    // Pan & Zoom State
+    let scale = 0.85;
+    let panX = 40;
+    let panY = 60;
+    let isPanning = false;
+    let startX = 0;
+    let startY = 0;
+
+    const viewport = document.getElementById("viewport");
+    const world = document.getElementById("world");
+    const wiresLayer = document.getElementById("wires-layer");
+    const nodesLayer = document.getElementById("nodes-layer");
+
+    // Initialize Canvas
+    function initCanvas() {
+      renderCanvas();
+      applyTransform();
+      selectNode("n_summary_new");
+
+      viewport.addEventListener("mousedown", (e) => {
+        if (e.target.closest(".node-element") || e.target.closest(".canvas-hud")) return;
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        viewport.style.cursor = "grabbing";
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isPanning) return;
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        applyTransform();
+      });
+
+      window.addEventListener("mouseup", () => {
+        isPanning = false;
+        viewport.style.cursor = "grab";
+      });
+
+      viewport.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const zoomFactor = 1.1;
+        const rect = viewport.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const prevScale = scale;
+        if (e.deltaY < 0) {
+          scale = Math.min(2.0, scale * zoomFactor);
+        } else {
+          scale = Math.max(0.3, scale / zoomFactor);
+        }
+
+        panX = mouseX - (mouseX - panX) * (scale / prevScale);
+        panY = mouseY - (mouseY - panY) * (scale / prevScale);
+
+        applyTransform();
+      }, { passive: false });
+    }
+
+    function applyTransform() {
+      world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      document.getElementById("zoom-val").textContent = `${Math.round(scale * 100)}%`;
+    }
+
+    function zoomIn() {
+      scale = Math.min(2.0, scale * 1.15);
+      applyTransform();
+    }
+
+    function zoomOut() {
+      scale = Math.max(0.3, scale / 1.15);
+      applyTransform();
+    }
+
+    function resetCanvasView() {
+      scale = 0.82;
+      panX = 30;
+      panY = 50;
+      applyTransform();
+    }
+
+    // Render Nodes & Wires
+    function renderCanvas() {
+      nodesLayer.innerHTML = "";
+
+      GRAPH_NODES.forEach(node => {
+        const nodeEl = document.createElement("div");
+        nodeEl.className = "node-element";
+        nodeEl.id = `node-${node.id}`;
+        nodeEl.style.left = `${node.x}px`;
+        nodeEl.style.top = `${node.y}px`;
+
+        const llmBadge = node.llmActive ? '<span class="tag-mono" style="background:#222; color:#fff; border-color:#fff;">LLM ACTIVE</span>' : '';
+        const guardBadge = node.guardrailActive ? '<span class="node-guardrail-badge">🛡️ GUARDRAIL</span>' : '';
+
+        nodeEl.innerHTML = `
+          <div class="node-header">
+            <span class="node-title">${node.title}</span>
+            <span class="tag-mono">${node.lane}</span>
+          </div>
+          <div class="node-body">
+            <div class="node-sub">${node.slug}</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+              <span class="tag-mono">${node.cadence}</span>
+              ${llmBadge}
+            </div>
+            ${guardBadge}
+          </div>
+        `;
+
+        nodeEl.onclick = (e) => {
+          e.stopPropagation();
+          selectNode(node.id);
+        };
+
+        nodesLayer.appendChild(nodeEl);
+      });
+
+      renderConnections();
+    }
+
+    function renderConnections() {
+      wiresLayer.innerHTML = "";
+
+      GRAPH_EDGES.forEach(edge => {
+        const fromNode = GRAPH_NODES.find(n => n.id === edge.from);
+        const toNode = GRAPH_NODES.find(n => n.id === edge.to);
+        if (!fromNode || !toNode) return;
+
+        const startX = fromNode.x + 290;
+        const startY = fromNode.y + 40;
+        const endX = toNode.x;
+        const endY = toNode.y + 40;
+
+        const deltaX = Math.max(40, (endX - startX) * 0.5);
+        const pathData = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`;
+
+        const isRelated = (fromNode.id === selectedNodeId || toNode.id === selectedNodeId);
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("class", `wire-path ${isRelated ? 'active' : ''}`);
+        wiresLayer.appendChild(path);
+      });
+    }
+
+    // Select Node & Update Inspector
+    function selectNode(id) {
+      selectedNodeId = id;
+      document.querySelectorAll(".node-element").forEach(el => el.classList.remove("selected"));
+      const el = document.getElementById(`node-${id}`);
+      if (el) el.classList.add("selected");
+
+      renderConnections();
+
+      const node = GRAPH_NODES.find(n => n.id === id);
+      if (!node) return;
+
+      document.getElementById("ins-node-title").textContent = node.title;
+      document.getElementById("ins-node-id").textContent = node.id;
+      document.getElementById("ins-type").textContent = node.type;
+      document.getElementById("ins-lane").textContent = node.lane;
+      document.getElementById("ins-cadence").textContent = node.cadence;
+      document.getElementById("ins-slug").textContent = node.slug;
+      document.getElementById("ins-purpose").textContent = node.purpose;
+
+      const rowTemplate = document.getElementById("row-template");
+      if (node.template) {
+        rowTemplate.style.display = "flex";
+        document.getElementById("ins-template").textContent = node.template;
+      } else {
+        rowTemplate.style.display = "none";
+      }
+
+      document.getElementById("ins-ports-in").textContent = node.inPorts.join(", ") || "(none / trigger entry)";
+      document.getElementById("ins-ports-out").textContent = node.outPorts.join(", ") || "(terminal output)";
+
+      // LLM Tab
+      document.getElementById("ins-llm-symbol").textContent = node.llmActive ? "●" : "○";
+      document.getElementById("ins-llm-headline").textContent = node.llmActive ? "LLM Inference Active" : "Non-LLM / Passthrough Node";
+      document.getElementById("ins-llm-desc").textContent = node.llmSummary;
+
+      const llmExecCard = document.getElementById("ins-llm-execution-card");
+      llmExecCard.style.display = node.llmActive ? "flex" : "none";
+
+      document.getElementById("ins-model-target").textContent = node.modelTarget;
+      document.getElementById("ins-provider-engine").textContent = node.providerEngine;
+      document.getElementById("ins-hardware-device").textContent = node.hardwareDevice;
+      document.getElementById("ins-context-limit").textContent = node.contextLimit;
+      document.getElementById("ins-security-posture").textContent = node.securityPosture;
+
+      // Guardrail Tab
+      document.getElementById("ins-guard-desc").textContent = node.guardrailDetails;
+
+      // Raw JSON Tab
+      document.getElementById("ins-raw-json").textContent = JSON.stringify(node.rawConfig || {}, null, 2);
+
+      // Link to Category in Inventory Drawer
+      const linkContainer = document.getElementById("ins-cat-link-container");
+      linkContainer.innerHTML = "";
+      if (node.llmCategoryId) {
+        const btn = document.createElement("button");
+        btn.className = "category-jump-btn";
+        btn.innerHTML = `<span>📂</span> View in Inventory: ${node.llmCategoryName}`;
+        btn.onclick = () => {
+          jumpToCategory(node.llmCategoryId);
+        };
+        linkContainer.appendChild(btn);
+      }
+
+      openInspector();
+    }
+
+    function switchInspectorTab(tabKey) {
+      document.querySelectorAll(".ins-tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".ins-tab-content").forEach(c => c.style.display = "none");
+
+      event.target.classList.add("active");
+      const target = document.getElementById(`ins-tab-${tabKey}`);
+      if (target) target.style.display = "flex";
+    }
+
+    function jumpToCategory(catId) {
+      const drawer = document.getElementById("bottom-drawer");
+      if (!drawer.classList.contains("open")) {
+        toggleInventoryDrawer();
+      }
+      highlightCategoryNodes(catId);
+      const catCard = document.getElementById(`cat-card-${catId}`);
+      if (catCard) {
+        catCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function highlightCategoryNodes(catId) {
+      document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active-cat"));
+      const card = document.getElementById(`cat-card-${catId}`);
+      if (card) card.classList.add("active-cat");
+
+      document.querySelectorAll(".node-element").forEach(el => {
+        const id = el.id.replace("node-", "");
+        const node = GRAPH_NODES.find(n => n.id === id);
+        if (node.llmCategoryId === catId) {
+          el.style.opacity = "1";
+          el.style.transform = "scale(1.04)";
+        } else {
+          el.style.opacity = "0.25";
+          el.style.transform = "scale(1)";
+        }
+      });
+    }
+
+    function toggleInspector() {
+      const inspector = document.getElementById("inspector");
+      const btnReopen = document.getElementById("btn-inspector-reopen");
+      const btnHeader = document.getElementById("btn-toggle-inspector");
+
+      if (inspector.classList.contains("collapsed")) {
+        inspector.classList.remove("collapsed");
+        btnReopen.style.display = "none";
+        btnHeader.classList.add("active");
+      } else {
+        inspector.classList.add("collapsed");
+        btnReopen.style.display = "flex";
+        btnHeader.classList.remove("active");
+      }
+    }
+
+    function openInspector() {
+      const inspector = document.getElementById("inspector");
+      const btnReopen = document.getElementById("btn-inspector-reopen");
+      const btnHeader = document.getElementById("btn-toggle-inspector");
+
+      inspector.classList.remove("collapsed");
+      btnReopen.style.display = "none";
+      btnHeader.classList.add("active");
+    }
+
+    function toggleInventoryDrawer() {
+      const drawer = document.getElementById("bottom-drawer");
+      const btn = document.getElementById("btn-toggle-inventory");
+      if (drawer.classList.contains("open")) {
+        drawer.classList.remove("open");
+        btn.classList.remove("active");
+      } else {
+        drawer.classList.add("open");
+        btn.classList.add("active");
+      }
+    }
+
+    function toggleLLMFilter() {
+      isLLMFiltered = !isLLMFiltered;
+      const btn = document.getElementById("btn-toggle-filter");
+      if (isLLMFiltered) {
+        btn.classList.add("active");
+        document.querySelectorAll(".node-element").forEach(el => {
+          const id = el.id.replace("node-", "");
+          const node = GRAPH_NODES.find(n => n.id === id);
+          if (node.llmActive) {
+            el.style.opacity = "1";
+            el.style.borderColor = "#ffffff";
+          } else {
+            el.style.opacity = "0.2";
+            el.style.borderColor = "var(--border-mid)";
+          }
+        });
+      } else {
+        btn.classList.remove("active");
+        document.querySelectorAll(".node-element").forEach(el => {
+          el.style.opacity = "1";
+          el.style.borderColor = "var(--border-mid)";
+        });
+      }
+    }
+
+    function toggleGuardrailFilter() {
+      isGuardrailFiltered = !isGuardrailFiltered;
+      const btn = document.getElementById("btn-toggle-guardrail");
+      if (isGuardrailFiltered) {
+        btn.classList.add("active-green");
+        document.querySelectorAll(".node-element").forEach(el => {
+          const id = el.id.replace("node-", "");
+          const node = GRAPH_NODES.find(n => n.id === id);
+          if (node.guardrailActive) {
+            el.style.opacity = "1";
+            el.style.borderColor = "#059669";
+          } else {
+            el.style.opacity = "0.2";
+            el.style.borderColor = "var(--border-mid)";
+          }
+        });
+      } else {
+        btn.classList.remove("active-green");
+        document.querySelectorAll(".node-element").forEach(el => {
+          el.style.opacity = "1";
+          el.style.borderColor = "var(--border-mid)";
+        });
+      }
+    }
+
+    window.onload = initCanvas;
+  </script>
+</body>
+</html>

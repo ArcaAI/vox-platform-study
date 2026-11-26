@@ -7,21 +7,21 @@
   "throughputTps": 195.0,
   "isSuccess": true,
   "statusLabel": "PASS",
-  "totalE2EMs": 31222.89783344604,
+  "totalE2EMs": 26929.527206812054,
   "hops": {
-    "sessionInitMs": 744.732917053625,
-    "transcriptIngestMs": 662.0169160887599,
-    "workflowDispatchMs": 1860.302375163883,
-    "pipelineExecMs": 26762.755959061906,
-    "noteRetrievalMs": 1193.0896660778672
+    "sessionInitMs": 733.0930409952998,
+    "transcriptIngestMs": 713.0679578986019,
+    "workflowDispatchMs": 815.619874978438,
+    "pipelineExecMs": 24059.275457868353,
+    "noteRetrievalMs": 608.4708750713617
   },
   "subhops": {
-    "nlpMs": 652.7368749957532,
-    "guardrailInboundMs": 3278.5491249524057,
+    "nlpMs": 718.04204210639,
+    "guardrailInboundMs": 3578.5360410809517,
     "promptAssemblyMs": 750.0,
     "llmGpuMs": 3200.0,
-    "guardrailOutboundMs": 18881.469959113747
+    "guardrailOutboundMs": 15812.69737468101
   },
-  "consultationId": "01a20d40-a68f-7802-843e-65dd84ccbb07",
-  "jobId": "harness-doc-5902dc9d-12ed-40df-b7d6-4fa557ba0f1b"
+  "consultationId": "01a211d8-51a4-78d5-9c11-a0166e6c99f6",
+  "jobId": "harness-doc-dffb8c84-5998-4905-8102-2d54f99f0093"
 }

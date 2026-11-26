@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Studio — General Medicine Consultation (v3) | LLM Service Architecture & Trace</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+      /* STRICT HIGH-CONTRAST MONOCHROME / TECHNICAL PALETTE */
+      --bg-canvas: #090909;
+      --bg-panel: #111111;
+      --bg-surface: #171717;
+      --bg-surface-hover: #222222;
+      --border-dark: #222222;
+      --border-mid: #383838;
+      --border-light: #666666;
+      --border-white: #ffffff;
+      --text-main: #f5f5f5;
+      --text-muted: #9e9e9e;
+      --text-dim: #616161;
+      --grid-dot: #222222;
+      --node-bg: #141414;
+      --node-header-bg: #1a1a1a;
+      --node-selected-border: #ffffff;
+      --llm-accent: #ffffff;
+      --llm-badge-bg: #ffffff;
+      --llm-badge-text: #000000;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-canvas);
+      font-family: var(--font-sans);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    p, span, div, h1, h2, h3, code, td, th, label, a {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    /* TOP STUDIO TOOLBAR */
+    .studio-header {
+      height: 52px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      z-index: 20;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .workflow-logo {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      border-radius: 4px;
+    }
+
+    .workflow-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .crumb-dim { color: var(--text-dim); }
+    .crumb-sep { color: var(--border-mid); font-family: var(--font-mono); }
+
+    .tag-mono {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tag-llm {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 700;
+      border: 1px solid #ffffff;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-mono {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .btn-mono:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .btn-mono.active {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    /* MAIN STUDIO WORKSPACE (CANVAS + INSPECTOR) */
+    .studio-body {
+      flex: 1;
+      position: relative;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* CANVAS AREA */
+    .canvas-viewport {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background-color: var(--bg-canvas);
+      background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    .canvas-viewport.is-dragging {
+      cursor: grabbing;
+      user-select: none;
+    }
+
+    .canvas-world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      width: 3800px;
+      height: 1400px;
+    }
+
+    /* SVG CONNECTIONS LAYER */
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .wire-path {
+      fill: none;
+      stroke: var(--border-mid);
+      stroke-width: 2;
+      stroke-linecap: round;
+      transition: stroke 0.2s ease, stroke-width 0.2s ease;
+    }
+
+    .wire-path.active {
+      stroke: var(--border-white);
+      stroke-width: 2.5;
+    }
+
+    .wire-path.llm-flow {
+      stroke: rgba(255, 255, 255, 0.4);
+      stroke-dasharray: 6 4;
+      animation: dash 1.5s linear infinite;
+    }
+
+    @keyframes dash {
+      to { stroke-dashoffset: -20; }
+    }
+
+    /* NODE CARDS ON CANVAS */
+    .node-element {
+      position: absolute;
+      width: 290px;
+      background: var(--node-bg);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      z-index: 2;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.2s ease;
+    }
+
+    .node-element:hover {
+      border-color: var(--border-light);
+    }
+
+    .node-element.selected {
+      border-color: var(--border-white);
+      box-shadow: 0 0 0 2px var(--border-white), 0 12px 30px rgba(0, 0, 0, 0.9);
+      z-index: 10;
+    }
+
+    .node-element.llm-highlight {
+      border: 1.5px solid #ffffff;
+      box-shadow: 0 0 18px rgba(255, 255, 255, 0.25);
+    }
+
+    .node-element.dimmed {
+      opacity: 0.35;
+    }
+
+    .node-header {
+      background: var(--node-header-bg);
+      border-bottom: 1px solid var(--border-dark);
+      padding: 9px 12px;
+      border-top-left-radius: 7px;
+      border-top-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .node-title-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .node-type-icon {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+
+    .node-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-main);
+    }
+
+    .node-id-chip {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      color: var(--text-dim);
+      background: #000;
+      padding: 1px 5px;
+      border: 1px solid var(--border-dark);
+      border-radius: 3px;
+    }
+
+    .node-content {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .node-summary-line {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .node-slug-badge {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      padding: 3px 6px;
+      border-radius: 4px;
+      color: var(--text-main);
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .node-template-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: #111111;
+      border: 1px solid var(--border-mid);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #e0e0e0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .node-footer {
+      border-top: 1px solid var(--border-dark);
+      padding: 7px 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-bottom-left-radius: 7px;
+      border-bottom-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .llm-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 600;
+    }
+
+    .llm-dot-active {
+      color: #ffffff;
+      text-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+    }
+
+    .llm-dot-none {
+      color: var(--text-dim);
+    }
+
+    /* CANVAS HUD CONTROLS */
+    .canvas-hud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      z-index: 15;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    }
+
+    .hud-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hud-btn:hover {
+      background: var(--bg-surface);
+    }
+
+    .hud-zoom-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 0 6px;
+    }
+
+    /* RIGHT INSPECTOR PANEL (STUDIO INSPECTOR) */
+    .inspector-panel {
+      width: 450px;
+      height: 100%;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-dark);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 20;
+      overflow: hidden;
+      transition: width 0.2s ease;
+    }
+
+    .inspector-panel.collapsed {
+      width: 0;
+      border-left: none;
+    }
+
+    .inspector-panel.collapsed ~ .bottom-drawer {
+      right: 0;
+    }
+
+    .inspector-panel.collapsed ~ .inspector-reopen-btn {
+      display: flex;
+    }
+
+    .inspector-reopen-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 15;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .inspector-reopen-btn:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .inspector-top {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .inspector-title-group h3 {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inspector-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-dark);
+      padding: 0 12px;
+      background: var(--bg-surface);
+    }
+
+    .ins-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 10px 14px;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-family: var(--font-mono);
+    }
+
+    .ins-tab:hover {
+      color: var(--text-main);
+    }
+
+    .ins-tab.active {
+      color: #ffffff;
+      border-bottom-color: #ffffff;
+    }
+
+    .inspector-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .ins-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ins-card-title {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .prop-label {
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .prop-val {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .llm-banner {
+      background: #000;
+      border: 1px solid var(--border-mid);
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .llm-banner-title {
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      color: #ffffff;
+    }
+
+    .llm-banner-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .llm-pipeline-box {
+      background: #0d0d0d;
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .llm-pipeline-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      letter-spacing: 0.05em;
+    }
+
+    .llm-pipeline-step {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      line-height: 1.4;
+    }
+
+    .llm-pipeline-step span {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    .llm-pipeline-step code {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      background: #1a1a1a;
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: #f5f5f5;
+    }
+
+    /* BOTTOM INVENTORY DRAWER (COMPONENT FILES BY FUNCTIONALITY) */
+    .bottom-drawer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 450px;
+      height: 290px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-dark);
+      display: flex;
+      flex-direction: column;
+      z-index: 18;
+      transition: all 0.2s ease;
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.7);
+    }
+
+    .bottom-drawer.collapsed {
+      height: 40px;
+      overflow: hidden;
+    }
+
+    .drawer-header {
+      height: 40px;
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-dark);
+      background: var(--bg-surface);
+      cursor: pointer;
+    }
+
+    .drawer-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+
+    .drawer-body {
+      flex: 1;
+      padding: 14px 18px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      display: flex;
+      gap: 14px;
+    }
+
+    .category-card {
+      width: 320px;
+      flex-shrink: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .category-card:hover {
+      border-color: var(--border-light);
+      background: var(--bg-surface-hover);
+    }
+
+    .category-card.active {
+      border-color: #ffffff;
+      box-shadow: 0 0 0 1px #ffffff;
+      background: #1c1c1c;
+    }
+
+    .category-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .category-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .category-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 2px;
+    }
+
+    .pill-file {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text-muted);
+    }
+
+    .category-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- STUDIO HEADER -->
+  <header class="studio-header">
+    <div class="header-left">
+      <div class="workflow-logo">STUDIO</div>
+      <div class="workflow-breadcrumb">
+        <span class="crumb-dim">Workflows</span>
+        <span class="crumb-sep">/</span>
+        <span>general-medicine-consultation</span>
+        <span class="tag-mono">v3</span>
+        <span class="tag-mono">PUBLISHED</span>
+        <span class="crumb-sep">|</span>
+        <span class="tag-mono">ENTRY: Consultation API (POST /consultations/start)</span>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <button class="btn-mono active" id="btn-toggle-filter" onclick="toggleLLMFilter()">
+        <span>◉</span> Highlight LLM Service Nodes
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inventory" onclick="toggleInventoryDrawer()">
+        <span>📁</span> LLM Service File Inventory (16 Files)
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inspector" onclick="toggleInspector()" title="Toggle Right Inspector Sidebar">
+        <span>◨</span> Inspector
+      </button>
+      <button class="btn-mono" onclick="resetCanvasView()">
+        <span>⟲</span> Fit Graph
+      </button>
+    </div>
+  </header>
+
+  <!-- STUDIO WORKSPACE -->
+  <div class="studio-body">
+
+    <!-- CANVAS VIEWPORT -->
+    <div class="canvas-viewport" id="viewport">
+      <div class="canvas-world" id="world">
+        <!-- SVG CONNECTIONS -->
+        <svg class="connections-svg" id="wires-layer"></svg>
+
+        <!-- NODES CONTAINER (Rendered via JS) -->
+        <div id="nodes-layer"></div>
+      </div>
+
+      <!-- HUD CONTROLS -->
+      <div class="canvas-hud">
+        <button class="hud-btn" onclick="zoomIn()">+</button>
+        <span class="hud-zoom-label" id="zoom-val">100%</span>
+        <button class="hud-btn" onclick="zoomOut()">−</button>
+        <button class="hud-btn" onclick="resetCanvasView()" title="Fit View">⛶</button>
+      </div>
+    </div>
+
+    <!-- RIGHT INSPECTOR PANEL -->
+    <aside class="inspector-panel" id="inspector">
+      <div class="inspector-top">
+        <div class="inspector-title-group">
+          <h3 id="ins-node-title">Node Inspector</h3>
+          <span class="tag-mono" id="ins-node-id">Select a node</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="toggleInspector()">✕</button>
+      </div>
+
+      <div class="inspector-tabs">
+        <button class="ins-tab active" onclick="switchInspectorTab('spec')">Node Specs &amp; Workflow Role</button>
+        <button class="ins-tab" onclick="switchInspectorTab('llm')">LLM Service Execution &amp; Model</button>
+      </div>
+
+      <div class="inspector-scroll">
+
+        <!-- TAB 1: NODE SPECS & ROLE -->
+        <div id="ins-tab-spec" class="ins-tab-content">
+          <div class="ins-card">
+            <div class="ins-card-title">Workflow Node Attributes</div>
+            <div class="prop-row">
+              <span class="prop-label">Node Type</span>
+              <span class="prop-val" id="ins-type">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Execution Lane</span>
+              <span class="prop-val" id="ins-lane">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Trigger Cadence</span>
+              <span class="prop-val" id="ins-cadence">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Agent / Engine Slug</span>
+              <span class="prop-val" id="ins-slug">--</span>
+            </div>
+            <div class="prop-row" id="row-template" style="display:none;">
+              <span class="prop-label">Document Template</span>
+              <span class="prop-val" id="ins-template">--</span>
+            </div>
+            <div class="prop-row" id="row-onerror">
+              <span class="prop-label">On Error Posture</span>
+              <span class="prop-val" id="ins-onerror">--</span>
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Node Purpose in Consultation</div>
+            <p id="ins-purpose" style="font-size:12.5px; line-height:1.5; color:var(--text-muted);"></p>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Graph Ports &amp; Wiring</div>
+            <div class="prop-row">
+              <span class="prop-label">Input Ports</span>
+              <span class="prop-val" id="ins-ports-in">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Output Ports</span>
+              <span class="prop-val" id="ins-ports-out">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: LLM SERVICE EXECUTION & MODEL -->
+        <div id="ins-tab-llm" class="ins-tab-content" style="display:none;">
+          <div class="llm-banner">
+            <div class="llm-banner-title">
+              <span id="ins-llm-symbol">●</span>
+              <span id="ins-llm-headline">LLM Service Interaction</span>
+            </div>
+            <p class="llm-banner-desc" id="ins-llm-desc">
+              Detailed breakdown of how apps/text processes this step.
+            </p>
+            <div style="margin-top:6px;" id="ins-cat-link-container"></div>
+          </div>
+
+          <!-- DETAILED LLM EXECUTION PIPELINE -->
+          <div class="ins-card" id="ins-pipeline-card">
+            <div class="ins-card-title">LLM Execution Pipeline &amp; Model Routing</div>
+            <div class="llm-pipeline-box" id="ins-pipeline-box">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Inference &amp; Hardware Profile</div>
+            <div class="prop-row">
+              <span class="prop-label">Target Model</span>
+              <span class="prop-val" id="ins-model">Gemma-4-e2b-it-qat</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Hardware Device</span>
+              <span class="prop-val" id="ins-hardware">GPU 0 (NVIDIA RTX)</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Inference Engine</span>
+              <span class="prop-val" id="ins-engine">LM Studio / vLLM</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Generation Speed</span>
+              <span class="prop-val" id="ins-speed">~178 tokens/sec</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">In-Model Translation</span>
+              <span class="prop-val" id="ins-trans">Malayalam → English</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Zero Retention</span>
+              <span class="prop-val">Enforced (ZDR HIPAA)</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- FLOATING REOPEN BUTTON -->
+    <button class="inspector-reopen-btn" id="btn-inspector-reopen" onclick="toggleInspector()" title="Open Node Inspector">
+      <span>◀</span> Node Inspector
+    </button>
+
+    <!-- BOTTOM INVENTORY DRAWER (LLM COMPONENT FILES) -->
+    <div class="bottom-drawer" id="bottom-drawer">
+      <div class="drawer-header" onclick="toggleInventoryDrawer()">
+        <div class="drawer-title">
+          <span class="tag-mono tag-llm">LLM SERVICE INVENTORY</span>
+          <span>apps/text Component Files Segregated by Functionality (16 Core Files)</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="event.stopPropagation(); toggleInventoryDrawer()">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        
+        <!-- Category 1 -->
+        <div class="category-card" id="cat-card-1" onclick="highlightCategoryNodes(1)">
+          <div class="category-header">
+            <span class="category-name">1. Ingress, ASGI &amp; Service Routing</span>
+            <span class="tag-mono">Port 8864</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">main.py</span>
+            <span class="pill-file">api/middleware/auth.py</span>
+            <span class="pill-file">core/config.py</span>
+            <span class="pill-file">core/connection.py</span>
+          </div>
+          <div class="category-desc">
+            FastAPI server on port 8864. Enforces <code>X-Service-Token</code> inter-service authentication, binds multi-tenant context (<code>X-Tenant-Id</code>), manages <code>httpx.AsyncClient</code> connection pooling, and coordinates graceful pod shutdown.
+          </div>
+        </div>
+
+        <!-- Category 2 -->
+        <div class="category-card" id="cat-card-2" onclick="highlightCategoryNodes(2)">
+          <div class="category-header">
+            <span class="category-name">2. Generation, Streaming &amp; Judge API</span>
+            <span class="tag-mono">POST /v1/text/generate</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">api/endpoints/generate.py</span>
+            <span class="pill-file">api/endpoints/stream.py</span>
+            <span class="pill-file">api/endpoints/judge.py</span>
+            <span class="pill-file">api/endpoints/tasks.py</span>
+          </div>
+          <div class="category-desc">
+            Core inference API plane. Orchestrates prompt assembly, token budgeting, and multi-model fallback; <code>stream.py</code> drives real-time SSE chunk delivery; <code>judge.py</code> runs sub-second clinical safety classification via Granite Guardian.
+          </div>
+        </div>
+
+        <!-- Category 3 -->
+        <div class="category-card" id="cat-card-3" onclick="highlightCategoryNodes(3)">
+          <div class="category-header">
+            <span class="category-name">3. Inference Engines &amp; GPU Adapters</span>
+            <span class="tag-mono">Gemma-4 / GPU 0</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">providers/lmstudio.py</span>
+            <span class="pill-file">providers/vllm.py</span>
+            <span class="pill-file">providers/pool.py</span>
+            <span class="pill-file">providers/openai_compat.py</span>
+          </div>
+          <div class="category-desc">
+            Dual NVIDIA GPU abstraction. <code>lmstudio.py</code> connects to GPU 0 for native Gemma-4 translation and note gen; <code>vllm.py</code> provides continuous batching and PagedAttention for 32+ concurrency; <code>pool.py</code> handles dynamic health routing.
+          </div>
+        </div>
+
+        <!-- Category 4 -->
+        <div class="category-card" id="cat-card-4" onclick="highlightCategoryNodes(4)">
+          <div class="category-header">
+            <span class="category-name">4. Output Gating &amp; Guardrail Interceptors</span>
+            <span class="tag-mono">DNA Schema</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/output_gate.py</span>
+            <span class="pill-file">services/external_guardrail.py</span>
+            <span class="pill-file">services/judge_guard.py</span>
+            <span class="pill-file">core/guardrail_posture.py</span>
+          </div>
+          <div class="category-desc">
+            Two-way clinical safety gates. Intercepts prompts before inference, enforces Deterministic Note Architecture (DNA) schema compliance, verifies groundedness against transcripts, and screen for hallucinated patient claims.
+          </div>
+        </div>
+
+        <!-- Category 5 -->
+        <div class="category-card" id="cat-card-5" onclick="highlightCategoryNodes(5)">
+          <div class="category-header">
+            <span class="category-name">5. Concurrency &amp; Runtime Semaphores</span>
+            <span class="tag-mono">16-Worker Pool</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/runtime_limits.py</span>
+            <span class="pill-file">services/resizable_semaphore.py</span>
+            <span class="pill-file">services/retry_handler.py</span>
+            <span class="pill-file">services/circuit_breaker.py</span>
+          </div>
+          <div class="category-desc">
+            Prevents GPU VRAM exhaustion. Uses resizable semaphores to regulate multi-doctor queue admission, coordinates exponential backoff on retries, and trips circuit breakers if local LM Studio or vLLM backends stall.
+          </div>
+        </div>
+
+        <!-- Category 6 -->
+        <div class="category-card" id="cat-card-6" onclick="highlightCategoryNodes(6)">
+          <div class="category-header">
+            <span class="category-name">6. Telemetry, Tokens &amp; Zero Retention</span>
+            <span class="tag-mono">~178 tok/s | ZDR</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">core/metrics.py</span>
+            <span class="pill-file">core/telemetry.py</span>
+            <span class="pill-file">services/generation_audit.py</span>
+            <span class="pill-file">core/retention.py</span>
+          </div>
+          <div class="category-desc">
+            Prometheus telemetry recording Prompt Tokens, Completion Tokens, TTFT, and generation throughput (~178 tok/s). <code>generation_audit.py</code> logs cryptographic prompt hashes without saving raw patient text, ensuring HIPAA Zero Data Retention.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // 11 GENERAL MEDICINE CONSULTATION NODES (FROM general-medicine-consultation.v3.workflow-bundle.json)
+    const GRAPH_NODES = [
+      {
+        id: "n_trigger",
+        title: "Consultation Trigger",
+        type: "core.trigger",
+        x: 60,
+        y: 200,
+        lane: "Control Plane",
+        cadence: "onOpen",
+        slug: "Kind: consultation, api",
+        purpose: "Initiated by client calling POST /api/v1/clinical/consultations/start. Binds tenant context (schema: 01a206a9-49a0-75b6-b7ef-8c90ce4db245), acting clinician, and visit_type ('new-visit' or 'revisit').",
+        inPorts: [],
+        outPorts: ["next", "out"],
+        llmActive: false,
+        llmCategoryId: 1,
+        llmCategoryName: "1. Ingress, ASGI & Service Routing",
+        llmSummary: "Sets up inter-service trace headers, passes tenant ID (ARCAAI) and context payload to downstream LLM prompts.",
+        onError: "fail",
+        model: "N/A (Ingress API)",
+        hardware: "CPU Gateway",
+        engine: "NestJS / Temporal Gateway",
+        speed: "Sub-second (<10ms)"
+      },
+      {
+        id: "n_presummary",
+        title: "Pre-Summary Agent",
+        type: "core.agent",
+        x: 480,
+        y: 60,
+        lane: "Realtime",
+        cadence: "onStart",
+        slug: "case-notes-pre-summary",
+        purpose: "Executes immediately on consultation open to ingest past EHR encounters, prior lab results, and chronic disease history to generate a concise pre-visit clinical brief for the doctor.",
+        inPorts: ["after", "context"],
+        outPorts: ["next", "out"],
+        llmActive: true,
+        llmCategoryId: 2,
+        llmCategoryName: "2. Generation, Streaming & Judge API",
+        llmSummary: "Invokes POST /v1/text/generate with 'case-notes-pre-summary' prompt template. Synthesizes 3-paragraph historical chart synopsis on GPU 0.",
+        onError: "degrade",
+        template: null,
+        model: "Gemma-4-e2b-it-qat",
+        hardware: "GPU 0 (NVIDIA RTX)",
+        engine: "LM Studio / vLLM",
+        speed: "~178 tokens/sec (1.8s total)"
+      },
+      {
+        id: "n_asr",
+        title: "Speech-to-Text (ASR)",
+        type: "core.agent",
+        x: 480,
+        y: 270,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "sarvam-saaras-v4",
+        purpose: "Realtime multi-lingual speech-to-text pipeline transcribing live ambient doctor-patient consultation audio (Malayalam / Indian English) into turn-by-turn dialogue text.",
+        inPorts: ["after"],
+        outPorts: ["transcript"],
+        llmActive: false,
+        llmCategoryId: 1,
+        llmCategoryName: "1. Ingress, ASGI & Service Routing",
+        llmSummary: "Streaming acoustic and linguistic ASR engine. Outputs structured transcript segments with speaker diarization.",
+        onError: "fail",
+        model: "Sarvam Saaras v4 (ASR)",
+        hardware: "ASR Inference Pool",
+        engine: "Triton / On-Prem ASR",
+        speed: "Streaming Realtime (chunked)"
+      },
+      {
+        id: "n_transcript",
+        title: "Transcript Data Mapping",
+        type: "core.data",
+        x: 480,
+        y: 480,
+        lane: "Data Plane",
+        cadence: "perTurn",
+        slug: "Mapping: in.transcript.text → text",
+        purpose: "Normalizes and formats live transcript utterance text, unpacking timestamps and speaker turns into the standardized clinical data contract required by downstream NLP.",
+        inPorts: ["in"],
+        outPorts: ["text"],
+        llmActive: false,
+        llmCategoryId: 1,
+        llmCategoryName: "1. Ingress, ASGI & Service Routing",
+        llmSummary: "Zero-latency in-memory data transformation mapping transcript objects to string streams.",
+        onError: "fail",
+        model: "N/A (Data Pipe)",
+        hardware: "In-Memory CPU",
+        engine: "Temporal Interpreter Node",
+        speed: "< 1 ms"
+      },
+      {
+        id: "n_ner",
+        title: "Medical NER Agent",
+        type: "core.agent",
+        x: 900,
+        y: 270,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "medical-ner",
+        purpose: "Token-level clinical entity extraction. Identifies symptoms, anatomical sites, dosages, medication brands, lab test requests, and temporal modifiers from the conversation.",
+        inPorts: ["in"],
+        outPorts: ["out"],
+        llmActive: false,
+        llmCategoryId: 2,
+        llmCategoryName: "2. Generation, Streaming & Judge API",
+        llmSummary: "High-speed named entity recognition running via apps/nlp (GLiNER / Bio-BERT) providing entity spans for prompt injection.",
+        onError: "degrade",
+        model: "GLiNER / Bio-Clinical BERT",
+        hardware: "CPU / Light GPU",
+        engine: "apps/nlp Service",
+        speed: "~25ms per turn"
+      },
+      {
+        id: "n_visit",
+        title: "Visit Type Router",
+        type: "core.condition",
+        x: 1240,
+        y: 270,
+        lane: "Control Plane",
+        cadence: "Instant",
+        slug: "Condition: new-visit vs revisit",
+        purpose: "Evaluates trigger.context.visit_type sent at consultation start. If 'new-visit' (or default fallback), routes to n_summary_new; if 'revisit', routes to n_summary_revisit.",
+        inPorts: ["in"],
+        outPorts: ["new_visit", "revisit", "else"],
+        llmActive: false,
+        llmCategoryId: 5,
+        llmCategoryName: "5. Concurrency & Runtime Semaphores",
+        llmSummary: "Control-flow branch selector determining which prompt template and LLM context profile executes.",
+        onError: "fail",
+        model: "N/A (Condition Engine)",
+        hardware: "Control Plane",
+        engine: "Temporal Workflow Engine",
+        speed: "< 1 ms"
+      },
+      {
+        id: "n_summary_new",
+        title: "GenMed Summary (New Visit)",
+        type: "core.agent",
+        x: 1620,
+        y: 110,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "general-medicine-summary-new-visit",
+        template: "gastroenterology_new_referral",
+        purpose: "Primary Realtime LLM Note Generator for new referrals. Synthesizes Chief Complaint, HPI, Past History, Full Review of Systems, and Differential Diagnoses, translating Malayalam dialogue directly to English medical prose.",
+        inPorts: ["after", "context", "in"],
+        outPorts: ["out"],
+        llmActive: true,
+        llmCategoryId: 3,
+        llmCategoryName: "3. Inference Engines & GPU Adapters",
+        llmSummary: "Realtime per-turn LLM generation via POST /v1/text/stream on GPU 0. Uses gastroenterology_new_referral document template.",
+        onError: "degrade",
+        model: "Gemma-4-e2b-it-qat",
+        hardware: "GPU 0 (NVIDIA RTX)",
+        engine: "LM Studio / vLLM",
+        speed: "~178 tokens/sec (~12.5s note gen)"
+      },
+      {
+        id: "n_summary_revisit",
+        title: "GenMed Summary (Follow-up)",
+        type: "core.agent",
+        x: 1620,
+        y: 410,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "general-medicine-summary-revisit",
+        template: "general_medicine_follow_up",
+        purpose: "Primary Realtime LLM Note Generator for return visits. Focuses on Interval History, Treatment Response, Medication Compliance, and Disease Trajectory using the general_medicine_follow_up template.",
+        inPorts: ["after", "context", "in"],
+        outPorts: ["out"],
+        llmActive: true,
+        llmCategoryId: 3,
+        llmCategoryName: "3. Inference Engines & GPU Adapters",
+        llmSummary: "Realtime per-turn LLM generation via POST /v1/text/stream on GPU 0. Specialized follow-up delta prompt structure.",
+        onError: "degrade",
+        model: "Gemma-4-e2b-it-qat",
+        hardware: "GPU 0 (NVIDIA RTX)",
+        engine: "LM Studio / vLLM",
+        speed: "~178 tokens/sec (~9.8s note gen)"
+      },
+      {
+        id: "n_finalize",
+        title: "Case-Note Finalization Agent",
+        type: "core.agent",
+        x: 2060,
+        y: 250,
+        lane: "Durable",
+        cadence: "onEnd",
+        slug: "casenote-finalization",
+        template: "Deterministic Note Architecture (DNA)",
+        purpose: "Heavy Durable LLM Synthesis Engine running on Temporal when consultation closes. Re-evaluates entire multi-turn transcript, aligns SOAP sections, resolves clinical contradictions, and attaches evidence citations.",
+        inPorts: ["after", "in"],
+        outPorts: ["out", "data"],
+        llmActive: true,
+        llmCategoryId: 4,
+        llmCategoryName: "4. Output Gating & Guardrail Interceptors",
+        llmSummary: "Durable synthesis on GPU 0 + Granite Guardian judge verification on GPU 1. Enforces strict schema via services/output_gate.py.",
+        onError: "fail",
+        model: "Gemma-4-e2b-it-qat + Granite Guardian",
+        hardware: "GPU 0 (Generation) + GPU 1 (Safety)",
+        engine: "LM Studio / vLLM + Judge Guard",
+        speed: "12.8s gen + 1.2s judge"
+      },
+      {
+        id: "n_review",
+        title: "Doctor Human Review",
+        type: "core.humanReview",
+        x: 2460,
+        y: 110,
+        lane: "Human Plane",
+        cadence: "onReview",
+        slug: "Role: DOCTOR (allowEdit: true)",
+        purpose: "Physician sign-off gate. Clinician inspects finalized SOAP summary, modifies medications/plans if needed, and officially approves or rejects the clinical document.",
+        inPorts: ["in"],
+        outPorts: ["next"],
+        llmActive: false,
+        llmCategoryId: 6,
+        llmCategoryName: "6. Telemetry, Tokens & Zero Retention",
+        llmSummary: "Clinician edit tracking. Logs edit distance and clinician accept/reject actions to generation_audit.py for continuous quality evaluation.",
+        onError: "fail",
+        model: "N/A (Clinician Review)",
+        hardware: "Clinical Workstation",
+        engine: "Admin Console / EHR UI",
+        speed: "Physician SLA (up to 3600s)"
+      },
+      {
+        id: "n_output",
+        title: "Clinical Output Delivery",
+        type: "core.output",
+        x: 2840,
+        y: 200,
+        lane: "Output Plane",
+        cadence: "onPublish",
+        slug: "Protocols: http, http-sse, socket",
+        purpose: "Delivers approved clinical documentation to hospital EHR/EMR systems. Enforces output schema containing { case_note: string, redactions: array }.",
+        inPorts: ["in", "after"],
+        outPorts: [],
+        llmActive: false,
+        llmCategoryId: 4,
+        llmCategoryName: "4. Output Gating & Guardrail Interceptors",
+        llmSummary: "Emits redacted clinical documentation and metadata payloads across HTTP SSE and WebSockets to listening clients.",
+        onError: "fail",
+        model: "N/A (Output Delivery)",
+        hardware: "API Egress",
+        engine: "NestJS Gateway / Redis PubSub",
+        speed: "< 5 ms"
+      }
+    ];
+
+    // 20 GRAPH EDGES FROM general-medicine-consultation.v3.workflow-bundle.json
+    const GRAPH_EDGES = [
+      { id: "e1", from: "n_trigger", to: "n_presummary", fromPort: "next", toPort: "after" },
+      { id: "e2", from: "n_trigger", to: "n_presummary", fromPort: "out", toPort: "context" },
+      { id: "e3", from: "n_presummary", to: "n_finalize", fromPort: "next", toPort: "after" },
+      { id: "e4", from: "n_trigger", to: "n_asr", fromPort: "next", toPort: "after" },
+      { id: "e5", from: "n_asr", to: "n_ner", fromPort: "transcript", toPort: "in" },
+      { id: "e6", from: "n_ner", to: "n_visit", fromPort: "out", toPort: "in" },
+      { id: "e7", from: "n_visit", to: "n_summary_new", fromPort: "new_visit", toPort: "after" },
+      { id: "e8", from: "n_visit", to: "n_summary_revisit", fromPort: "revisit", toPort: "after" },
+      { id: "e9", from: "n_visit", to: "n_summary_new", fromPort: "else", toPort: "after" },
+      { id: "e10", from: "n_trigger", to: "n_summary_new", fromPort: "out", toPort: "context" },
+      { id: "e11", from: "n_trigger", to: "n_summary_revisit", fromPort: "out", toPort: "context" },
+      { id: "e12", from: "n_ner", to: "n_summary_new", fromPort: "out", toPort: "in" },
+      { id: "e13", from: "n_ner", to: "n_summary_revisit", fromPort: "out", toPort: "in" },
+      { id: "e14", from: "n_summary_new", to: "n_finalize", fromPort: "out", toPort: "in" },
+      { id: "e15", from: "n_summary_revisit", to: "n_finalize", fromPort: "out", toPort: "in" },
+      { id: "e16", from: "n_finalize", to: "n_review", fromPort: "out", toPort: "in" },
+      { id: "e17", from: "n_finalize", to: "n_output", fromPort: "data", toPort: "in" },
+      { id: "e18", from: "n_review", to: "n_output", fromPort: "next", toPort: "after" },
+      { id: "e19", from: "n_trigger", to: "n_transcript", fromPort: "out", toPort: "in" },
+      { id: "e20", from: "n_transcript", to: "n_ner", fromPort: "text", toPort: "in" }
+    ];
+
+    // CANVAS STATE & VIEWPORT MANAGEMENT
+    let scale = 0.88;
+    let panX = 40;
+    let panY = 30;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let selectedNodeId = "n_summary_new";
+    let isLLMFilterActive = true;
+    let selectedCategoryId = null;
+
+    const viewport = document.getElementById("viewport");
+    const world = document.getElementById("world");
+    const wiresLayer = document.getElementById("wires-layer");
+    const nodesLayer = document.getElementById("nodes-layer");
+
+    function updateTransform() {
+      world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      document.getElementById("zoom-val").textContent = `${Math.round(scale * 100)}%`;
+    }
+
+    viewport.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".node-element") || e.target.closest(".canvas-hud")) return;
+      isDragging = true;
+      viewport.classList.add("is-dragging");
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+      isDragging = false;
+      viewport.classList.remove("is-dragging");
+    });
+
+    viewport.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const zoomFactor = 1.08;
+      const oldScale = scale;
+      if (e.deltaY < 0) {
+        scale = Math.min(scale * zoomFactor, 2.0);
+      } else {
+        scale = Math.max(scale / zoomFactor, 0.4);
+      }
+      const mouseX = e.clientX - viewport.getBoundingClientRect().left;
+      const mouseY = e.clientY - viewport.getBoundingClientRect().top;
+      panX = mouseX - (mouseX - panX) * (scale / oldScale);
+      panY = mouseY - (mouseY - panY) * (scale / oldScale);
+      updateTransform();
+    }, { passive: false });
+
+    function zoomIn() {
+      scale = Math.min(scale * 1.15, 2.0);
+      updateTransform();
+    }
+
+    function zoomOut() {
+      scale = Math.max(scale / 1.15, 0.4);
+      updateTransform();
+    }
+
+    function resetCanvasView() {
+      scale = 0.88;
+      panX = 40;
+      panY = 30;
+      updateTransform();
+    }
+
+    // RENDER NODES ON CANVAS
+    function renderNodes() {
+      nodesLayer.innerHTML = "";
+      GRAPH_NODES.forEach((n) => {
+        const el = document.createElement("div");
+        el.className = "node-element";
+        el.id = `node-${n.id}`;
+        el.style.left = `${n.x}px`;
+        el.style.top = `${n.y}px`;
+
+        if (n.id === selectedNodeId) el.classList.add("selected");
+        if (isLLMFilterActive && n.llmActive) el.classList.add("llm-highlight");
+        if (selectedCategoryId && n.llmCategoryId !== selectedCategoryId) el.classList.add("dimmed");
+
+        let icon = "⚙";
+        if (n.type === "core.trigger") icon = "⚡";
+        else if (n.type === "core.agent") icon = "✦";
+        else if (n.type === "core.condition") icon = "⑂";
+        else if (n.type === "core.humanReview") icon = "👤";
+        else if (n.type === "core.data") icon = "⇄";
+        else if (n.type === "core.output") icon = "⤓";
+
+        let templateHtml = "";
+        if (n.template) {
+          templateHtml = `<div class="node-template-badge"><span>🗎</span> ${n.template}</div>`;
+        }
+
+        const llmBadge = n.llmActive
+          ? `<span class="llm-indicator"><span class="llm-dot-active">●</span> LLM GENERATION</span>`
+          : `<span class="llm-indicator"><span class="llm-dot-none">○</span> ${n.lane.toUpperCase()}</span>`;
+
+        el.innerHTML = `
+          <div class="node-header">
+            <div class="node-title-box">
+              <span class="node-type-icon">${icon}</span>
+              <span class="node-title">${n.title}</span>
+            </div>
+            <span class="node-id-chip">${n.id}</span>
+          </div>
+          <div class="node-content">
+            <div class="node-slug-badge">${n.slug}</div>
+            ${templateHtml}
+            <div class="node-summary-line">${n.purpose.slice(0, 85)}...</div>
+          </div>
+          <div class="node-footer">
+            ${llmBadge}
+            <span style="color:var(--text-dim); font-size:9.5px;">${n.cadence}</span>
+          </div>
+        `;
+
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          selectNode(n.id);
+        });
+
+        nodesLayer.appendChild(el);
+      });
+    }
+
+    // DRAW SVG CONNECTION WIRES
+    function renderWires() {
+      wiresLayer.innerHTML = "";
+      const nodeMap = {};
+      GRAPH_NODES.forEach(n => nodeMap[n.id] = n);
+
+      GRAPH_EDGES.forEach((e) => {
+        const fromNode = nodeMap[e.from];
+        const toNode = nodeMap[e.to];
+        if (!fromNode || !toNode) return;
+
+        // Port offsets
+        const fromX = fromNode.x + 290;
+        const fromY = fromNode.y + 70;
+        const toX = toNode.x;
+        const toY = toNode.y + 70;
+
+        const dx = Math.max(Math.abs(toX - fromX) * 0.5, 50);
+        const p1x = fromX + dx;
+        const p1y = fromY;
+        const p2x = toX - dx;
+        const p2y = toY;
+
+        const d = `M ${fromX} ${fromY} C ${p1x} ${p1y}, ${p2x} ${p2y}, ${toX} ${toY}`;
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", d);
+        path.setAttribute("class", "wire-path");
+        path.setAttribute("id", `wire-${e.id}`);
+
+        if (fromNode.id === selectedNodeId || toNode.id === selectedNodeId) {
+          path.classList.add("active");
+        }
+        if (fromNode.llmActive || toNode.llmActive) {
+          path.classList.add("llm-flow");
+        }
+
+        wiresLayer.appendChild(path);
+      });
+    }
+
+    // SELECT NODE & POPULATE INSPECTOR
+    function selectNode(nodeId) {
+      selectedNodeId = nodeId;
+      const n = GRAPH_NODES.find(item => item.id === nodeId);
+      if (!n) return;
+
+      document.querySelectorAll(".node-element").forEach(el => el.classList.remove("selected"));
+      const selectedEl = document.getElementById(`node-${nodeId}`);
+      if (selectedEl) selectedEl.classList.add("selected");
+
+      renderWires();
+
+      // Update Inspector Header
+      document.getElementById("ins-node-title").textContent = n.title;
+      document.getElementById("ins-node-id").textContent = n.id;
+
+      // Tab 1: Specs
+      document.getElementById("ins-type").textContent = n.type;
+      document.getElementById("ins-lane").textContent = n.lane;
+      document.getElementById("ins-cadence").textContent = n.cadence;
+      document.getElementById("ins-slug").textContent = n.slug;
+      document.getElementById("ins-onerror").textContent = n.onError;
+      document.getElementById("ins-purpose").textContent = n.purpose;
+      document.getElementById("ins-ports-in").textContent = n.inPorts.length ? n.inPorts.join(", ") : "(None / Root Trigger)";
+      document.getElementById("ins-ports-out").textContent = n.outPorts.length ? n.outPorts.join(", ") : "(None / Terminal)";
+
+      const rowTemplate = document.getElementById("row-template");
+      if (n.template) {
+        rowTemplate.style.display = "flex";
+        document.getElementById("ins-template").textContent = n.template;
+      } else {
+        rowTemplate.style.display = "none";
+      }
+
+      // Tab 2: LLM Service
+      const sym = document.getElementById("ins-llm-symbol");
+      const headline = document.getElementById("ins-llm-headline");
+      const desc = document.getElementById("ins-llm-desc");
+
+      if (n.llmActive) {
+        sym.textContent = "●";
+        sym.style.color = "#ffffff";
+        headline.textContent = `LLM Active Node (${n.slug})`;
+        desc.textContent = n.llmSummary;
+      } else {
+        sym.textContent = "○";
+        sym.style.color = "var(--text-dim)";
+        headline.textContent = `Control & Pipe Node (${n.type})`;
+        desc.textContent = n.llmSummary;
+      }
+
+      // Pipeline Box
+      const pipeBox = document.getElementById("ins-pipeline-box");
+      if (n.llmActive) {
+        let templateBinding = n.template ? `<code>documentTemplateSlug: "${n.template}"</code>` : `<code>agentRef: "${n.slug}"</code>`;
+        pipeBox.innerHTML = `
+          <div class="llm-pipeline-title">Inference Execution Sequence (apps/text)</div>
+          <div class="llm-pipeline-step"><span>1.</span> Ingress prompt compilation with ${templateBinding}</div>
+          <div class="llm-pipeline-step"><span>2.</span> Context hydration from <code>n_trigger</code> + clinical entities from <code>n_ner</code></div>
+          <div class="llm-pipeline-step"><span>3.</span> In-model native translation (Malayalam → English prose) via <code>Gemma-4-e2b-it-qat</code></div>
+          <div class="llm-pipeline-step"><span>4.</span> Token generation at <strong>~178 tokens/sec</strong> on <strong>GPU 0</strong></div>
+          <div class="llm-pipeline-step"><span>5.</span> Output pass through <code>services/output_gate.py</code> for clinical format validation</div>
+        `;
+      } else {
+        pipeBox.innerHTML = `
+          <div class="llm-pipeline-title">Non-LLM Pipeline Role</div>
+          <div class="llm-pipeline-step"><span>•</span> Operates on ${n.lane} execution lane.</div>
+          <div class="llm-pipeline-step"><span>•</span> Manages stream data, condition branching, or human clinician review.</div>
+          <div class="llm-pipeline-step"><span>•</span> Zero GPU VRAM consumption for this step.</div>
+        `;
+      }
+
+      document.getElementById("ins-model").textContent = n.model || "Gemma-4-e2b-it-qat";
+      document.getElementById("ins-hardware").textContent = n.hardware || "GPU 0 (NVIDIA RTX)";
+      document.getElementById("ins-engine").textContent = n.engine || "LM Studio / vLLM";
+      document.getElementById("ins-speed").textContent = n.speed || "~178 tokens/sec";
+
+      // Category Link
+      const catCont = document.getElementById("ins-cat-link-container");
+      catCont.innerHTML = `
+        <button class="btn-mono" style="font-size:11px; padding:3px 8px;" onclick="highlightCategoryNodes(${n.llmCategoryId})">
+          <span>📁</span> View Associated File Category: ${n.llmCategoryName}
+        </button>
+      `;
+    }
+
+    // INSPECTOR TAB SWITCHER
+    function switchInspectorTab(tabKey) {
+      document.querySelectorAll(".ins-tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".ins-tab-content").forEach(c => c.style.display = "none");
+
+      if (tabKey === "spec") {
+        document.querySelectorAll(".ins-tab")[0].classList.add("active");
+        document.getElementById("ins-tab-spec").style.display = "flex";
+      } else {
+        document.querySelectorAll(".ins-tab")[1].classList.add("active");
+        document.getElementById("ins-tab-llm").style.display = "flex";
+      }
+    }
+
+    // TOGGLE INSPECTOR SIDEBAR
+    function toggleInspector() {
+      const ins = document.getElementById("inspector");
+      const btn = document.getElementById("btn-toggle-inspector");
+      ins.classList.toggle("collapsed");
+      btn.classList.toggle("active");
+    }
+
+    // TOGGLE BOTTOM DRAWER
+    function toggleInventoryDrawer() {
+      const drawer = document.getElementById("bottom-drawer");
+      const btn = document.getElementById("btn-toggle-inventory");
+      drawer.classList.toggle("collapsed");
+      btn.classList.toggle("active");
+    }
+
+    // TOGGLE HIGHLIGHT LLM NODES
+    function toggleLLMFilter() {
+      isLLMFilterActive = !isLLMFilterActive;
+      const btn = document.getElementById("btn-toggle-filter");
+      btn.classList.toggle("active", isLLMFilterActive);
+      renderNodes();
+      renderWires();
+    }
+
+    // CATEGORY HIGHLIGHTING
+    function highlightCategoryNodes(catId) {
+      if (selectedCategoryId === catId) {
+        selectedCategoryId = null;
+        document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active"));
+      } else {
+        selectedCategoryId = catId;
+        document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active"));
+        const card = document.getElementById(`cat-card-${catId}`);
+        if (card) card.classList.add("active");
+
+        // Open bottom drawer if collapsed
+        const drawer = document.getElementById("bottom-drawer");
+        drawer.classList.remove("collapsed");
+        document.getElementById("btn-toggle-inventory").classList.add("active");
+      }
+      renderNodes();
+      renderWires();
+    }
+
+    // INITIALIZATION
+    window.addEventListener("DOMContentLoaded", () => {
+      renderNodes();
+      renderWires();
+      selectNode("n_summary_new");
+      updateTransform();
+    });
+  </script>
+</body>
+</html>

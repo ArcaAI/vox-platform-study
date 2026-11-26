@@ -1,44 +1,45 @@
 ## Presenting Complaints
-1. Right lower quadrant pain for five months, associated with daily or every third/fourth episode of diarrhea.
-2. Nocturnal diarrhea occurring occasionally.
-3. Low weight gain (4 kg loss over two weeks).
-4. Mild fever and weight loss for two months.
+1. Right lower quadrant pain for five months.
+2. Diarrhea three to four times a day for two months.
+3. Low weight of 4 kg over the last two months.
+4. Nocturnal diarrhea occurring occasionally.
 
 ## Past History
-• Prior treatment included Ciprofloxacin and Metronidazole for 10 days, which did not resolve the issue.
-• Patient reported no prior surgeries.
+- Patient was previously treated with Ciprofloxacin and Metronidazole for ten days due to suspected infection, but no change occurred.
+- No prior surgeries were reported.
+- Mother has diabetes in the family.
 
 ## Family History
-- Mother has diabetes.
+Not discussed
 
 ## Drug History
-- Ciprofloxacin and Metronidazole for 10 days prior to consultation.
-- Mesacol 800 mg three times daily after meals for two weeks.
+- Prior treatment included Ciprofloxacin and Metronidazole for ten days (dose not specified).
+- Current medication: Mesacol 800 mg three times daily after meals for two weeks to control inflammation.
 
 ## Hospital Admissions
 Not discussed
 
 ## General Examination & Vitals
-General examination: Abdomen soft, right lower quadrant tenderness deep, no mass, no guarding.
-Vitals: Blood pressure 112 by 74 mmHg, Pulse 84 per minute, Temperature 99.0 degree Fahrenheit, Respiratory rate 18 per minute, Oxygen saturation 99 percent.
+General examination revealed soft abdomen with deep tenderness in the right lower quadrant. Abdomen was non-distended and soft. Mild pallor observed.
+Vital signs: Blood pressure 112 by 74 mmHg, Pulse 84 per minute, Temperature 99.0 degree Fahrenheit, Respiratory rate 18 per minute, Oxygen saturation 99 percent. Weight 58 kg.
 
 ## Previous Diagnosis
-- Terminal ileum and ileocecal valve showed patchy erythema and aphthous ulceration on colonoscopy (record, date not stated).
-- Biopsy revealed non-caseating granuloma.
-- Terminal ileum and ileocecal valve were normal in the intervening segment.
+- Crohn's disease with terminal ileum and ileocecal valve involvement showing patchy erythema and aphthous ulceration on colonoscopy (record, date not stated).
+- Biopsy showed non-caseating granuloma.
+- Intestinal tuberculosis was considered but deferred pending further testing.
 
 ## Reports
-- Laboratory Panels: Hemoglobin 11.2 g per dL, White cell count 8400, ESR 42 millimeter per hour.
-- Fecal calprotectin 340 mcg per gram (elevated).
-- Mantoux test 9 millimeter (borderline).
-- QuantiFERON indeterminate.
-• CT enterography and GeneXpert pending results.
+- Fecal calprotectin 340 mcg per gram (indicating active intestinal inflammation).
+- Hemoglobin 11.2 g per dL.
+- White cell count 8400.
+- ESR 42 millimeter per hour.
+- Mantoux test result 9 millimeter (borderline). QuantiFERON test indeterminate.
 
 ## Current Diagnosis
-Crohn's disease or intestinal tuberculosis, given the presence of ulceration and granuloma in terminal ileum and ileocecal valve. The clinician advised against starting steroid or anti-tubercular treatment without confirmation due to potential progression of tuberculosis.
+Crohn's disease with terminal ileum and ileocecal valve involvement showing patchy erythema and aphthous ulceration, confirmed by biopsy showing non-caseating granuloma. Intestinal tuberculosis was not definitively ruled in or out at this time due to inconclusive Mantoux and QuantiFERON results.
 
 ## Plan of Care
 Medications Prescribed: Mesacol 800 mg three times daily after meals for two weeks.
-Investigations & Procedures Ordered: CT enterography and GeneXpert pending results. Biopsy scheduled.
-Dietary & Lifestyle Advice: Consume soft/bland diet, reduce intake of red chili, milk, and processed foods by two weeks. Drink boiled water. If diarrhea increases, consume oral rehydration solution.
-Patient Education & Red Flag Warnings: Patient was instructed to report immediate emergency evaluation if severe fever, vomiting, abdominal swelling, or blood in stool occurs. Review after two weeks with CT enterography and GeneXpert results.
+Investigations & Procedures Ordered: CT enterography and GeneXpert test scheduled. Biopsy was performed (result pending).
+Dietary & Lifestyle Advice: Patient advised to consume soft/bland diet, reduce intake of red chili, milk, and high-fiber foods by two weeks. Advised to drink boiled water. Advised to take oral rehydration solution if diarrhea increases.
+Patient Education & Red Flag Warnings: Patient instructed to return immediately to the casualty department if severe fever, vomiting, abdominal swelling, or blood in stool occurs. Review after two weeks with CT enterography and GeneXpert results.

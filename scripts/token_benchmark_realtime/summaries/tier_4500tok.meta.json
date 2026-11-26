@@ -5,23 +5,23 @@
   "promptTokens": 750,
   "completionTokens": 410,
   "throughputTps": 195.0,
-  "isSuccess": false,
-  "statusLabel": "FAIL (Pipeline Execution)",
-  "totalE2EMs": 11047.1954587847,
+  "isSuccess": true,
+  "statusLabel": "DEGRADED",
+  "totalE2EMs": 50334.9970842246,
   "hops": {
-    "sessionInitMs": 712.0607921388,
-    "transcriptIngestMs": 877.7208749670535,
-    "workflowDispatchMs": 1486.0412918496877,
-    "pipelineExecMs": 7332.119041820988,
-    "noteRetrievalMs": 639.2534580081701
+    "sessionInitMs": 717.8206669632345,
+    "transcriptIngestMs": 1172.5725000724196,
+    "workflowDispatchMs": 738.7686250731349,
+    "pipelineExecMs": 47064.73641702905,
+    "noteRetrievalMs": 641.0988750867546
   },
   "subhops": {
-    "nlpMs": 721.3971661403775,
-    "guardrailInboundMs": 3228.64995803684,
+    "nlpMs": 643.6887078452855,
+    "guardrailInboundMs": 3547.539083054289,
     "promptAssemblyMs": 750.0,
     "llmGpuMs": 3200.0,
-    "guardrailOutboundMs": 1200.0
+    "guardrailOutboundMs": 38923.50862612948
   },
-  "consultationId": "01a20d45-2985-7952-82f3-e8969b18bd8a",
-  "jobId": "harness-doc-e2efef15-4cd0-4fab-aa1e-b50ddfc691e7"
+  "consultationId": "01a211dd-176b-71f5-bec3-bc1de795af3e",
+  "jobId": "harness-doc-c7f3a3b2-6602-434b-aa82-2b274e2b91a8"
 }

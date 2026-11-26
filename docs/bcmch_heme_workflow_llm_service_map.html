@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Studio — BCMCH Hematology Consultation (bcmch_heme_consultation.v4) | LLM Service Architecture</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+      /* STRICT BLACK & WHITE / MONOCHROME PALETTE - ZERO COLORS */
+      --bg-canvas: #090909;
+      --bg-panel: #111111;
+      --bg-surface: #171717;
+      --bg-surface-hover: #222222;
+      --border-dark: #222222;
+      --border-mid: #383838;
+      --border-light: #666666;
+      --border-white: #ffffff;
+      --text-main: #f5f5f5;
+      --text-muted: #9e9e9e;
+      --text-dim: #616161;
+      --grid-dot: #222222;
+      --node-bg: #141414;
+      --node-header-bg: #1a1a1a;
+      --node-selected-border: #ffffff;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-canvas);
+      font-family: var(--font-sans);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    p, span, div, h1, h2, h3, code, td, th, label, a {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    /* TOP STUDIO TOOLBAR */
+    .studio-header {
+      height: 52px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      z-index: 20;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .workflow-logo {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      border-radius: 4px;
+    }
+
+    .workflow-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .crumb-dim { color: var(--text-dim); }
+    .crumb-sep { color: var(--border-mid); font-family: var(--font-mono); }
+
+    .tag-mono {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tag-guardrail {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 700;
+      border: 1px solid #ffffff;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-mono {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .btn-mono:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .btn-mono.active {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    /* MAIN STUDIO WORKSPACE */
+    .studio-body {
+      flex: 1;
+      position: relative;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* CANVAS AREA */
+    .canvas-viewport {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background-color: var(--bg-canvas);
+      background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    .canvas-viewport.is-dragging {
+      cursor: grabbing;
+      user-select: none;
+    }
+
+    .canvas-world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      width: 3200px;
+      height: 1200px;
+    }
+
+    /* SVG CONNECTIONS LAYER */
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .wire-path {
+      fill: none;
+      stroke: var(--border-mid);
+      stroke-width: 2;
+      stroke-linecap: round;
+      transition: stroke 0.2s ease, stroke-width 0.2s ease;
+    }
+
+    .wire-path.active {
+      stroke: var(--border-white);
+      stroke-width: 2.5;
+    }
+
+    /* NODE CARDS ON CANVAS */
+    .node-element {
+      position: absolute;
+      width: 290px;
+      background: var(--node-bg);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      z-index: 2;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.2s ease;
+    }
+
+    .node-element:hover {
+      border-color: var(--border-light);
+    }
+
+    .node-element.selected {
+      border-color: var(--border-white);
+      box-shadow: 0 0 0 2px var(--border-white), 0 12px 30px rgba(0, 0, 0, 0.9);
+      z-index: 10;
+    }
+
+    .node-element.llm-highlight {
+      border: 1.5px solid #ffffff;
+    }
+
+    .node-header {
+      background: var(--node-header-bg);
+      border-bottom: 1px solid var(--border-dark);
+      padding: 9px 12px;
+      border-top-left-radius: 7px;
+      border-top-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .node-title-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .node-type-icon {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+
+    .node-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-main);
+    }
+
+    .node-id-chip {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      color: var(--text-dim);
+      background: #000;
+      padding: 1px 5px;
+      border: 1px solid var(--border-dark);
+      border-radius: 3px;
+    }
+
+    .node-content {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .node-summary-line {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .node-slug-badge {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      padding: 3px 6px;
+      border-radius: 4px;
+      color: var(--text-main);
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .node-footer {
+      border-top: 1px solid var(--border-dark);
+      padding: 7px 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-bottom-left-radius: 7px;
+      border-bottom-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .guard-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 600;
+    }
+
+    .guard-dot-active {
+      color: #ffffff;
+    }
+
+    .guard-dot-none {
+      color: var(--text-dim);
+    }
+
+    /* CANVAS HUD CONTROLS */
+    .canvas-hud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      z-index: 15;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    }
+
+    .hud-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hud-btn:hover {
+      background: var(--bg-surface);
+    }
+
+    .hud-zoom-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 0 6px;
+    }
+
+    /* RIGHT INSPECTOR PANEL */
+    .inspector-panel {
+      width: 440px;
+      height: 100%;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-dark);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 20;
+      overflow: hidden;
+      transition: width 0.2s ease;
+    }
+
+    .inspector-panel.collapsed {
+      width: 0;
+      border-left: none;
+    }
+
+    .inspector-panel.collapsed ~ .bottom-drawer {
+      right: 0;
+    }
+
+    .inspector-panel.collapsed ~ .inspector-reopen-btn {
+      display: flex;
+    }
+
+    .inspector-reopen-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 15;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .inspector-reopen-btn:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .inspector-top {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .inspector-title-group h3 {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inspector-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-dark);
+      padding: 0 12px;
+      background: var(--bg-surface);
+    }
+
+    .ins-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 10px 14px;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-family: var(--font-mono);
+    }
+
+    .ins-tab:hover {
+      color: var(--text-main);
+    }
+
+    .ins-tab.active {
+      color: #ffffff;
+      border-bottom-color: #ffffff;
+    }
+
+    .inspector-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .ins-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ins-card-title {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+      padding: 4px 0;
+      border-bottom: 1px dashed var(--border-dark);
+    }
+
+    .prop-row:last-child {
+      border-bottom: none;
+    }
+
+    .prop-label {
+      color: var(--text-muted);
+    }
+
+    .prop-val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-main);
+      text-align: right;
+    }
+
+    .guard-banner {
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      border-left: 3px solid #ffffff;
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .guard-banner-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+    }
+
+    .guard-banner-desc {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+
+    .lane1-box {
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11.5px;
+    }
+
+    .lane1-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      text-transform: uppercase;
+    }
+
+    .lane1-step {
+      display: flex;
+      gap: 6px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .category-jump-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      width: fit-content;
+      transition: all 0.15s ease;
+    }
+
+    .category-jump-btn:hover {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    /* BOTTOM DRAWER (LLM SERVICE FILE INVENTORY) */
+    .bottom-drawer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 440px;
+      height: 310px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-mid);
+      z-index: 25;
+      display: flex;
+      flex-direction: column;
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), right 0.2s ease;
+      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .bottom-drawer.open {
+      transform: translateY(0);
+    }
+
+    .drawer-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-surface);
+    }
+
+    .drawer-title {
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 14px;
+    }
+
+    .category-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .category-card:hover {
+      border-color: var(--border-light);
+    }
+
+    .category-card.active-cat {
+      border-color: #ffffff;
+      background: #1f1f1f;
+    }
+
+    .category-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border-dark);
+      padding-bottom: 6px;
+    }
+
+    .category-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .category-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .pill-file {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--text-main);
+    }
+
+    .category-desc {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- STUDIO HEADER -->
+  <header class="studio-header">
+    <div class="header-left">
+      <div class="workflow-logo">STUDIO</div>
+      <div class="workflow-breadcrumb">
+        <span class="crumb-dim">Workflows</span>
+        <span class="crumb-sep">/</span>
+        <span>bcmch_heme_consultation</span>
+        <span class="tag-mono">v4</span>
+        <span class="tag-mono">PUBLISHED</span>
+        <span class="crumb-sep">|</span>
+        <span class="tag-mono">ENTRY: Gateway (POST /consultations/open)</span>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <button class="btn-mono" id="btn-toggle-filter" onclick="toggleLLMFilter()">
+        <span>◉</span> Highlight LLM Inference Nodes
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inventory" onclick="toggleInventoryDrawer()">
+        <span>📁</span> LLM Service Files by Functionality
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inspector" onclick="toggleInspector()" title="Toggle Right Inspector Sidebar">
+        <span>◨</span> Inspector
+      </button>
+      <button class="btn-mono" onclick="resetCanvasView()">
+        <span>⟲</span> Fit Graph
+      </button>
+    </div>
+  </header>
+
+  <!-- STUDIO WORKSPACE -->
+  <div class="studio-body">
+
+    <!-- CANVAS VIEWPORT -->
+    <div class="canvas-viewport" id="viewport">
+      <div class="canvas-world" id="world">
+        <!-- SVG CONNECTIONS -->
+        <svg class="connections-svg" id="wires-layer"></svg>
+
+        <!-- NODES CONTAINER (Rendered via JS) -->
+        <div id="nodes-layer"></div>
+      </div>
+
+      <!-- HUD CONTROLS -->
+      <div class="canvas-hud">
+        <button class="hud-btn" onclick="zoomIn()">+</button>
+        <span class="hud-zoom-label" id="zoom-val">100%</span>
+        <button class="hud-btn" onclick="zoomOut()">−</button>
+        <button class="hud-btn" onclick="resetCanvasView()" title="Fit View">⛶</button>
+      </div>
+    </div>
+
+    <!-- RIGHT INSPECTOR PANEL -->
+    <aside class="inspector-panel" id="inspector">
+      <div class="inspector-top">
+        <div class="inspector-title-group">
+          <h3 id="ins-node-title">Node Inspector</h3>
+          <span class="tag-mono" id="ins-node-id">Select a node</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="toggleInspector()">✕</button>
+      </div>
+
+      <div class="inspector-tabs">
+        <button class="ins-tab active" onclick="switchInspectorTab('spec')">Node Specs &amp; Role</button>
+        <button class="ins-tab" onclick="switchInspectorTab('llm')">LLM Service &amp; GPU Execution</button>
+      </div>
+
+      <div class="inspector-scroll">
+
+        <!-- TAB 1: NODE SPECS & ROLE -->
+        <div id="ins-tab-spec" class="ins-tab-content">
+          <div class="ins-card">
+            <div class="ins-card-title">Workflow Node Attributes</div>
+            <div class="prop-row">
+              <span class="prop-label">Node Type</span>
+              <span class="prop-val" id="ins-type">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Execution Lane</span>
+              <span class="prop-val" id="ins-lane">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Trigger Cadence</span>
+              <span class="prop-val" id="ins-cadence">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Agent / Engine Slug</span>
+              <span class="prop-val" id="ins-slug">--</span>
+            </div>
+            <div class="prop-row" id="row-template" style="display:none;">
+              <span class="prop-label">Document Template</span>
+              <span class="prop-val" id="ins-template">--</span>
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Node Purpose in Consultation</div>
+            <p id="ins-purpose" style="font-size:12.5px; line-height:1.5; color:var(--text-muted);"></p>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Graph Ports</div>
+            <div class="prop-row">
+              <span class="prop-label">Input Ports</span>
+              <span class="prop-val" id="ins-ports-in">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Output Ports</span>
+              <span class="prop-val" id="ins-ports-out">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: LLM SERVICE & GPU EXECUTION -->
+        <div id="ins-tab-llm" class="ins-tab-content" style="display:none;">
+          <div class="guard-banner">
+            <div class="guard-banner-title">
+              <span id="ins-llm-symbol">●</span>
+              <span id="ins-llm-headline">LLM Inference Node</span>
+            </div>
+            <p class="guard-banner-desc" id="ins-llm-desc">
+              Details of how apps/text routes and executes this node on GPUs.
+            </p>
+            <div style="margin-top:6px;" id="ins-cat-link-container">
+              <!-- Jump button to bottom inventory -->
+            </div>
+          </div>
+
+          <!-- APPS/TEXT EXECUTION PATTERN BREAKDOWN -->
+          <div class="ins-card" id="ins-llm-execution-card" style="display:none;">
+            <div class="ins-card-title">apps/text Internal Execution Pipeline</div>
+            <div class="lane1-box">
+              <div class="lane1-title">Admission &amp; Guardrail Gate (Lane 1)</div>
+              <div class="lane1-step"><span>1.</span> Inbound token admission via <code>ResizableSemaphore</code> (DB 3 Redis stream)</div>
+              <div class="lane1-step"><span>2.</span> Inbound guardrail screen at <code>apps/guardrail</code> (Postgres policy cache)</div>
+              <div class="lane1-step"><span>3.</span> Model context check: prompt tokens + max_tokens &le; <code>loaded_context_length</code></div>
+            </div>
+            <div class="lane1-box">
+              <div class="lane1-title">Engine Inference &amp; Guardrail Judge</div>
+              <div class="lane1-step"><span>1.</span> Dispatched to <code>LMStudioProvider</code> (NodePort 1234) or <code>VLLMProvider</code> (GPU 0)</div>
+              <div class="lane1-step"><span>2.</span> Output screened by Guardrail Judge (<code>/internal/judge</code> on Granite 4.1 8B)</div>
+              <div class="lane1-step"><span>3.</span> Clinical note persisted to PostgreSQL; audited in Redis streams</div>
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Runtime &amp; Hardware Profile</div>
+            <div class="prop-row">
+              <span class="prop-label">Model Target</span>
+              <span class="prop-val" id="ins-model-target">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Engine Provider</span>
+              <span class="prop-val" id="ins-provider-engine">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Hardware Device</span>
+              <span class="prop-val" id="ins-hardware-device">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Context Limit</span>
+              <span class="prop-val" id="ins-context-limit">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Security Posture</span>
+              <span class="prop-val" id="ins-security-posture">--</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- FLOATING REOPEN BUTTON -->
+    <button class="inspector-reopen-btn" id="btn-inspector-reopen" onclick="toggleInspector()" title="Open Node Inspector">
+      <span>◀</span> Node Inspector
+    </button>
+
+    <!-- BOTTOM INVENTORY DRAWER (LLM SERVICE FILES INVENTORY) -->
+    <div class="bottom-drawer open" id="bottom-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <span class="tag-mono tag-guardrail">LLM SERVICE INVENTORY</span>
+          <span>apps/text Internal Architecture &amp; Execution Components Segregated by Functionality (24 Total Files)</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="toggleInventoryDrawer()">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        
+        <!-- Category 1 -->
+        <div class="category-card" id="cat-card-1" onclick="highlightCategoryNodes(1)">
+          <div class="category-header">
+            <span class="category-name">1. Ingress, Auth &amp; Lifespan</span>
+            <span class="tag-mono">Port 8862</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">main.py</span>
+            <span class="pill-file">api/middleware/auth.py</span>
+            <span class="pill-file">core/config.py</span>
+            <span class="pill-file">core/dependencies.py</span>
+          </div>
+          <div class="category-desc">
+            Outer ASGI stack on port 8862. Verifies <code>INTERNAL_ACCESS_TOKEN</code> on inter-service requests, binds <code>X-Tenant-Id</code> and <code>X-Request-Id</code> for distributed OpenTelemetry spans, initializes Redis DB 3 streams and DB connection pools.
+          </div>
+        </div>
+
+        <!-- Category 2 -->
+        <div class="category-card" id="cat-card-2" onclick="highlightCategoryNodes(2)">
+          <div class="category-header">
+            <span class="category-name">2. Generation &amp; Judge API Surface</span>
+            <span class="tag-mono">POST /api/v1/generate</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">api/endpoints/generate.py</span>
+            <span class="pill-file">api/endpoints/judge.py</span>
+            <span class="pill-file">api/endpoints/stream.py</span>
+            <span class="pill-file">models/requests.py</span>
+          </div>
+          <div class="category-desc">
+            Primary generation routes. Validates incoming consultation prompts, extracts temperature/max_tokens parameters, coordinates SSE token streaming, and handles <code>/internal/judge</code> for guardrail verdict evaluation on Granite 4.1 8B.
+          </div>
+        </div>
+
+        <!-- Category 3 -->
+        <div class="category-card" id="cat-card-3" onclick="highlightCategoryNodes(3)">
+          <div class="category-header">
+            <span class="category-name">3. Provider Abstraction &amp; Engine Adapters</span>
+            <span class="tag-mono">Engine Multiplexer</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">providers/base.py</span>
+            <span class="pill-file">providers/lmstudio.py</span>
+            <span class="pill-file">providers/vllm.py</span>
+            <span class="pill-file">providers/registry.py</span>
+          </div>
+          <div class="category-desc">
+            Abstracts underlying inference engines. <code>LMStudioProvider</code> communicates over HTTP to LM Studio (NodePort 1234, GPU 1 / CPU), while <code>VLLMProvider</code> interfaces with vLLM PagedAttention instances on GPU 0.
+          </div>
+        </div>
+
+        <!-- Category 4 -->
+        <div class="category-card" id="cat-card-4" onclick="highlightCategoryNodes(4)">
+          <div class="category-header">
+            <span class="category-name">4. Guardrail Interlock &amp; Safety Gates</span>
+            <span class="tag-mono">Fail-Closed Posture</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/external_guardrail.py</span>
+            <span class="pill-file">services/judge_guard.py</span>
+            <span class="pill-file">services/output_gate.py</span>
+            <span class="pill-file">core/guardrail_posture.py</span>
+          </div>
+          <div class="category-desc">
+            Enforces Lane 1 clinical guardrails. Dispatches pre-generation prompts to <code>apps/guardrail</code> (port 8863), gates generated text through outbound toxicity &amp; PII verification, and enforces fail-closed posture on circuit trips.
+          </div>
+        </div>
+
+        <!-- Category 5 -->
+        <div class="category-card" id="cat-card-5" onclick="highlightCategoryNodes(5)">
+          <div class="category-header">
+            <span class="category-name">5. Concurrency, Queue &amp; Circuit Breakers</span>
+            <span class="tag-mono">Traffic Regulation</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/circuit_breaker.py</span>
+            <span class="pill-file">services/provider_queue.py</span>
+            <span class="pill-file">services/resizable_semaphore.py</span>
+            <span class="pill-file">services/rate_limiter.py</span>
+          </div>
+          <div class="category-desc">
+            Protects GPU VRAM and upstream queues from token stampedes. Dynamically resizes concurrent slot semaphores based on model context limits, tracks sliding-window error rates, and trips circuit breakers on repeated engine 500s.
+          </div>
+        </div>
+
+        <!-- Category 6 -->
+        <div class="category-card" id="cat-card-6" onclick="highlightCategoryNodes(6)">
+          <div class="category-header">
+            <span class="category-name">6. Audit, Token Usage &amp; Observability</span>
+            <span class="tag-mono">Metrics &amp; Billing</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">services/generation_audit.py</span>
+            <span class="pill-file">core/metrics.py</span>
+            <span class="pill-file">core/telemetry.py</span>
+            <span class="pill-file">core/retention.py</span>
+          </div>
+          <div class="category-desc">
+            Records per-turn prompt/completion token consumption, TTFB (time to first token), total latency, and cost attribution. Emits Prometheus counters (<code>text_generation_total</code>) and publishes JSON audit events to Redis streams.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // 11 BCMCH HEMATOLOGY WORKFLOW NODES (from bcmch_heme_consultation.v4.workflow-bundle.json)
+    const GRAPH_NODES = [
+      {
+        id: "n_trigger",
+        title: "Consultation Trigger",
+        type: "core.trigger",
+        x: 40,
+        y: 120,
+        lane: "Ingress",
+        cadence: "onOpen",
+        slug: "Kind: consultation, api",
+        purpose: "Initiated by Client calling Hope's POST /consultations/open with { source: 'gateway', departmentId: 'BCMCH-HEME', visit_type }. Binds tenant and starts workflow run.",
+        inPorts: [],
+        outPorts: ["next", "out"],
+        llmActive: false,
+        llmCategoryId: 1,
+        llmCategoryName: "1. Ingress, Auth & Lifespan",
+        llmSummary: "API Gateway session initialization. Ingests patient context into PostgreSQL & Vault before triggering LLM generation pipeline.",
+        modelTarget: "None (Control Plane)",
+        providerEngine: "apps/api (NestJS)",
+        hardwareDevice: "Cluster CPU",
+        contextLimit: "N/A",
+        securityPosture: "JWT Auth & Tenant Isolation"
+      },
+      {
+        id: "n_presummary",
+        title: "Pre-Summary Agent",
+        type: "core.agent",
+        x: 360,
+        y: 40,
+        lane: "Realtime",
+        cadence: "onStart",
+        slug: "case-notes-pre-summary",
+        purpose: "Executes on consultation start to compile historical hematology case notes, prior CBC/bone marrow results, and vitals into a baseline note for the hematologist.",
+        inPorts: ["after", "context"],
+        outPorts: ["next", "out"],
+        llmActive: true,
+        llmCategoryId: 2,
+        llmCategoryName: "2. Generation & Judge API Surface",
+        llmSummary: "Executes POST /api/v1/generate on apps/text. Synthesizes longitudinal patient records with prompt caching and guardrail validation.",
+        modelTarget: "gemma-4-e2b-it-qat",
+        providerEngine: "LMStudioProvider (Port 1234)",
+        hardwareDevice: "GPU 0 (VRAM 16GB)",
+        contextLimit: "64,000 tokens",
+        securityPosture: "Fail-Closed Inbound & Outbound Guardrail"
+      },
+      {
+        id: "n_asr",
+        title: "Speech-to-Text (ASR)",
+        type: "core.agent",
+        x: 360,
+        y: 260,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "sarvam-saaras-v4",
+        purpose: "Realtime speech-to-text turning live audio streams from hematology exam room microphones into text conversation transcripts.",
+        inPorts: ["after"],
+        outPorts: ["transcript"],
+        llmActive: false,
+        llmCategoryId: null,
+        llmCategoryName: null,
+        llmSummary: "Realtime streaming audio transcription on apps/stt-v2. Emits turn transcripts into Context Vault for LLM prompt assembly.",
+        modelTarget: "sarvam-saaras-v4",
+        providerEngine: "apps/stt-v2 / Whisper-v3",
+        hardwareDevice: "GPU 0 (Dedicated ASR)",
+        contextLimit: "Streaming Chunks",
+        securityPosture: "Verbatim Audio Retention"
+      },
+      {
+        id: "n_transcript",
+        title: "Transcript Context Vault",
+        type: "core.data",
+        x: 360,
+        y: 420,
+        lane: "Data Vault",
+        cadence: "perTurn",
+        slug: "Mapping: in.transcript.text",
+        purpose: "Aggregates, deduplicates, and sanitizes multi-turn clinician/patient conversation transcripts for entity extraction and downstream LLM prompt injection.",
+        inPorts: ["in"],
+        outPorts: ["text"],
+        llmActive: false,
+        llmCategoryId: 1,
+        llmCategoryName: "1. Ingress, Auth & Lifespan",
+        llmSummary: "Data mapping and context storage plane. Feeds clean text turns into Medical NER and summary generation prompts.",
+        modelTarget: "None (PostgreSQL / Redis)",
+        providerEngine: "apps/api / ContextVault",
+        hardwareDevice: "Cluster Memory",
+        contextLimit: "Unlimited Window",
+        securityPosture: "AES-256 Encrypted Storage"
+      },
+      {
+        id: "n_ner",
+        title: "Medical NER",
+        type: "core.agent",
+        x: 720,
+        y: 160,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "medical-ner",
+        purpose: "Extracts clinical entities (hemoglobin levels, platelets, bone marrow biopsy findings, anticoagulant therapies) from the live transcript stream.",
+        inPorts: ["in"],
+        outPorts: ["out"],
+        llmActive: false,
+        llmCategoryId: null,
+        llmCategoryName: null,
+        llmSummary: "Realtime NLP entity extraction via GLiNER on apps/nlp (port 8861). Provides structured clinical tags directly into prompt assembly.",
+        modelTarget: "gliner-biomedical-large",
+        providerEngine: "apps/nlp (HuggingFace/ONNX)",
+        hardwareDevice: "GPU 0 (Shared Compute)",
+        contextLimit: "2,048 tokens per chunk",
+        securityPosture: "Zero-Data Retention"
+      },
+      {
+        id: "n_visit",
+        title: "Visit Type Router",
+        type: "core.condition",
+        x: 1040,
+        y: 160,
+        lane: "Control Plane",
+        cadence: "Instant",
+        slug: "Condition: new_visit vs revisit",
+        purpose: "Evaluates trigger.context.visit_type sent by Gateway. If 'new-visit', branches to n_summary_new; if 'revisit', branches to n_summary_revisit.",
+        inPorts: ["in"],
+        outPorts: ["new_visit", "revisit", "else"],
+        llmActive: false,
+        llmCategoryId: null,
+        llmCategoryName: null,
+        llmSummary: "Deterministic routing condition in Hope control plane. Zero model inference or latency overhead.",
+        modelTarget: "None (Logic Rule)",
+        providerEngine: "Temporal Engine",
+        hardwareDevice: "Cluster CPU",
+        contextLimit: "N/A",
+        securityPosture: "Strict Type Evaluation"
+      },
+      {
+        id: "n_summary_new",
+        title: "Hematology Summary (New Visit)",
+        type: "core.agent",
+        x: 1380,
+        y: 60,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "hematology-summary-new-visit",
+        template: "hemetology_new_referral",
+        purpose: "Drafts comprehensive hematology consult notes for new referrals, structuring presenting symptoms, hematologic workup, peripheral smear interpretations, and management plans.",
+        inPorts: ["after", "context", "in"],
+        outPorts: ["out"],
+        llmActive: true,
+        llmCategoryId: 3,
+        llmCategoryName: "3. Provider Abstraction & Engine Adapters",
+        llmSummary: "Primary generative LLM execution via apps/text. Synthesizes full consultation transcript + NER entities into structured clinical documentation.",
+        modelTarget: "gemma-4-e2b-it-qat",
+        providerEngine: "LMStudioProvider (Port 1234)",
+        hardwareDevice: "GPU 0 (VRAM 16GB)",
+        contextLimit: "64,000 tokens (loaded_context_length)",
+        securityPosture: "Inbound Guardrail + Granite 4.1 Judge"
+      },
+      {
+        id: "n_summary_revisit",
+        title: "Hematology Summary (Revisit)",
+        type: "core.agent",
+        x: 1380,
+        y: 280,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "hematology-summary-revisit",
+        template: "hemetology_revisit",
+        purpose: "Drafts interval follow-up notes for returning hematology patients, focusing on treatment tolerance, chemotherapy response, interval lab comparisons, and regimen adjustments.",
+        inPorts: ["after", "context", "in"],
+        outPorts: ["out"],
+        llmActive: true,
+        llmCategoryId: 3,
+        llmCategoryName: "3. Provider Abstraction & Engine Adapters",
+        llmSummary: "Primary generative LLM execution via apps/text. Focuses on interval clinical delta, lab trend analysis, and chemotherapy review.",
+        modelTarget: "gemma-4-e2b-it-qat",
+        providerEngine: "LMStudioProvider (Port 1234)",
+        hardwareDevice: "GPU 0 (VRAM 16GB)",
+        contextLimit: "64,000 tokens (loaded_context_length)",
+        securityPosture: "Inbound Guardrail + Granite 4.1 Judge"
+      },
+      {
+        id: "n_finalize",
+        title: "Casenote Finalization",
+        type: "core.agent",
+        x: 1740,
+        y: 160,
+        lane: "Durable",
+        cadence: "onEnd",
+        slug: "casenote-finalization",
+        purpose: "Durable Temporal activity running on consultation end. Assembles pre-summary, turn transcripts, and summary drafts into a finalized, immutable clinical note.",
+        inPorts: ["after", "in"],
+        outPorts: ["out", "data"],
+        llmActive: true,
+        llmCategoryId: 4,
+        llmCategoryName: "4. Guardrail Interlock & Safety Gates",
+        llmSummary: "Final note assembly and validation in apps/text. Performs outbound clinical consistency verification and hallucination auditing.",
+        modelTarget: "granite-4.1-8b",
+        providerEngine: "LMStudioProvider / Guardrail Judge",
+        hardwareDevice: "GPU 1 (VRAM 16GB)",
+        contextLimit: "16,384 tokens",
+        securityPosture: "Granite 4.1 8B Guardrail Audit"
+      },
+      {
+        id: "n_review",
+        title: "Doctor Human Review",
+        type: "core.humanReview",
+        x: 2080,
+        y: 160,
+        lane: "Human-in-the-Loop",
+        cadence: "onEnd",
+        slug: "Role: DOCTOR · clinical_finalization",
+        purpose: "Presents the generated hematology consult note to Dr. George Chandy Mateethra for review, inline editing, and cryptographic signature.",
+        inPorts: ["in"],
+        outPorts: ["next"],
+        llmActive: false,
+        llmCategoryId: null,
+        llmCategoryName: null,
+        llmSummary: "Human-in-the-loop review interface in HOPE Admin Console. Doctor approval constitutes clinical authority prior to EHR persistence.",
+        modelTarget: "None (Clinician Review)",
+        providerEngine: "apps/admin-console",
+        hardwareDevice: "Web Client",
+        contextLimit: "N/A",
+        securityPosture: "Attending Doctor Authority"
+      },
+      {
+        id: "n_output",
+        title: "Case Note & Redactions Output",
+        type: "core.output",
+        x: 2420,
+        y: 160,
+        lane: "Egress",
+        cadence: "Terminal",
+        slug: "Schema: case_note, redactions[]",
+        purpose: "Emits the signed case note and redactions array to the Hospital Information System (HIS/EHR) and ALaaS client over HTTP and WebSockets.",
+        inPorts: ["in", "after"],
+        outPorts: [],
+        llmActive: false,
+        llmCategoryId: 6,
+        llmCategoryName: "6. Audit, Token Usage & Observability",
+        llmSummary: "Final egress gate. Publishes token telemetry, latency metrics, and audit logs to Redis DB 3 and Prometheus exporter.",
+        modelTarget: "None (Egress Protocol)",
+        providerEngine: "apps/api / apps/text",
+        hardwareDevice: "Network Interface",
+        contextLimit: "N/A",
+        securityPosture: "EHR Safe Transmission"
+      }
+    ];
+
+    // 20 WORKFLOW EDGES (from bcmch_heme_consultation.v4.workflow-bundle.json)
+    const GRAPH_EDGES = [
+      { id: "e1", from: "n_trigger", fromPort: "next", to: "n_presummary", toPort: "after" },
+      { id: "e2", from: "n_trigger", fromPort: "out", to: "n_presummary", toPort: "context" },
+      { id: "e3", from: "n_presummary", fromPort: "next", to: "n_finalize", toPort: "after" },
+      { id: "e4", from: "n_trigger", fromPort: "next", to: "n_asr", toPort: "after" },
+      { id: "e5", from: "n_asr", fromPort: "transcript", to: "n_ner", toPort: "in" },
+      { id: "e6", from: "n_ner", fromPort: "out", to: "n_visit", toPort: "in" },
+      { id: "e7", from: "n_visit", fromPort: "new_visit", to: "n_summary_new", toPort: "after" },
+      { id: "e8", from: "n_visit", fromPort: "revisit", to: "n_summary_revisit", toPort: "after" },
+      { id: "e9", from: "n_visit", fromPort: "else", to: "n_summary_new", toPort: "after" },
+      { id: "e10", from: "n_trigger", fromPort: "out", to: "n_summary_new", toPort: "context" },
+      { id: "e11", from: "n_trigger", fromPort: "out", to: "n_summary_revisit", toPort: "context" },
+      { id: "e12", from: "n_ner", fromPort: "out", to: "n_summary_new", toPort: "in" },
+      { id: "e13", from: "n_ner", fromPort: "out", to: "n_summary_revisit", toPort: "in" },
+      { id: "e14", from: "n_summary_new", fromPort: "out", to: "n_finalize", toPort: "in" },
+      { id: "e15", from: "n_summary_revisit", fromPort: "out", to: "n_finalize", toPort: "in" },
+      { id: "e16", from: "n_finalize", fromPort: "out", to: "n_review", toPort: "in" },
+      { id: "e17", from: "n_finalize", fromPort: "data", to: "n_output", toPort: "in" },
+      { id: "e18", from: "n_review", fromPort: "next", to: "n_output", toPort: "after" },
+      { id: "e19", from: "n_trigger", fromPort: "out", to: "n_transcript", toPort: "in" },
+      { id: "e20", from: "n_transcript", fromPort: "text", to: "n_ner", toPort: "in" }
+    ];
+
+    let currentScale = 0.85;
+    let panX = 40;
+    let panY = 60;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let selectedNodeId = "n_summary_new";
+    let llmFilterActive = false;
+
+    // Render Canvas Nodes
+    function renderCanvas() {
+      const container = document.getElementById("nodes-layer");
+      container.innerHTML = "";
+
+      GRAPH_NODES.forEach(node => {
+        const el = document.createElement("div");
+        el.className = `node-element ${node.id === selectedNodeId ? 'selected' : ''} ${node.llmActive ? 'llm-highlight' : ''}`;
+        el.id = `node-${node.id}`;
+        el.style.left = `${node.x}px`;
+        el.style.top = `${node.y}px`;
+        el.onclick = (e) => {
+          e.stopPropagation();
+          selectNode(node.id);
+        };
+
+        const llmStatus = node.llmActive ? 
+          `<span class="guard-indicator"><span class="guard-dot-active">●</span> LLM INFERENCE</span>` :
+          `<span class="guard-indicator"><span class="guard-dot-none">○</span> PASSTHROUGH</span>`;
+
+        el.innerHTML = `
+          <div class="node-header">
+            <div class="node-title-box">
+              <span class="node-type-icon">▢</span>
+              <span class="node-title">${node.title}</span>
+            </div>
+            <span class="node-id-chip">${node.id}</span>
+          </div>
+          <div class="node-content">
+            <div class="node-summary-line">${node.purpose}</div>
+            <div class="node-slug-badge">${node.slug}</div>
+          </div>
+          <div class="node-footer">
+            <span>${node.lane}</span>
+            ${llmStatus}
+          </div>
+        `;
+        container.appendChild(el);
+      });
+
+      renderConnections();
+    }
+
+    // Render SVG Connections
+    function renderConnections() {
+      const svg = document.getElementById("wires-layer");
+      svg.innerHTML = "";
+
+      GRAPH_EDGES.forEach(edge => {
+        const fromNode = GRAPH_NODES.find(n => n.id === edge.from);
+        const toNode = GRAPH_NODES.find(n => n.id === edge.to);
+        if (!fromNode || !toNode) return;
+
+        // Calculate ports positions
+        const startX = fromNode.x + 290;
+        const startY = fromNode.y + 40;
+        const endX = toNode.x;
+        const endY = toNode.y + 40;
+
+        const deltaX = Math.max(40, (endX - startX) * 0.5);
+        const pathData = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`;
+
+        const isRelated = (fromNode.id === selectedNodeId || toNode.id === selectedNodeId);
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("class", `wire-path ${isRelated ? 'active' : ''}`);
+        svg.appendChild(path);
+      });
+    }
+
+    // Node Selection & Inspector Binding
+    function selectNode(id) {
+      selectedNodeId = id;
+      document.querySelectorAll(".node-element").forEach(el => el.classList.remove("selected"));
+      const el = document.getElementById(`node-${id}`);
+      if (el) el.classList.add("selected");
+
+      renderConnections();
+
+      const node = GRAPH_NODES.find(n => n.id === id);
+      if (!node) return;
+
+      document.getElementById("ins-node-title").textContent = node.title;
+      document.getElementById("ins-node-id").textContent = node.id;
+      document.getElementById("ins-type").textContent = node.type;
+      document.getElementById("ins-lane").textContent = node.lane;
+      document.getElementById("ins-cadence").textContent = node.cadence;
+      document.getElementById("ins-slug").textContent = node.slug;
+      document.getElementById("ins-purpose").textContent = node.purpose;
+
+      const rowTemplate = document.getElementById("row-template");
+      if (node.template) {
+        rowTemplate.style.display = "flex";
+        document.getElementById("ins-template").textContent = node.template;
+      } else {
+        rowTemplate.style.display = "none";
+      }
+
+      document.getElementById("ins-ports-in").textContent = node.inPorts.join(", ") || "(none / trigger entry)";
+      document.getElementById("ins-ports-out").textContent = node.outPorts.join(", ") || "(terminal output)";
+
+      // LLM Tab
+      document.getElementById("ins-llm-symbol").textContent = node.llmActive ? "●" : "○";
+      document.getElementById("ins-llm-headline").textContent = node.llmActive ? "LLM Inference Active" : "Non-LLM / Passthrough Node";
+      document.getElementById("ins-llm-desc").textContent = node.llmSummary;
+
+      // LLM Execution Box toggle
+      const llmExecCard = document.getElementById("ins-llm-execution-card");
+      llmExecCard.style.display = node.llmActive ? "flex" : "none";
+
+      document.getElementById("ins-model-target").textContent = node.modelTarget;
+      document.getElementById("ins-provider-engine").textContent = node.providerEngine;
+      document.getElementById("ins-hardware-device").textContent = node.hardwareDevice;
+      document.getElementById("ins-context-limit").textContent = node.contextLimit;
+      document.getElementById("ins-security-posture").textContent = node.securityPosture;
+
+      // Link to Category in Inventory Drawer
+      const linkContainer = document.getElementById("ins-cat-link-container");
+      linkContainer.innerHTML = "";
+      if (node.llmCategoryId) {
+        const btn = document.createElement("button");
+        btn.className = "category-jump-btn";
+        btn.innerHTML = `<span>📂</span> View in Inventory: ${node.llmCategoryName}`;
+        btn.onclick = () => {
+          jumpToCategory(node.llmCategoryId);
+        };
+        linkContainer.appendChild(btn);
+      }
+
+      openInspector();
+    }
+
+    // Inspector Tab Switching
+    function switchInspectorTab(tabKey) {
+      document.querySelectorAll(".ins-tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".ins-tab-content").forEach(c => c.style.display = "none");
+
+      event.target.classList.add("active");
+      const target = document.getElementById(`ins-tab-${tabKey}`);
+      if (target) target.style.display = "flex";
+    }
+
+    // Jump from Inspector to Category in Bottom Drawer
+    function jumpToCategory(catId) {
+      const drawer = document.getElementById("bottom-drawer");
+      if (!drawer.classList.contains("open")) {
+        toggleInventoryDrawer();
+      }
+      highlightCategoryNodes(catId);
+      const catCard = document.getElementById(`cat-card-${catId}`);
+      if (catCard) {
+        catCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    // Highlight nodes when clicking a category in the drawer
+    function highlightCategoryNodes(catId) {
+      document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active-cat"));
+      const card = document.getElementById(`cat-card-${catId}`);
+      if (card) card.classList.add("active-cat");
+
+      document.querySelectorAll(".node-element").forEach(el => {
+        const id = el.id.replace("node-", "");
+        const node = GRAPH_NODES.find(n => n.id === id);
+        if (node.llmCategoryId === catId) {
+          el.style.opacity = "1";
+          el.style.transform = "scale(1.04)";
+        } else {
+          el.style.opacity = "0.25";
+          el.style.transform = "scale(1)";
+        }
+      });
+    }
+
+    // Toggle Inspector Panel
+    function toggleInspector() {
+      const panel = document.getElementById("inspector");
+      const isCollapsed = panel.classList.toggle("collapsed");
+      syncInspectorUI(!isCollapsed);
+    }
+
+    function openInspector() {
+      const panel = document.getElementById("inspector");
+      if (panel.classList.contains("collapsed")) {
+        panel.classList.remove("collapsed");
+        syncInspectorUI(true);
+      }
+    }
+
+    function syncInspectorUI(isOpen) {
+      const btn = document.getElementById("btn-toggle-inspector");
+      if (btn) {
+        if (isOpen) btn.classList.add("active");
+        else btn.classList.remove("active");
+      }
+      const reopenBtn = document.getElementById("btn-inspector-reopen");
+      if (reopenBtn) {
+        reopenBtn.style.display = isOpen ? "none" : "flex";
+      }
+    }
+
+    // Toggle Bottom Inventory Drawer
+    function toggleInventoryDrawer() {
+      const drawer = document.getElementById("bottom-drawer");
+      drawer.classList.toggle("open");
+      const btn = document.getElementById("btn-toggle-inventory");
+      btn.classList.toggle("active");
+    }
+
+    // Toggle LLM Filter
+    function toggleLLMFilter() {
+      llmFilterActive = !llmFilterActive;
+      const btn = document.getElementById("btn-toggle-filter");
+      btn.classList.toggle("active");
+
+      document.querySelectorAll(".node-element").forEach(el => {
+        const id = el.id.replace("node-", "");
+        const node = GRAPH_NODES.find(n => n.id === id);
+        el.style.transform = "scale(1)";
+        if (llmFilterActive) {
+          el.style.opacity = node.llmActive ? "1" : "0.2";
+        } else {
+          el.style.opacity = "1";
+        }
+      });
+    }
+
+    // Canvas Pan & Zoom
+    function applyTransform() {
+      const world = document.getElementById("world");
+      world.style.transform = `translate(${panX}px, ${panY}px) scale(${currentScale})`;
+      document.getElementById("zoom-val").textContent = `${Math.round(currentScale * 100)}%`;
+    }
+
+    function zoomIn() {
+      currentScale = Math.min(2.0, currentScale + 0.15);
+      applyTransform();
+    }
+
+    function zoomOut() {
+      currentScale = Math.max(0.3, currentScale - 0.15);
+      applyTransform();
+    }
+
+    function resetCanvasView() {
+      currentScale = 0.85;
+      panX = 40;
+      panY = 60;
+      applyTransform();
+    }
+
+    // Mouse drag handlers
+    const viewport = document.getElementById("viewport");
+    viewport.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".node-element") || e.target.closest(".canvas-hud")) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+      viewport.classList.add("is-dragging");
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      applyTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+      isDragging = false;
+      viewport.classList.remove("is-dragging");
+    });
+
+    viewport.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+      currentScale = Math.max(0.3, Math.min(2.0, currentScale * zoomFactor));
+      applyTransform();
+    }, { passive: false });
+
+    // Initial boot
+    window.addEventListener("DOMContentLoaded", () => {
+      renderCanvas();
+      applyTransform();
+      selectNode(selectedNodeId);
+    });
+  </script>
+</body>
+</html>

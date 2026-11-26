@@ -1,0 +1,3 @@
+Row #,Case Name,Allocated Devices,Prefill TTFT (ms),LLM Decode (ms),Guardrail Policy Validation (ms),Translation Engine,Baseline VRAM (GB),Peak VRAM (GB),Delta VRAM (MB),Avg GPU Compute Util (%),Status
+1,realtime_transcript_w1,GPU 0 (LLM) + GPU 1 (Guardrail),0.0,52524.3,0.0,Native Gemma GPU 0,7.48,7.85,376.3,45.6,PASS
+2,realtime_transcript_w2,GPU 0 (LLM) + GPU 1 (Guardrail),0.0,108695.7,0.0,Native Gemma GPU 0,7.48,7.85,376.3,45.6,PASS

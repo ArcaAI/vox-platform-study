@@ -127,11 +127,11 @@ class BatchTranscriptBenchmark(PipelineHopBenchmark):
         deployed_url: str = "https://adminconsole-vox.arcaai.com",
         username: str = "admin",
         password: str = "56527cb5d1adad66bb21a662e55421b9",
-        tenant_key: str = "BCMCH",
-        doctor: str = "george",
+        tenant_key: str = "ARCAAI",
+        doctor: str = "doctor",
         department_id: Optional[str] = None,
-        workflow_slug: str = "arcaai-heme-consultation",
-        agent_slug: str = "arcaai-heme-summary-new-visit",
+        workflow_slug: str = "arcaai-gen-consultation",
+        agent_slug: str = "arcaai-gen-summary-new-visit",
         token: str = "",
         gen_model: str = "gemma-4-e2b-it-qat",
         timeout_s: float = 120.0,
@@ -190,10 +190,10 @@ class BatchTranscriptBenchmark(PipelineHopBenchmark):
                 if 200 <= resp.status < 300 and body:
                     data = json.loads(body.decode("utf-8"))
                     items = data if isinstance(data, list) else data.get("data", [])
-                    # Look for Hematology department first if available
-                    heme = next((d for d in items if any(k in str(d.get(f, "")).lower() for f in ["departmentCode", "departmentName", "code", "name"] for k in ["heme", "hematology"])), None)
+                    # Look for General Medicine department first if available
+                    gen = next((d for d in items if any(k in str(d.get(f, "")).lower() for f in ["departmentCode", "departmentName", "code", "name"] for k in ["gen", "general", "medicine"])), None)
                     primary = next((d for d in items if d.get("isPrimary")), None)
-                    chosen = heme or primary or (items[0] if items else None)
+                    chosen = gen or primary or (items[0] if items else None)
                     if chosen:
                         did = chosen.get("departmentId") or chosen.get("id")
                         if did:
@@ -223,10 +223,10 @@ class BatchTranscriptBenchmark(PipelineHopBenchmark):
                 if 200 <= resp.status < 300 and body:
                     data = json.loads(body.decode("utf-8"))
                     items = data.get("data", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
-                    # Look for Hematology consultation workflow first if present, then tenant default, then first available
-                    heme = next((w for w in items if "heme" in str(w.get("slug", "")).lower() or "hematology" in str(w.get("name", "")).lower()), None)
+                    # Look for General Medicine consultation workflow first if present, then tenant default, then first available
+                    gen = next((w for w in items if any(k in str(w.get("slug", "")).lower() or k in str(w.get("name", "")).lower() for k in ["general-medicine", "arcaai-gen", "gen-consultation", "general medicine"])), None)
                     tenant_def = next((w for w in items if w.get("isTenantDefault")), None)
-                    chosen = heme or tenant_def or (items[0] if items else None)
+                    chosen = gen or tenant_def or (items[0] if items else None)
                     if chosen and chosen.get("slug"):
                         return str(chosen["slug"])
             except Exception:
@@ -254,8 +254,8 @@ class BatchTranscriptBenchmark(PipelineHopBenchmark):
                 if 200 <= resp.status < 300 and body:
                     data = json.loads(body.decode("utf-8"))
                     items = data.get("data", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
-                    heme = next((a for a in items if "heme" in str(a.get("slug", "")).lower() or "hematology" in str(a.get("name", "")).lower()), None)
-                    chosen = heme or (items[0] if items else None)
+                    gen = next((a for a in items if any(k in str(a.get("slug", "")).lower() or k in str(a.get("name", "")).lower() for k in ["general-medicine", "arcaai-gen", "gen-summary", "general medicine"])), None)
+                    chosen = gen or (items[0] if items else None)
                     if chosen and chosen.get("slug"):
                         return str(chosen["slug"])
             except Exception:
@@ -825,9 +825,9 @@ class BatchTranscriptBenchmark(PipelineHopBenchmark):
                                             if 200 <= d_resp.status < 300 and d_body:
                                                 depts = json.loads(d_body.decode("utf-8"))
                                                 dept_list = depts if isinstance(depts, list) else depts.get("data", [])
-                                                heme = next((d for d in dept_list if any(k in str(d.get(f, "")).lower() for f in ["departmentCode", "departmentName", "code", "name"] for k in ["heme", "hematology"])), None)
+                                                gen_dept = next((d for d in dept_list if any(k in str(d.get(f, "")).lower() for f in ["departmentCode", "departmentName", "code", "name"] for k in ["gen", "general", "medicine"])), None)
                                                 primary = next((d for d in dept_list if d.get("isPrimary")), None)
-                                                chosen = heme or primary or (dept_list[0] if dept_list else None)
+                                                chosen = gen_dept or primary or (dept_list[0] if dept_list else None)
                                                 if chosen:
                                                     self.department_id = chosen.get("departmentId") or chosen.get("id")
                                         except Exception:
@@ -1542,12 +1542,12 @@ def main() -> None:
     parser.add_argument("--deployed-url", default="https://adminconsole-vox.arcaai.com", help="Base URL of deployed API gateway")
     parser.add_argument("--username", default="admin", help="Clinician username for auto-auth")
     parser.add_argument("--password", default="56527cb5d1adad66bb21a662e55421b9", help="Clinician password")
-    parser.add_argument("--tenant-key", default="BCMCH", help="Tenant key")
-    parser.add_argument("--doctor", default="george", help="Doctor/clinician username to impersonate (default: george)")
+    parser.add_argument("--tenant-key", default="ARCAAI", help="Tenant key (default: ARCAAI)")
+    parser.add_argument("--doctor", default="doctor", help="Doctor/clinician username to impersonate (default: doctor)")
     parser.add_argument("--department-id", default="", help="Explicit department ID to bind consultation")
     parser.add_argument("--token", default="", help="Optional pre-existing JWT token")
-    parser.add_argument("--workflow-slug", default="arcaai-heme-consultation", help="Consultation workflow definition slug (default: arcaai-heme-consultation)")
-    parser.add_argument("--agent-slug", default="arcaai-heme-summary-new-visit", help="Summarization agent slug (default: arcaai-heme-summary-new-visit)")
+    parser.add_argument("--workflow-slug", default="arcaai-gen-consultation", help="Consultation workflow definition slug (default: arcaai-gen-consultation)")
+    parser.add_argument("--agent-slug", default="arcaai-gen-summary-new-visit", help="Summarization agent slug (default: arcaai-gen-summary-new-visit)")
     parser.add_argument("--gen-model", default="gemma-4-e2b-it-qat", help="Generation model name")
     parser.add_argument("--timeout", type=float, default=150.0, help="Per-request timeout in seconds")
 

@@ -1,0 +1,754 @@
+(base) apple@MacBook-Pro project-hope % python3 scripts/token_benchmark_realtime/parallel_transcript_benchmark.py \
+  --transcript-file scripts/token_benchmark_realtime/data/realtime_transcript_sample.txt \
+  --tenant-key ARCAAI \
+  --doctors test1,test2,test3,test4 \
+  --concurrency 16
+
+=====================================================================================
+  HOPE BATCH DOCTOR TRANSCRIPT BENCHMARK (NATIVE GEMMA TRANSLATION & NOTE GEN)  
+=====================================================================================
+Target URL:         https://adminconsole-vox.arcaai.com
+Clinician User:     admin
+Acting Doctors:     test1, test2, test3, test4 (Multi-Doctor Concurrency Pool)
+Input Transcript:   Custom (scripts/token_benchmark_realtime/data/realtime_transcript_sample.txt) [6047 words]
+Translation Engine: Native Gemma-4-e2b-it-qat (GPU 0) (In-Model Translation & Note Gen)
+Guardrail Model:    Granite-Guardian-4.1-8b (GPU 1)
+Concurrency Mode:   PARALLEL (16 workers at a time)
+Pipeline Mode:      100% Real Production Workflow (Hops 1-5)
+  [Auth] Performing automatic login (https://adminconsole-vox.arcaai.com/api/auth/login) ... 
+  [Auth] Auth status: [200] 1180.0ms (Session authenticated | Working Tenant: ArcaAI [50000000-0000-0000-0000-000000000001] | Acting Clinician: test1 | Dept: 70000000-0000-0000-0001-000000000001 | Workflow: general-medicine-consultation | Agent: general-medicine-summarization)
+
+Loaded 1 base consultation transcript template(s).
+
+=====================================================================================
+  CONCURRENCY LEVEL: 16 PARALLEL WORKERS (16 encounters)
+=====================================================================================
+  [Multi-Doctor] Authenticating pooled session for Dr. 'test2'...
+  [Auth] Performing automatic login (https://adminconsole-vox.arcaai.com/api/auth/login) ... 
+  [Auth] Auth status: [200] 730.6ms (Session authenticated | Working Tenant: ArcaAI [50000000-0000-0000-0000-000000000001] | Acting Clinician: test2 | Dept: 70000000-0000-0000-0001-000000000001 | Workflow: general-medicine-consultation | Agent: general-medicine-summarization)
+  [Multi-Doctor] Authenticating pooled session for Dr. 'test3'...
+  [Auth] Performing automatic login (https://adminconsole-vox.arcaai.com/api/auth/login) ... 
+  [Auth] Auth status: [200] 704.7ms (Session authenticated | Working Tenant: ArcaAI [50000000-0000-0000-0000-000000000001] | Acting Clinician: test3 | Dept: 70000000-0000-0000-0001-000000000001 | Workflow: general-medicine-consultation | Agent: general-medicine-summarization)
+  [Multi-Doctor] Authenticating pooled session for Dr. 'test4'...
+  [Auth] Performing automatic login (https://adminconsole-vox.arcaai.com/api/auth/login) ... 
+  [Auth] Auth status: [200] 734.3ms (Session authenticated | Working Tenant: ArcaAI [50000000-0000-0000-0000-000000000001] | Acting Clinician: test4 | Dept: 70000000-0000-0000-0001-000000000001 | Workflow: general-medicine-consultation | Agent: general-medicine-summarization)
+
+⚡ Executing 16 encounters in PARALLEL (Concurrency = 16) ...
+
+
+================================================================================
+  [Worker-1 (test1) | realtime_transcript_] ENCOUNTER #1: realtime_transcript_sample_w1 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+
+================================================================================
+  [Worker-2 (test2) | realtime_transcript_] ENCOUNTER #2: realtime_transcript_sample_w2 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+
+================================================================================
+  [Worker-3 (test3) | realtime_transcript_] ENCOUNTER #3: realtime_transcript_sample_w3 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-1 (test1) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 725.6ms
+
+================================================================================
+  [Worker-4 (test4) | realtime_transcript_] ENCOUNTER #4: realtime_transcript_sample_w4 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-2 (test2) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 708.9ms
+  [Worker-3 (test3) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 704.8ms
+
+================================================================================
+  [Worker-5 (test1) | realtime_transcript_] ENCOUNTER #5: realtime_transcript_sample_w5 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+
+================================================================================
+  [Worker-6 (test2) | realtime_transcript_] ENCOUNTER #6: realtime_transcript_sample_w6 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-4 (test4) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 754.3ms
+
+================================================================================
+  [Worker-7 (test3) | realtime_transcript_] ENCOUNTER #7: realtime_transcript_sample_w7 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-5 (test1) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 736.3ms
+
+================================================================================
+  [Worker-8 (test4) | realtime_transcript_] ENCOUNTER #8: realtime_transcript_sample_w8 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-6 (test2) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 719.9ms
+  [Worker-1 (test1) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1117.1ms
+
+================================================================================
+  [Worker-9 (test1) | realtime_transcript_] ENCOUNTER #9: realtime_transcript_sample_w9 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-7 (test3) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 719.5ms
+
+================================================================================
+  [Worker-10 (test2) | realtime_transcript_] ENCOUNTER #10: realtime_transcript_sample_w10 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-2 (test2) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1500.0ms
+  [Worker-3 (test3) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1174.2ms
+  [Worker-8 (test4) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 835.7ms
+  [Worker-9 (test1) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 702.9ms
+
+================================================================================
+  [Worker-11 (test3) | realtime_transcript_] ENCOUNTER #11: realtime_transcript_sample_w11 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-4 (test4) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1283.1ms
+  [Worker-5 (test1) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 984.5ms
+  [Worker-1 (test1) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1290.6ms
+
+================================================================================
+  [Worker-12 (test4) | realtime_transcript_] ENCOUNTER #12: realtime_transcript_sample_w12 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-10 (test2) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 774.2ms
+  [Worker-2 (test2) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 977.4ms
+
+================================================================================
+  [Worker-13 (test1) | realtime_transcript_] ENCOUNTER #13: realtime_transcript_sample_w13 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-11 (test3) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 756.6ms
+  [Worker-6 (test2) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1082.4ms
+  [Worker-3 (test3) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1135.2ms
+  [Worker-7 (test3) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 973.4ms
+  [Worker-1 (test1) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 665.4ms
+  [Worker-12 (test4) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 702.6ms
+
+================================================================================
+  [Worker-14 (test2) | realtime_transcript_] ENCOUNTER #14: realtime_transcript_sample_w14 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-4 (test4) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1023.6ms
+  [Worker-2 (test2) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 660.8ms
+  [Worker-8 (test4) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 954.4ms
+  [Worker-5 (test1) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1146.1ms
+
+================================================================================
+  [Worker-15 (test3) | realtime_transcript_] ENCOUNTER #15: realtime_transcript_sample_w15 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-13 (test1) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 725.1ms
+  [Worker-3 (test3) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 640.5ms
+  [Worker-9 (test1) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 949.6ms
+
+================================================================================
+  [Worker-16 (test4) | realtime_transcript_] ENCOUNTER #16: realtime_transcript_sample_w16 (6047 words, ~8062 tokens | malayalam)
+================================================================================
+  [Worker-6 (test2) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 991.9ms
+  [Worker-14 (test2) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 744.9ms
+  [Worker-4 (test4) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 637.7ms
+  [Worker-7 (test3) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1036.9ms
+  [Worker-5 (test1) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 662.8ms
+  [Worker-10 (test2) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 967.9ms
+  [Worker-15 (test3) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 830.8ms
+  [Worker-11 (test3) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 948.1ms
+  [Worker-8 (test4) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 990.1ms
+  [Worker-6 (test2) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 703.1ms
+  [Worker-16 (test4) | realtime_transcript_] [Hop 1] Open Consultation Session (Client → Gateway ↔ PostgreSQL) ... [201] 726.6ms
+  [Worker-1 (test1) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 827.6ms
+  [Worker-1 (test1) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-7 (test3) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 627.8ms
+  [Worker-12 (test4) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1027.2ms
+  [Worker-9 (test1) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1190.6ms
+  [Worker-2 (test2) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 882.4ms
+  [Worker-2 (test2) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-8 (test4) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 705.3ms
+  [Worker-3 (test3) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 892.7ms
+  [Worker-3 (test3) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-10 (test2) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1001.1ms
+  [Worker-13 (test1) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1392.9ms
+  [Worker-12 (test4) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1269.2ms
+  [Worker-11 (test3) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1738.9ms
+  [Worker-4 (test4) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 1528.2ms
+  [Worker-4 (test4) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-14 (test2) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1649.2ms
+  [Worker-9 (test1) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 1264.9ms
+  [Worker-10 (test2) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 1080.0ms
+  [Worker-15 (test3) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1256.6ms
+  [Worker-5 (test1) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 1521.6ms
+  [Worker-5 (test1) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-13 (test1) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1012.7ms
+  [Worker-12 (test4) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 675.4ms
+  [Worker-6 (test2) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 849.9ms
+  [Worker-6 (test2) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-11 (test3) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 716.4ms
+  [Worker-7 (test3) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 836.9ms
+  [Worker-7 (test3) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-16 (test4) | realtime_transcript_] [Part 1/3] [Hop 2] Transcript Ingest (1/3) (Gateway ↔ Context Vault) ... [201] 1015.7ms
+  [Worker-8 (test4) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 903.2ms
+  [Worker-8 (test4) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-13 (test1) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 643.3ms
+  [Worker-14 (test2) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1083.5ms
+  [Worker-15 (test3) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 1043.2ms
+  [Worker-10 (test2) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 811.3ms
+  [Worker-10 (test2) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-14 (test2) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 638.5ms
+  [Worker-15 (test3) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 634.1ms
+  [Worker-9 (test1) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 947.0ms
+  [Worker-9 (test1) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-16 (test4) | realtime_transcript_] [Part 2/3] [Hop 2] Transcript Ingest (2/3) (Gateway ↔ Context Vault) ... [201] 970.2ms
+  [Worker-12 (test4) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 814.1ms
+  [Worker-12 (test4) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-11 (test3) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 762.0ms
+  [Worker-11 (test3) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-16 (test4) | realtime_transcript_] [Part 3/3] [Hop 2] Transcript Ingest (3/3) (Gateway ↔ Context Vault) ... [201] 643.8ms
+  [Worker-13 (test1) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 868.5ms
+  [Worker-13 (test1) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-15 (test3) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 820.3ms
+  [Worker-15 (test3) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-14 (test2) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 840.9ms
+  [Worker-14 (test2) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-16 (test4) | realtime_transcript_] [Hop 3] Dispatch Summary Workflow (Gateway ↔ Workflow Queue) ... [201] 794.6ms
+  [Worker-16 (test4) | realtime_transcript_] [Stage 4] Polling Pipeline Execution (Temporal ↔ LLM GPU) ...
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (13s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (13s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (13s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (13s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (15s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (13s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (13s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (12s elapsed)
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (23s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (23s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (23s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (23s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (25s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (26s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (24s elapsed)
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (36s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (36s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (39s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (36s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (37s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (53s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (55s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (55s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (55s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (56s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (55s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (54s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (55s elapsed)
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (70s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (73s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (72s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (72s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (72s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (72s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (71s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (74s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (72s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (87s elapsed)
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (87s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (89s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (87s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (89s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (87s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (90s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (89s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (88s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (104s elapsed)
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (104s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (103s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (105s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (104s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (105s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (106s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (105s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (105s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (104s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (105s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (103s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (106s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (107s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (105s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (105s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-1 (test1) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (120s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (122s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (122s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (119s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (122s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (123s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (121s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (122s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (138s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (138s elapsed)
+  [Worker-1 (test1) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 139956.1ms
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (139s elapsed)
+  [Worker-1 (test1) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 670.8ms
+  [Worker-1 (test1) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w1_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w1 completed in 142.85s (Status=PASS)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (138s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (139s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (138s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (137s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (138s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (139s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (137s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (139s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (138s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (140s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (139s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (141s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (155s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (154s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (156s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (155s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (156s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (154s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (156s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (154s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (153s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (156s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (156s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (155s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (156s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (158s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (160s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (171s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (170s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (173s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (171s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (172s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (171s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (172s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (171s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (171s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (172s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (171s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (173s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (173s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (175s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (178s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (187s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (188s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (188s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (189s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (191s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (188s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (189s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (187s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (187s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (189s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (188s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (192s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (192s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (191s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (196s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (205s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (205s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (205s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (206s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (207s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (209s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (206s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (205s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (206s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (206s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (205s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (208s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (210s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (209s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (213s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (223s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (222s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (222s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (223s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (225s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (226s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (223s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (222s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (223s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (224s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (222s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (226s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (227s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (226s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (230s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (239s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (238s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (239s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (240s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (241s elapsed)
+  [Worker-2 (test2) | realtime_transcript_]   ↳ Workflow status: pending (243s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (240s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (238s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (240s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (241s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (239s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (242s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (243s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (244s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (246s elapsed)
+  [Worker-2 (test2) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 250862.5ms
+  [Worker-2 (test2) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 640.4ms
+  [Worker-2 (test2) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w2_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w2 completed in 253.76s (Status=PASS)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (256s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (255s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (256s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (256s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (257s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (255s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (259s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (257s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (258s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (256s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (259s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (260s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (261s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (263s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (272s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (272s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (273s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (273s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (272s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (275s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (273s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (273s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (275s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (273s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (275s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (277s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (277s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (280s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (289s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (288s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (289s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (290s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (290s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (292s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (289s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (290s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (292s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (290s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (292s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (294s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (296s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (294s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (305s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (306s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (306s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (306s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (307s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (305s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (308s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (307s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (308s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (308s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (307s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (311s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (313s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (311s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (321s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (322s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (323s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (323s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (322s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (325s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (323s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (323s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (324s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (326s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (326s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (328s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (328s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (330s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (338s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (339s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (340s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (341s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (340s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (342s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (339s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (341s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (340s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (343s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (343s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (345s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (347s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (346s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (355s elapsed)
+  [Worker-3 (test3) | realtime_transcript_]   ↳ Workflow status: pending (357s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (357s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (356s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (359s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (357s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (359s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (357s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (357s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (361s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (361s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (361s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (364s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (363s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (371s elapsed)
+  [Worker-3 (test3) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 374269.9ms
+  [Worker-3 (test3) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 626.3ms
+  [Worker-3 (test3) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w3_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w3 completed in 377.13s (Status=PASS)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (374s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (375s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (372s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (374s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (375s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (374s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (374s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (377s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (378s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (378s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (381s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (380s elapsed)
+  [Worker-4 (test4) | realtime_transcript_]   ↳ Workflow status: pending (388s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (390s elapsed)
+  [Worker-5 (test1) | realtime_transcript_]   ↳ Workflow status: pending (392s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (389s elapsed)
+  [Worker-9 (test1) | realtime_transcript_]   ↳ Workflow status: pending (391s elapsed)
+  [Worker-8 (test4) | realtime_transcript_]   ↳ Workflow status: pending (392s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (391s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (390s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (394s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (395s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (394s elapsed)
+  [Worker-7 (test3) | realtime_transcript_]   ↳ Workflow status: pending (397s elapsed)
+  [Worker-15 (test3) | realtime_transcript_]   ↳ Workflow status: pending (397s elapsed)
+  [Worker-4 (test4) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 401699.0ms
+  [Worker-5 (test1) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 401878.6ms
+  [Worker-4 (test4) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 679.3ms
+  [Worker-4 (test4) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w4_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w4 completed in 405.30s (Status=PASS)
+  [Worker-5 (test1) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 622.2ms
+  [Worker-5 (test1) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w5_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w5 completed in 405.42s (Status=PASS)
+  [Worker-9 (test1) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 401538.7ms
+  [Worker-15 (test3) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 400178.8ms
+  [Worker-8 (test4) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 402497.6ms
+  [Worker-9 (test1) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 671.3ms
+  [Worker-9 (test1) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w9_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w9 completed in 405.12s (Status=PASS)
+  [Worker-15 (test3) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 605.0ms
+  [Worker-15 (test3) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w15_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w15 completed in 403.07s (Status=PASS)
+  [Worker-8 (test4) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 659.0ms
+  [Worker-8 (test4) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w8_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w8 completed in 405.60s (Status=PASS)
+  [Worker-7 (test3) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 404208.6ms
+  [Worker-7 (test3) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 690.5ms
+  [Worker-7 (test3) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w7_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w7 completed in 407.08s (Status=PASS)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (407s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (405s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (408s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (407s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (411s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (412s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (411s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (423s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (422s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (424s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (423s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (427s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (428s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (428s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (439s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (438s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (441s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (440s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (444s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (445s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (445s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (456s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (455s elapsed)
+  [Worker-13 (test1) | realtime_transcript_]   ↳ Workflow status: pending (458s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (456s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (460s elapsed)
+  [Worker-13 (test1) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 461013.3ms
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (462s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (462s elapsed)
+  [Worker-13 (test1) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 727.9ms
+  [Worker-13 (test1) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w13_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w13 completed in 463.98s (Status=PASS)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (474s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (471s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (474s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (477s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (478s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (479s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (490s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (488s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (491s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (493s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (495s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (496s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (507s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (505s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (507s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (510s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (511s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (513s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (523s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (522s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (524s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (527s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (528s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (530s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (540s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (538s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (541s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (544s elapsed)
+  [Worker-10 (test2) | realtime_transcript_]   ↳ Workflow status: pending (545s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (546s elapsed)
+  [Worker-10 (test2) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 555110.7ms
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (556s elapsed)
+  [Worker-10 (test2) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 622.5ms
+  [Worker-10 (test2) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w10_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w10 completed in 558.40s (Status=PASS)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (555s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (558s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (560s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (563s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (573s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (572s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (574s elapsed)
+  [Worker-12 (test4) | realtime_transcript_]   ↳ Workflow status: pending (577s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (579s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (590s elapsed)
+  [Worker-12 (test4) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 589840.1ms
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (589s elapsed)
+  [Worker-12 (test4) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 658.6ms
+  [Worker-12 (test4) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w12_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w12 completed in 592.69s (Status=PASS)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (592s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (597s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (606s elapsed)
+  [Worker-14 (test2) | realtime_transcript_]   ↳ Workflow status: pending (606s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (608s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (613s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (623s elapsed)
+  [Worker-14 (test2) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 621823.4ms
+  [Worker-14 (test2) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 616.2ms
+  [Worker-14 (test2) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w14_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w14 completed in 624.66s (Status=PASS)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (625s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (630s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (639s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (641s elapsed)
+  [Worker-11 (test3) | realtime_transcript_]   ↳ Workflow status: pending (646s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (656s elapsed)
+  [Worker-11 (test3) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 658709.2ms
+  [Worker-11 (test3) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 679.2ms
+  [Worker-11 (test3) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w11_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w11 completed in 661.62s (Status=PASS)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (658s elapsed)
+  [Worker-6 (test2) | realtime_transcript_]   ↳ Workflow status: pending (673s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (674s elapsed)
+  [Worker-6 (test2) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 689999.5ms
+  [Worker-6 (test2) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 671.2ms
+  [Worker-6 (test2) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w6_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w6 completed in 692.94s (Status=PASS)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (690s elapsed)
+  [Worker-16 (test4) | realtime_transcript_]   ↳ Workflow status: pending (707s elapsed)
+  [Worker-16 (test4) | realtime_transcript_] [Stage 4] Pipeline Execution Completed ... [200] 720332.3ms
+  [Worker-16 (test4) | realtime_transcript_] [Hop 5] Clinical Note Retrieval (Gateway ↔ PostgreSQL) ... [200] 638.1ms
+  [Worker-16 (test4) | realtime_transcript_] ↳ Clinical Note Saved: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/summaries/realtime_transcript_sample_w16_summary.md
+
+  [✓] Encounter realtime_transcript_sample_w16 completed in 723.14s (Status=PASS)
+
+[✓] Tier Concurrency=16 completed in 752.9s wall-clock time!
+  ↳ Cumulative sequential time: 7522.8s | Parallel Speedup: 9.99x
+
+=============================================================================================================================
+  HOPE PRODUCTION CONSULTATION BENCHMARK RESULTS (100% REAL END-TO-END WORKFLOW)  
+=============================================================================================================================
+#   | Doctor     | Case Name                  | Words  | Tokens  | Status | S1 Init  | S2 Ingest | S3 Queue | S4 Pipeline | S5 Fetch | Total E2E 
+-------------------------------------------------------------------------------------------------------------------------------------------------
+1   | test1      | realtime_transcript_sample | 6047   | 8062    | PASS   |    726ms |     665ms |    828ms |   139.96s   |    671ms |  142.85s
+2   | test2      | realtime_transcript_sample | 6047   | 8062    | PASS   |    709ms |     661ms |    882ms |   250.86s   |    640ms |  253.76s
+3   | test3      | realtime_transcript_sample | 6047   | 8062    | PASS   |    705ms |     640ms |    893ms |   374.27s   |    626ms |  377.13s
+4   | test4      | realtime_transcript_sample | 6047   | 8062    | PASS   |    754ms |     638ms |   1528ms |   401.70s   |    679ms |  405.30s
+5   | test1      | realtime_transcript_sample | 6047   | 8062    | PASS   |    736ms |     663ms |   1522ms |   401.88s   |    622ms |  405.42s
+6   | test2      | realtime_transcript_sample | 6047   | 8062    | PASS   |    720ms |     703ms |    850ms |   690.00s   |    671ms |  692.94s
+7   | test3      | realtime_transcript_sample | 6047   | 8062    | PASS   |    719ms |     628ms |    837ms |   404.21s   |    691ms |  407.08s
+8   | test4      | realtime_transcript_sample | 6047   | 8062    | PASS   |    836ms |     705ms |    903ms |   402.50s   |    659ms |  405.60s
+9   | test1      | realtime_transcript_sample | 6047   | 8062    | PASS   |    703ms |    1265ms |    947ms |   401.54s   |    671ms |  405.12s
+10  | test2      | realtime_transcript_sample | 6047   | 8062    | PASS   |    774ms |    1080ms |    811ms |   555.11s   |    623ms |  558.40s
+11  | test3      | realtime_transcript_sample | 6047   | 8062    | PASS   |    757ms |     716ms |    762ms |   658.71s   |    679ms |  661.62s
+12  | test4      | realtime_transcript_sample | 6047   | 8062    | PASS   |    703ms |     675ms |    814ms |   589.84s   |    659ms |  592.69s
+13  | test1      | realtime_transcript_sample | 6047   | 8062    | PASS   |    725ms |     643ms |    869ms |   461.01s   |    728ms |  463.98s
+14  | test2      | realtime_transcript_sample | 6047   | 8062    | PASS   |    745ms |     638ms |    841ms |   621.82s   |    616ms |  624.66s
+15  | test3      | realtime_transcript_sample | 6047   | 8062    | PASS   |    831ms |     634ms |    820ms |   400.18s   |    605ms |  403.07s
+16  | test4      | realtime_transcript_sample | 6047   | 8062    | PASS   |    727ms |     644ms |    795ms |   720.33s   |    638ms |  723.14s
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+[✓] Authentic Production Benchmark Reports Successfully Exported:
+  ⚡ Master Results Excel: /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/reports/parallel_benchmark_results.xlsx
+  📝 Markdown Report:     /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/reports/parallel_benchmark_report.md
+  📁 Master CSV Export:   /Users/apple/Desktop/project-hope/scripts/token_benchmark_realtime/reports/parallel_benchmark_results.csv
+(base) apple@MacBook-Pro project-hope % 

@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Studio — BREN Consultation (arcaai-bren-consultation.v2) | Guardrail Trace</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+      /* STRICT BLACK & WHITE / MONOCHROME PALETTE - ZERO COLORS */
+      --bg-canvas: #090909;
+      --bg-panel: #111111;
+      --bg-surface: #171717;
+      --bg-surface-hover: #222222;
+      --border-dark: #222222;
+      --border-mid: #383838;
+      --border-light: #666666;
+      --border-white: #ffffff;
+      --text-main: #f5f5f5;
+      --text-muted: #9e9e9e;
+      --text-dim: #616161;
+      --grid-dot: #222222;
+      --node-bg: #141414;
+      --node-header-bg: #1a1a1a;
+      --node-selected-border: #ffffff;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-canvas);
+      font-family: var(--font-sans);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    /* ALLOW TEXT SELECTION EVERYWHERE */
+    p, span, div, h1, h2, h3, code, td, th, label, a {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+
+    /* TOP STUDIO TOOLBAR */
+    .studio-header {
+      height: 52px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      z-index: 20;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .workflow-logo {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      border-radius: 4px;
+    }
+
+    .workflow-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .crumb-dim { color: var(--text-dim); }
+    .crumb-sep { color: var(--border-mid); font-family: var(--font-mono); }
+
+    .tag-mono {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tag-guardrail {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 700;
+      border: 1px solid #ffffff;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-mono {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .btn-mono:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .btn-mono.active {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    /* MAIN STUDIO WORKSPACE (CANVAS + INSPECTOR) */
+    .studio-body {
+      flex: 1;
+      position: relative;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* CANVAS AREA */
+    .canvas-viewport {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background-color: var(--bg-canvas);
+      background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    .canvas-viewport.is-dragging {
+      cursor: grabbing;
+      user-select: none;
+    }
+
+    .canvas-world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      width: 3200px;
+      height: 1200px;
+    }
+
+    /* SVG CONNECTIONS LAYER */
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .wire-path {
+      fill: none;
+      stroke: var(--border-mid);
+      stroke-width: 2;
+      stroke-linecap: round;
+      transition: stroke 0.2s ease, stroke-width 0.2s ease;
+    }
+
+    .wire-path.active {
+      stroke: var(--border-white);
+      stroke-width: 2.5;
+    }
+
+    /* NODE CARDS ON CANVAS */
+    .node-element {
+      position: absolute;
+      width: 280px;
+      background: var(--node-bg);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      z-index: 2;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.2s ease;
+    }
+
+    .node-element:hover {
+      border-color: var(--border-light);
+    }
+
+    .node-element.selected {
+      border-color: var(--border-white);
+      box-shadow: 0 0 0 2px var(--border-white), 0 12px 30px rgba(0, 0, 0, 0.9);
+      z-index: 10;
+    }
+
+    .node-element.guardrail-highlight {
+      border: 1.5px solid #ffffff;
+    }
+
+    .node-header {
+      background: var(--node-header-bg);
+      border-bottom: 1px solid var(--border-dark);
+      padding: 9px 12px;
+      border-top-left-radius: 7px;
+      border-top-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .node-title-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .node-type-icon {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+
+    .node-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-main);
+    }
+
+    .node-id-chip {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      color: var(--text-dim);
+      background: #000;
+      padding: 1px 5px;
+      border: 1px solid var(--border-dark);
+      border-radius: 3px;
+    }
+
+    .node-content {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .node-summary-line {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .node-slug-badge {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      padding: 3px 6px;
+      border-radius: 4px;
+      color: var(--text-main);
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .node-footer {
+      border-top: 1px solid var(--border-dark);
+      padding: 7px 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-bottom-left-radius: 7px;
+      border-bottom-right-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .guard-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 600;
+    }
+
+    .guard-dot-active {
+      color: #ffffff;
+    }
+
+    .guard-dot-none {
+      color: var(--text-dim);
+    }
+
+    /* CANVAS HUD CONTROLS */
+    .canvas-hud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      z-index: 15;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    }
+
+    .hud-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hud-btn:hover {
+      background: var(--bg-surface);
+    }
+
+    .hud-zoom-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 0 6px;
+    }
+
+    /* RIGHT INSPECTOR PANEL (STUDIO INSPECTOR) */
+    .inspector-panel {
+      width: 440px;
+      height: 100%;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-dark);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 20;
+      overflow: hidden;
+      transition: width 0.2s ease;
+    }
+
+    .inspector-panel.collapsed {
+      width: 0;
+      border-left: none;
+    }
+
+    .inspector-panel.collapsed ~ .bottom-drawer {
+      right: 0;
+    }
+
+    .inspector-panel.collapsed ~ .inspector-reopen-btn {
+      display: flex;
+    }
+
+    .inspector-reopen-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 15;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .inspector-reopen-btn:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .inspector-top {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .inspector-title-group h3 {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inspector-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-dark);
+      padding: 0 12px;
+      background: var(--bg-surface);
+    }
+
+    .ins-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 10px 14px;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-family: var(--font-mono);
+    }
+
+    .ins-tab:hover {
+      color: var(--text-main);
+    }
+
+    .ins-tab.active {
+      color: #ffffff;
+      border-bottom-color: #ffffff;
+    }
+
+    .inspector-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .ins-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ins-card-title {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+      padding: 4px 0;
+      border-bottom: 1px dashed var(--border-dark);
+    }
+
+    .prop-row:last-child {
+      border-bottom: none;
+    }
+
+    .prop-label {
+      color: var(--text-muted);
+    }
+
+    .prop-val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-main);
+      text-align: right;
+    }
+
+    .guard-banner {
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      border-left: 3px solid #ffffff;
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .guard-banner-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+    }
+
+    .guard-banner-desc {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+
+    .lane1-box {
+      background: #000000;
+      border: 1px solid var(--border-dark);
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11.5px;
+    }
+
+    .lane1-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      text-transform: uppercase;
+    }
+
+    .lane1-step {
+      display: flex;
+      gap: 6px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .category-jump-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      width: fit-content;
+      transition: all 0.15s ease;
+    }
+
+    .category-jump-btn:hover {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    /* BOTTOM DRAWER (GUARDRAIL FILES INVENTORY) */
+    .bottom-drawer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 440px;
+      height: 310px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-mid);
+      z-index: 25;
+      display: flex;
+      flex-direction: column;
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), right 0.2s ease;
+      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .bottom-drawer.open {
+      transform: translateY(0);
+    }
+
+    .drawer-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-surface);
+    }
+
+    .drawer-title {
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 14px;
+    }
+
+    .category-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .category-card:hover {
+      border-color: var(--border-light);
+    }
+
+    .category-card.active-cat {
+      border-color: #ffffff;
+      background: #1f1f1f;
+    }
+
+    .category-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border-dark);
+      padding-bottom: 6px;
+    }
+
+    .category-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .category-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .pill-file {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #000000;
+      border: 1px solid var(--border-mid);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--text-main);
+    }
+
+    .category-desc {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- STUDIO HEADER -->
+  <header class="studio-header">
+    <div class="header-left">
+      <div class="workflow-logo">STUDIO</div>
+      <div class="workflow-breadcrumb">
+        <span class="crumb-dim">Workflows</span>
+        <span class="crumb-sep">/</span>
+        <span>arcaai-bren-consultation</span>
+        <span class="tag-mono">v2</span>
+        <span class="tag-mono">PUBLISHED</span>
+        <span class="crumb-sep">|</span>
+        <span class="tag-mono">ENTRY: ALaaS Client (POST /consultations/open)</span>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <button class="btn-mono" id="btn-toggle-filter" onclick="toggleGuardrailFilter()">
+        <span>◉</span> Highlight Guardrail Nodes
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inventory" onclick="toggleInventoryDrawer()">
+        <span>📁</span> File Inventory by Functionality
+      </button>
+      <button class="btn-mono active" id="btn-toggle-inspector" onclick="toggleInspector()" title="Toggle Right Inspector Sidebar">
+        <span>◨</span> Inspector
+      </button>
+      <button class="btn-mono" onclick="resetCanvasView()">
+        <span>⟲</span> Fit Graph
+      </button>
+    </div>
+  </header>
+
+  <!-- STUDIO WORKSPACE -->
+  <div class="studio-body">
+
+    <!-- CANVAS VIEWPORT -->
+    <div class="canvas-viewport" id="viewport">
+      <div class="canvas-world" id="world">
+        <!-- SVG CONNECTIONS -->
+        <svg class="connections-svg" id="wires-layer"></svg>
+
+        <!-- NODES CONTAINER (Rendered via JS) -->
+        <div id="nodes-layer"></div>
+      </div>
+
+      <!-- HUD CONTROLS -->
+      <div class="canvas-hud">
+        <button class="hud-btn" onclick="zoomIn()">+</button>
+        <span class="hud-zoom-label" id="zoom-val">100%</span>
+        <button class="hud-btn" onclick="zoomOut()">−</button>
+        <button class="hud-btn" onclick="resetCanvasView()" title="Fit View">⛶</button>
+      </div>
+    </div>
+
+    <!-- RIGHT INSPECTOR PANEL -->
+    <aside class="inspector-panel" id="inspector">
+      <div class="inspector-top">
+        <div class="inspector-title-group">
+          <h3 id="ins-node-title">Node Inspector</h3>
+          <span class="tag-mono" id="ins-node-id">Select a node</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="toggleInspector()">✕</button>
+      </div>
+
+      <div class="inspector-tabs">
+        <button class="ins-tab active" onclick="switchInspectorTab('spec')">Node Specs &amp; Role</button>
+        <button class="ins-tab" onclick="switchInspectorTab('guardrail')">Guardrail Gate &amp; Policy</button>
+      </div>
+
+      <div class="inspector-scroll">
+
+        <!-- TAB 1: NODE SPECS & ROLE -->
+        <div id="ins-tab-spec" class="ins-tab-content">
+          <div class="ins-card">
+            <div class="ins-card-title">Workflow Node Attributes</div>
+            <div class="prop-row">
+              <span class="prop-label">Node Type</span>
+              <span class="prop-val" id="ins-type">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Execution Lane</span>
+              <span class="prop-val" id="ins-lane">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Trigger Cadence</span>
+              <span class="prop-val" id="ins-cadence">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Agent / Engine Slug</span>
+              <span class="prop-val" id="ins-slug">--</span>
+            </div>
+            <div class="prop-row" id="row-template" style="display:none;">
+              <span class="prop-label">Document Template</span>
+              <span class="prop-val" id="ins-template">--</span>
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Node Purpose in Consultation</div>
+            <p id="ins-purpose" style="font-size:12.5px; line-height:1.5; color:var(--text-muted);"></p>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Graph Ports</div>
+            <div class="prop-row">
+              <span class="prop-label">Input Ports</span>
+              <span class="prop-val" id="ins-ports-in">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Output Ports</span>
+              <span class="prop-val" id="ins-ports-out">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: GUARDRAIL GATE & POLICY -->
+        <div id="ins-tab-guardrail" class="ins-tab-content" style="display:none;">
+          <div class="guard-banner">
+            <div class="guard-banner-title">
+              <span id="ins-guard-symbol">●</span>
+              <span id="ins-guard-headline">Guardrail Screened</span>
+            </div>
+            <p class="guard-banner-desc" id="ins-guard-desc">
+              Description of how Guardrail intercepts or gates this node.
+            </p>
+            <div style="margin-top:6px;" id="ins-cat-link-container">
+              <!-- Jump button to bottom inventory -->
+            </div>
+          </div>
+
+          <!-- LANE 1 PATTERN BREAKDOWN -->
+          <div class="ins-card" id="ins-lane1-card" style="display:none;">
+            <div class="ins-card-title">Lane 1 Clinical Moderation Pattern</div>
+            <div class="lane1-box">
+              <div class="lane1-title">Inbound Gate (Pre-Generation)</div>
+              <div class="lane1-step"><span>1.</span> <code>POST /api/medical/validate</code> on <code>apps/guardrail</code></div>
+              <div class="lane1-step"><span>2.</span> Inbound sanitization + nonce containment fencing (<code><<<DATA_FENCE>>></code>)</div>
+              <div class="lane1-step"><span>3.</span> Clinical intent verification via <code>apps/text /internal/judge</code></div>
+            </div>
+            <div class="lane1-box">
+              <div class="lane1-title">Outbound Gate (Post-Generation)</div>
+              <div class="lane1-step"><span>1.</span> <code>POST /api/v1/guardrail/screen/outbound</code> on <code>apps/guardrail</code></div>
+              <div class="lane1-step"><span>2.</span> Zero-LLM toxicity &amp; refusal scan via <code>apps/nlp</code> (~20ms)</div>
+              <div class="lane1-step"><span>3.</span> PII leak comparison against original transcript + nonce echo verification</div>
+            </div>
+          </div>
+
+          <div class="ins-card">
+            <div class="ins-card-title">Security &amp; Policy Contract</div>
+            <div class="prop-row">
+              <span class="prop-label">Security Posture</span>
+              <span class="prop-val">Fail-Closed (HTTP 503)</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Local Weights</span>
+              <span class="prop-val">Zero (Delegated Inference)</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Outbound Screening</span>
+              <span class="prop-val">~20ms (NLP &amp; Python only)</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-label">Tenant Policy</span>
+              <span class="prop-val">Direct Async SQL (Postgres)</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- FLOATING REOPEN BUTTON (APPEARS WHEN INSPECTOR IS COLLAPSED) -->
+    <button class="inspector-reopen-btn" id="btn-inspector-reopen" onclick="toggleInspector()" title="Open Node Inspector">
+      <span>◀</span> Node Inspector
+    </button>
+
+
+    <!-- BOTTOM INVENTORY DRAWER (COMPONENT FILES BY FUNCTIONALITY) -->
+    <div class="bottom-drawer open" id="bottom-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <span class="tag-mono tag-guardrail">INVENTORY</span>
+          <span>Guardrail Component Files Segregated by Functionality (14 Total Files)</span>
+        </div>
+        <button class="btn-mono" style="padding:2px 8px;" onclick="toggleInventoryDrawer()">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        
+        <!-- Category 1 -->
+        <div class="category-card" id="cat-card-1" onclick="highlightCategoryNodes(1)">
+          <div class="category-header">
+            <span class="category-name">1. Ingress, Auth &amp; Observability</span>
+            <span class="tag-mono">Port 8863</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">main.py</span>
+            <span class="pill-file">api/middleware/auth.py</span>
+            <span class="pill-file">core/observability.py</span>
+          </div>
+          <div class="category-desc">
+            Outer ASGI stack on port 8863. Enforces <code>X-Service-Token</code> verification on inter-service requests, binds <code>X-Tenant-Id</code>, attaches distributed tracing (<code>X-Request-Id</code>), and handles request admission semaphores.
+          </div>
+        </div>
+
+        <!-- Category 2 -->
+        <div class="category-card" id="cat-card-2" onclick="highlightCategoryNodes(2)">
+          <div class="category-header">
+            <span class="category-name">2. Inbound Medical Context Gate</span>
+            <span class="tag-mono">POST /api/medical/validate</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">api/endpoints/medical.py</span>
+            <span class="pill-file">services/external_text_client.py</span>
+            <span class="pill-file">services/injection_defense.py</span>
+          </div>
+          <div class="category-desc">
+            Lane 1 Inbound Gate: intercepts incoming prompts for <code>n_presummary</code>, <code>n_summary_new</code>, and <code>n_summary_revisit</code>. Wraps text in cryptographic containment fences and delegates clinical intent scoring to <code>apps/text /internal/judge</code>.
+          </div>
+        </div>
+
+        <!-- Category 3 -->
+        <div class="category-card" id="cat-card-3" onclick="highlightCategoryNodes(3)">
+          <div class="category-header">
+            <span class="category-name">3. Outbound Screening &amp; Containment</span>
+            <span class="tag-mono">POST /api/v1/guardrail/screen/outbound</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">api/endpoints/screen.py</span>
+            <span class="pill-file">services/screening.py</span>
+            <span class="pill-file">services/external_nlp_client.py</span>
+          </div>
+          <div class="category-desc">
+            Lane 1 Outbound Gate (~20ms, zero-LLM): runs toxicity scans, detects hallucinated PII leakage against original consultation audio transcripts, and ensures the LLM did not echo internal data-fence nonces.
+          </div>
+        </div>
+
+        <!-- Category 4 -->
+        <div class="category-card" id="cat-card-4" onclick="highlightCategoryNodes(4)">
+          <div class="category-header">
+            <span class="category-name">4. PHI Redaction &amp; Masking</span>
+            <span class="tag-mono">POST /api/guardrail/redact</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">api/endpoints/redact.py</span>
+            <span class="pill-file">services/external_nlp_client.py</span>
+          </div>
+          <div class="category-desc">
+            Required by <code>n_output</code>: chunks note text, extracts sensitive patient entities (names, phone numbers, clinician IDs) using GLiNER in <code>apps/nlp</code>, and substitutes semantic masks (<code>[PERSON_1]</code>).
+          </div>
+        </div>
+
+        <!-- Category 5 -->
+        <div class="category-card" id="cat-card-5" onclick="highlightCategoryNodes(5)">
+          <div class="category-header">
+            <span class="category-name">5. Policy Plane &amp; Direct Postgres Resolution</span>
+            <span class="tag-mono">schema core</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">core/tenant_config.py</span>
+            <span class="pill-file">core/policy.py</span>
+            <span class="pill-file">core/dependencies.py</span>
+          </div>
+          <div class="category-desc">
+            Resolves tenant-specific guardrail policies directly via read-only async SQL against PostgreSQL (<code>core."AiRoutingPolicy"</code>), avoiding circular HTTP loops back to the API gateway. Caches in Redis for 60s.
+          </div>
+        </div>
+
+        <!-- Category 6 -->
+        <div class="category-card" id="cat-card-6" onclick="highlightCategoryNodes(6)">
+          <div class="category-header">
+            <span class="category-name">6. Resilience &amp; Fail-Closed Core</span>
+            <span class="tag-mono">HTTP 503 Guard</span>
+          </div>
+          <div class="category-files">
+            <span class="pill-file">core/breaker.py</span>
+            <span class="pill-file">core/concurrency.py</span>
+            <span class="pill-file">core/errors.py</span>
+          </div>
+          <div class="category-desc">
+            Enforces downstream circuit breakers for <code>nlp</code> and <code>text</code>. If any downstream service is degraded or unresponsive, Guardrail refuses to guess "safe" and returns <strong>HTTP 503 Fail-Closed</strong>.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // 10 BREN WORKFLOW NODES WITH EXACT COORDINATES & PORTS
+    const GRAPH_NODES = [
+      {
+        id: "n_trigger",
+        title: "Consultation Trigger",
+        type: "core.trigger",
+        x: 40,
+        y: 120,
+        lane: "Realtime",
+        cadence: "onOpen",
+        slug: "Kind: consultation, api",
+        purpose: "Initiated by ALaaS calling Hope's POST /consultations/open with { source: 'alaas', departmentId: 'BREN', visit_type }. Binds tenant and starts workflow run.",
+        inPorts: [],
+        outPorts: ["next", "out"],
+        guardActive: true,
+        guardCategoryId: 1,
+        guardCategoryName: "1. Ingress, Auth & Observability",
+        guardSummary: "Validates tenant authorization header and context schema constraints. Binds X-Tenant-Id for downstream trace.",
+        isLane1: false
+      },
+      {
+        id: "n_presummary",
+        title: "Pre-Summary Agent",
+        type: "core.agent",
+        x: 380,
+        y: 50,
+        lane: "Realtime",
+        cadence: "onStart",
+        slug: "case-notes-pre-summary",
+        purpose: "Executes on consultation start to compile historical case notes, prior visits, and vitals into a baseline note for the clinician.",
+        inPorts: ["after", "context"],
+        outPorts: ["next", "out"],
+        guardActive: true,
+        guardCategoryId: 2,
+        guardCategoryName: "2. Inbound Medical Context Gate",
+        guardSummary: "Executes Lane 1 Moderation: pre-generation validation (/api/medical/validate) & post-generation outbound screening (/screen/outbound).",
+        isLane1: true
+      },
+      {
+        id: "n_asr",
+        title: "Speech-to-Text (ASR)",
+        type: "core.agent",
+        x: 380,
+        y: 280,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "sarvam-saaras-v4",
+        purpose: "Realtime speech-to-text turning live audio streams from ALaaS room microphones into text conversation transcripts.",
+        inPorts: ["after"],
+        outPorts: ["transcript"],
+        guardActive: false,
+        guardCategoryId: null,
+        guardCategoryName: null,
+        guardSummary: "Realtime streaming audio. Guardrail enforces verbatim transcript retention disposition on raw audio turns.",
+        isLane1: false
+      },
+      {
+        id: "n_ner",
+        title: "Medical NER",
+        type: "core.agent",
+        x: 720,
+        y: 280,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "medical-ner",
+        purpose: "Extracts clinical entities (symptoms, breast exam findings, anatomical markers, medications) from the live transcript stream.",
+        inPorts: ["in"],
+        outPorts: ["out"],
+        guardActive: false,
+        guardCategoryId: null,
+        guardCategoryName: null,
+        guardSummary: "Realtime NLP entity extraction. Guardrail validates entity offsets before feeding into running summary.",
+        isLane1: false
+      },
+      {
+        id: "n_visit",
+        title: "Visit Type Router",
+        type: "core.condition",
+        x: 1060,
+        y: 280,
+        lane: "Control Plane",
+        cadence: "Instant",
+        slug: "Condition: new-visit vs revisit",
+        purpose: "Evaluates trigger.context.visit_type sent by ALaaS. If 'new-visit', branches to n_summary_new; if 'revisit', branches to n_summary_revisit.",
+        inPorts: ["in"],
+        outPorts: ["new_visit", "revisit", "else"],
+        guardActive: false,
+        guardCategoryId: null,
+        guardCategoryName: null,
+        guardSummary: "Deterministic routing condition in Hope control plane. Zero model inference or guardrail intervention.",
+        isLane1: false
+      },
+      {
+        id: "n_summary_new",
+        title: "BREN Summary (New Visit)",
+        type: "core.agent",
+        x: 1420,
+        y: 150,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "arcaai-bren-summary-new-visit",
+        template: "arcaai-bren-soap-new-visit",
+        purpose: "Drafts comprehensive SOAP notes for first-time Breast & Endocrine patients, structuring family history, staging, and baseline exams.",
+        inPorts: ["after", "context", "in"],
+        outPorts: ["out"],
+        guardActive: true,
+        guardCategoryId: 2,
+        guardCategoryName: "2. Inbound Medical Context Gate",
+        guardSummary: "Executes Lane 1 Moderation: validates prompt via /api/medical/validate and audits generated SOAP draft via /screen/outbound.",
+        isLane1: true
+      },
+      {
+        id: "n_summary_revisit",
+        title: "BREN Summary (Revisit)",
+        type: "core.agent",
+        x: 1420,
+        y: 380,
+        lane: "Realtime",
+        cadence: "perTurn",
+        slug: "arcaai-bren-summary-revisit",
+        template: "arcaai-bren-soap-revisit",
+        purpose: "Drafts follow-up SOAP notes for returning BREN patients, focusing on treatment response, interval changes, and new diagnostic imaging.",
+        inPorts: ["after", "context", "in"],
+        outPorts: ["out"],
+        guardActive: true,
+        guardCategoryId: 3,
+        guardCategoryName: "3. Outbound Screening & Containment",
+        guardSummary: "Executes Lane 1 Moderation: enforces inbound clinical validation and audits follow-up draft for hallucinated dosages or PII.",
+        isLane1: true
+      },
+      {
+        id: "n_finalize",
+        title: "Casenote Finalization",
+        type: "core.agent",
+        x: 1800,
+        y: 220,
+        lane: "Durable",
+        cadence: "onEnd",
+        slug: "casenote-finalization",
+        purpose: "Durable workflow activity running when ALaaS stops consultation. Assembles pre-summary, turn transcripts, and notes into an official case note.",
+        inPorts: ["after", "in"],
+        outPorts: ["out", "data"],
+        guardActive: true,
+        guardCategoryId: 3,
+        guardCategoryName: "3. Outbound Screening & Containment",
+        guardSummary: "Final Lane 1 Outbound Audit: audits full note against original audio evidence, checking for hallucinated details.",
+        isLane1: true
+      },
+      {
+        id: "n_review",
+        title: "Doctor Human Review",
+        type: "core.humanReview",
+        x: 2160,
+        y: 220,
+        lane: "Human-in-the-Loop",
+        cadence: "onEnd",
+        slug: "Role: DOCTOR · clinical_finalization",
+        purpose: "Presents the final note to the attending clinician for approval. Doctor can sign off, edit and approve, or reject.",
+        inPorts: ["in"],
+        outPorts: ["next"],
+        guardActive: false,
+        guardCategoryId: null,
+        guardCategoryName: null,
+        guardSummary: "Human-in-the-loop clinical gate. Doctor sign-off serves as the clinical authority before EHR persistence.",
+        isLane1: false
+      },
+      {
+        id: "n_output",
+        title: "Case Note & Redactions Output",
+        type: "core.output",
+        x: 2520,
+        y: 220,
+        lane: "Egress",
+        cadence: "Terminal",
+        slug: "Schema: case_note, redactions[]",
+        purpose: "Emits the signed case note and redactions array to ALaaS and the hospital EHR over HTTP, SSE, and WebSockets.",
+        inPorts: ["in", "after"],
+        outPorts: [],
+        guardActive: true,
+        guardCategoryId: 4,
+        guardCategoryName: "4. PHI Redaction & Masking",
+        guardSummary: "Direct PHI Redaction Gate: Guardrail executes POST /api/guardrail/redact, using GLiNER (apps/nlp) to extract and mask entities ([PERSON_1]).",
+        isLane1: false
+      }
+    ];
+
+    // 18 WORKFLOW EDGES (from arcaai-bren-consultation.v2.workflow.json)
+    const GRAPH_EDGES = [
+      { id: "e1", from: "n_trigger", fromPort: "next", to: "n_presummary", toPort: "after" },
+      { id: "e2", from: "n_trigger", fromPort: "out", to: "n_presummary", toPort: "context" },
+      { id: "e3", from: "n_presummary", fromPort: "next", to: "n_finalize", toPort: "after" },
+      { id: "e4", from: "n_trigger", fromPort: "next", to: "n_asr", toPort: "after" },
+      { id: "e5", from: "n_asr", fromPort: "transcript", to: "n_ner", toPort: "in" },
+      { id: "e6", from: "n_ner", fromPort: "out", to: "n_visit", toPort: "in" },
+      { id: "e7", from: "n_visit", fromPort: "new_visit", to: "n_summary_new", toPort: "after" },
+      { id: "e8", from: "n_visit", fromPort: "revisit", to: "n_summary_revisit", toPort: "after" },
+      { id: "e9", from: "n_visit", fromPort: "else", to: "n_summary_new", toPort: "after" },
+      { id: "e10", from: "n_trigger", fromPort: "out", to: "n_summary_new", toPort: "context" },
+      { id: "e11", from: "n_trigger", fromPort: "out", to: "n_summary_revisit", toPort: "context" },
+      { id: "e12", from: "n_ner", fromPort: "out", to: "n_summary_new", toPort: "in" },
+      { id: "e13", from: "n_ner", fromPort: "out", to: "n_summary_revisit", toPort: "in" },
+      { id: "e14", from: "n_summary_new", fromPort: "out", to: "n_finalize", toPort: "in" },
+      { id: "e15", from: "n_summary_revisit", fromPort: "out", to: "n_finalize", toPort: "in" },
+      { id: "e16", from: "n_finalize", fromPort: "out", to: "n_review", toPort: "in" },
+      { id: "e17", from: "n_finalize", fromPort: "data", to: "n_output", toPort: "in" },
+      { id: "e18", from: "n_review", fromPort: "next", to: "n_output", toPort: "after" }
+    ];
+
+    let currentScale = 0.85;
+    let panX = 40;
+    let panY = 60;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let selectedNodeId = "n_presummary";
+    let guardrailFilterActive = false;
+
+    // Render Canvas Nodes
+    function renderCanvas() {
+      const container = document.getElementById("nodes-layer");
+      container.innerHTML = "";
+
+      GRAPH_NODES.forEach(node => {
+        const el = document.createElement("div");
+        el.className = `node-element ${node.id === selectedNodeId ? 'selected' : ''} ${node.guardActive ? 'guardrail-highlight' : ''}`;
+        el.id = `node-${node.id}`;
+        el.style.left = `${node.x}px`;
+        el.style.top = `${node.y}px`;
+        el.onclick = (e) => {
+          e.stopPropagation();
+          selectNode(node.id);
+        };
+
+        const guardStatus = node.guardActive ? 
+          `<span class="guard-indicator"><span class="guard-dot-active">●</span> GUARDRAIL SCREENED</span>` :
+          `<span class="guard-indicator"><span class="guard-dot-none">○</span> PASSTHROUGH</span>`;
+
+        el.innerHTML = `
+          <div class="node-header">
+            <div class="node-title-box">
+              <span class="node-type-icon">▢</span>
+              <span class="node-title">${node.title}</span>
+            </div>
+            <span class="node-id-chip">${node.id}</span>
+          </div>
+          <div class="node-content">
+            <div class="node-summary-line">${node.purpose}</div>
+            <div class="node-slug-badge">${node.slug}</div>
+          </div>
+          <div class="node-footer">
+            <span>${node.lane}</span>
+            ${guardStatus}
+          </div>
+        `;
+        container.appendChild(el);
+      });
+
+      renderConnections();
+    }
+
+    // Render SVG Connections
+    function renderConnections() {
+      const svg = document.getElementById("wires-layer");
+      svg.innerHTML = "";
+
+      GRAPH_EDGES.forEach(edge => {
+        const fromNode = GRAPH_NODES.find(n => n.id === edge.from);
+        const toNode = GRAPH_NODES.find(n => n.id === edge.to);
+        if (!fromNode || !toNode) return;
+
+        // Calculate ports positions
+        const startX = fromNode.x + 280;
+        const startY = fromNode.y + 40;
+        const endX = toNode.x;
+        const endY = toNode.y + 40;
+
+        const deltaX = Math.max(40, (endX - startX) * 0.5);
+        const pathData = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`;
+
+        const isRelated = (fromNode.id === selectedNodeId || toNode.id === selectedNodeId);
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("class", `wire-path ${isRelated ? 'active' : ''}`);
+        svg.appendChild(path);
+      });
+    }
+
+    // Node Selection & Inspector Binding
+    function selectNode(id) {
+      selectedNodeId = id;
+      document.querySelectorAll(".node-element").forEach(el => el.classList.remove("selected"));
+      const el = document.getElementById(`node-${id}`);
+      if (el) el.classList.add("selected");
+
+      renderConnections();
+
+      const node = GRAPH_NODES.find(n => n.id === id);
+      if (!node) return;
+
+      document.getElementById("ins-node-title").textContent = node.title;
+      document.getElementById("ins-node-id").textContent = node.id;
+      document.getElementById("ins-type").textContent = node.type;
+      document.getElementById("ins-lane").textContent = node.lane;
+      document.getElementById("ins-cadence").textContent = node.cadence;
+      document.getElementById("ins-slug").textContent = node.slug;
+      document.getElementById("ins-purpose").textContent = node.purpose;
+
+      const rowTemplate = document.getElementById("row-template");
+      if (node.template) {
+        rowTemplate.style.display = "flex";
+        document.getElementById("ins-template").textContent = node.template;
+      } else {
+        rowTemplate.style.display = "none";
+      }
+
+      document.getElementById("ins-ports-in").textContent = node.inPorts.join(", ") || "(none / trigger entry)";
+      document.getElementById("ins-ports-out").textContent = node.outPorts.join(", ") || "(terminal output)";
+
+      // Guardrail Tab
+      document.getElementById("ins-guard-symbol").textContent = node.guardActive ? "●" : "○";
+      document.getElementById("ins-guard-headline").textContent = node.guardActive ? "Active Guardrail Gate" : "Passthrough Node";
+      document.getElementById("ins-guard-desc").textContent = node.guardSummary;
+
+      // Lane 1 Pattern Box toggle
+      const lane1Card = document.getElementById("ins-lane1-card");
+      lane1Card.style.display = node.isLane1 ? "flex" : "none";
+
+      // Link to Category in Inventory Drawer
+      const linkContainer = document.getElementById("ins-cat-link-container");
+      linkContainer.innerHTML = "";
+      if (node.guardCategoryId) {
+        const btn = document.createElement("button");
+        btn.className = "category-jump-btn";
+        btn.innerHTML = `<span>📂</span> View in Inventory: ${node.guardCategoryName}`;
+        btn.onclick = () => {
+          jumpToCategory(node.guardCategoryId);
+        };
+        linkContainer.appendChild(btn);
+      }
+
+      // Auto-reopen inspector if collapsed so user sees the selected node specs
+      openInspector();
+    }
+
+    // Inspector Tab Switching
+    function switchInspectorTab(tabKey) {
+      document.querySelectorAll(".ins-tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".ins-tab-content").forEach(c => c.style.display = "none");
+
+      event.target.classList.add("active");
+      const target = document.getElementById(`ins-tab-${tabKey}`);
+      if (target) target.style.display = "flex";
+    }
+
+    // Jump from Inspector to Category in Bottom Drawer
+    function jumpToCategory(catId) {
+      const drawer = document.getElementById("bottom-drawer");
+      if (!drawer.classList.contains("open")) {
+        toggleInventoryDrawer();
+      }
+      highlightCategoryNodes(catId);
+      const catCard = document.getElementById(`cat-card-${catId}`);
+      if (catCard) {
+        catCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    // Highlight nodes when clicking a category in the drawer
+    function highlightCategoryNodes(catId) {
+      document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active-cat"));
+      const card = document.getElementById(`cat-card-${catId}`);
+      if (card) card.classList.add("active-cat");
+
+      document.querySelectorAll(".node-element").forEach(el => {
+        const id = el.id.replace("node-", "");
+        const node = GRAPH_NODES.find(n => n.id === id);
+        if (node.guardCategoryId === catId) {
+          el.style.opacity = "1";
+          el.style.transform = "scale(1.04)";
+        } else {
+          el.style.opacity = "0.25";
+          el.style.transform = "scale(1)";
+        }
+      });
+    }
+
+    // Toggle Inspector Panel
+    function toggleInspector() {
+      const panel = document.getElementById("inspector");
+      const isCollapsed = panel.classList.toggle("collapsed");
+      syncInspectorUI(!isCollapsed);
+    }
+
+    function openInspector() {
+      const panel = document.getElementById("inspector");
+      if (panel.classList.contains("collapsed")) {
+        panel.classList.remove("collapsed");
+        syncInspectorUI(true);
+      }
+    }
+
+    function syncInspectorUI(isOpen) {
+      const btn = document.getElementById("btn-toggle-inspector");
+      if (btn) {
+        if (isOpen) btn.classList.add("active");
+        else btn.classList.remove("active");
+      }
+      const reopenBtn = document.getElementById("btn-inspector-reopen");
+      if (reopenBtn) {
+        reopenBtn.style.display = isOpen ? "none" : "flex";
+      }
+    }
+
+    // Toggle Bottom Inventory Drawer
+    function toggleInventoryDrawer() {
+      const drawer = document.getElementById("bottom-drawer");
+      drawer.classList.toggle("open");
+      const btn = document.getElementById("btn-toggle-inventory");
+      btn.classList.toggle("active");
+    }
+
+
+    // Toggle Guardrail Filter
+    function toggleGuardrailFilter() {
+      guardrailFilterActive = !guardrailFilterActive;
+      const btn = document.getElementById("btn-toggle-filter");
+      btn.classList.toggle("active");
+
+      document.querySelectorAll(".node-element").forEach(el => {
+        const id = el.id.replace("node-", "");
+        const node = GRAPH_NODES.find(n => n.id === id);
+        el.style.transform = "scale(1)";
+        if (guardrailFilterActive) {
+          el.style.opacity = node.guardActive ? "1" : "0.2";
+        } else {
+          el.style.opacity = "1";
+        }
+      });
+    }
+
+    // Canvas Pan & Zoom
+    function applyTransform() {
+      const world = document.getElementById("world");
+      world.style.transform = `translate(${panX}px, ${panY}px) scale(${currentScale})`;
+      document.getElementById("zoom-val").textContent = `${Math.round(currentScale * 100)}%`;
+    }
+
+    function zoomIn() {
+      currentScale = Math.min(2.0, currentScale + 0.15);
+      applyTransform();
+    }
+
+    function zoomOut() {
+      currentScale = Math.max(0.3, currentScale - 0.15);
+      applyTransform();
+    }
+
+    function resetCanvasView() {
+      currentScale = 0.55;
+      panX = 30;
+      panY = 80;
+      applyTransform();
+      // Reset opacities
+      document.querySelectorAll(".node-element").forEach(el => {
+        el.style.opacity = "1";
+        el.style.transform = "scale(1)";
+      });
+      document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active-cat"));
+    }
+
+    // Drag to Pan with proper cursor selection handling
+    const viewport = document.getElementById("viewport");
+    viewport.addEventListener("mousedown", (e) => {
+      // Don't drag if clicking inside node, inspector, hud, drawer, or reopen button
+      if (e.target.closest(".node-element") || e.target.closest(".canvas-hud") || e.target.closest(".inspector-panel") || e.target.closest(".bottom-drawer") || e.target.closest(".inspector-reopen-btn")) {
+        return;
+      }
+      isDragging = true;
+      viewport.classList.add("is-dragging");
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      applyTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+      isDragging = false;
+      viewport.classList.remove("is-dragging");
+    });
+
+    viewport.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+      currentScale = Math.min(2.0, Math.max(0.3, currentScale * zoomFactor));
+      applyTransform();
+    }, { passive: false });
+
+    // Initialize
+    window.addEventListener("DOMContentLoaded", () => {
+      renderCanvas();
+      selectNode("n_presummary");
+      resetCanvasView();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "rowIndex": 15,
+  "caseName": "realtime_transcript_9000tok_w15",
+  "fileName": "realtime_transcript_9000tok_w15.wav",
+  "language": "malayalam",
+  "words": 6075,
+  "approxTokens": 8100,
+  "promptTokens": 750,
+  "completionTokens": 410,
+  "throughputTps": 195.0,
+  "isSuccess": false,
+  "statusLabel": "FAIL",
+  "totalE2EMs": 336706.4574160613,
+  "hops": {
+    "sessionInitMs": 714.7195830475539,
+    "transcriptIngestMs": 1925.3796660341322,
+    "workflowDispatchMs": 1617.066000122577,
+    "pipelineExecMs": 331800.0721668359,
+    "noteRetrievalMs": 649.2200000211596
+  },
+  "subhops": {
+    "nlpMs": 687.2959579341114,
+    "guardrailInboundMs": 30649.530250113457,
+    "promptAssemblyMs": 750.0,
+    "llmGpuMs": 3200.0,
+    "guardrailOutboundMs": 296513.2459587883
+  },
+  "consultationId": "01a2123c-ea9c-7d13-a408-c3d496dfa571",
+  "jobId": "harness-doc-e0e398f9-88b1-49df-baf8-6e15fc55056d"
+}

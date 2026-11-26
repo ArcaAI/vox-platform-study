@@ -1,0 +1,23 @@
+{
+  "rowIndex": 7,
+  "caseName": "realtime_transcript_sample_w7",
+  "fileName": "realtime_transcript_sample_w7.wav",
+  "doctor": "test3",
+  "language": "malayalam",
+  "words": 6047,
+  "approxTokens": 8062,
+  "promptTokens": null,
+  "completionTokens": null,
+  "isSuccess": true,
+  "statusLabel": "PASS",
+  "totalE2EMs": 407083.30633398145,
+  "hops": {
+    "sessionInitMs": 719.4516670424491,
+    "transcriptIngestMs": 627.8202498797327,
+    "workflowDispatchMs": 836.9102498982102,
+    "pipelineExecMs": 404208.58808397315,
+    "noteRetrievalMs": 690.5360831879079
+  },
+  "consultationId": "01a212e9-a8aa-770f-9f15-40960a9699fc",
+  "jobId": "harness-doc-f27ab28a-cc13-4b42-906e-dab95924b77a"
+}
